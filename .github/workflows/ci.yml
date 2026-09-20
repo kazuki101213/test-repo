@@ -3,8 +3,10 @@
 name: CI
 
 on:
+  # PR 中のブランチは pull_request 側で回るので、push は main だけにする
+  # （両方を指定すると同じコミットで 2 回実行されてしまう）
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
 
 jobs:
@@ -15,9 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # バージョンは package.json の packageManager から読ませる。
+      # ここで version を指定すると二重指定でエラーになる。
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
