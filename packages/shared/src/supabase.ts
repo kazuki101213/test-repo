@@ -44,20 +44,38 @@ export async function loadSession(): Promise<Session | null> {
   const { data: auth } = await sb.auth.getUser();
   if (!auth.user) return null;
 
-  const { data, error } = await sb
+  // 埋め込み取得（staff:staff_id(...)）は PostgREST の版によって
+  // オブジェクトと配列のどちらで返るかが変わる。ここはログインの根幹なので、
+  // 素直に 2 回引いて振る舞いを固定する。
+  const { data: profile, error: profileError } = await sb
     .from('profiles')
-    .select('staff:staff_id(id, code, name, display_name, role, is_company, email, is_active)')
+    .select('staff_id')
     .eq('user_id', auth.user.id)
     .maybeSingle();
 
-  if (error) throw error;
-  const staff = (data as { staff: Staff } | null)?.staff;
-  if (!staff) {
+  if (profileError) throw profileError;
+
+  const staffId = (profile as { staff_id: string } | null)?.staff_id;
+  if (!staffId) {
     throw new Error(
-      'このアカウントにスタッフが紐付いていません。管理者に app.profiles への登録を依頼してください。',
+      'このアカウントは担当者に紐付いていません。'
+        + '管理者に「app.link_login でこのメールアドレスを登録してほしい」と伝えてください。',
     );
   }
-  return { user: auth.user, staff };
+
+  const { data: staff, error: staffError } = await sb
+    .from('staff')
+    .select('id, code, name, display_name, role, is_company, email, is_active')
+    .eq('id', staffId)
+    .maybeSingle();
+
+  if (staffError) throw staffError;
+  if (!staff) throw new Error('担当者の情報が見つかりませんでした。');
+  if (!(staff as Staff).is_active) {
+    throw new Error('この担当者は在籍していない設定になっています。管理者に確認してください。');
+  }
+
+  return { user: auth.user, staff: staff as Staff };
 }
 
 export async function signIn(email: string, password: string): Promise<void> {
