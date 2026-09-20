@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { yen } from '@bussan/shared';
+import { yen, errorMessage } from '@bussan/shared';
 import type { DelivererWorkload, MonthlySummary, StockSummary } from '@bussan/shared';
 import { fetchMonthly, fetchStockSummary, fetchWorkload } from '../api';
 
@@ -21,7 +21,7 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([fetchStockSummary(), fetchMonthly(12), fetchWorkload()])
       .then(([s, m, w]) => { setStock(s); setMonths(m); setWorkload(w); })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, []);
 
   const current = months[0];

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CONDITIONS, WORK_STEPS, jpDate, yen } from '@bussan/shared';
+import { CONDITIONS, WORK_STEPS, jpDate, yen, errorMessage } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, ItemCondition, Staff, WorkStep } from '@bussan/shared';
 import {
   fetchComments, fetchPhotoUrls, fetchTask, postComment,
@@ -36,7 +36,7 @@ export default function TaskDetail({
       setComments(c);
       setPhotos(p);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     }
   }, [itemId]);
 
@@ -50,7 +50,7 @@ export default function TaskDetail({
       await setWorkProgress(task.id, step, !isStepDone(task, step));
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setPending(null);
     }
@@ -67,7 +67,7 @@ export default function TaskDetail({
       if (!task.photo_uploaded) await setWorkProgress(task.id, 'photo', true);
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     }
   }
 
@@ -78,7 +78,7 @@ export default function TaskDetail({
       await updateDeliveryFields(task.id, patch);
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     }
   }
 
@@ -90,7 +90,7 @@ export default function TaskDetail({
       setDraft('');
       await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     }
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { yen } from '@bussan/shared';
+import { yen, errorMessage } from '@bussan/shared';
 import type { Product } from '@bussan/shared';
 import { fetchProducts } from '../api';
 import { downloadCsv } from '../csv';
@@ -13,7 +13,7 @@ export default function Products() {
     const id = setTimeout(() => {
       fetchProducts(query || undefined)
         .then(setRows)
-        .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+        .catch((e) => setError(errorMessage(e)));
     }, 250);
     return () => clearTimeout(id);
   }, [query]);

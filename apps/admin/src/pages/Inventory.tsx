@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
+import { STATUSES, STATUS_COLORS, jpDate, yen, errorMessage } from '@bussan/shared';
 import type { ItemView, Staff } from '@bussan/shared';
 import { fetchAmazonFeed, fetchItems, fetchStaff, recordSale } from '../api';
 import { downloadCsv, downloadTsv } from '../csv';
@@ -21,7 +21,7 @@ export default function Inventory() {
     try {
       setItems(await fetchItems({ status: status || undefined, delivererId: delivererId || undefined, query: query || undefined, unsoldOnly }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -37,7 +37,7 @@ export default function Inventory() {
       if (cleaned.length === 0) { setError('出品対象（写真登録まで完了した商品）がありません。'); return; }
       downloadTsv(`amazon-listing-${new Date().toISOString().slice(0, 10)}.txt`, cleaned);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     }
   }
 
@@ -153,7 +153,7 @@ function SaleDialog({ item, onClose, onSaved }: { item: ItemView; onClose: () =>
       });
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
       setBusy(false);
     }
   }

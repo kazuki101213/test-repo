@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { normalizeSku } from '@bussan/shared';
+import { normalizeSku, errorMessage } from '@bussan/shared';
 import type { DeliveryTask } from '@bussan/shared';
 import { fetchMyTasks } from '../api';
 import TaskCard from '../components/TaskCard';
@@ -23,7 +23,7 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
   useEffect(() => {
     fetchMyTasks()
       .then(setTasks)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false));
   }, []);
 

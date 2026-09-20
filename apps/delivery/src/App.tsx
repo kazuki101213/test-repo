@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { loadSession, signOut } from '@bussan/shared';
+import { loadSession, signOut, errorMessage } from '@bussan/shared';
 import type { Session } from '@bussan/shared';
 import Login from './components/Login';
 import TaskList from './pages/TaskList';
@@ -16,7 +16,7 @@ export default function App() {
       setSession(await loadSession());
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
       setSession(null);
     } finally {
       setChecked(true);

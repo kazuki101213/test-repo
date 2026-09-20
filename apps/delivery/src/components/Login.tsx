@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { signIn } from '@bussan/shared';
+import { signIn, errorMessage } from '@bussan/shared';
 
 export default function Login({ onDone }: { onDone: () => void }) {
   const [email, setEmail] = useState('');
@@ -15,7 +15,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
       await signIn(email, password);
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setBusy(false);
     }

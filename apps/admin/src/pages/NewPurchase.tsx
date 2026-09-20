@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
-  CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, buildSku, yen,
+  CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, buildSku, yen, errorMessage,
 } from '@bussan/shared';
 import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
@@ -38,7 +38,7 @@ export default function NewPurchase({ me }: { me: Staff }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    fetchStaff().then(setStaff).catch((e) => setError(String(e)));
+    fetchStaff().then(setStaff).catch((e) => setError(errorMessage(e)));
     fetchCards().then(setCards).catch(() => undefined);
     fetchProducts().then(setProducts).catch(() => undefined);
     nextLotSeq().then(setLotSeq).catch(() => undefined);
@@ -108,7 +108,7 @@ export default function NewPurchase({ me }: { me: Staff }) {
       setTitle(''); setCost(''); setMarketplaceItemId(''); setMarketplaceUrl('');
       setProductId(''); setNote('');
     } catch (e2) {
-      setError(e2 instanceof Error ? e2.message : String(e2));
+      setError(errorMessage(e2));
     } finally {
       setBusy(false);
     }

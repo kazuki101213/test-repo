@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { jpDate, yen } from '@bussan/shared';
+import { jpDate, yen, errorMessage } from '@bussan/shared';
 import type { LedgerRow } from '@bussan/shared';
 import { fetchLedger } from '../api';
 import { downloadCsv } from '../csv';
@@ -17,7 +17,7 @@ export default function Ledger() {
   const load = useCallback(() => {
     fetchLedger(from, to)
       .then(setRows)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, [from, to]);
 
   useEffect(() => { load(); }, [load]);
