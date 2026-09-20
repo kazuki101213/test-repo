@@ -1,0 +1,30 @@
+project_id = "bussan-kanri"
+
+[api]
+enabled = true
+port = 54321
+# app スキーマを PostgREST に公開する（テーブル・ビュー・RPC はすべてここに置く）
+schemas = ["public", "app", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions", "app"]
+max_rows = 2000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5174"]
+jwt_expiry = 3600
+enable_signup = false          # 招待制。勝手にアカウントを作らせない
+[auth.email]
+enable_confirmations = false
+
+[storage]
+enabled = true
+file_size_limit = "20MiB"

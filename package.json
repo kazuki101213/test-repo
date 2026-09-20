@@ -1,0 +1,23 @@
+{
+  "name": "bussan-kanri",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Amazon/メルカリ物販の在庫・納品・古物台帳管理システム",
+  "scripts": {
+    "dev:admin": "pnpm --filter @bussan/admin dev",
+    "dev:delivery": "pnpm --filter @bussan/delivery dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "db:start": "supabase start",
+    "db:reset": "supabase db reset",
+    "db:diff": "supabase db diff",
+    "import": "node scripts/import-sheets.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  }
+}
