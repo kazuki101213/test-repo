@@ -503,10 +503,44 @@ grant all on app.staging_items, app.staging_products to authenticated, service_r
 function transformSql(productCount, itemCount, conflicts) {
   return `-- 手順3/3: 受け皿から本番のテーブルへ移す
 --
---   手順2 で products.csv と items.csv を読み込んだあとに、これを貼って Run してください。
+--   手順2 で CSV を 2 つ読み込んだあとに、これを貼って Run してください。
 --   同じ SKU / ASIN は上書きしないので、二重に流しても件数は増えません。
 
 begin;
+
+-- ▼ 前提の確認（足りないものがあれば、何をすればよいかを日本語で出す）
+-- トランザクションの内側なので、ここで止まれば受け皿は消えずに残る
+do $guard$
+declare
+  v_items    bigint;
+  v_products bigint;
+begin
+  if not exists (select 1 from information_schema.tables
+                 where table_schema = 'app' and table_name = 'staging_items') then
+    if (select count(*) from app.items) > 0 then
+      raise exception '取り込みは既に完了しています（仕入明細 % 件 / 商品マスタ % 件）',
+        (select count(*) from app.items), (select count(*) from app.products)
+        using hint = 'このファイルをもう一度実行する必要はありません。';
+    else
+      raise exception '受け皿テーブルがありません'
+        using hint = '先に「取込1-受け皿を作る.sql」を実行し、'
+                     'テーブルエディタで staging_products と staging_items に '
+                     'CSV を読み込んでから、このファイルを実行してください。';
+    end if;
+  end if;
+
+  select count(*) into v_items    from app.staging_items;
+  select count(*) into v_products from app.staging_products;
+
+  if v_items = 0 or v_products = 0 then
+    raise exception '受け皿が空です（商品マスタ % 件 / 仕入明細 % 件）', v_products, v_items
+      using hint = 'テーブルエディタでスキーマを app にして、'
+                   'staging_products に 取込2-products.csv を、'
+                   'staging_items に 取込3-items.csv を読み込んでから、'
+                   'もう一度このファイルを実行してください。';
+  end if;
+end
+$guard$;
 
 -- ▼ 商品マスタ（${productCount} 件）
 insert into app.products
