@@ -291,3 +291,22 @@ where i.purchased_at is null
    or (i.marketplace_item_id is null and i.marketplace_url is null);
 
 grant select on app.v_ledger_gaps to authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 権限の付け直し
+--   ビューを作り直すと、それまでの GRANT は一緒に消える。
+--   このファイルだけを流し直したときに権限が落ちないよう、
+--   最後に app スキーマのビュー全部へまとめて付け直す。
+--   （後からビューを足しても自動で対象になる）
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v record;
+begin
+  for v in
+    select table_name from information_schema.views where table_schema = 'app'
+  loop
+    execute format('grant select on app.%I to authenticated', v.table_name);
+  end loop;
+end
+$$;

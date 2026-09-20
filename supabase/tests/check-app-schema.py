@@ -94,6 +94,22 @@ def main() -> None:
         failures += 0 if ok else 1
         print(f'  {"OK" if ok else "NG"}  app.{t}')
 
+    # ビューを作り直すと GRANT が落ちる。ログインは通るのに
+    # ダッシュボードが空になる、という分かりにくい壊れ方をするので必ず見る。
+    print('\nビューの閲覧権限（authenticated）:')
+    granted = set(query(
+        "select table_name from information_schema.role_table_grants "
+        "where grantee='authenticated' and table_schema='app' "
+        "and privilege_type='SELECT'"))
+    all_views = set(query(
+        "select table_name from information_schema.views where table_schema='app'"))
+    ungranted = sorted(all_views - granted)
+    if ungranted:
+        print(f'  NG  権限が付いていないビュー: {ungranted}')
+        failures += 1
+    else:
+        print(f'  OK  {len(all_views)} 個すべてに SELECT 権限あり')
+
     if failures:
         sys.exit(f'\n{failures} 件の食い違いがあります。'
                  'マイグレーションか packages/shared/src/types.ts を直してください。')
