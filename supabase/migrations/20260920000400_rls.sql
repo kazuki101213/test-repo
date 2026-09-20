@@ -37,9 +37,11 @@ grant usage, select on all sequences in schema app to authenticated;
 -- -----------------------------------------------------------------------------
 -- staff
 -- -----------------------------------------------------------------------------
+drop policy if exists staff_select on app.staff;
 create policy staff_select on app.staff
   for select to authenticated using (true);
 
+drop policy if exists staff_write on app.staff;
 create policy staff_write on app.staff
   for all to authenticated
   using (app.is_admin()) with check (app.is_admin());
@@ -47,6 +49,7 @@ create policy staff_write on app.staff
 -- -----------------------------------------------------------------------------
 -- profiles（自分の紐付けだけ見える）
 -- -----------------------------------------------------------------------------
+drop policy if exists profiles_select on app.profiles;
 create policy profiles_select on app.profiles
   for select to authenticated
   using (user_id = auth.uid() or app.is_admin());
@@ -54,10 +57,12 @@ create policy profiles_select on app.profiles
 -- -----------------------------------------------------------------------------
 -- payment_cards / expenses は経理情報なので管理者のみ
 -- -----------------------------------------------------------------------------
+drop policy if exists cards_admin on app.payment_cards;
 create policy cards_admin on app.payment_cards
   for all to authenticated
   using (app.is_admin()) with check (app.is_admin());
 
+drop policy if exists expenses_admin on app.expenses;
 create policy expenses_admin on app.expenses
   for all to authenticated
   using (app.is_admin()) with check (app.is_admin());
@@ -65,17 +70,21 @@ create policy expenses_admin on app.expenses
 -- -----------------------------------------------------------------------------
 -- products（仕入れ判断に使うので仕入担当まで書き込み可）
 -- -----------------------------------------------------------------------------
+drop policy if exists products_select on app.products;
 create policy products_select on app.products
   for select to authenticated using (true);
 
+drop policy if exists products_write on app.products;
 create policy products_write on app.products
   for all to authenticated
   using (app.current_role() in ('admin', 'purchaser'))
   with check (app.current_role() in ('admin', 'purchaser'));
 
+drop policy if exists lots_select on app.lots;
 create policy lots_select on app.lots
   for select to authenticated using (true);
 
+drop policy if exists lots_write on app.lots;
 create policy lots_write on app.lots
   for all to authenticated
   using (app.current_role() in ('admin', 'purchaser'))
@@ -85,6 +94,7 @@ create policy lots_write on app.lots
 -- items
 -- -----------------------------------------------------------------------------
 -- 閲覧: 管理者・仕入担当は全件／納品担当は自分の担当分のみ
+drop policy if exists items_select on app.items;
 create policy items_select on app.items
   for select to authenticated
   using (
@@ -93,18 +103,21 @@ create policy items_select on app.items
   );
 
 -- 登録: 管理者・仕入担当のみ
+drop policy if exists items_insert on app.items;
 create policy items_insert on app.items
   for insert to authenticated
   with check (app.current_role() in ('admin', 'purchaser'));
 
 -- 直接更新: 管理者・仕入担当のみ。
 -- 納品担当者は app.set_work_progress / app.update_delivery_fields を使う。
+drop policy if exists items_update on app.items;
 create policy items_update on app.items
   for update to authenticated
   using (app.current_role() in ('admin', 'purchaser'))
   with check (app.current_role() in ('admin', 'purchaser'));
 
 -- 削除は管理者のみ（古物台帳の証跡なので原則は論理削除＝status '廃棄'）
+drop policy if exists items_delete on app.items;
 create policy items_delete on app.items
   for delete to authenticated
   using (app.is_admin());
@@ -112,6 +125,7 @@ create policy items_delete on app.items
 -- -----------------------------------------------------------------------------
 -- item_photos / item_comments（担当している SKU なら納品担当者も書ける）
 -- -----------------------------------------------------------------------------
+drop policy if exists item_photos_select on app.item_photos;
 create policy item_photos_select on app.item_photos
   for select to authenticated
   using (exists (
@@ -121,6 +135,7 @@ create policy item_photos_select on app.item_photos
            or i.deliverer_id = app.current_staff_id())
   ));
 
+drop policy if exists item_photos_insert on app.item_photos;
 create policy item_photos_insert on app.item_photos
   for insert to authenticated
   with check (exists (
@@ -130,6 +145,7 @@ create policy item_photos_insert on app.item_photos
            or i.deliverer_id = app.current_staff_id())
   ));
 
+drop policy if exists item_photos_delete on app.item_photos;
 create policy item_photos_delete on app.item_photos
   for delete to authenticated
   using (
@@ -137,6 +153,7 @@ create policy item_photos_delete on app.item_photos
     or uploaded_by = app.current_staff_id()
   );
 
+drop policy if exists item_comments_select on app.item_comments;
 create policy item_comments_select on app.item_comments
   for select to authenticated
   using (exists (
@@ -146,6 +163,7 @@ create policy item_comments_select on app.item_comments
            or i.deliverer_id = app.current_staff_id())
   ));
 
+drop policy if exists item_comments_insert on app.item_comments;
 create policy item_comments_insert on app.item_comments
   for insert to authenticated
   with check (
@@ -159,12 +177,14 @@ create policy item_comments_insert on app.item_comments
   );
 
 -- コメントは会話の記録なので編集不可、削除は管理者のみ
+drop policy if exists item_comments_delete on app.item_comments;
 create policy item_comments_delete on app.item_comments
   for delete to authenticated using (app.is_admin());
 
 -- -----------------------------------------------------------------------------
 -- audit_log は読むだけ（書き込みはトリガーの SECURITY DEFINER のみ）
 -- -----------------------------------------------------------------------------
+drop policy if exists audit_admin_select on app.audit_log;
 create policy audit_admin_select on app.audit_log
   for select to authenticated using (app.is_admin());
 
@@ -197,6 +217,7 @@ values ('item-photos', 'item-photos', false)
 on conflict (id) do nothing;
 
 -- パスは {sku}/{uuid}.jpg とする
+drop policy if exists "item photos are readable by staff in charge" on storage.objects;
 create policy "item photos are readable by staff in charge"
   on storage.objects for select to authenticated
   using (
@@ -209,6 +230,7 @@ create policy "item photos are readable by staff in charge"
     )
   );
 
+drop policy if exists "item photos are writable by staff in charge" on storage.objects;
 create policy "item photos are writable by staff in charge"
   on storage.objects for insert to authenticated
   with check (

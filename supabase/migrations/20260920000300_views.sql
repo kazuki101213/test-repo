@@ -6,6 +6,7 @@
 -- -----------------------------------------------------------------------------
 -- 在庫一覧（大元アプリのメイン画面）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_items cascade;
 create view app.v_items with (security_invoker = on) as
 select
   i.id,
@@ -68,6 +69,7 @@ left join app.staff deliv    on deliv.id = i.deliverer_id;
 -- 納品担当アプリの作業一覧
 --   RLS により自分の担当行しか見えない。
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_delivery_tasks cascade;
 create view app.v_delivery_tasks with (security_invoker = on) as
 select
   i.id,
@@ -109,6 +111,7 @@ where i.status in ('仕入済', '入荷済', '作業中', 'Amazon返品');
 --   古物営業法施行規則 第16条 の記載事項に対応させる。
 --   買受（仕入れ）と売却（販売）の両方を 1 本のビューに並べる。
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_antique_ledger cascade;
 create view app.v_antique_ledger with (security_invoker = on) as
 -- 買受
 select
@@ -160,6 +163,7 @@ comment on view app.v_antique_ledger is
 -- -----------------------------------------------------------------------------
 -- 月次サマリ（総合管理表のダッシュボード相当）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_monthly_summary cascade;
 create view app.v_monthly_summary with (security_invoker = on) as
 with purchased as (
   select date_trunc('month', purchased_at)::date as month,
@@ -200,6 +204,7 @@ order by 1 desc;
 -- -----------------------------------------------------------------------------
 -- 在庫サマリ（現在庫の評価額）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_stock_summary cascade;
 create view app.v_stock_summary with (security_invoker = on) as
 select
   count(*)                                        as 現在庫数,
@@ -217,6 +222,7 @@ where status not in ('販売済', '返品処理', '廃棄');
 -- -----------------------------------------------------------------------------
 -- 担当者別の稼働（納品管理表のピボット相当）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_deliverer_workload cascade;
 create view app.v_deliverer_workload with (security_invoker = on) as
 select
   s.id   as deliverer_id,
@@ -235,6 +241,7 @@ order by 未完了 desc;
 -- -----------------------------------------------------------------------------
 -- 商品マスタ別の実績（どの ASIN が儲かっているか）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_product_performance cascade;
 create view app.v_product_performance with (security_invoker = on) as
 select
   p.id as product_id,
@@ -261,6 +268,7 @@ group by p.id;
 --   スプレッドシートから移した行には、購入日や相手方が欠けているものがある。
 --   黙って埋めると帳簿として嘘になるので、欠けたまま一覧できるようにする。
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_ledger_gaps cascade;
 create view app.v_ledger_gaps with (security_invoker = on) as
 select
   i.sku,

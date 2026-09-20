@@ -14,66 +14,78 @@ create extension if not exists "pg_trgm";
 create schema if not exists app;
 
 -- -----------------------------------------------------------------------------
+-- ENUM を安全に作る / 足りない値を足す
+--   途中でエラーになった実行をやり直せるように、この SQL は何度流しても通る。
+--   型が既にあっても、値が足りなければ追加する（古い状態で止まっていても直る）。
+-- -----------------------------------------------------------------------------
+create or replace function app.ensure_enum(p_name text, p_labels text[])
+returns void
+language plpgsql
+as $ensure$
+declare
+  v_label text;
+begin
+  if not exists (
+    select 1 from pg_type t join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = p_name and n.nspname = 'app'
+  ) then
+    execute format(
+      'create type app.%I as enum (%s)',
+      p_name,
+      (select string_agg(quote_literal(l), ', ') from unnest(p_labels) as l)
+    );
+    return;
+  end if;
+
+  foreach v_label in array p_labels loop
+    if not exists (
+      select 1 from pg_enum e
+      join pg_type t on t.oid = e.enumtypid
+      join pg_namespace n on n.oid = t.typnamespace
+      where t.typname = p_name and n.nspname = 'app' and e.enumlabel = v_label
+    ) then
+      execute format('alter type app.%I add value %L', p_name, v_label);
+    end if;
+  end loop;
+end;
+$ensure$;
+
+
+-- -----------------------------------------------------------------------------
 -- ENUM 定義（スプレッドシートの入力値をそのまま踏襲）
 -- -----------------------------------------------------------------------------
-create type app.staff_role as enum ('admin', 'purchaser', 'deliverer');
+select app.ensure_enum('staff_role', array['admin', 'purchaser', 'deliverer']);
 
 -- 実データ（納品管理表 全シート）に現れた仕入れ先をすべて網羅する
-create type app.marketplace as enum (
-  'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'ジモティー',
-  'オフモール', '2ndストリート', 'トレジャーファクトリー', '楽天', '店舗',
-  'Amazon返品',   -- Amazon から返品されてきた個体を再度登録したもの
-  'その他'
-);
+select app.ensure_enum('marketplace', array['メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'ジモティー', 'オフモール', '2ndストリート', 'トレジャーファクトリー', '楽天', '店舗', 'Amazon返品', 'その他']);
 
-create type app.sales_channel as enum (
-  'FBA', '自己発送', 'メルカリ', 'ヤフオク', 'ヤフフリ', 'その他'
-);
+select app.ensure_enum('sales_channel', array['FBA', '自己発送', 'メルカリ', 'ヤフオク', 'ヤフフリ', 'その他']);
 
 -- Amazon のコンディションに合わせる（納品管理表「状態」列のうち品質を表す値）
-create type app.item_condition as enum (
-  '新品', '再生品', 'ほぼ新品', '非常に良い', '良い', '可', 'ジャンク'
-);
+select app.ensure_enum('item_condition', array['新品', '再生品', 'ほぼ新品', '非常に良い', '良い', '可', 'ジャンク']);
 
 -- 納品管理表では「状態」列に品質と進行状態が混在していたため分離する。
 -- 「返品処理」と「Amazo返品」は向きが逆の別物なので、別の値として残す。
-create type app.item_status as enum (
-  '仕入済',       -- 購入直後（未入荷）
-  '入荷済',       -- 納品担当者の手元に到着
-  '作業中',       -- 商品登録・検品・撮影のいずれかが進行中
-  '出荷済',       -- FBA へ納品 / 自己発送で保管中
-  '出品中',
-  '販売済',
-  '返品処理',     -- 仕入先へ返品した（こちらから返す）
-  'Amazon返品',   -- Amazon から返品されてきた（再検品・再出品の対象）
-  '保留',
-  '廃棄'
-);
+select app.ensure_enum('item_status', array['仕入済', '入荷済', '作業中', '出荷済', '出品中', '販売済', '返品処理', 'Amazon返品', '保留', '廃棄']);
 
-create type app.turnover_class as enum ('高', '中', '低');
+select app.ensure_enum('turnover_class', array['高', '中', '低']);
 
 -- 納品管理表では担当者名に (テ)(ブ)(付) の接頭辞が付いていた。
 -- これは人ではなく「どの作業ラインの仕事か」を表していたため、列として切り出す。
-create type app.work_stream as enum ('テレビ', 'ブルーレイ', '付属品', 'その他');
+select app.ensure_enum('work_stream', array['テレビ', 'ブルーレイ', '付属品', 'その他']);
 
-create type app.expense_category as enum ('固定費', '変動費', '給与', '外注費', '諸経費');
+select app.ensure_enum('expense_category', array['固定費', '変動費', '給与', '外注費', '諸経費']);
 
 -- 古物台帳の取引区分
-create type app.ledger_kind as enum ('買受', '売却');
+select app.ensure_enum('ledger_kind', array['買受', '売却']);
 
 -- 古物営業法 15 条の本人確認方法
-create type app.identity_check_method as enum (
-  '非対面(取引記録)',   -- ネット仕入れ。プラットフォームの取引記録で確認
-  '本人確認書類',
-  '電子署名',
-  'その他',
-  '確認不要(1万円未満)'
-);
+select app.ensure_enum('identity_check_method', array['非対面(取引記録)', '本人確認書類', '電子署名', 'その他', '確認不要(1万円未満)']);
 
 -- -----------------------------------------------------------------------------
 -- スタッフ / 認証
 -- -----------------------------------------------------------------------------
-create table app.staff (
+create table if not exists app.staff (
   id            uuid primary key default gen_random_uuid(),
   -- SKU の中央ブロックに使う 2 文字コード（例: 長部一輝 = AA, 石川秀樹 = EE）
   code          char(2) not null unique check (code ~ '^[A-Z]{2}$'),
@@ -90,18 +102,18 @@ create table app.staff (
 comment on column app.staff.code is 'SKU 中央ブロック用の 2 文字コード。仕入担当者コード + 納品担当者コードで 4 文字になる。';
 
 -- Supabase Auth のユーザーと app.staff を紐付ける
-create table app.profiles (
+create table if not exists app.profiles (
   user_id     uuid primary key references auth.users(id) on delete cascade,
   staff_id    uuid not null references app.staff(id) on delete restrict,
   created_at  timestamptz not null default now()
 );
 
-create unique index profiles_staff_id_key on app.profiles(staff_id);
+create unique index if not exists profiles_staff_id_key on app.profiles(staff_id);
 
 -- -----------------------------------------------------------------------------
 -- クレジットカード（総合管理表「クレカ管理」）
 -- -----------------------------------------------------------------------------
-create table app.payment_cards (
+create table if not exists app.payment_cards (
   id            uuid primary key default gen_random_uuid(),
   name          text not null unique,            -- 三井住友 / 楽天 / メルカード / PayPay / セゾン / アメックス
   last4         char(4),
@@ -116,7 +128,7 @@ create table app.payment_cards (
 -- -----------------------------------------------------------------------------
 -- 商品マスタ（総合管理表「商品リスト」＝リサーチ台帳）
 -- -----------------------------------------------------------------------------
-create table app.products (
+create table if not exists app.products (
   id                    uuid primary key default gen_random_uuid(),
   product_no            integer unique,          -- 商品リストの「商品番号」＝納品管理表の「品番」
   asin                  char(10) not null unique check (asin ~ '^[A-Z0-9]{10}$'),
@@ -144,28 +156,28 @@ create table app.products (
   updated_at            timestamptz not null default now()
 );
 
-create index products_model_no_trgm on app.products using gin (model_no gin_trgm_ops);
-create index products_maker_idx on app.products(maker);
-create index products_turnover_idx on app.products(turnover);
+create index if not exists products_model_no_trgm on app.products using gin (model_no gin_trgm_ops);
+create index if not exists products_maker_idx on app.products(maker);
+create index if not exists products_turnover_idx on app.products(turnover);
 
 -- -----------------------------------------------------------------------------
 -- ロット（通番号）
 --   1 つの商品本体と、後から買い足したリモコン等の付属品が同じ通番号を共有する。
 --   例: 通番号 2340 = 本体 2340-EEMM-20260916-1296 + リモコン 2340-AAMM-20260924-173
 -- -----------------------------------------------------------------------------
-create table app.lots (
+create table if not exists app.lots (
   seq         integer primary key,               -- 通番号
   opened_at   date not null default current_date,
   note        text,
   created_at  timestamptz not null default now()
 );
 
-create sequence app.lot_seq_counter as integer start 1;
+create sequence if not exists app.lot_seq_counter as integer start 1;
 
 -- -----------------------------------------------------------------------------
 -- 仕入明細（= 在庫 1 点 = 古物台帳の 1 行）
 -- -----------------------------------------------------------------------------
-create table app.items (
+create table if not exists app.items (
   id                uuid primary key default gen_random_uuid(),
 
   -- ▼ 連携キー。2 つのアプリはこの SKU だけで会話する
@@ -266,20 +278,20 @@ create table app.items (
 comment on table app.items is '仕入れた個体 1 点ごとのレコード。古物台帳の買受行そのものでもある。';
 comment on column app.items.sku is '出品者SKU。{通番号}-{仕入担当コード}{納品担当コード}-{購入日YYYYMMDD}-{仕入金額÷10}。一度採番したら変更しない。';
 
-create index items_deliverer_idx  on app.items(deliverer_id, status);
-create index items_purchaser_idx  on app.items(purchaser_id, purchased_at desc);
-create index items_status_idx     on app.items(status);
-create index items_purchased_idx  on app.items(purchased_at desc);
-create index items_sold_idx       on app.items(sold_on desc) where sold_on is not null;
-create index items_lot_idx        on app.items(lot_seq);
-create index items_product_idx    on app.items(product_id);
-create index items_asin_idx       on app.items(asin);
-create index items_title_trgm     on app.items using gin (title gin_trgm_ops);
+create index if not exists items_deliverer_idx  on app.items(deliverer_id, status);
+create index if not exists items_purchaser_idx  on app.items(purchaser_id, purchased_at desc);
+create index if not exists items_status_idx     on app.items(status);
+create index if not exists items_purchased_idx  on app.items(purchased_at desc);
+create index if not exists items_sold_idx       on app.items(sold_on desc) where sold_on is not null;
+create index if not exists items_lot_idx        on app.items(lot_seq);
+create index if not exists items_product_idx    on app.items(product_id);
+create index if not exists items_asin_idx       on app.items(asin);
+create index if not exists items_title_trgm     on app.items using gin (title gin_trgm_ops);
 
 -- -----------------------------------------------------------------------------
 -- 商品写真（納品担当アプリからアップロード → Storage の path を保持）
 -- -----------------------------------------------------------------------------
-create table app.item_photos (
+create table if not exists app.item_photos (
   id          uuid primary key default gen_random_uuid(),
   item_id     uuid not null references app.items(id) on delete cascade,
   storage_path text not null,
@@ -289,13 +301,13 @@ create table app.item_photos (
   created_at  timestamptz not null default now()
 );
 
-create index item_photos_item_idx on app.item_photos(item_id, sort_order);
-create unique index item_photos_one_main on app.item_photos(item_id) where is_main;
+create index if not exists item_photos_item_idx on app.item_photos(item_id, sort_order);
+create unique index if not exists item_photos_one_main on app.item_photos(item_id) where is_main;
 
 -- -----------------------------------------------------------------------------
 -- コメント（納品管理表の「仕入担当者→納品担当者コメント」/ 逆方向を会話形式に）
 -- -----------------------------------------------------------------------------
-create table app.item_comments (
+create table if not exists app.item_comments (
   id          uuid primary key default gen_random_uuid(),
   item_id     uuid not null references app.items(id) on delete cascade,
   author_id   uuid not null references app.staff(id) on delete restrict,
@@ -303,12 +315,12 @@ create table app.item_comments (
   created_at  timestamptz not null default now()
 );
 
-create index item_comments_item_idx on app.item_comments(item_id, created_at);
+create index if not exists item_comments_item_idx on app.item_comments(item_id, created_at);
 
 -- -----------------------------------------------------------------------------
 -- 経費（総合管理表「経費」シート）
 -- -----------------------------------------------------------------------------
-create table app.expenses (
+create table if not exists app.expenses (
   id          uuid primary key default gen_random_uuid(),
   incurred_on date not null,
   category    app.expense_category not null,
@@ -321,12 +333,12 @@ create table app.expenses (
   updated_at  timestamptz not null default now()
 );
 
-create index expenses_period_idx on app.expenses(incurred_on desc, category);
+create index if not exists expenses_period_idx on app.expenses(incurred_on desc, category);
 
 -- -----------------------------------------------------------------------------
 -- 監査ログ（古物台帳は訂正履歴が残せる必要がある）
 -- -----------------------------------------------------------------------------
-create table app.audit_log (
+create table if not exists app.audit_log (
   id          bigserial primary key,
   table_name  text not null,
   row_id      uuid not null,
@@ -337,14 +349,14 @@ create table app.audit_log (
   created_at  timestamptz not null default now()
 );
 
-create index audit_log_row_idx on app.audit_log(table_name, row_id, created_at desc);
+create index if not exists audit_log_row_idx on app.audit_log(table_name, row_id, created_at desc);
 
 -- -----------------------------------------------------------------------------
 -- 取り込み時の衝突（同じ SKU が複数行に存在した等）
 --   スプレッドシート側の不整合を黙って捨てないための退避先。
 --   大元アプリで内容を確認して、正しい SKU を振り直してから items に移す。
 -- -----------------------------------------------------------------------------
-create table app.import_conflicts (
+create table if not exists app.import_conflicts (
   id          uuid primary key default gen_random_uuid(),
   sku         text not null,
   reason      text not null,
@@ -354,4 +366,4 @@ create table app.import_conflicts (
   created_at  timestamptz not null default now()
 );
 
-create index import_conflicts_sku_idx on app.import_conflicts(sku);
+create index if not exists import_conflicts_sku_idx on app.import_conflicts(sku);

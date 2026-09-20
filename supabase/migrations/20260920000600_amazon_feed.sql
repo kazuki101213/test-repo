@@ -3,6 +3,7 @@
 --   納品管理表の「出品テンプレート」シートを置き換える。
 --   写真登録まで終わった SKU を、Amazon の在庫ファイル形式で出力する。
 -- =============================================================================
+drop view if exists app.v_amazon_listing_feed cascade;
 create view app.v_amazon_listing_feed with (security_invoker = on) as
 select
   i.sku                                     as "sku",

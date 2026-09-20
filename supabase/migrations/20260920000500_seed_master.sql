@@ -55,5 +55,6 @@ on conflict (condition) do nothing;
 
 alter table app.condition_map enable row level security;
 grant select on app.condition_map to authenticated;
+drop policy if exists condition_map_select on app.condition_map;
 create policy condition_map_select on app.condition_map
   for select to authenticated using (true);

@@ -32,66 +32,78 @@ create extension if not exists "pg_trgm";
 create schema if not exists app;
 
 -- -----------------------------------------------------------------------------
+-- ENUM を安全に作る / 足りない値を足す
+--   途中でエラーになった実行をやり直せるように、この SQL は何度流しても通る。
+--   型が既にあっても、値が足りなければ追加する（古い状態で止まっていても直る）。
+-- -----------------------------------------------------------------------------
+create or replace function app.ensure_enum(p_name text, p_labels text[])
+returns void
+language plpgsql
+as $ensure$
+declare
+  v_label text;
+begin
+  if not exists (
+    select 1 from pg_type t join pg_namespace n on n.oid = t.typnamespace
+    where t.typname = p_name and n.nspname = 'app'
+  ) then
+    execute format(
+      'create type app.%I as enum (%s)',
+      p_name,
+      (select string_agg(quote_literal(l), ', ') from unnest(p_labels) as l)
+    );
+    return;
+  end if;
+
+  foreach v_label in array p_labels loop
+    if not exists (
+      select 1 from pg_enum e
+      join pg_type t on t.oid = e.enumtypid
+      join pg_namespace n on n.oid = t.typnamespace
+      where t.typname = p_name and n.nspname = 'app' and e.enumlabel = v_label
+    ) then
+      execute format('alter type app.%I add value %L', p_name, v_label);
+    end if;
+  end loop;
+end;
+$ensure$;
+
+
+-- -----------------------------------------------------------------------------
 -- ENUM 定義（スプレッドシートの入力値をそのまま踏襲）
 -- -----------------------------------------------------------------------------
-create type app.staff_role as enum ('admin', 'purchaser', 'deliverer');
+select app.ensure_enum('staff_role', array['admin', 'purchaser', 'deliverer']);
 
 -- 実データ（納品管理表 全シート）に現れた仕入れ先をすべて網羅する
-create type app.marketplace as enum (
-  'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'ジモティー',
-  'オフモール', '2ndストリート', 'トレジャーファクトリー', '楽天', '店舗',
-  'Amazon返品',   -- Amazon から返品されてきた個体を再度登録したもの
-  'その他'
-);
+select app.ensure_enum('marketplace', array['メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'ジモティー', 'オフモール', '2ndストリート', 'トレジャーファクトリー', '楽天', '店舗', 'Amazon返品', 'その他']);
 
-create type app.sales_channel as enum (
-  'FBA', '自己発送', 'メルカリ', 'ヤフオク', 'ヤフフリ', 'その他'
-);
+select app.ensure_enum('sales_channel', array['FBA', '自己発送', 'メルカリ', 'ヤフオク', 'ヤフフリ', 'その他']);
 
 -- Amazon のコンディションに合わせる（納品管理表「状態」列のうち品質を表す値）
-create type app.item_condition as enum (
-  '新品', '再生品', 'ほぼ新品', '非常に良い', '良い', '可', 'ジャンク'
-);
+select app.ensure_enum('item_condition', array['新品', '再生品', 'ほぼ新品', '非常に良い', '良い', '可', 'ジャンク']);
 
 -- 納品管理表では「状態」列に品質と進行状態が混在していたため分離する。
 -- 「返品処理」と「Amazo返品」は向きが逆の別物なので、別の値として残す。
-create type app.item_status as enum (
-  '仕入済',       -- 購入直後（未入荷）
-  '入荷済',       -- 納品担当者の手元に到着
-  '作業中',       -- 商品登録・検品・撮影のいずれかが進行中
-  '出荷済',       -- FBA へ納品 / 自己発送で保管中
-  '出品中',
-  '販売済',
-  '返品処理',     -- 仕入先へ返品した（こちらから返す）
-  'Amazon返品',   -- Amazon から返品されてきた（再検品・再出品の対象）
-  '保留',
-  '廃棄'
-);
+select app.ensure_enum('item_status', array['仕入済', '入荷済', '作業中', '出荷済', '出品中', '販売済', '返品処理', 'Amazon返品', '保留', '廃棄']);
 
-create type app.turnover_class as enum ('高', '中', '低');
+select app.ensure_enum('turnover_class', array['高', '中', '低']);
 
 -- 納品管理表では担当者名に (テ)(ブ)(付) の接頭辞が付いていた。
 -- これは人ではなく「どの作業ラインの仕事か」を表していたため、列として切り出す。
-create type app.work_stream as enum ('テレビ', 'ブルーレイ', '付属品', 'その他');
+select app.ensure_enum('work_stream', array['テレビ', 'ブルーレイ', '付属品', 'その他']);
 
-create type app.expense_category as enum ('固定費', '変動費', '給与', '外注費', '諸経費');
+select app.ensure_enum('expense_category', array['固定費', '変動費', '給与', '外注費', '諸経費']);
 
 -- 古物台帳の取引区分
-create type app.ledger_kind as enum ('買受', '売却');
+select app.ensure_enum('ledger_kind', array['買受', '売却']);
 
 -- 古物営業法 15 条の本人確認方法
-create type app.identity_check_method as enum (
-  '非対面(取引記録)',   -- ネット仕入れ。プラットフォームの取引記録で確認
-  '本人確認書類',
-  '電子署名',
-  'その他',
-  '確認不要(1万円未満)'
-);
+select app.ensure_enum('identity_check_method', array['非対面(取引記録)', '本人確認書類', '電子署名', 'その他', '確認不要(1万円未満)']);
 
 -- -----------------------------------------------------------------------------
 -- スタッフ / 認証
 -- -----------------------------------------------------------------------------
-create table app.staff (
+create table if not exists app.staff (
   id            uuid primary key default gen_random_uuid(),
   -- SKU の中央ブロックに使う 2 文字コード（例: 長部一輝 = AA, 石川秀樹 = EE）
   code          char(2) not null unique check (code ~ '^[A-Z]{2}$'),
@@ -108,18 +120,18 @@ create table app.staff (
 comment on column app.staff.code is 'SKU 中央ブロック用の 2 文字コード。仕入担当者コード + 納品担当者コードで 4 文字になる。';
 
 -- Supabase Auth のユーザーと app.staff を紐付ける
-create table app.profiles (
+create table if not exists app.profiles (
   user_id     uuid primary key references auth.users(id) on delete cascade,
   staff_id    uuid not null references app.staff(id) on delete restrict,
   created_at  timestamptz not null default now()
 );
 
-create unique index profiles_staff_id_key on app.profiles(staff_id);
+create unique index if not exists profiles_staff_id_key on app.profiles(staff_id);
 
 -- -----------------------------------------------------------------------------
 -- クレジットカード（総合管理表「クレカ管理」）
 -- -----------------------------------------------------------------------------
-create table app.payment_cards (
+create table if not exists app.payment_cards (
   id            uuid primary key default gen_random_uuid(),
   name          text not null unique,            -- 三井住友 / 楽天 / メルカード / PayPay / セゾン / アメックス
   last4         char(4),
@@ -134,7 +146,7 @@ create table app.payment_cards (
 -- -----------------------------------------------------------------------------
 -- 商品マスタ（総合管理表「商品リスト」＝リサーチ台帳）
 -- -----------------------------------------------------------------------------
-create table app.products (
+create table if not exists app.products (
   id                    uuid primary key default gen_random_uuid(),
   product_no            integer unique,          -- 商品リストの「商品番号」＝納品管理表の「品番」
   asin                  char(10) not null unique check (asin ~ '^[A-Z0-9]{10}$'),
@@ -162,28 +174,28 @@ create table app.products (
   updated_at            timestamptz not null default now()
 );
 
-create index products_model_no_trgm on app.products using gin (model_no gin_trgm_ops);
-create index products_maker_idx on app.products(maker);
-create index products_turnover_idx on app.products(turnover);
+create index if not exists products_model_no_trgm on app.products using gin (model_no gin_trgm_ops);
+create index if not exists products_maker_idx on app.products(maker);
+create index if not exists products_turnover_idx on app.products(turnover);
 
 -- -----------------------------------------------------------------------------
 -- ロット（通番号）
 --   1 つの商品本体と、後から買い足したリモコン等の付属品が同じ通番号を共有する。
 --   例: 通番号 2340 = 本体 2340-EEMM-20260916-1296 + リモコン 2340-AAMM-20260924-173
 -- -----------------------------------------------------------------------------
-create table app.lots (
+create table if not exists app.lots (
   seq         integer primary key,               -- 通番号
   opened_at   date not null default current_date,
   note        text,
   created_at  timestamptz not null default now()
 );
 
-create sequence app.lot_seq_counter as integer start 1;
+create sequence if not exists app.lot_seq_counter as integer start 1;
 
 -- -----------------------------------------------------------------------------
 -- 仕入明細（= 在庫 1 点 = 古物台帳の 1 行）
 -- -----------------------------------------------------------------------------
-create table app.items (
+create table if not exists app.items (
   id                uuid primary key default gen_random_uuid(),
 
   -- ▼ 連携キー。2 つのアプリはこの SKU だけで会話する
@@ -284,20 +296,20 @@ create table app.items (
 comment on table app.items is '仕入れた個体 1 点ごとのレコード。古物台帳の買受行そのものでもある。';
 comment on column app.items.sku is '出品者SKU。{通番号}-{仕入担当コード}{納品担当コード}-{購入日YYYYMMDD}-{仕入金額÷10}。一度採番したら変更しない。';
 
-create index items_deliverer_idx  on app.items(deliverer_id, status);
-create index items_purchaser_idx  on app.items(purchaser_id, purchased_at desc);
-create index items_status_idx     on app.items(status);
-create index items_purchased_idx  on app.items(purchased_at desc);
-create index items_sold_idx       on app.items(sold_on desc) where sold_on is not null;
-create index items_lot_idx        on app.items(lot_seq);
-create index items_product_idx    on app.items(product_id);
-create index items_asin_idx       on app.items(asin);
-create index items_title_trgm     on app.items using gin (title gin_trgm_ops);
+create index if not exists items_deliverer_idx  on app.items(deliverer_id, status);
+create index if not exists items_purchaser_idx  on app.items(purchaser_id, purchased_at desc);
+create index if not exists items_status_idx     on app.items(status);
+create index if not exists items_purchased_idx  on app.items(purchased_at desc);
+create index if not exists items_sold_idx       on app.items(sold_on desc) where sold_on is not null;
+create index if not exists items_lot_idx        on app.items(lot_seq);
+create index if not exists items_product_idx    on app.items(product_id);
+create index if not exists items_asin_idx       on app.items(asin);
+create index if not exists items_title_trgm     on app.items using gin (title gin_trgm_ops);
 
 -- -----------------------------------------------------------------------------
 -- 商品写真（納品担当アプリからアップロード → Storage の path を保持）
 -- -----------------------------------------------------------------------------
-create table app.item_photos (
+create table if not exists app.item_photos (
   id          uuid primary key default gen_random_uuid(),
   item_id     uuid not null references app.items(id) on delete cascade,
   storage_path text not null,
@@ -307,13 +319,13 @@ create table app.item_photos (
   created_at  timestamptz not null default now()
 );
 
-create index item_photos_item_idx on app.item_photos(item_id, sort_order);
-create unique index item_photos_one_main on app.item_photos(item_id) where is_main;
+create index if not exists item_photos_item_idx on app.item_photos(item_id, sort_order);
+create unique index if not exists item_photos_one_main on app.item_photos(item_id) where is_main;
 
 -- -----------------------------------------------------------------------------
 -- コメント（納品管理表の「仕入担当者→納品担当者コメント」/ 逆方向を会話形式に）
 -- -----------------------------------------------------------------------------
-create table app.item_comments (
+create table if not exists app.item_comments (
   id          uuid primary key default gen_random_uuid(),
   item_id     uuid not null references app.items(id) on delete cascade,
   author_id   uuid not null references app.staff(id) on delete restrict,
@@ -321,12 +333,12 @@ create table app.item_comments (
   created_at  timestamptz not null default now()
 );
 
-create index item_comments_item_idx on app.item_comments(item_id, created_at);
+create index if not exists item_comments_item_idx on app.item_comments(item_id, created_at);
 
 -- -----------------------------------------------------------------------------
 -- 経費（総合管理表「経費」シート）
 -- -----------------------------------------------------------------------------
-create table app.expenses (
+create table if not exists app.expenses (
   id          uuid primary key default gen_random_uuid(),
   incurred_on date not null,
   category    app.expense_category not null,
@@ -339,12 +351,12 @@ create table app.expenses (
   updated_at  timestamptz not null default now()
 );
 
-create index expenses_period_idx on app.expenses(incurred_on desc, category);
+create index if not exists expenses_period_idx on app.expenses(incurred_on desc, category);
 
 -- -----------------------------------------------------------------------------
 -- 監査ログ（古物台帳は訂正履歴が残せる必要がある）
 -- -----------------------------------------------------------------------------
-create table app.audit_log (
+create table if not exists app.audit_log (
   id          bigserial primary key,
   table_name  text not null,
   row_id      uuid not null,
@@ -355,14 +367,14 @@ create table app.audit_log (
   created_at  timestamptz not null default now()
 );
 
-create index audit_log_row_idx on app.audit_log(table_name, row_id, created_at desc);
+create index if not exists audit_log_row_idx on app.audit_log(table_name, row_id, created_at desc);
 
 -- -----------------------------------------------------------------------------
 -- 取り込み時の衝突（同じ SKU が複数行に存在した等）
 --   スプレッドシート側の不整合を黙って捨てないための退避先。
 --   大元アプリで内容を確認して、正しい SKU を振り直してから items に移す。
 -- -----------------------------------------------------------------------------
-create table app.import_conflicts (
+create table if not exists app.import_conflicts (
   id          uuid primary key default gen_random_uuid(),
   sku         text not null,
   reason      text not null,
@@ -372,7 +384,7 @@ create table app.import_conflicts (
   created_at  timestamptz not null default now()
 );
 
-create index import_conflicts_sku_idx on app.import_conflicts(sku);
+create index if not exists import_conflicts_sku_idx on app.import_conflicts(sku);
 
 
 -- ▼▼▼ 20260920000200_functions.sql ▼▼▼
@@ -513,6 +525,7 @@ begin
 end;
 $$;
 
+drop trigger if exists items_before_insert on app.items;
 create trigger items_before_insert
   before insert on app.items
   for each row execute function app.items_before_insert();
@@ -563,6 +576,7 @@ begin
 end;
 $$;
 
+drop trigger if exists items_sync_status on app.items;
 create trigger items_sync_status
   before insert or update of arrived_on, product_registered_at, inspected_at,
                              photo_uploaded_at, packed_on, shipped_on, listed_on,
@@ -589,6 +603,7 @@ begin
 end;
 $$;
 
+drop trigger if exists items_mark_sold on app.items;
 create trigger items_mark_sold
   before insert or update of sold_on, returned_on on app.items
   for each row execute function app.items_mark_sold();
@@ -611,6 +626,8 @@ declare t text;
 begin
   foreach t in array array['staff', 'payment_cards', 'products', 'items', 'expenses']
   loop
+    execute format(
+      'drop trigger if exists %I_touch_updated_at on app.%I', t, t);
     execute format(
       'create trigger %I_touch_updated_at before update on app.%I
          for each row execute function app.touch_updated_at()', t, t);
@@ -641,6 +658,7 @@ begin
 end;
 $$;
 
+drop trigger if exists items_audit on app.items;
 create trigger items_audit
   after insert or update or delete on app.items
   for each row execute function app.write_audit_log();
@@ -767,6 +785,7 @@ $$;
 -- -----------------------------------------------------------------------------
 -- 在庫一覧（大元アプリのメイン画面）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_items cascade;
 create view app.v_items with (security_invoker = on) as
 select
   i.id,
@@ -829,6 +848,7 @@ left join app.staff deliv    on deliv.id = i.deliverer_id;
 -- 納品担当アプリの作業一覧
 --   RLS により自分の担当行しか見えない。
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_delivery_tasks cascade;
 create view app.v_delivery_tasks with (security_invoker = on) as
 select
   i.id,
@@ -870,6 +890,7 @@ where i.status in ('仕入済', '入荷済', '作業中', 'Amazon返品');
 --   古物営業法施行規則 第16条 の記載事項に対応させる。
 --   買受（仕入れ）と売却（販売）の両方を 1 本のビューに並べる。
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_antique_ledger cascade;
 create view app.v_antique_ledger with (security_invoker = on) as
 -- 買受
 select
@@ -921,6 +942,7 @@ comment on view app.v_antique_ledger is
 -- -----------------------------------------------------------------------------
 -- 月次サマリ（総合管理表のダッシュボード相当）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_monthly_summary cascade;
 create view app.v_monthly_summary with (security_invoker = on) as
 with purchased as (
   select date_trunc('month', purchased_at)::date as month,
@@ -961,6 +983,7 @@ order by 1 desc;
 -- -----------------------------------------------------------------------------
 -- 在庫サマリ（現在庫の評価額）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_stock_summary cascade;
 create view app.v_stock_summary with (security_invoker = on) as
 select
   count(*)                                        as 現在庫数,
@@ -978,6 +1001,7 @@ where status not in ('販売済', '返品処理', '廃棄');
 -- -----------------------------------------------------------------------------
 -- 担当者別の稼働（納品管理表のピボット相当）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_deliverer_workload cascade;
 create view app.v_deliverer_workload with (security_invoker = on) as
 select
   s.id   as deliverer_id,
@@ -996,6 +1020,7 @@ order by 未完了 desc;
 -- -----------------------------------------------------------------------------
 -- 商品マスタ別の実績（どの ASIN が儲かっているか）
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_product_performance cascade;
 create view app.v_product_performance with (security_invoker = on) as
 select
   p.id as product_id,
@@ -1022,6 +1047,7 @@ group by p.id;
 --   スプレッドシートから移した行には、購入日や相手方が欠けているものがある。
 --   黙って埋めると帳簿として嘘になるので、欠けたまま一覧できるようにする。
 -- -----------------------------------------------------------------------------
+drop view if exists app.v_ledger_gaps cascade;
 create view app.v_ledger_gaps with (security_invoker = on) as
 select
   i.sku,
@@ -1087,9 +1113,11 @@ grant usage, select on all sequences in schema app to authenticated;
 -- -----------------------------------------------------------------------------
 -- staff
 -- -----------------------------------------------------------------------------
+drop policy if exists staff_select on app.staff;
 create policy staff_select on app.staff
   for select to authenticated using (true);
 
+drop policy if exists staff_write on app.staff;
 create policy staff_write on app.staff
   for all to authenticated
   using (app.is_admin()) with check (app.is_admin());
@@ -1097,6 +1125,7 @@ create policy staff_write on app.staff
 -- -----------------------------------------------------------------------------
 -- profiles（自分の紐付けだけ見える）
 -- -----------------------------------------------------------------------------
+drop policy if exists profiles_select on app.profiles;
 create policy profiles_select on app.profiles
   for select to authenticated
   using (user_id = auth.uid() or app.is_admin());
@@ -1104,10 +1133,12 @@ create policy profiles_select on app.profiles
 -- -----------------------------------------------------------------------------
 -- payment_cards / expenses は経理情報なので管理者のみ
 -- -----------------------------------------------------------------------------
+drop policy if exists cards_admin on app.payment_cards;
 create policy cards_admin on app.payment_cards
   for all to authenticated
   using (app.is_admin()) with check (app.is_admin());
 
+drop policy if exists expenses_admin on app.expenses;
 create policy expenses_admin on app.expenses
   for all to authenticated
   using (app.is_admin()) with check (app.is_admin());
@@ -1115,17 +1146,21 @@ create policy expenses_admin on app.expenses
 -- -----------------------------------------------------------------------------
 -- products（仕入れ判断に使うので仕入担当まで書き込み可）
 -- -----------------------------------------------------------------------------
+drop policy if exists products_select on app.products;
 create policy products_select on app.products
   for select to authenticated using (true);
 
+drop policy if exists products_write on app.products;
 create policy products_write on app.products
   for all to authenticated
   using (app.current_role() in ('admin', 'purchaser'))
   with check (app.current_role() in ('admin', 'purchaser'));
 
+drop policy if exists lots_select on app.lots;
 create policy lots_select on app.lots
   for select to authenticated using (true);
 
+drop policy if exists lots_write on app.lots;
 create policy lots_write on app.lots
   for all to authenticated
   using (app.current_role() in ('admin', 'purchaser'))
@@ -1135,6 +1170,7 @@ create policy lots_write on app.lots
 -- items
 -- -----------------------------------------------------------------------------
 -- 閲覧: 管理者・仕入担当は全件／納品担当は自分の担当分のみ
+drop policy if exists items_select on app.items;
 create policy items_select on app.items
   for select to authenticated
   using (
@@ -1143,18 +1179,21 @@ create policy items_select on app.items
   );
 
 -- 登録: 管理者・仕入担当のみ
+drop policy if exists items_insert on app.items;
 create policy items_insert on app.items
   for insert to authenticated
   with check (app.current_role() in ('admin', 'purchaser'));
 
 -- 直接更新: 管理者・仕入担当のみ。
 -- 納品担当者は app.set_work_progress / app.update_delivery_fields を使う。
+drop policy if exists items_update on app.items;
 create policy items_update on app.items
   for update to authenticated
   using (app.current_role() in ('admin', 'purchaser'))
   with check (app.current_role() in ('admin', 'purchaser'));
 
 -- 削除は管理者のみ（古物台帳の証跡なので原則は論理削除＝status '廃棄'）
+drop policy if exists items_delete on app.items;
 create policy items_delete on app.items
   for delete to authenticated
   using (app.is_admin());
@@ -1162,6 +1201,7 @@ create policy items_delete on app.items
 -- -----------------------------------------------------------------------------
 -- item_photos / item_comments（担当している SKU なら納品担当者も書ける）
 -- -----------------------------------------------------------------------------
+drop policy if exists item_photos_select on app.item_photos;
 create policy item_photos_select on app.item_photos
   for select to authenticated
   using (exists (
@@ -1171,6 +1211,7 @@ create policy item_photos_select on app.item_photos
            or i.deliverer_id = app.current_staff_id())
   ));
 
+drop policy if exists item_photos_insert on app.item_photos;
 create policy item_photos_insert on app.item_photos
   for insert to authenticated
   with check (exists (
@@ -1180,6 +1221,7 @@ create policy item_photos_insert on app.item_photos
            or i.deliverer_id = app.current_staff_id())
   ));
 
+drop policy if exists item_photos_delete on app.item_photos;
 create policy item_photos_delete on app.item_photos
   for delete to authenticated
   using (
@@ -1187,6 +1229,7 @@ create policy item_photos_delete on app.item_photos
     or uploaded_by = app.current_staff_id()
   );
 
+drop policy if exists item_comments_select on app.item_comments;
 create policy item_comments_select on app.item_comments
   for select to authenticated
   using (exists (
@@ -1196,6 +1239,7 @@ create policy item_comments_select on app.item_comments
            or i.deliverer_id = app.current_staff_id())
   ));
 
+drop policy if exists item_comments_insert on app.item_comments;
 create policy item_comments_insert on app.item_comments
   for insert to authenticated
   with check (
@@ -1209,12 +1253,14 @@ create policy item_comments_insert on app.item_comments
   );
 
 -- コメントは会話の記録なので編集不可、削除は管理者のみ
+drop policy if exists item_comments_delete on app.item_comments;
 create policy item_comments_delete on app.item_comments
   for delete to authenticated using (app.is_admin());
 
 -- -----------------------------------------------------------------------------
 -- audit_log は読むだけ（書き込みはトリガーの SECURITY DEFINER のみ）
 -- -----------------------------------------------------------------------------
+drop policy if exists audit_admin_select on app.audit_log;
 create policy audit_admin_select on app.audit_log
   for select to authenticated using (app.is_admin());
 
@@ -1247,6 +1293,7 @@ values ('item-photos', 'item-photos', false)
 on conflict (id) do nothing;
 
 -- パスは {sku}/{uuid}.jpg とする
+drop policy if exists "item photos are readable by staff in charge" on storage.objects;
 create policy "item photos are readable by staff in charge"
   on storage.objects for select to authenticated
   using (
@@ -1259,6 +1306,7 @@ create policy "item photos are readable by staff in charge"
     )
   );
 
+drop policy if exists "item photos are writable by staff in charge" on storage.objects;
 create policy "item photos are writable by staff in charge"
   on storage.objects for insert to authenticated
   with check (
@@ -1331,6 +1379,7 @@ on conflict (condition) do nothing;
 
 alter table app.condition_map enable row level security;
 grant select on app.condition_map to authenticated;
+drop policy if exists condition_map_select on app.condition_map;
 create policy condition_map_select on app.condition_map
   for select to authenticated using (true);
 
@@ -1342,6 +1391,7 @@ create policy condition_map_select on app.condition_map
 --   納品管理表の「出品テンプレート」シートを置き換える。
 --   写真登録まで終わった SKU を、Amazon の在庫ファイル形式で出力する。
 -- =============================================================================
+drop view if exists app.v_amazon_listing_feed cascade;
 create view app.v_amazon_listing_feed with (security_invoker = on) as
 select
   i.sku                                     as "sku",

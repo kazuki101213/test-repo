@@ -134,6 +134,7 @@ begin
 end;
 $$;
 
+drop trigger if exists items_before_insert on app.items;
 create trigger items_before_insert
   before insert on app.items
   for each row execute function app.items_before_insert();
@@ -184,6 +185,7 @@ begin
 end;
 $$;
 
+drop trigger if exists items_sync_status on app.items;
 create trigger items_sync_status
   before insert or update of arrived_on, product_registered_at, inspected_at,
                              photo_uploaded_at, packed_on, shipped_on, listed_on,
@@ -210,6 +212,7 @@ begin
 end;
 $$;
 
+drop trigger if exists items_mark_sold on app.items;
 create trigger items_mark_sold
   before insert or update of sold_on, returned_on on app.items
   for each row execute function app.items_mark_sold();
@@ -232,6 +235,8 @@ declare t text;
 begin
   foreach t in array array['staff', 'payment_cards', 'products', 'items', 'expenses']
   loop
+    execute format(
+      'drop trigger if exists %I_touch_updated_at on app.%I', t, t);
     execute format(
       'create trigger %I_touch_updated_at before update on app.%I
          for each row execute function app.touch_updated_at()', t, t);
@@ -262,6 +267,7 @@ begin
 end;
 $$;
 
+drop trigger if exists items_audit on app.items;
 create trigger items_audit
   after insert or update or delete on app.items
   for each row execute function app.write_audit_log();
