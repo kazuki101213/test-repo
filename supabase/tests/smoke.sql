@@ -103,24 +103,41 @@ select deliverer_name, 未完了, 作業中 from app.v_deliverer_workload;
 select * from app.parse_sku('2400-AADD-20260916-1296');
 
 \echo '--- [9] 仕入れを伴わない行（担当者が納品側だけ / SKU 中央ブロックが2文字） ---'
+-- 作業を一通り終えて出荷済みの個体が、Amazon から返品されてくるケース
 insert into app.items (sku, lot_seq, deliverer_id, purchased_at, title, cost_amount,
-                       marketplace, status, is_accessory)
-select '2402a-DD-20260920-0', 2402,
+                       marketplace, is_accessory,
+                       product_registered_at, inspected_at, photo_uploaded_at, shipped_on,
+                       amazon_returned_on)
+select '2402a-DD-20260801-0', 2402,
        (select id from app.staff where code = 'DD'),
-       date '2026-09-20', 'Amazon返品の再処理', 0, 'Amazon返品', 'Amazon返品', false;
+       date '2026-08-01', 'Amazon返品の再処理', 0, 'Amazon返品', false,
+       now(), now(), now(), date '2026-08-10', date '2026-09-01';
 
-select sku, status, purchaser_id is null as 仕入担当者なし from app.items where sku like '2402a%';
-
--- 再作業が始まったら通常の進捗に合流する
-select sku, status from app.set_work_progress(
-  (select id from app.items where sku = '2402a-DD-20260920-0'), 'arrived', true);
+select sku, status, purchaser_id is null as 仕入担当者なし,
+       product_registered_at is not null as 過去の作業が残っている
+from app.items where sku like '2402a%';
 
 do $$
 begin
-  if (select status from app.items where sku = '2402a-DD-20260920-0') <> '入荷済' then
-    raise exception 'FAIL: Amazon返品 が再作業開始後も合流していない';
+  if (select status from app.items where sku = '2402a-DD-20260801-0') <> 'Amazon返品' then
+    raise exception 'FAIL: 作業済みの個体が返品されたのに印が消えた';
   end if;
-  raise notice 'OK: Amazon返品 → 入荷済 に合流した';
+  raise notice 'OK: 作業チェックを残したまま Amazon返品 の印がついた';
+end $$;
+
+-- 納品担当者の作業一覧に出てくる
+select sku, status from app.v_delivery_tasks where sku = '2402a-DD-20260801-0';
+
+-- 再出荷したら通常の流れに戻る
+select sku, status from app.set_work_progress(
+  (select id from app.items where sku = '2402a-DD-20260801-0'), 'shipped', true);
+
+do $$
+begin
+  if (select status from app.items where sku = '2402a-DD-20260801-0') = 'Amazon返品' then
+    raise exception 'FAIL: 再出荷しても Amazon返品 のままになっている';
+  end if;
+  raise notice 'OK: 再出荷で Amazon返品 が解除された';
 end $$;
 
 \echo '--- [10] 古物台帳の不備が洗い出される ---'

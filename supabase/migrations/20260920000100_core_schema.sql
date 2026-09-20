@@ -227,9 +227,15 @@ create table app.items (
   shipping_cost     bigint not null default 0 check (shipping_cost >= 0),
   other_cost        bigint not null default 0 check (other_cost >= 0),
 
-  -- 粗利（振込額 - 仕入 - 送料 - その他）
+  -- 受け取った返金（仕入れ先関連返金 / Amazon一部返金 / Amazon在庫払い戻し）。
+  -- 利益を押し上げる側の金額なので、原価ではなく収入として足す。
+  refund_amount     bigint not null default 0 check (refund_amount >= 0),
+  refund_note       text,
+
+  -- 粗利（振込額 + 返金 - 仕入 - 送料 - その他）
   profit            bigint generated always as (
-                      coalesce(payout_amount, 0) - cost_amount - shipping_cost - other_cost
+                      coalesce(payout_amount, 0) + refund_amount
+                      - cost_amount - shipping_cost - other_cost
                     ) stored,
 
   -- ▼ 古物台帳（相手方の確認）
@@ -240,8 +246,12 @@ create table app.items (
   identity_check    app.identity_check_method,
   identity_checked_on date,
 
-  returned_on       date,
+  returned_on       date,        -- 仕入先へ返品した日
   return_reason     text,
+
+  -- Amazon から返品されてきた日。作業が一通り終わった個体が戻ってくるので、
+  -- 作業チェックを消さずに「再作業が必要」だけを別の事実として持たせる。
+  amazon_returned_on date,
 
   memo              text,
   created_by        uuid references app.staff(id) on delete set null,

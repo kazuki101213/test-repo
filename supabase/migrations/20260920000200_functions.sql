@@ -151,16 +151,18 @@ begin
     return new;
   end if;
 
-  -- Amazon返品 は、再作業が始まるまでは「戻ってきた」印を残しておきたい。
-  -- 作業チェックが 1 つでも入ったら、通常の進捗に合流させる。
-  if new.status = 'Amazon返品'
-     and new.arrived_on is null
-     and new.product_registered_at is null
-     and new.inspected_at is null
-     and new.photo_uploaded_at is null
-     and new.packed_on is null
-     and new.shipped_on is null then
-    return new;
+  -- Amazon から戻ってきた個体は、再出荷するまで「Amazon返品」のまま。
+  -- 既に作業済みの個体が返ってくるので、過去の作業チェックは消さずに残す。
+  -- 返品日が分からない行（移行元に日付が無かったもの）でも印だけは保てるよう、
+  -- 日付と status のどちらかが立っていれば返品扱いにする。
+  if new.amazon_returned_on is not null or new.status = 'Amazon返品' then
+    if new.shipped_on is not null
+       and (new.amazon_returned_on is null or new.shipped_on > new.amazon_returned_on) then
+      null;   -- 返品後に出荷し直したので、通常の進捗に戻す
+    else
+      new.status := 'Amazon返品';
+      return new;
+    end if;
   end if;
 
   new.status := case
@@ -184,7 +186,8 @@ $$;
 
 create trigger items_sync_status
   before insert or update of arrived_on, product_registered_at, inspected_at,
-                             photo_uploaded_at, packed_on, shipped_on, listed_on
+                             photo_uploaded_at, packed_on, shipped_on, listed_on,
+                             amazon_returned_on
   on app.items
   for each row execute function app.items_sync_status();
 
@@ -194,10 +197,13 @@ returns trigger
 language plpgsql
 as $$
 begin
-  if new.sold_on is not null and new.status not in ('返品処理', 'Amazon返品') then
+  -- Amazon から返品された個体は、売れた記録が残っていても「戻ってきた」が優先
+  if new.sold_on is not null
+     and new.status <> '返品処理'
+     and new.amazon_returned_on is null then
     new.status := '販売済';
   end if;
-  if new.returned_on is not null and new.status <> 'Amazon返品' then
+  if new.returned_on is not null then
     new.status := '返品処理';
   end if;
   return new;

@@ -44,6 +44,8 @@ select
   i.sold_on,
   i.sold_price,
   i.payout_amount,
+  i.amazon_returned_on,
+  i.refund_amount,
   i.profit,
   -- 仕入から販売までの日数（回転日数）
   (i.sold_on - i.purchased_at)          as days_to_sell,
@@ -92,6 +94,7 @@ select
   (i.photo_uploaded_at is not null)     as photo_uploaded,
   i.packed_on,
   i.shipped_on,
+  i.amazon_returned_on,
   p.image_url                           as reference_image_url,
   (select count(*) from app.item_photos ph where ph.item_id = i.id) as photo_count,
   (select max(cm.created_at) from app.item_comments cm where cm.item_id = i.id) as last_comment_at

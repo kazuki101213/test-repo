@@ -126,6 +126,8 @@ export interface ItemView {
   sold_on: string | null;
   sold_price: number | null;
   payout_amount: number | null;
+  amazon_returned_on: string | null;
+  refund_amount: number;
   profit: number;
   days_to_sell: number | null;
   days_in_stock: number | null;
@@ -161,6 +163,7 @@ export interface DeliveryTask {
   photo_uploaded: boolean;
   packed_on: string | null;
   shipped_on: string | null;
+  amazon_returned_on: string | null;
   reference_image_url: string | null;
   photo_count: number;
   last_comment_at: string | null;
