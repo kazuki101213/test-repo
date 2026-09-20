@@ -672,11 +672,13 @@ async function main() {
 
   if (args.bundle) {
     mkdirSync(args.bundle, { recursive: true });
+    // ファイル名の番号は実行順。スキーマ作成用の 01〜06 と紛れないよう
+    // 「取込」を頭に付けて区別する。
     const files = [
-      ['01-受け皿を作る.sql', stagingSql()],
-      ['products.csv', toCsv(STAGING_PRODUCT_COLS, products)],
-      ['items.csv', toCsv(STAGING_ITEM_COLS, items)],
-      ['03-本番へ移す.sql', transformSql(products.length, items.length, conflicts)],
+      ['取込1-受け皿を作る.sql', stagingSql()],
+      ['取込2-products.csv', toCsv(STAGING_PRODUCT_COLS, products)],
+      ['取込3-items.csv', toCsv(STAGING_ITEM_COLS, items)],
+      ['取込4-本番へ移す.sql', transformSql(products.length, items.length, conflicts)],
     ];
     console.log('\n書き出しました:');
     for (const [name, body] of files) {
