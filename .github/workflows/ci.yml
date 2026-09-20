@@ -73,3 +73,7 @@ jobs:
       # 仕入金額を書き換えられないこと、古物台帳と集計が出ることを確認する
       - name: スキーマと権限の検証
         run: supabase/tests/run.sh
+
+      # ダッシュボードに貼り付ける setup-all.sql が migrations とずれていないか
+      - name: SQL バンドルが最新か確認
+        run: scripts/build-sql-bundle.sh --check
