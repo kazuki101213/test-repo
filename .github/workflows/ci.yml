@@ -1,0 +1,73 @@
+# 変更を push するたびに、壊れていないかを自動で確認する。
+# 失敗したら GitHub の Pull Request 画面に赤いバツが出る。
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  # ── アプリ側: 型の不整合とビルドエラーを見つける ──────────────────
+  apps:
+    name: アプリのビルド確認
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 型チェック
+        run: pnpm -r typecheck
+
+      - name: ビルド
+        run: pnpm -r build
+
+      - name: 移行スクリプトの文法チェック
+        run: node --check scripts/import-sheets.mjs
+
+  # ── データベース側: スキーマと権限設定が壊れていないか確認する ────
+  database:
+    name: データベースの検証
+    runs-on: ubuntu-latest
+
+    # 使い捨ての PostgreSQL を立てて、そこにマイグレーションを流す
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: psql を入れる
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      # SKU の自動採番、納品担当者に他人の商品が見えないこと、
+      # 仕入金額を書き換えられないこと、古物台帳と集計が出ることを確認する
+      - name: スキーマと権限の検証
+        run: supabase/tests/run.sh
