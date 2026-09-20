@@ -98,7 +98,8 @@ select
 from app.items i
 left join app.products p  on p.id = i.product_id
 left join app.staff buyer on buyer.id = i.purchaser_id
-where i.status in ('仕入済', '入荷済', '作業中');
+-- Amazon返品 は再検品・再出品が必要なので、納品担当者の作業一覧に出す
+where i.status in ('仕入済', '入荷済', '作業中', 'Amazon返品');
 
 -- -----------------------------------------------------------------------------
 -- 古物台帳
@@ -208,7 +209,7 @@ select
   count(*) filter (where status = '作業中')                                        as 作業中,
   count(*) filter (where status = '仕入済')                                        as 入荷待ち
 from app.items
-where status not in ('販売済', '返品', '廃棄');
+where status not in ('販売済', '返品処理', '廃棄');
 
 -- -----------------------------------------------------------------------------
 -- 担当者別の稼働（納品管理表のピボット相当）
@@ -217,7 +218,7 @@ create view app.v_deliverer_workload with (security_invoker = on) as
 select
   s.id   as deliverer_id,
   s.name as deliverer_name,
-  count(*) filter (where i.status in ('仕入済', '入荷済', '作業中'))  as 未完了,
+  count(*) filter (where i.status in ('仕入済', '入荷済', '作業中', 'Amazon返品')) as 未完了,
   count(*) filter (where i.status = '作業中')                          as 作業中,
   count(*) filter (where i.shipped_on >= date_trunc('month', current_date)) as 今月出荷,
   count(*) filter (where i.arrived_on is not null and i.shipped_on is null) as 手元在庫,
@@ -243,7 +244,7 @@ select
   p.list_price,
   count(i.id)                                                as 仕入実績数,
   count(i.id) filter (where i.sold_on is not null)           as 販売実績数,
-  count(i.id) filter (where i.status not in ('販売済','返品','廃棄')) as 在庫数,
+  count(i.id) filter (where i.status not in ('販売済','返品処理','廃棄')) as 在庫数,
   avg(i.cost_amount)::bigint                                 as 平均仕入額,
   avg(i.sold_price) filter (where i.sold_on is not null)::bigint as 平均販売額,
   sum(i.profit) filter (where i.sold_on is not null)         as 累計粗利,
@@ -251,3 +252,31 @@ select
 from app.products p
 left join app.items i on i.product_id = p.id
 group by p.id;
+
+-- -----------------------------------------------------------------------------
+-- 古物台帳としての不備を洗い出す
+--   スプレッドシートから移した行には、購入日や相手方が欠けているものがある。
+--   黙って埋めると帳簿として嘘になるので、欠けたまま一覧できるようにする。
+-- -----------------------------------------------------------------------------
+create view app.v_ledger_gaps with (security_invoker = on) as
+select
+  i.sku,
+  i.title,
+  i.purchased_at,
+  i.cost_amount,
+  i.marketplace,
+  i.status,
+  case
+    when i.purchased_at is null                                then '取引年月日が未記入'
+    when i.cost_amount >= 10000 and i.seller_address is null   then '1万円以上だが相手方の住所が未記入'
+    when i.cost_amount >= 10000 and i.seller_name is null      then '1万円以上だが相手方の氏名が未記入'
+    when i.marketplace_item_id is null and i.marketplace_url is null
+                                                               then '取引記録（取引ID・URL）がない'
+  end as 不備,
+  i.id
+from app.items i
+where i.purchased_at is null
+   or (i.cost_amount >= 10000 and (i.seller_address is null or i.seller_name is null))
+   or (i.marketplace_item_id is null and i.marketplace_url is null);
+
+grant select on app.v_ledger_gaps to authenticated;

@@ -36,9 +36,12 @@ create schema if not exists app;
 -- -----------------------------------------------------------------------------
 create type app.staff_role as enum ('admin', 'purchaser', 'deliverer');
 
+-- 実データ（納品管理表 全シート）に現れた仕入れ先をすべて網羅する
 create type app.marketplace as enum (
-  'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ',
-  'オフモール', '店舗', 'その他'
+  'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'ジモティー',
+  'オフモール', '2ndストリート', 'トレジャーファクトリー', '楽天', '店舗',
+  'Amazon返品',   -- Amazon から返品されてきた個体を再度登録したもの
+  'その他'
 );
 
 create type app.sales_channel as enum (
@@ -50,15 +53,17 @@ create type app.item_condition as enum (
   '新品', '再生品', 'ほぼ新品', '非常に良い', '良い', '可', 'ジャンク'
 );
 
--- 納品管理表では「状態」列に '返品処理' が混在していたため、品質と進行状態を分離する
+-- 納品管理表では「状態」列に品質と進行状態が混在していたため分離する。
+-- 「返品処理」と「Amazo返品」は向きが逆の別物なので、別の値として残す。
 create type app.item_status as enum (
-  '仕入済',      -- 購入直後（未入荷）
-  '入荷済',      -- 納品担当者の手元に到着
-  '作業中',      -- 商品登録・検品・撮影のいずれかが進行中
-  '出荷済',      -- FBA へ納品 / 自己発送で保管中
+  '仕入済',       -- 購入直後（未入荷）
+  '入荷済',       -- 納品担当者の手元に到着
+  '作業中',       -- 商品登録・検品・撮影のいずれかが進行中
+  '出荷済',       -- FBA へ納品 / 自己発送で保管中
   '出品中',
   '販売済',
-  '返品',
+  '返品処理',     -- 仕入先へ返品した（こちらから返す）
+  'Amazon返品',   -- Amazon から返品されてきた（再検品・再出品の対象）
   '保留',
   '廃棄'
 );
@@ -182,19 +187,25 @@ create table app.items (
   id                uuid primary key default gen_random_uuid(),
 
   -- ▼ 連携キー。2 つのアプリはこの SKU だけで会話する
+  -- 中央ブロックは通常 4 文字（仕入担当+納品担当）だが、
+  -- 仕入れを伴わない行（付属品の単独手配・Amazon返品の再処理）は
+  -- 納品担当者の 2 文字だけになる。通番号には a / aa の再処理接尾辞が付くことがある。
   sku               text not null unique
-                      check (sku ~ '^[0-9]+[a-z]?-[A-Z]{4}-[0-9]{8}-[0-9]+$'),
+                      check (sku ~ '^[0-9]+[a-z]*-[A-Z]{2,4}-[0-9]{8}-[0-9]+$'),
 
   lot_seq           integer not null references app.lots(seq) on delete restrict,
   is_accessory      boolean not null default false,   -- リモコン等の買い足し
 
   -- ▼ 担当者
-  purchaser_id      uuid not null references app.staff(id) on delete restrict,
+  -- 仕入担当者は、仕入れを伴わない行（Amazon返品の再登録など）では空になる
+  purchaser_id      uuid references app.staff(id) on delete restrict,
   deliverer_id      uuid references app.staff(id) on delete restrict,
   work_stream       app.work_stream,
 
   -- ▼ 仕入情報（古物台帳「買受」の原本）
-  purchased_at      date   not null,
+  -- 移行元に購入日が入っていない行があるため NULL を許すが、
+  -- 古物台帳としては不備なので app.v_ledger_gaps で洗い出せるようにしてある
+  purchased_at      date,
   title             text   not null,             -- 商品名（型番であることが多い）
   cost_amount       bigint not null check (cost_amount >= 0),
   marketplace       app.marketplace not null,
@@ -336,6 +347,23 @@ create table app.audit_log (
 
 create index audit_log_row_idx on app.audit_log(table_name, row_id, created_at desc);
 
+-- -----------------------------------------------------------------------------
+-- 取り込み時の衝突（同じ SKU が複数行に存在した等）
+--   スプレッドシート側の不整合を黙って捨てないための退避先。
+--   大元アプリで内容を確認して、正しい SKU を振り直してから items に移す。
+-- -----------------------------------------------------------------------------
+create table app.import_conflicts (
+  id          uuid primary key default gen_random_uuid(),
+  sku         text not null,
+  reason      text not null,
+  source      text,               -- 元のシート名
+  payload     jsonb not null,     -- 取り込もうとした行の内容
+  resolved_at timestamptz,
+  created_at  timestamptz not null default now()
+);
+
+create index import_conflicts_sku_idx on app.import_conflicts(sku);
+
 
 -- ▼▼▼ 20260920000200_functions.sql ▼▼▼
 
@@ -394,16 +422,16 @@ language sql
 immutable
 as $$
   select format(
-    '%s-%s%s-%s-%s',
+    '%s-%s-%s-%s',
     p_lot_seq,
-    p_purchaser_code,
-    coalesce(p_deliverer_code, 'ZZ'),
-    to_char(p_purchased_at, 'YYYYMMDD'),
-    (p_cost_amount / 10)::bigint
+    -- 担当者が片方しかいない行は中央ブロックが 2 文字になる（実データ準拠）
+    coalesce(p_purchaser_code, '') || coalesce(p_deliverer_code, ''),
+    to_char(coalesce(p_purchased_at, current_date), 'YYYYMMDD'),
+    (coalesce(p_cost_amount, 0) / 10)::bigint
   );
 $$;
 
-comment on function app.build_sku is '出品者SKUを組み立てる。仕入金額は10円単位に切り捨てる（スプレッドシート時代の慣習を踏襲）。';
+comment on function app.build_sku is '出品者SKUを組み立てる。仕入金額は10円単位に切り捨てる（スプレッドシート時代の慣習を踏襲）。担当者が片方だけの場合、中央ブロックは2文字になる。';
 
 -- SKU から情報を読み戻す（納品担当アプリの SKU 検索・スキャン用）
 create or replace function app.parse_sku(p_sku text)
@@ -444,8 +472,8 @@ begin
     select code into v_purchaser_code from app.staff where id = new.purchaser_id;
     select code into v_deliverer_code from app.staff where id = new.deliverer_id;
 
-    if v_purchaser_code is null then
-      raise exception '仕入担当者 % が見つかりません', new.purchaser_id;
+    if v_purchaser_code is null and v_deliverer_code is null then
+      raise exception 'SKU を発番するには仕入担当者か納品担当者のどちらかが必要です';
     end if;
 
     new.sku := app.build_sku(
@@ -488,7 +516,19 @@ language plpgsql
 as $$
 begin
   -- 手動で設定された終端ステータスは尊重する
-  if new.status in ('返品', '保留', '廃棄', '販売済') then
+  if new.status in ('返品処理', '保留', '廃棄', '販売済') then
+    return new;
+  end if;
+
+  -- Amazon返品 は、再作業が始まるまでは「戻ってきた」印を残しておきたい。
+  -- 作業チェックが 1 つでも入ったら、通常の進捗に合流させる。
+  if new.status = 'Amazon返品'
+     and new.arrived_on is null
+     and new.product_registered_at is null
+     and new.inspected_at is null
+     and new.photo_uploaded_at is null
+     and new.packed_on is null
+     and new.shipped_on is null then
     return new;
   end if;
 
@@ -523,11 +563,11 @@ returns trigger
 language plpgsql
 as $$
 begin
-  if new.sold_on is not null and new.status <> '返品' then
+  if new.sold_on is not null and new.status not in ('返品処理', 'Amazon返品') then
     new.status := '販売済';
   end if;
-  if new.returned_on is not null then
-    new.status := '返品';
+  if new.returned_on is not null and new.status <> 'Amazon返品' then
+    new.status := '返品処理';
   end if;
   return new;
 end;
@@ -803,7 +843,8 @@ select
 from app.items i
 left join app.products p  on p.id = i.product_id
 left join app.staff buyer on buyer.id = i.purchaser_id
-where i.status in ('仕入済', '入荷済', '作業中');
+-- Amazon返品 は再検品・再出品が必要なので、納品担当者の作業一覧に出す
+where i.status in ('仕入済', '入荷済', '作業中', 'Amazon返品');
 
 -- -----------------------------------------------------------------------------
 -- 古物台帳
@@ -913,7 +954,7 @@ select
   count(*) filter (where status = '作業中')                                        as 作業中,
   count(*) filter (where status = '仕入済')                                        as 入荷待ち
 from app.items
-where status not in ('販売済', '返品', '廃棄');
+where status not in ('販売済', '返品処理', '廃棄');
 
 -- -----------------------------------------------------------------------------
 -- 担当者別の稼働（納品管理表のピボット相当）
@@ -922,7 +963,7 @@ create view app.v_deliverer_workload with (security_invoker = on) as
 select
   s.id   as deliverer_id,
   s.name as deliverer_name,
-  count(*) filter (where i.status in ('仕入済', '入荷済', '作業中'))  as 未完了,
+  count(*) filter (where i.status in ('仕入済', '入荷済', '作業中', 'Amazon返品')) as 未完了,
   count(*) filter (where i.status = '作業中')                          as 作業中,
   count(*) filter (where i.shipped_on >= date_trunc('month', current_date)) as 今月出荷,
   count(*) filter (where i.arrived_on is not null and i.shipped_on is null) as 手元在庫,
@@ -948,7 +989,7 @@ select
   p.list_price,
   count(i.id)                                                as 仕入実績数,
   count(i.id) filter (where i.sold_on is not null)           as 販売実績数,
-  count(i.id) filter (where i.status not in ('販売済','返品','廃棄')) as 在庫数,
+  count(i.id) filter (where i.status not in ('販売済','返品処理','廃棄')) as 在庫数,
   avg(i.cost_amount)::bigint                                 as 平均仕入額,
   avg(i.sold_price) filter (where i.sold_on is not null)::bigint as 平均販売額,
   sum(i.profit) filter (where i.sold_on is not null)         as 累計粗利,
@@ -956,6 +997,34 @@ select
 from app.products p
 left join app.items i on i.product_id = p.id
 group by p.id;
+
+-- -----------------------------------------------------------------------------
+-- 古物台帳としての不備を洗い出す
+--   スプレッドシートから移した行には、購入日や相手方が欠けているものがある。
+--   黙って埋めると帳簿として嘘になるので、欠けたまま一覧できるようにする。
+-- -----------------------------------------------------------------------------
+create view app.v_ledger_gaps with (security_invoker = on) as
+select
+  i.sku,
+  i.title,
+  i.purchased_at,
+  i.cost_amount,
+  i.marketplace,
+  i.status,
+  case
+    when i.purchased_at is null                                then '取引年月日が未記入'
+    when i.cost_amount >= 10000 and i.seller_address is null   then '1万円以上だが相手方の住所が未記入'
+    when i.cost_amount >= 10000 and i.seller_name is null      then '1万円以上だが相手方の氏名が未記入'
+    when i.marketplace_item_id is null and i.marketplace_url is null
+                                                               then '取引記録（取引ID・URL）がない'
+  end as 不備,
+  i.id
+from app.items i
+where i.purchased_at is null
+   or (i.cost_amount >= 10000 and (i.seller_address is null or i.seller_name is null))
+   or (i.marketplace_item_id is null and i.marketplace_url is null);
+
+grant select on app.v_ledger_gaps to authenticated;
 
 
 -- ▼▼▼ 20260920000400_rls.sql ▼▼▼
@@ -1192,27 +1261,37 @@ create policy "item photos are writable by staff in charge"
 --   （既存 SKU を壊さないために、このコード表は変更しないこと）
 -- =============================================================================
 
-insert into app.staff (code, name, role, is_company) values
-  ('AA', '長部一輝',            'admin',     false),
-  ('EE', '石川秀樹',            'purchaser', false),
-  ('DD', '久保田ゆかり',        'deliverer', false),
-  ('HH', '新川水紀',            'deliverer', false),
-  ('II', '久保田真由',          'deliverer', false),
-  ('JJ', '神谷愛',              'deliverer', false),
-  ('GG', '和田知佳',            'deliverer', false),
-  ('LL', '土井花菜',            'deliverer', false),
-  ('FF', '株式会社グレイス',    'deliverer', true),
-  ('KK', '株式会社コエル',      'deliverer', true),
-  ('MM', '株式会社吉光',        'deliverer', true)
+-- このコード表は納品管理表 全 3,161 行の SKU から実際に読み取ったもので、
+-- 1 コードにつき担当者は 1 人、食い違いは 0 件だった。
+insert into app.staff (code, name, role, is_company, is_active) values
+  ('AA', '長部一輝',            'admin',     false, true),
+  ('EE', '石川秀樹',            'purchaser', false, true),
+  ('DD', '久保田ゆかり',        'deliverer', false, true),
+  ('HH', '新川水紀',            'deliverer', false, true),
+  ('II', '久保田真由',          'deliverer', false, true),
+  ('JJ', '神谷愛',              'deliverer', false, true),
+  ('GG', '和田知佳',            'deliverer', false, true),
+  ('LL', '土井花菜',            'deliverer', false, true),
+  ('FF', '株式会社グレイス',    'deliverer', true,  true),
+  ('KK', '株式会社コエル',      'deliverer', true,  true),
+  ('MM', '株式会社吉光',        'deliverer', true,  true),
+  -- 「辞めた方」シートの担当者。過去の SKU が参照するので消さずに残す
+  ('BB', '大長美賀',            'deliverer', false, false),
+  ('CC', '平岡拓海',            'deliverer', false, false)
 on conflict (code) do nothing;
 
+-- 納品管理表の「クレカ」列に現れた支払い手段をすべて登録する
+-- （現金・メルカリ残高はカードではないが、支払い元として同じ列で管理されている）
 insert into app.payment_cards (name, last4, credit_limit, closing_day, payment_day) values
-  ('三井住友',   '0137', null,     '15',  10),
-  ('楽天',       '4061', null,     '末',  27),
-  ('メルカード', '5992', 900000,   '末',  26),
-  ('PayPay',     '3797', 2000000,  '末',  27),
-  ('セゾン',     null,   null,     '末',  4),
-  ('アメックス', null,   null,     '末',  10)
+  ('三井住友',      '0137', null,     '15',  10),
+  ('楽天',          '4061', null,     '末',  27),
+  ('メルカード',    '5992', 900000,   '末',  26),
+  ('PayPay',        '3797', 2000000,  '末',  27),
+  ('セゾン',        null,   null,     '末',  4),
+  ('アメックス',    null,   null,     '末',  10),
+  ('Dカード',       null,   null,     '末',  10),
+  ('現金',          null,   null,     null,  null),
+  ('メルカリ残高',  null,   null,     null,  null)
 on conflict (name) do nothing;
 
 -- Amazon 出品テンプレート用のコンディション変換表

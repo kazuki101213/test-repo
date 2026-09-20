@@ -3,8 +3,9 @@
 export type StaffRole = 'admin' | 'purchaser' | 'deliverer';
 
 export type Marketplace =
-  | 'メルカリ' | 'ヤフオク' | 'ヤフフリ' | 'PayPayフリマ'
-  | 'ラクマ' | 'オフモール' | '店舗' | 'その他';
+  | 'メルカリ' | 'ヤフオク' | 'ヤフフリ' | 'PayPayフリマ' | 'ラクマ' | 'ジモティー'
+  | 'オフモール' | '2ndストリート' | 'トレジャーファクトリー' | '楽天' | '店舗'
+  | 'Amazon返品' | 'その他';
 
 export type SalesChannel = 'FBA' | '自己発送' | 'メルカリ' | 'ヤフオク' | 'ヤフフリ' | 'その他';
 
@@ -13,7 +14,7 @@ export type ItemCondition =
 
 export type ItemStatus =
   | '仕入済' | '入荷済' | '作業中' | '出荷済' | '出品中'
-  | '販売済' | '返品' | '保留' | '廃棄';
+  | '販売済' | '返品処理' | 'Amazon返品' | '保留' | '廃棄';
 
 export type WorkStream = 'テレビ' | 'ブルーレイ' | '付属品' | 'その他';
 
@@ -60,10 +61,11 @@ export interface ItemInsert {
   sku?: string;
   lot_seq?: number;
   is_accessory?: boolean;
-  purchaser_id: string;
+  /** 仕入れを伴わない行（Amazon返品の再登録など）では空になる */
+  purchaser_id?: string | null;
   deliverer_id?: string | null;
   work_stream?: WorkStream | null;
-  purchased_at: string;
+  purchased_at?: string | null;
   title: string;
   cost_amount: number;
   marketplace: Marketplace;
@@ -100,7 +102,7 @@ export interface ItemView {
   maker: string | null;
   genre: string | null;
   turnover: TurnoverClass | null;
-  purchased_at: string;
+  purchased_at: string | null;
   cost_amount: number;
   marketplace: Marketplace;
   marketplace_url: string | null;
@@ -109,7 +111,7 @@ export interface ItemView {
   deliverer_name: string | null;
   work_stream: WorkStream | null;
   deliverer_id: string | null;
-  purchaser_id: string;
+  purchaser_id: string | null;
   tracking_no: string | null;
   planned_price: number | null;
   planned_payout: number | null;
@@ -144,7 +146,7 @@ export interface DeliveryTask {
   title: string;
   asin: string | null;
   condition: ItemCondition | null;
-  purchased_at: string;
+  purchased_at: string | null;
   marketplace: Marketplace;
   tracking_no: string | null;
   accessories: string | null;

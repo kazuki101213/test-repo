@@ -102,6 +102,37 @@ select deliverer_name, 未完了, 作業中 from app.v_deliverer_workload;
 \echo '--- [8] SKU の往復変換 ---'
 select * from app.parse_sku('2400-AADD-20260916-1296');
 
-\echo '--- [9] 監査ログが残っている ---'
+\echo '--- [9] 仕入れを伴わない行（担当者が納品側だけ / SKU 中央ブロックが2文字） ---'
+insert into app.items (sku, lot_seq, deliverer_id, purchased_at, title, cost_amount,
+                       marketplace, status, is_accessory)
+select '2402a-DD-20260920-0', 2402,
+       (select id from app.staff where code = 'DD'),
+       date '2026-09-20', 'Amazon返品の再処理', 0, 'Amazon返品', 'Amazon返品', false;
+
+select sku, status, purchaser_id is null as 仕入担当者なし from app.items where sku like '2402a%';
+
+-- 再作業が始まったら通常の進捗に合流する
+select sku, status from app.set_work_progress(
+  (select id from app.items where sku = '2402a-DD-20260920-0'), 'arrived', true);
+
+do $$
+begin
+  if (select status from app.items where sku = '2402a-DD-20260920-0') <> '入荷済' then
+    raise exception 'FAIL: Amazon返品 が再作業開始後も合流していない';
+  end if;
+  raise notice 'OK: Amazon返品 → 入荷済 に合流した';
+end $$;
+
+\echo '--- [10] 古物台帳の不備が洗い出される ---'
+insert into app.items (sku, lot_seq, purchaser_id, deliverer_id, purchased_at, title,
+                       cost_amount, marketplace)
+select '2403-AADD-20260901-5000', 2403,
+       (select id from app.staff where code = 'AA'),
+       (select id from app.staff where code = 'DD'),
+       date '2026-09-01', '相手方未記入の高額仕入れ', 50000, 'ヤフオク';
+
+select sku, 不備 from app.v_ledger_gaps order by sku;
+
+\echo '--- [11] 監査ログが残っている ---'
 select table_name, action, count(*) from app.audit_log group by 1,2 order by 2;
 reset role;

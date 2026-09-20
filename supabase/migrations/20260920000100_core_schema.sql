@@ -18,9 +18,12 @@ create schema if not exists app;
 -- -----------------------------------------------------------------------------
 create type app.staff_role as enum ('admin', 'purchaser', 'deliverer');
 
+-- 実データ（納品管理表 全シート）に現れた仕入れ先をすべて網羅する
 create type app.marketplace as enum (
-  'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ',
-  'オフモール', '店舗', 'その他'
+  'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'ジモティー',
+  'オフモール', '2ndストリート', 'トレジャーファクトリー', '楽天', '店舗',
+  'Amazon返品',   -- Amazon から返品されてきた個体を再度登録したもの
+  'その他'
 );
 
 create type app.sales_channel as enum (
@@ -32,15 +35,17 @@ create type app.item_condition as enum (
   '新品', '再生品', 'ほぼ新品', '非常に良い', '良い', '可', 'ジャンク'
 );
 
--- 納品管理表では「状態」列に '返品処理' が混在していたため、品質と進行状態を分離する
+-- 納品管理表では「状態」列に品質と進行状態が混在していたため分離する。
+-- 「返品処理」と「Amazo返品」は向きが逆の別物なので、別の値として残す。
 create type app.item_status as enum (
-  '仕入済',      -- 購入直後（未入荷）
-  '入荷済',      -- 納品担当者の手元に到着
-  '作業中',      -- 商品登録・検品・撮影のいずれかが進行中
-  '出荷済',      -- FBA へ納品 / 自己発送で保管中
+  '仕入済',       -- 購入直後（未入荷）
+  '入荷済',       -- 納品担当者の手元に到着
+  '作業中',       -- 商品登録・検品・撮影のいずれかが進行中
+  '出荷済',       -- FBA へ納品 / 自己発送で保管中
   '出品中',
   '販売済',
-  '返品',
+  '返品処理',     -- 仕入先へ返品した（こちらから返す）
+  'Amazon返品',   -- Amazon から返品されてきた（再検品・再出品の対象）
   '保留',
   '廃棄'
 );
@@ -164,19 +169,25 @@ create table app.items (
   id                uuid primary key default gen_random_uuid(),
 
   -- ▼ 連携キー。2 つのアプリはこの SKU だけで会話する
+  -- 中央ブロックは通常 4 文字（仕入担当+納品担当）だが、
+  -- 仕入れを伴わない行（付属品の単独手配・Amazon返品の再処理）は
+  -- 納品担当者の 2 文字だけになる。通番号には a / aa の再処理接尾辞が付くことがある。
   sku               text not null unique
-                      check (sku ~ '^[0-9]+[a-z]?-[A-Z]{4}-[0-9]{8}-[0-9]+$'),
+                      check (sku ~ '^[0-9]+[a-z]*-[A-Z]{2,4}-[0-9]{8}-[0-9]+$'),
 
   lot_seq           integer not null references app.lots(seq) on delete restrict,
   is_accessory      boolean not null default false,   -- リモコン等の買い足し
 
   -- ▼ 担当者
-  purchaser_id      uuid not null references app.staff(id) on delete restrict,
+  -- 仕入担当者は、仕入れを伴わない行（Amazon返品の再登録など）では空になる
+  purchaser_id      uuid references app.staff(id) on delete restrict,
   deliverer_id      uuid references app.staff(id) on delete restrict,
   work_stream       app.work_stream,
 
   -- ▼ 仕入情報（古物台帳「買受」の原本）
-  purchased_at      date   not null,
+  -- 移行元に購入日が入っていない行があるため NULL を許すが、
+  -- 古物台帳としては不備なので app.v_ledger_gaps で洗い出せるようにしてある
+  purchased_at      date,
   title             text   not null,             -- 商品名（型番であることが多い）
   cost_amount       bigint not null check (cost_amount >= 0),
   marketplace       app.marketplace not null,
@@ -317,3 +328,20 @@ create table app.audit_log (
 );
 
 create index audit_log_row_idx on app.audit_log(table_name, row_id, created_at desc);
+
+-- -----------------------------------------------------------------------------
+-- 取り込み時の衝突（同じ SKU が複数行に存在した等）
+--   スプレッドシート側の不整合を黙って捨てないための退避先。
+--   大元アプリで内容を確認して、正しい SKU を振り直してから items に移す。
+-- -----------------------------------------------------------------------------
+create table app.import_conflicts (
+  id          uuid primary key default gen_random_uuid(),
+  sku         text not null,
+  reason      text not null,
+  source      text,               -- 元のシート名
+  payload     jsonb not null,     -- 取り込もうとした行の内容
+  resolved_at timestamptz,
+  created_at  timestamptz not null default now()
+);
+
+create index import_conflicts_sku_idx on app.import_conflicts(sku);

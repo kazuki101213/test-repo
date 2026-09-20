@@ -53,16 +53,16 @@ language sql
 immutable
 as $$
   select format(
-    '%s-%s%s-%s-%s',
+    '%s-%s-%s-%s',
     p_lot_seq,
-    p_purchaser_code,
-    coalesce(p_deliverer_code, 'ZZ'),
-    to_char(p_purchased_at, 'YYYYMMDD'),
-    (p_cost_amount / 10)::bigint
+    -- 担当者が片方しかいない行は中央ブロックが 2 文字になる（実データ準拠）
+    coalesce(p_purchaser_code, '') || coalesce(p_deliverer_code, ''),
+    to_char(coalesce(p_purchased_at, current_date), 'YYYYMMDD'),
+    (coalesce(p_cost_amount, 0) / 10)::bigint
   );
 $$;
 
-comment on function app.build_sku is '出品者SKUを組み立てる。仕入金額は10円単位に切り捨てる（スプレッドシート時代の慣習を踏襲）。';
+comment on function app.build_sku is '出品者SKUを組み立てる。仕入金額は10円単位に切り捨てる（スプレッドシート時代の慣習を踏襲）。担当者が片方だけの場合、中央ブロックは2文字になる。';
 
 -- SKU から情報を読み戻す（納品担当アプリの SKU 検索・スキャン用）
 create or replace function app.parse_sku(p_sku text)
@@ -103,8 +103,8 @@ begin
     select code into v_purchaser_code from app.staff where id = new.purchaser_id;
     select code into v_deliverer_code from app.staff where id = new.deliverer_id;
 
-    if v_purchaser_code is null then
-      raise exception '仕入担当者 % が見つかりません', new.purchaser_id;
+    if v_purchaser_code is null and v_deliverer_code is null then
+      raise exception 'SKU を発番するには仕入担当者か納品担当者のどちらかが必要です';
     end if;
 
     new.sku := app.build_sku(
@@ -147,7 +147,19 @@ language plpgsql
 as $$
 begin
   -- 手動で設定された終端ステータスは尊重する
-  if new.status in ('返品', '保留', '廃棄', '販売済') then
+  if new.status in ('返品処理', '保留', '廃棄', '販売済') then
+    return new;
+  end if;
+
+  -- Amazon返品 は、再作業が始まるまでは「戻ってきた」印を残しておきたい。
+  -- 作業チェックが 1 つでも入ったら、通常の進捗に合流させる。
+  if new.status = 'Amazon返品'
+     and new.arrived_on is null
+     and new.product_registered_at is null
+     and new.inspected_at is null
+     and new.photo_uploaded_at is null
+     and new.packed_on is null
+     and new.shipped_on is null then
     return new;
   end if;
 
@@ -182,11 +194,11 @@ returns trigger
 language plpgsql
 as $$
 begin
-  if new.sold_on is not null and new.status <> '返品' then
+  if new.sold_on is not null and new.status not in ('返品処理', 'Amazon返品') then
     new.status := '販売済';
   end if;
-  if new.returned_on is not null then
-    new.status := '返品';
+  if new.returned_on is not null and new.status <> 'Amazon返品' then
+    new.status := '返品処理';
   end if;
   return new;
 end;

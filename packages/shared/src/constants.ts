@@ -1,7 +1,9 @@
 import type { ItemStatus, Marketplace, SalesChannel, ItemCondition, WorkStep, WorkStream } from './types';
 
 export const MARKETPLACES: Marketplace[] = [
-  'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'オフモール', '店舗', 'その他',
+  'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'ジモティー',
+  'オフモール', '2ndストリート', 'トレジャーファクトリー', '楽天', '店舗',
+  'Amazon返品', 'その他',
 ];
 
 export const SALES_CHANNELS: SalesChannel[] = [
@@ -15,7 +17,8 @@ export const CONDITIONS: ItemCondition[] = [
 export const WORK_STREAMS: WorkStream[] = ['テレビ', 'ブルーレイ', '付属品', 'その他'];
 
 export const STATUSES: ItemStatus[] = [
-  '仕入済', '入荷済', '作業中', '出荷済', '出品中', '販売済', '返品', '保留', '廃棄',
+  '仕入済', '入荷済', '作業中', '出荷済', '出品中', '販売済',
+  '返品処理', 'Amazon返品', '保留', '廃棄',
 ];
 
 export const STATUS_COLORS: Record<ItemStatus, string> = {
@@ -25,7 +28,8 @@ export const STATUS_COLORS: Record<ItemStatus, string> = {
   出荷済: '#a78bfa',
   出品中: '#34d399',
   販売済: '#22c55e',
-  返品: '#f87171',
+  返品処理: '#f87171',
+  'Amazon返品': '#fb923c',
   保留: '#cbd5e1',
   廃棄: '#64748b',
 };
