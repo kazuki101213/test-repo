@@ -227,5 +227,5 @@ export interface LedgerRow {
   相手方職業: string | null;
   相手方年齢: number | null;
   確認方法: string | null;
-  取引記録URL: string | null;
+  取引記録リンク: string | null;
 }

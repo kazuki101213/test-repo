@@ -130,7 +130,7 @@ select
   i.seller_occupation               as 相手方職業,
   i.seller_age                      as 相手方年齢,
   i.identity_check                  as 確認方法,
-  i.marketplace_url                 as 取引記録URL,
+  i.marketplace_url                 as 取引記録リンク,
   i.created_at
 from app.items i
 left join app.products p on p.id = i.product_id
