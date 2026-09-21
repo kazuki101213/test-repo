@@ -197,9 +197,10 @@ export interface StockSummary {
   仕入金額合計: number;
   売上見込み合計: number;
   見込み利益合計: number;
-  高回転: number;
-  中回転: number;
-  低回転: number;
+  出品数: number;
+  これから出品: number;
+  返品処理: number;
+  Amazon返品: number;
   作業中: number;
   入荷待ち: number;
 }

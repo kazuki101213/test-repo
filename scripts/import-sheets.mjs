@@ -246,13 +246,28 @@ function mapLedger(csvPath, accessories, warn) {
     const m = SKU_RE.exec(sku);
     if (!m) { warn(`SKU の形式が想定外のためとばしました: ${sku}`); continue; }
 
-    const mid = m[2];
-    const purchaserCode = mid.length === 4 ? mid.slice(0, 2) : null;
-    const delivererCode = mid.length === 4 ? mid.slice(2) : mid;
-
     const purchasedAt = toDate(r['購入日']);
     const year = purchasedAt?.slice(0, 4);
     const deliv = splitStaffName(r['納品担当者']);
+    const buyer = splitStaffName(r['仕入担当者']);
+
+    // SKU の中央ブロックは通常 4 文字（仕入担当 + 納品担当）。
+    // 2 文字のときはどちらか一方しかいない行で、130 件のうち
+    // 127 件は納品担当者だけ、3 件は仕入担当者だけだった。
+    // どちらの列が埋まっているかで役割を決める（両方空なら納品担当者とみなす）。
+    const mid = m[2];
+    let purchaserCode = null;
+    let delivererCode = null;
+    if (mid.length === 4) {
+      purchaserCode = mid.slice(0, 2);
+      delivererCode = mid.slice(2);
+    } else if (deliv.name) {
+      delivererCode = mid;
+    } else if (buyer.name) {
+      purchaserCode = mid;
+    } else {
+      delivererCode = mid;
+    }
 
     const rawState = (r['状態'] ?? '').trim();
     const condition = CONDITIONS.has(rawState) ? rawState : null;
@@ -301,8 +316,10 @@ function mapLedger(csvPath, accessories, warn) {
       packed_on: toDate(r['梱包日'], year),
       shipped_on: toDate(r['出荷日'], year),
       sold_on: soldOn,
-      sold_price: soldOn ? num(r['注文価格']) : null,
-      payout_amount: soldOn ? num(r['振込金額']) : null,
+      // 販売日が空でも注文価格が入っている行がある（売れたが日付を記入し忘れたもの）。
+      // 捨てると売上高が合わなくなるので取り込み、v_ledger_gaps で不備として出す。
+      sold_price: num(r['注文価格']),
+      payout_amount: num(r['振込金額']),
       refund_amount: refundAmount,
       refund_note: refunds.length ? refunds.map(([k, v]) => `${k}: ¥${v.toLocaleString('ja-JP')}`).join(' / ') : null,
       returned_on: rawState === '返品処理' ? (toDate(r['出荷日'], year) ?? purchasedAt) : null,
@@ -318,11 +335,11 @@ function mapLedger(csvPath, accessories, warn) {
       source_sheet: '仕入れ販売管理',
     };
 
-    // 販売済みなのに金額が無い行は、制約に引っかかるので販売情報を落として警告する
     if (row.sold_on && row.sold_price === null) {
-      warn(`販売日はあるが注文価格が空のため、販売情報を保留にしました: ${sku}`);
-      row.sold_on = null;
-      row.payout_amount = null;
+      warn(`販売日はあるが注文価格が空です: ${sku}`);
+    }
+    if (!row.sold_on && row.sold_price !== null) {
+      warn(`注文価格はあるが販売日が空です: ${sku}`);
     }
 
     if (seen.has(sku)) {

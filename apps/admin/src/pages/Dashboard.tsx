@@ -50,12 +50,13 @@ export default function Dashboard() {
 
       <div className="grid cols2" style={{ marginTop: 16 }}>
         <div className="card">
-          <h3>在庫の滞留（仕入からの経過日数）</h3>
+          <h3>出品の状況</h3>
           <table>
             <tbody>
-              <tr><td>高回転（〜7日）</td><td className="num">{stock?.高回転 ?? 0} 点</td></tr>
-              <tr><td>中回転（8〜14日）</td><td className="num">{stock?.中回転 ?? 0} 点</td></tr>
-              <tr><td>低回転（15日〜）</td><td className="num">{stock?.低回転 ?? 0} 点</td></tr>
+              <tr><td>出品数（写真登録まで完了・未販売）</td><td className="num">{stock?.出品数 ?? 0} 点</td></tr>
+              <tr><td>これから出品（写真がまだ）</td><td className="num">{stock?.これから出品 ?? 0} 点</td></tr>
+              <tr><td>返品処理（仕入先へ返品）</td><td className="num">{stock?.返品処理 ?? 0} 点</td></tr>
+              <tr><td>Amazon返品（再作業が必要）</td><td className="num">{stock?.Amazon返品 ?? 0} 点</td></tr>
             </tbody>
           </table>
         </div>

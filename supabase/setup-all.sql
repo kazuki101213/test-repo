@@ -288,9 +288,11 @@ create table if not exists app.items (
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),
 
-  -- 販売済みなら販売日と金額が必須
+  -- 販売済みなら販売日は必須。
+  -- 金額まで必須にすると、移行元にある「売れたが注文価格が未記入」の行を
+  -- 取り込めなくなる。落とさずに入れて app.v_ledger_gaps で不備として出す。
   constraint items_sold_requires_date
-    check (status <> '販売済' or (sold_on is not null and sold_price is not null))
+    check (status <> '販売済' or sold_on is not null)
 );
 
 comment on table app.items is '仕入れた個体 1 点ごとのレコード。古物台帳の買受行そのものでもある。';
@@ -940,23 +942,49 @@ comment on view app.v_antique_ledger is
   '古物台帳。ネット仕入れは非対面取引のため、相手方の確認はプラットフォームの取引記録（marketplace_url / marketplace_item_id）で代替している。1万円以上の取引は seller_* 列の記入が必要。';
 
 -- -----------------------------------------------------------------------------
--- 月次サマリ（総合管理表のダッシュボード相当）
+-- 月次サマリ
+--   これも集計セルの数式に合わせている。
+--     仕入数 (G4) … 購入日が当月 / 納品担当者あり / Amazo返品でない
+--     仕入金額(G3) … 購入日が当月（他の条件なし）
+--     販売数 (I4) … 販売日が当月 / Amazo返品でない / 納品担当者あり /
+--                    担当者名に (付) が付かない（＝付属品を数えない）
+--     売上   (I3) … 販売日が当月（他の条件なし）
 -- -----------------------------------------------------------------------------
 drop view if exists app.v_monthly_summary cascade;
 create view app.v_monthly_summary with (security_invoker = on) as
 with purchased as (
   select date_trunc('month', purchased_at)::date as month,
-         count(*) as 仕入数, sum(cost_amount) as 仕入金額,
-         avg(cost_amount)::bigint as 平均仕入額
-  from app.items group by 1
+         count(*) filter (
+           where deliverer_id is not null and status <> 'Amazon返品'
+         )                                        as 仕入数,
+         sum(cost_amount)                         as 仕入金額,
+         avg(cost_amount) filter (
+           where deliverer_id is not null and status <> 'Amazon返品'
+         )::bigint                                as 平均仕入額
+  from app.items
+  where purchased_at is not null
+  group by 1
 ),
 sold as (
   select date_trunc('month', sold_on)::date as month,
-         count(*) as 販売数, sum(sold_price) as 売上,
-         sum(payout_amount) as 振込金額, sum(profit) as 粗利益,
-         avg(sold_price)::bigint as 平均販売額,
+         count(*) filter (
+           where status <> 'Amazon返品'
+             and deliverer_id is not null
+             and work_stream is distinct from '付属品'
+         )                                        as 販売数,
+         sum(sold_price)                          as 売上,
+         sum(payout_amount)                       as 振込金額,
+         -- 注文価格が未記入の行はシート側の利益欄も空なので、合計に入れない
+         sum(profit) filter (where sold_price is not null) as 粗利益,
+         avg(sold_price) filter (
+           where status <> 'Amazon返品'
+             and deliverer_id is not null
+             and work_stream is distinct from '付属品'
+         )::bigint                                as 平均販売額,
          avg(sold_on - purchased_at)::numeric(10,1) as 平均回転日数
-  from app.items where sold_on is not null group by 1
+  from app.items
+  where sold_on is not null
+  group by 1
 ),
 expense as (
   select date_trunc('month', incurred_on)::date as month, sum(amount) as 経費
@@ -981,22 +1009,51 @@ full join expense e on e.month = coalesce(p.month, s.month)
 order by 1 desc;
 
 -- -----------------------------------------------------------------------------
--- 在庫サマリ（現在庫の評価額）
+-- 在庫サマリ
+--   総合管理表「仕入れ販売管理」の集計セルの数式をそのまま移したもの。
+--   数え方を推測で決めると数字が合わなくなるので、元の COUNTIFS の条件に揃える。
+--
+--   現在庫数 (C6):
+--     購入日あり / 販売日なし / 状態が Amazo返品・返品処理でない / 納品担当者あり
+--   金額 3 種 (C11-C13):
+--     「販売日が空」の行の単純合計。他の条件は掛かっていない。
 -- -----------------------------------------------------------------------------
 drop view if exists app.v_stock_summary cascade;
 create view app.v_stock_summary with (security_invoker = on) as
 select
-  count(*)                                        as 現在庫数,
-  sum(cost_amount)                                as 仕入金額合計,
-  sum(coalesce(planned_payout, 0))                as 売上見込み合計,
-  sum(coalesce(planned_payout, 0) - cost_amount)  as 見込み利益合計,
-  count(*) filter (where current_date - purchased_at <= 7)                        as 高回転,
-  count(*) filter (where current_date - purchased_at between 8 and 14)            as 中回転,
-  count(*) filter (where current_date - purchased_at >= 15)                       as 低回転,
-  count(*) filter (where status = '作業中')                                        as 作業中,
-  count(*) filter (where status = '仕入済')                                        as 入荷待ち
-from app.items
-where status not in ('販売済', '返品処理', '廃棄');
+  count(*) filter (
+    where purchased_at is not null
+      and sold_on is null
+      and status not in ('Amazon返品', '返品処理')
+      and deliverer_id is not null
+  )                                                                       as 現在庫数,
+
+  coalesce(sum(cost_amount)   filter (where sold_on is null), 0)          as 仕入金額合計,
+  coalesce(sum(planned_price) filter (where sold_on is null), 0)          as 売上見込み合計,
+  coalesce(sum(coalesce(planned_payout, 0) - cost_amount)
+             filter (where sold_on is null), 0)                          as 見込み利益合計,
+
+  -- 出品数 (C8): 写真登録まで終わっていて、まだ売れていないもの
+  count(*) filter (
+    where deliverer_id is not null
+      and status <> 'Amazon返品'
+      and photo_uploaded_at is not null
+      and sold_on is null
+  )                                                                       as 出品数,
+
+  -- これから出品 (C9): ASIN は決まっているが写真がまだのもの
+  count(*) filter (
+    where status not in ('返品処理', 'Amazon返品')
+      and deliverer_id is not null
+      and asin is not null
+      and photo_uploaded_at is null
+  )                                                                       as これから出品,
+
+  count(*) filter (where status = '返品処理')                             as 返品処理,
+  count(*) filter (where status = 'Amazon返品')                           as "Amazon返品",
+  count(*) filter (where status = '作業中')                               as 作業中,
+  count(*) filter (where status = '仕入済')                               as 入荷待ち
+from app.items;
 
 -- -----------------------------------------------------------------------------
 -- 担当者別の稼働（納品管理表のピボット相当）
@@ -1062,12 +1119,16 @@ select
     when i.cost_amount >= 10000 and i.seller_name is null      then '1万円以上だが相手方の氏名が未記入'
     when i.marketplace_item_id is null and i.marketplace_url is null
                                                                then '取引記録（取引ID・URL）がない'
+    when i.sold_price is not null and i.sold_on is null        then '販売金額はあるが販売日が未記入'
+    when i.sold_on is not null and i.sold_price is null        then '販売日はあるが販売金額が未記入'
   end as 不備,
   i.id
 from app.items i
 where i.purchased_at is null
    or (i.cost_amount >= 10000 and (i.seller_address is null or i.seller_name is null))
-   or (i.marketplace_item_id is null and i.marketplace_url is null);
+   or (i.marketplace_item_id is null and i.marketplace_url is null)
+   or (i.sold_price is not null and i.sold_on is null)
+   or (i.sold_on is not null and i.sold_price is null);
 
 grant select on app.v_ledger_gaps to authenticated;
 

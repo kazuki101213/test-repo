@@ -270,9 +270,11 @@ create table if not exists app.items (
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),
 
-  -- 販売済みなら販売日と金額が必須
+  -- 販売済みなら販売日は必須。
+  -- 金額まで必須にすると、移行元にある「売れたが注文価格が未記入」の行を
+  -- 取り込めなくなる。落とさずに入れて app.v_ledger_gaps で不備として出す。
   constraint items_sold_requires_date
-    check (status <> '販売済' or (sold_on is not null and sold_price is not null))
+    check (status <> '販売済' or sold_on is not null)
 );
 
 comment on table app.items is '仕入れた個体 1 点ごとのレコード。古物台帳の買受行そのものでもある。';
