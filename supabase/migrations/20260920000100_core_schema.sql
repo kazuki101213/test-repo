@@ -277,6 +277,18 @@ create table if not exists app.items (
     check (status <> '販売済' or sold_on is not null)
 );
 
+-- 既存のテーブルには create table if not exists が効かないため、
+-- 後から変えた制約・列はここで明示的に当て直す（何度流しても通る）。
+alter table app.items drop constraint if exists items_sold_requires_date;
+alter table app.items add  constraint items_sold_requires_date
+  check (status <> '販売済' or sold_on is not null);
+
+alter table app.items add column if not exists work_stream        app.work_stream;
+alter table app.items add column if not exists amazon_returned_on date;
+alter table app.items add column if not exists refund_note        text;
+alter table app.items alter column purchaser_id drop not null;
+alter table app.items alter column purchased_at drop not null;
+
 comment on table app.items is '仕入れた個体 1 点ごとのレコード。古物台帳の買受行そのものでもある。';
 comment on column app.items.sku is '出品者SKU。{通番号}-{仕入担当コード}{納品担当コード}-{購入日YYYYMMDD}-{仕入金額÷10}。一度採番したら変更しない。';
 
