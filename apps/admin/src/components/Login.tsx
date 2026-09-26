@@ -24,7 +24,7 @@ export default function Login({ onDone }: { onDone: () => void }) {
   return (
     <div className="login">
       <h2>物販管理</h2>
-      <p className="sub">在庫・納品・古物台帳の大元アプリ</p>
+      <p className="sub">管理アプリ</p>
       <form className="card" onSubmit={submit}>
         <input type="email" placeholder="メールアドレス" autoComplete="username"
                value={email} onChange={(e) => setEmail(e.target.value)} required />

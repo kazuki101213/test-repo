@@ -28,3 +28,7 @@ enable_confirmations = false
 [storage]
 enabled = true
 file_size_limit = "20MiB"
+
+# JWT is validated with Supabase Auth inside the function before any Amazon call.
+[functions.amazon-fba-inventory]
+verify_jwt = false
