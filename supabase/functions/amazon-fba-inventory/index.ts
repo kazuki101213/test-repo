@@ -67,11 +67,25 @@ export async function handler(req: Request): Promise<Response> {
         const failure = await response.json().catch(() => null);
         const code = failure?.errors?.[0]?.code;
         const safeCode = ['Unauthorized', 'AccessDenied', 'InvalidInput', 'InvalidSignature', 'ExpiredToken', 'QuotaExceeded'].includes(code) ? ` / ${code}` : '';
+        // Classify known details without exposing arbitrary upstream text or credentials.
+        const detail = failure?.errors?.[0]?.details;
+        const safeDetail = detail === 'The LWA secret token you provided has expired.'
+          ? 'AmazonがClient Secretの期限切れを通知しています。'
+          : detail === 'Access token is missing in the request header.'
+          ? 'Amazonがアクセストークンの欠落を通知しています。'
+          : detail === 'The access token you provided has expired.'
+          ? 'Amazonがアクセストークンの期限切れを通知しています。'
+          : detail === '' || detail === undefined || detail === null
+          ? 'Amazonから詳細理由は返されていません。'
+          : 'Amazonから追加の拒否理由が返されていますが、安全に表示できる既知の分類に一致しません。';
+        const requestId = response.headers.get('x-amzn-requestid') ?? '';
+        const reference = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)
+          ? ` 問い合わせ用リクエストID: ${requestId}` : '';
         const isInventory = path.startsWith('/fba');
         const hint = response.status === 403
           ? `出品者用Product Listingロールと、日本の出品者アカウントでのアプリ認可を確認してください。${isInventory ? '' : 'Seller IDも確認してください。'}`
           : response.status === 429 ? 'Amazonの取得制限です。時間をおいて再試行してください。' : 'Amazonの設定・稼働状況を確認してください。';
-        throw new SafeError(502, `Amazon ${isInventory ? 'FBA Inventory' : 'Listings Items'} APIエラー（HTTP ${response.status}${safeCode}）。${hint}`);
+        throw new SafeError(502, `Amazon ${isInventory ? 'FBA Inventory' : 'Listings Items'} APIエラー（HTTP ${response.status}${safeCode}）。${safeDetail}${hint}${reference}`);
       }
       return response.json();
     }

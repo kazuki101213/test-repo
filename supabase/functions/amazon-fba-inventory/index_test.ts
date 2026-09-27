@@ -3,7 +3,7 @@ import { handler } from './index.ts';
 const secretNames = ['AMAZON_LWA_CLIENT_ID', 'AMAZON_LWA_CLIENT_SECRET', 'AMAZON_LWA_REFRESH_TOKEN', 'AMAZON_SELLER_ID'];
 function assert(value: unknown, message: string) { if (!value) throw new Error(message); }
 
-for (const scenario of ['anonymous', 'invalid', 'nonadmin', 'missing', 'success', 'amazon403', 'amazonUnknown', 'amazonMalformed', 'listings403', 'lwaClient', 'lwaGrant', 'lwaUnknown', 'lwaMalformed']) {
+for (const scenario of ['anonymous', 'invalid', 'nonadmin', 'missing', 'success', 'amazon403', 'amazonUnknown', 'amazonMalformed', 'listings403', 'lwaClient', 'lwaGrant', 'lwaUnknown', 'lwaMalformed', 'detailSecret', 'detailMissing', 'detailExpired', 'detailEmpty']) {
   Deno.test(scenario, async () => {
     const originalFetch = globalThis.fetch;
     const names = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', ...secretNames];
@@ -32,17 +32,26 @@ for (const scenario of ['anonymous', 'invalid', 'nonadmin', 'missing', 'success'
         assert(requestHeaders.get('x-amz-access-token') === 'fake-token', 'Missing access token');
         assert(/^\d{8}T\d{6}Z$/.test(requestHeaders.get('x-amz-date') ?? ''), 'Missing/invalid Amazon date');
         assert(requestHeaders.get('user-agent')?.startsWith('BussanAdmin/1.0'), 'Missing application user agent');
+        if (scenario.startsWith('detail')) {
+          const details = { detailSecret: 'The LWA secret token you provided has expired.', detailMissing: 'Access token is missing in the request header.', detailExpired: 'The access token you provided has expired.', detailEmpty: '' }[scenario];
+          return Promise.resolve(new Response(JSON.stringify({ errors: [{ code: 'Unauthorized', message: 'must-not-echo', details }] }), { status: 403, headers: { 'x-amzn-RequestId': '12345678-1234-1234-1234-123456789abc' } }));
+        }
         if (scenario === 'amazonMalformed') return Promise.resolve(new Response('must-not-echo', { status: 403 }));
-        if (scenario === 'amazon403' || scenario === 'amazonUnknown' || (scenario === 'listings403' && url.includes('/listings/'))) return json({ errors: [{ code: scenario === 'amazonUnknown' ? 'must-not-echo' : 'Unauthorized', message: 'must-not-echo', details: 'must-not-echo' }] }, 403);
+        if (scenario === 'amazon403' || scenario === 'amazonUnknown' || (scenario === 'listings403' && url.includes('/listings/'))) return Promise.resolve(new Response(JSON.stringify({ errors: [{ code: scenario === 'amazonUnknown' ? 'must-not-echo' : 'Unauthorized', message: 'must-not-echo', details: 'must-not-echo' }] }), { status: 403, headers: { 'x-amzn-RequestId': 'must-not-echo' } }));
         if (url.includes('/fba/inventory')) return json({ payload: { inventorySummaries: [{ sellerSku: 'test-sku', asin: 'test-asin', productName: 'test', totalQuantity: 3, inventoryDetails: { fulfillableQuantity: 2 } }] }, pagination: { nextToken: 'next-page' } });
         if (url.includes('/listings/')) return json({ items: [{ sku: 'test-sku', summaries: [{ marketplaceId: 'A1VC38T7YXB528', status: ['BUYABLE'] }] }] });
         throw new Error('Unexpected network call');
       }) as typeof fetch;
       const response = await handler(new Request('https://test/functions', { method: 'POST', headers: scenario === 'anonymous' ? {} : { Authorization: 'Bearer fake-session' }, body: '{}' }));
-      const expected = { anonymous: 401, invalid: 401, nonadmin: 403, missing: 503, success: 200, amazon403: 502, amazonUnknown: 502, amazonMalformed: 502, listings403: 502, lwaClient: 502, lwaGrant: 502, lwaUnknown: 502, lwaMalformed: 502 }[scenario];
+      const expected = scenario.startsWith('detail') ? 502 : { anonymous: 401, invalid: 401, nonadmin: 403, missing: 503, success: 200, amazon403: 502, amazonUnknown: 502, amazonMalformed: 502, listings403: 502, lwaClient: 502, lwaGrant: 502, lwaUnknown: 502, lwaMalformed: 502 }[scenario];
       assert(response.status === expected, `Expected ${expected}, got ${response.status}`);
       const text = await response.text();
       assert(!['must-not-echo', 'fake-token', 'test-only', 'fake-session'].some(value => text.includes(value)), 'Credential/upstream payload leaked');
+      if (scenario.startsWith('detail')) {
+        assert(text.includes('12345678-1234-1234-1234-123456789abc'), 'Valid request ID lost');
+        const expectedDetail = { detailSecret: 'Client Secretの期限切れ', detailMissing: 'アクセストークンの欠落', detailExpired: 'アクセストークンの期限切れ', detailEmpty: '詳細理由は返されていません' }[scenario];
+        assert(text.includes(expectedDetail!), 'Known detail not classified');
+      }
       if (scenario.startsWith('lwa')) assert(calls.every(url => !url.includes('sellingpartnerapi-')), 'Business API called after LWA failure');
       if (scenario === 'lwaClient') assert(text.includes('invalid_client'), 'Client error not classified');
       if (scenario === 'lwaGrant') assert(text.includes('invalid_grant'), 'Grant error not classified');
