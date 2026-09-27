@@ -14,7 +14,8 @@ export default function Inventory({ me }: { me: Staff }) {
   const [delivererId, setDelivererId] = useState('');
   const [query, setQuery] = useState('');
   const [unsoldOnly, setUnsoldOnly] = useState(false);
-  const [purchaseYear, setPurchaseYear] = useState('');
+  const [purchasedFrom, setPurchasedFrom] = useState('');
+  const [purchasedTo, setPurchasedTo] = useState('');
   const [count, setCount] = useState(0);
   const request = useRef(0);
   const controller = useRef<AbortController | null>(null);
@@ -30,7 +31,8 @@ export default function Inventory({ me }: { me: Staff }) {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchItems({ status: status || undefined, delivererId: delivererId || undefined, query: query || undefined, unsoldOnly, purchaseYear }, active.signal);
+      if (purchasedFrom && purchasedTo && purchasedFrom > purchasedTo) throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
+      const result = await fetchItems({ status: status || undefined, delivererId: delivererId || undefined, query: query || undefined, unsoldOnly, purchasedFrom, purchasedTo }, active.signal);
       if (current !== request.current) return;
       setItems(result.items); setCount(result.count);
     } catch (e) {
@@ -40,7 +42,7 @@ export default function Inventory({ me }: { me: Staff }) {
     } finally {
       if (current === request.current) setLoading(false);
     }
-  }, [status, delivererId, query, unsoldOnly, purchaseYear]);
+  }, [status, delivererId, query, unsoldOnly, purchasedFrom, purchasedTo]);
 
   useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
@@ -77,11 +79,13 @@ export default function Inventory({ me }: { me: Staff }) {
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
-        <select aria-label="仕入年" value={purchaseYear} onChange={e => { setPurchaseYear(e.target.value); }}>
-          <option value="">すべての仕入年</option>
-          {Array.from({ length: new Date().getFullYear() - 1999 }, (_, n) => new Date().getFullYear() - n).map(y => <option key={y} value={y}>{y}年</option>)}
-          <option value="unknown">仕入日未記入</option>
-        </select>
+        <label className="field"><span>仕入日・開始</span>
+          <input type="date" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
+        </label>
+        <label className="field"><span>仕入日・終了</span>
+          <input type="date" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
+        </label>
+        {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
         <label className="row" style={{ color: 'var(--muted)' }}>
           <input type="checkbox" checked={unsoldOnly} onChange={(e) => { setUnsoldOnly(e.target.checked); }} />
           未販売のみ

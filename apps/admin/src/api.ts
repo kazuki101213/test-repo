@@ -44,7 +44,8 @@ export interface ItemFilter {
   delivererId?: string;
   query?: string;
   unsoldOnly?: boolean;
-  purchaseYear?: string;
+  purchasedFrom?: string;
+  purchasedTo?: string;
 }
 
 export type InventoryItem = ItemView & {
@@ -76,8 +77,8 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     if (filter.status) q = q.eq('status', filter.status);
     if (filter.delivererId) q = q.eq('deliverer_id', filter.delivererId);
     if (filter.unsoldOnly) q = q.eq('sale_row_count', 0);
-    if (filter.purchaseYear === 'unknown') q = q.is('purchased_at', null);
-    else if (filter.purchaseYear) q = q.gte('purchased_at', `${filter.purchaseYear}-01-01`).lt('purchased_at', `${Number(filter.purchaseYear) + 1}-01-01`);
+    if (filter.purchasedFrom) q = q.gte('purchased_at', filter.purchasedFrom);
+    if (filter.purchasedTo) q = q.lte('purchased_at', filter.purchasedTo);
     if (filter.query) {
       const term = `%${filter.query.replace(/[(),.%_*"\\]/g, ' ')}%`;
       q = q.or(`sku.ilike.${term},title.ilike.${term},asin.ilike.${term},model_no.ilike.${term}`);
