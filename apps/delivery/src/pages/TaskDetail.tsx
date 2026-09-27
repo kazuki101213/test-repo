@@ -123,7 +123,7 @@ export default function TaskDetail({
         <div className="muted">購入日 {jpDate(task.purchased_at)}</div>
         <div className="sku">SKU {task.sku}</div>
         <div className="product-name">型番 {task.title || '—'}</div>
-        <div className="muted">ASIN {task.asin || '—'}</div>
+        <div className="muted product-asin">ASIN {task.asin || '—'}</div>
         <div className="muted">追跡番号 {task.tracking_no || '—'}</div>
         </div>
       </div>

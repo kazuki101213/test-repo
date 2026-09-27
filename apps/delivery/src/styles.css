@@ -130,7 +130,7 @@ textarea { min-height: 80px; resize: vertical; }
 .photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
 .product-overview { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .product-info, .product-photos { min-width: 0; }
-.product-info { display: grid; gap: 8px; font-size: 14px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; }
+.product-info { display: grid; gap: 3px; font-size: 14px; font-weight: 400; line-height: 1.4; overflow-wrap: anywhere; }
 .product-photos .spread { flex-wrap: wrap; align-items: center; }
 .product-photos .photos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .product-photos .photos a:first-child { grid-column: 1 / -1; }
@@ -151,11 +151,12 @@ textarea { min-height: 80px; resize: vertical; }
 .task-card { display: flex; align-items: flex-start; gap: 12px; }
 .task-card > input { width: 22px; height: 22px; flex: none; margin-top: 4px; accent-color: var(--accent); }
 .task-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.task-open { display: grid; gap: 8px; line-height: 1.5; }
+.task-open { display: grid; gap: 3px; line-height: 1.4; }
 .task-open .sku, .task-open .title, .task-open .progress { margin: 0; }
 .task-open .muted, .task-open .sku, .task-open .title, .task-members .btn, .task-members .muted,
 .product-info > div { font-size: 14px; }
 .product-info .product-name { font-weight: 600; }
+.product-asin { font-weight: 600; }
 .task-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .task-content { flex: 1; min-width: 0; }
 .task-content .task-open { width: 100%; }

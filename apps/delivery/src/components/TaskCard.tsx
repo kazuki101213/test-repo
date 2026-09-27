@@ -29,7 +29,7 @@ export default function TaskCard({ task, members, onOpenMember, onOpen, selected
         {task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}
         型番 {task.title}
       </div>
-      <div className="muted">
+      <div className="muted product-asin">
         ASIN {task.asin || '—'}
       </div>
       <div className="muted">
