@@ -51,17 +51,6 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
 
       <div className="grid kpi">
         {isAdmin && <InvoiceTasks onApproved={() => setExpenseRevision(n => n + 1)} />}
-        <div className="card">
-          <div className="kpi-label">今月の利益</div>
-          <div style={{ marginTop: 10 }}>
-            <div className="kpi-label">粗利益</div>
-            <div className={`kpi-value ${(current?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.粗利益)}</div>
-          </div>
-          <div style={{ marginTop: 10 }}>
-            <div className="kpi-label">純利益</div>
-            <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
-          </div>
-        </div>
         <div className="card sales-summary-card">
           <div className="kpi-label">今月の販売</div>
           <div className="sales-kpi-line"><span>今月の売上</span><strong>{yen(current?.売上)} / {current?.販売数 ?? 0} 点</strong></div>
@@ -69,10 +58,9 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           <div className={`kpi-value ${(current?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.粗利益)}</div>
           <div className="kpi-label" style={{ marginTop: 12 }}>純利益</div>
           <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
-          <div className="kpi-label" style={{ marginTop: 12 }}>現在の在庫数</div>
-          <div className="kpi-value">{stock?.現在庫数 ?? 0} 点</div>
+          <div className="kpi-label" style={{ marginTop: 12 }}>現在の在庫数 / 作業中</div>
+          <div className="kpi-value">{stock?.現在庫数 ?? 0} 点 / {stock?.作業中 ?? 0} 点</div>
         </div>
-        <Kpi label="今月の経費" value={yen(current?.経費)} />
         <Kpi label="今月の仕入" value={yen(current?.仕入金額)} count={current?.仕入数 ?? 0} />
         <div className="card">
           <div className="kpi-label">在庫の見込み</div>
@@ -85,7 +73,6 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             <div className={`kpi-value ${(stock?.見込み利益合計 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(stock?.見込み利益合計)}</div>
           </div>
         </div>
-        <Kpi label="作業中 / 入荷待ち" value={`${stock?.作業中 ?? 0} / ${stock?.入荷待ち ?? 0}`} />
       </div>
 
       <div className="dashboard-charts">
