@@ -62,10 +62,13 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
         </div>
         {isAdmin && <InvoiceTasks onApproved={() => setExpenseRevision(n => n + 1)} />}
-        <div className="card">
+        <div className="card sales-summary-card">
           <div className="kpi-label">今月の販売</div>
-          <div className="kpi-value">{yen(current?.売上)}</div>
-          <div className="kpi-value">{current?.販売数 ?? 0} 点</div>
+          <div className="sales-kpi-line"><span>今月の売上</span><strong>{yen(current?.売上)} / {current?.販売数 ?? 0} 点</strong></div>
+          <div className="kpi-label" style={{ marginTop: 12 }}>粗利益</div>
+          <div className={`kpi-value ${(current?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.粗利益)}</div>
+          <div className="kpi-label" style={{ marginTop: 12 }}>純利益</div>
+          <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
           <div className="kpi-label" style={{ marginTop: 12 }}>現在の在庫数</div>
           <div className="kpi-value">{stock?.現在庫数 ?? 0} 点</div>
         </div>

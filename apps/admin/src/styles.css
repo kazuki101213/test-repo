@@ -65,6 +65,11 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 .card h3 { margin: 0 0 10px; font-size: 14px; }
 
 .kpi-label { color: var(--muted); font-size: 12px; }
+.sales-kpi-line { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.sales-summary-card { grid-column: span 2; }
+@media (max-width: 620px) { .sales-summary-card { grid-column: 1 / -1; } }
+.sales-kpi-line span { color: var(--muted); font-size: 12px; }
+.sales-kpi-line strong { font-size: 17px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kpi-value { font-size: 22px; font-weight: 650; margin-top: 4px; letter-spacing: -.01em; }
 .kpi-value.pos { color: var(--ok); }
 .kpi-value.neg { color: var(--danger); }
