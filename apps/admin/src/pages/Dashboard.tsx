@@ -4,7 +4,6 @@ import type { DelivererWorkload, MonthlySummary, StockSummary } from '@bussan/sh
 import { fetchMonthly, fetchStockSummary, fetchWorkload, type WorkloadMetric } from '../api';
 import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
-import ExpensePanel from '../components/ExpensePanel';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
 import WorkloadDetail from '../components/WorkloadDetail';
 
@@ -21,16 +20,13 @@ function Kpi({ label, value, tone, detail, count }: { label: string; value: stri
   );
 }
 
-export default function Dashboard({ canManageExpenses }: { canManageExpenses: boolean }) {
+export default function Dashboard() {
   const [stock, setStock] = useState<StockSummary | null>(null);
   const [months, setMonths] = useState<MonthlySummary[]>([]);
   const [workload, setWorkload] = useState<DelivererWorkload[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [expenseOpen, setExpenseOpen] = useState(false);
   const [detail, setDetail] = useState<{ month: string; metric: MonthlyMetric } | null>(null);
   const [workloadDetail, setWorkloadDetail] = useState<{ delivererId: string; name: string; metric: WorkloadMetric } | null>(null);
-  const [expenseBusy, setExpenseBusy] = useState(false);
-  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -39,16 +35,15 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
       .then(([s, m, w]) => { if (active) { setStock(s); setMonths(m); setWorkload(w); } })
       .catch((e) => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     return () => { active = false; };
-  }, [revision]);
+  }, []);
 
   const current = months.find(m => m.month?.startsWith(japanMonth()));
   const visibleWorkload = workload.filter(w => !hiddenWorkloadNames.has(w.deliverer_name));
 
   return (
-    <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
+    <div className="dashboard-workspace">
       <section className="dashboard-content" aria-label="ダッシュボード">
       <div className="toolbar"><h2>ダッシュボード</h2><span style={{ flex: 1 }} />
-        {canManageExpenses && <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => setExpenseOpen(open => !open)}>{expenseOpen ? '経費入力を閉じる' : '経費を入力'}</button>}
       </div>
       {error && <div className="error">{error}</div>}
 
@@ -134,7 +129,6 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
         </div>
       </div>
       </section>
-      {canManageExpenses && expenseOpen && <ExpensePanel onSaved={() => setRevision(v => v + 1)} onBusyChange={setExpenseBusy} />}
       {detail && <MonthlyDetail month={detail.month} metric={detail.metric} onClose={() => setDetail(null)} />}
       {workloadDetail && <WorkloadDetail {...workloadDetail} onClose={() => setWorkloadDetail(null)} />}
     </div>
