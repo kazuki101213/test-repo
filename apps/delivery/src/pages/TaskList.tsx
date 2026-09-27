@@ -9,8 +9,8 @@ const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLower
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'arrived', label: '作業中' },
-  { key: 'all',     label: 'すべて' },
   { key: 'shipped', label: '出荷済' },
+  { key: 'all',     label: 'すべて' },
 ];
 
 export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {

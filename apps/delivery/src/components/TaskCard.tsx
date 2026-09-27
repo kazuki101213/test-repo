@@ -19,7 +19,7 @@ export default function TaskCard({ task, members, onOpenMember, onOpen, selected
       <div className="task-content">
       <button className="task-open" onClick={onOpen}>
       <div className="spread">
-        <span className="muted">{jpDate(task.purchased_at)}</span>
+        <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
         <span className={`badge ${done === flags.length ? 'done' : 'todo'}`}>
           {done}/{flags.length}
         </span>
@@ -27,7 +27,7 @@ export default function TaskCard({ task, members, onOpenMember, onOpen, selected
       <div className="sku">SKU {task.sku}</div>
       <div className="title">
         {task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}
-        {task.title}
+        型番 {task.title}
       </div>
       <div className="muted">
         ASIN {task.asin || '—'}

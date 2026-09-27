@@ -10,6 +10,7 @@ import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const purchaserNames = ['長部一輝', '石川秀樹'];
+const workStreamLabels: Record<WorkStream, string> = { 'テレビ': 'モニター・テレビ', 'ブルーレイ': 'ブルーレイレコーダー', '付属品': '付属品', 'その他': '小物' };
 const handoffTemplates = [
   '着払いです。',
   '動作確認は出来る環境があればやってください。\nできなければ大丈夫です。',
@@ -232,7 +233,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
               <label className="field"><span>作業ライン</span>
                 <select value={workStream} onChange={(e) => setWorkStream(e.target.value as WorkStream)}>
                   <option value="">—</option>
-                  {WORK_STREAMS.map((w) => <option key={w} value={w}>{w}</option>)}
+                  {WORK_STREAMS.map((w) => <option key={w} value={w}>{workStreamLabels[w]}</option>)}
                 </select>
               </label>
               <label className="field"><span>通番号</span>

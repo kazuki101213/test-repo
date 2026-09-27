@@ -128,7 +128,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const index = window.start + offset;
                 return (
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
-                  <td>{i.lot_seq !== items[index - 1]?.lot_seq && <strong>{i.lot_seq}</strong>}<div className="sku">{i.sku}</div>{i.lot_seq !== items[index - 1]?.lot_seq && i.product_row_count > 1 && <small className="sub">同一商品・{i.product_row_count}行 / 仕入合計 {yen(i.product_cost)}</small>}</td>
+                  <td>{i.lot_seq !== items[index - 1]?.lot_seq && <strong>{i.lot_seq}</strong>}<div className="sku">{i.sku}</div>{i.lot_seq !== items[index - 1]?.lot_seq && i.product_row_count > 1 && <small className="sub">仕入合計 {yen(i.product_cost)}</small>}</td>
                   <td>
                     <span className="dot" style={{ background: STATUS_COLORS[i.status] }} />
                     {i.status}

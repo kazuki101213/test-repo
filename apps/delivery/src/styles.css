@@ -151,7 +151,8 @@ textarea { min-height: 80px; resize: vertical; }
 .task-card { display: flex; align-items: flex-start; gap: 12px; }
 .task-card > input { width: 22px; height: 22px; flex: none; margin-top: 4px; accent-color: var(--accent); }
 .task-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.task-open .sku { margin-top: 8px; }
+.task-open { display: grid; gap: 8px; line-height: 1.5; }
+.task-open .sku, .task-open .title, .task-open .progress { margin: 0; }
 .task-open .muted, .task-open .sku, .task-open .title, .task-members .btn, .task-members .muted,
 .product-info > div { font-size: 14px; }
 .product-info .product-name { font-weight: 600; }

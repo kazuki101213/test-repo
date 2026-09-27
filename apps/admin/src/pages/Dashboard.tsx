@@ -10,11 +10,12 @@ import WorkloadDetail from '../components/WorkloadDetail';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
 
-function Kpi({ label, value, tone, detail }: { label: string; value: string; tone?: 'pos' | 'neg'; detail?: string }) {
+function Kpi({ label, value, tone, detail, count }: { label: string; value: string; tone?: 'pos' | 'neg'; detail?: string; count?: number }) {
   return (
     <div className="card">
       <div className="kpi-label">{label}</div>
       <div className={`kpi-value ${tone ?? ''}`}>{value}</div>
+      {count !== undefined && <div className="kpi-value">{count} 点</div>}
       {detail && <details className="kpi-detail"><summary>集計対象</summary>{detail}</details>}
     </div>
   );
@@ -63,10 +64,10 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
             <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
           </div>
         </div>
-        <Kpi label="今月の販売" value={`${yen(current?.売上)} / ${current?.販売数 ?? 0} 点`} />
+        <Kpi label="今月の販売" value={yen(current?.売上)} count={current?.販売数 ?? 0} />
         <Kpi label="今月の経費" value={yen(current?.経費)} />
-        <Kpi label="今月の仕入" value={`${yen(current?.仕入金額)} / ${current?.仕入数 ?? 0} 点`} />
-        <Kpi label="在庫の売上見込み" value={yen(stock?.売上見込み合計)} />
+        <Kpi label="今月の仕入" value={yen(current?.仕入金額)} count={current?.仕入数 ?? 0} />
+        <Kpi label="在庫の見込み売上" value={yen(stock?.売上見込み合計)} />
         <Kpi label="在庫の見込み利益" value={yen(stock?.見込み利益合計)} tone="pos" />
         <Kpi label="現在庫数" value={`${stock?.現在庫数 ?? 0} 点`} detail="在庫一覧から販売済・返品処理・廃棄を除外。同じ通番号は1点として集計します。Amazon返品は含みます。" />
         <Kpi label="在庫の仕入金額" value={yen(stock?.仕入金額合計)} />
