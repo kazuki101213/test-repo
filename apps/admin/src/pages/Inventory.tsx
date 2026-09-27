@@ -57,7 +57,7 @@ export default function Inventory({ me }: { me: Staff }) {
     <div className="inventory-workspace with-purchase">
       <section className="inventory-list" aria-label="在庫一覧">
       <h2>在庫一覧</h2>
-      <p className="sub">仕入先ごとの行は残し、同じ通番号を1商品として扱います。販売記録・仕入合計は同じ商品内で共有します。右側から仕入登録できます。</p>
+      <p className="sub">通番号の大きい順に、同じ商品の行を続けて表示します。仕入先ごとの行は残し、販売記録・仕入合計は同じ商品内で共有します。右側から仕入登録できます。</p>
 
       <div className="toolbar">
         <input
@@ -86,7 +86,7 @@ export default function Inventory({ me }: { me: Staff }) {
         <button className="btn" onClick={() => void load()}>再読込</button>
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>
-          表示中の100件をCSV
+          表示中の{items.length}件をCSV
         </button>
         <button className="btn" onClick={() => void exportAmazon()}>Amazon出品ファイル</button>
       </div>
@@ -104,7 +104,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
       {!loading && items.length > 0 && (
         <div className="scroll">
-          <table>
+          <table className="inventory-table">
             <thead>
               <tr>
                 <th>通番号 / SKU</th><th>状態</th><th>商品名</th><th>ASIN</th>
@@ -116,8 +116,8 @@ export default function Inventory({ me }: { me: Staff }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((i) => (
-                <tr key={i.id}>
+              {items.map((i, index) => (
+                <tr key={i.id} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
                   <td><strong>通番号 {i.lot_seq}</strong><div className="sku">{i.sku}</div>{i.product_row_count > 1 && <small className="sub">同一商品・{i.product_row_count}行 / 仕入合計 {yen(i.product_cost)}</small>}</td>
                   <td>
                     <span className="dot" style={{ background: STATUS_COLORS[i.status] }} />

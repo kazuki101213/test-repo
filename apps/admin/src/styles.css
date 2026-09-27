@@ -98,6 +98,7 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .inventory-workspace.with-purchase { grid-template-columns: minmax(320px, 1fr) minmax(340px, 420px); }
 .inventory-list { min-width: 0; }
+.inventory-table tr[data-group-end='false'] > td { border-bottom: 0; }
 .purchase-panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
 .purchase-panel .grid.cols2 { grid-template-columns: minmax(0, 1fr); }
 .purchase-panel .card { padding: 12px; }

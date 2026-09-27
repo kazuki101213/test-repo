@@ -67,6 +67,7 @@ export async function fetchSaleRows(): Promise<SaleRow[]> {
 
 export async function fetchItems(filter: ItemFilter = {}, page = 0, pageSize = 100): Promise<{ items: InventoryItem[]; count: number }> {
   let q = getSupabase().from('v_inventory_items').select('*', { count: 'exact' })
+    .order('lot_seq', { ascending: false }).order('is_accessory')
     .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
     .range(page * pageSize, (page + 1) * pageSize - 1);
 
