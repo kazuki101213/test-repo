@@ -6,6 +6,7 @@ import { fetchAmazonFeed, fetchItems, fetchStaff, recordSale } from '../api';
 import { downloadCsv, downloadTsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
+import { inventoryWindow } from '../inventory';
 
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -22,6 +23,10 @@ export default function Inventory({ me }: { me: Staff }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saleFor, setSaleFor] = useState<InventoryItem | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(1000);
+  const window = inventoryWindow(items.length, scrollTop, viewportHeight);
 
   const load = useCallback(async () => {
     const current = ++request.current;
@@ -46,6 +51,15 @@ export default function Inventory({ me }: { me: Staff }) {
 
   useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
+  useEffect(() => {
+    setScrollTop(0);
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    const observer = new ResizeObserver(() => setViewportHeight(el.clientHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [items, loading]);
 
   async function exportAmazon() {
     try {
@@ -108,10 +122,10 @@ export default function Inventory({ me }: { me: Staff }) {
       {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
       {!loading && items.length > 0 && (
-        <div className="scroll">
-          <table className="inventory-table">
+        <div className="scroll" ref={scrollRef} onScroll={e => setScrollTop(e.currentTarget.scrollTop)}>
+          <table className="inventory-table" aria-rowcount={items.length + 1}>
             <thead>
-              <tr>
+              <tr aria-rowindex={1}>
                 <th>通番号 / SKU</th><th>状態</th><th>商品名</th><th>ASIN</th>
                 <th>仕入日</th><th className="num">仕入</th>
                 <th>仕入先</th><th>納品担当</th><th>進捗</th>
@@ -121,8 +135,11 @@ export default function Inventory({ me }: { me: Staff }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((i, index) => (
-                <tr key={i.id} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
+              {window.top > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={16} style={{ height: window.top }} /></tr>}
+              {items.slice(window.start, window.end).map((i, offset) => {
+                const index = window.start + offset;
+                return (
+                <tr key={i.id} aria-rowindex={index + 2} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
                   <td>{i.lot_seq !== items[index - 1]?.lot_seq && <strong>通番号 {i.lot_seq}</strong>}<div className="sku">{i.sku}</div>{i.lot_seq !== items[index - 1]?.lot_seq && i.product_row_count > 1 && <small className="sub">同一商品・{i.product_row_count}行 / 仕入合計 {yen(i.product_cost)}</small>}</td>
                   <td>
                     <span className="dot" style={{ background: STATUS_COLORS[i.status] }} />
@@ -153,7 +170,8 @@ export default function Inventory({ me }: { me: Staff }) {
                     )}
                   </td>
                 </tr>
-              ))}
+              ); })}
+              {window.bottom > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={16} style={{ height: window.bottom }} /></tr>}
             </tbody>
           </table>
         </div>

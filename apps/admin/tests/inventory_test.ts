@@ -1,9 +1,19 @@
-import { productCount, readAllRows } from '../src/inventory.ts';
+import { productCount, readAllRows, inventoryWindow } from '../src/inventory.ts';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../src/purchaseUrl.ts';
 
 function equal(actual: unknown, expected: unknown) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(JSON.stringify({ actual, expected }));
 }
+
+Deno.test('scroll window reaches the final record with no 100-row limit', () => {
+  const first = inventoryWindow(3160, 0, 600);
+  equal(first.start, 0); equal(first.end < 100, true);
+  const middle = inventoryWindow(3160, 1500 * 88 + 40, 600);
+  equal(middle.start <= 1500 && middle.end > 1500, true);
+  const last = inventoryWindow(3160, 3160 * 88 + 40 - 600, 600);
+  equal(last.end, 3160); equal(last.bottom, 0);
+  equal(last.top + (last.end - last.start) * 88 + last.bottom, 3160 * 88);
+});
 
 Deno.test('all 3160 rows are fetched beyond both 100 and 1000 row boundaries', async () => {
   const source = Array.from({ length: 3160 }, (_, n) => ({ id: String(n), lot_seq: n % 2324 }));
