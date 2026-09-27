@@ -53,7 +53,7 @@ export default function ExpensePanel({ onSaved, onBusyChange }: { onSaved: () =>
         <label className="field"><span>経費の日付</span><input type="date" required value={date} onChange={e => setDate(e.target.value)} /></label>
         <label className="field expense-wide"><span>経費の内容</span><input type="text" required maxLength={200} value={name} onChange={e => setName(e.target.value)} placeholder="梱包資材、家賃など" /></label>
         <label className="field"><span>金額（円・返金はマイナス）</span><input type="number" required step={1} value={amount} onChange={e => setAmount(e.target.value)} /></label>
-        <label className="field"><span>支払いカード</span><select value={card} onChange={e => setCard(e.target.value)}><option value="">未指定</option>{cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label className="field"><span>支払い方法</span><select value={card} onChange={e => setCard(e.target.value)}><option value="">未指定</option>{cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
         <label className="field expense-wide"><span>経費のメモ</span><textarea rows={2} value={memo} onChange={e => setMemo(e.target.value)} /></label>
         <button className="btn primary expense-wide" type="submit">{busy ? '保存中…' : '経費を保存'}</button>
       </fieldset>

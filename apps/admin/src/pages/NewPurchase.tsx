@@ -172,7 +172,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                   {MARKETPLACES.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </label>
-              <label className="field"><span>支払いカード</span>
+              <label className="field"><span>支払い方法</span>
                 <select value={cardId} onChange={(e) => setCardId(e.target.value)}>
                   <option value="">—</option>
                   {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
