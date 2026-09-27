@@ -42,14 +42,36 @@ export async function handler(req: Request): Promise<Response> {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'refresh_token', client_id: Deno.env.get(names[0])!, client_secret: Deno.env.get(names[1])!, refresh_token: Deno.env.get(names[2])! }),
     });
-    if (!lwa.ok) throw new SafeError(502, `Amazon LWA認証に失敗しました（HTTP ${lwa.status}）。Client ID・Secret・Refresh Tokenを確認してください。`);
+    if (!lwa.ok) {
+      const failure = await lwa.json().catch(() => null);
+      // Only fixed messages are exposed; never echo upstream descriptions or credentials.
+      const hint = failure?.error === 'invalid_client'
+        ? 'invalid_client: 同じアプリのClient IDとClient Secretを確認してください。'
+        : failure?.error === 'invalid_grant'
+        ? 'invalid_grant: このアプリを出品者アカウントで再認可し、Refresh Tokenを更新してください。'
+        : 'Client ID・Secret・Refresh Tokenを確認してください。';
+      throw new SafeError(502, `Amazon LWA認証に失敗しました（HTTP ${lwa.status}）。${hint}`);
+    }
     const token = await lwa.json();
     if (typeof token.access_token !== 'string') throw new SafeError(502, 'Amazon LWAの応答が不正です。');
     async function get(path: string, params: URLSearchParams) {
-      const response = await fetch(`${endpoint}${path}?${params}`, { headers: { 'x-amz-access-token': token.access_token }, signal: AbortSignal.timeout(15000) });
+      const response = await fetch(`${endpoint}${path}?${params}`, {
+        headers: {
+          'x-amz-access-token': token.access_token,
+          'x-amz-date': new Date().toISOString().replace(/[:-]|\.\d{3}/g, ''),
+          'user-agent': 'BussanAdmin/1.0 (Language=TypeScript; Platform=Supabase)',
+        },
+        signal: AbortSignal.timeout(15000),
+      });
       if (!response.ok) {
-        const hint = response.status === 403 ? 'Product Listingロール・アプリ認可・Seller IDを確認してください。' : response.status === 429 ? 'Amazonの取得制限です。時間をおいて再試行してください。' : 'Amazonの設定・稼働状況を確認してください。';
-        throw new SafeError(502, `Amazon ${path.startsWith('/fba') ? 'FBA Inventory' : 'Listings Items'} APIエラー（HTTP ${response.status}）。${hint}`);
+        const failure = await response.json().catch(() => null);
+        const code = failure?.errors?.[0]?.code;
+        const safeCode = ['Unauthorized', 'AccessDenied', 'InvalidInput', 'InvalidSignature', 'ExpiredToken', 'QuotaExceeded'].includes(code) ? ` / ${code}` : '';
+        const isInventory = path.startsWith('/fba');
+        const hint = response.status === 403
+          ? `出品者用Product Listingロールと、日本の出品者アカウントでのアプリ認可を確認してください。${isInventory ? '' : 'Seller IDも確認してください。'}`
+          : response.status === 429 ? 'Amazonの取得制限です。時間をおいて再試行してください。' : 'Amazonの設定・稼働状況を確認してください。';
+        throw new SafeError(502, `Amazon ${isInventory ? 'FBA Inventory' : 'Listings Items'} APIエラー（HTTP ${response.status}${safeCode}）。${hint}`);
       }
       return response.json();
     }
