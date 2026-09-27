@@ -119,7 +119,7 @@ export async function fetchExpenses(): Promise<ExpenseInput[]> {
 export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
   return readAllRows<ExpenseDraft>(async (from, to) => {
     const { data, error } = await getSupabase().from('expense_drafts')
-      .select('id,target_month,name,card_id').order('target_month').order('id').range(from, to);
+      .select('id,target_month,category,name,card_id').order('target_month').order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as ExpenseDraft[];
   });

@@ -3,9 +3,9 @@ import { yen } from '@bussan/shared';
 import { fetchCards, saveExpense, updateExpense } from '../api';
 import { expenseCategories, type ExpenseInput } from '../expenses';
 
-export default function ExpensePanel({ onSaved, onBusyChange, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; initial?: ExpenseInput; template?: { id: string; name: string; card_id: string | null; month: string } }) {
+export default function ExpensePanel({ onSaved, onBusyChange, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; initial?: ExpenseInput; template?: { id: string; category: '固定費' | '外注費'; name: string; card_id: string | null; month: string } }) {
   const [date, setDate] = useState(() => initial?.incurred_on ?? (template ? '' : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)));
-  const [category, setCategory] = useState<ExpenseInput['category']>(initial?.category ?? (template ? '固定費' : '諸経費'));
+  const [category, setCategory] = useState<ExpenseInput['category']>(initial?.category === '給与' ? '外注費' : initial?.category ?? template?.category ?? '諸経費');
   const [name, setName] = useState(initial?.name ?? template?.name ?? '');
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
   const [card, setCard] = useState(initial?.card_id ?? template?.card_id ?? '');

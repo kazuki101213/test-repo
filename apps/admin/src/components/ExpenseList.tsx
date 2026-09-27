@@ -2,16 +2,17 @@ import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
 import { fetchExpenses, fetchExpenseDrafts } from '../api';
 import type { ExpenseInput, ExpenseDraft } from '../expenses';
+import { expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
 import { japanMonth } from '../sales';
 
-const columns = ['固定費', '変動費', '給与'] as const;
-const displayCategory = (row: ExpenseInput) => row.category === '固定費' || row.category === '給与' ? row.category : '変動費';
+const columns = ['固定費', '変動費', '外注費'] as const;
+const displayCategory = (row: ExpenseInput) => row.category === '固定費' ? '固定費' : row.category === '給与' || row.category === '外注費' ? '外注費' : '変動費';
 
 export function ExpenseTable({ rows }: { rows: ExpenseInput[] }) {
   return rows.length === 0 ? <p className="sub">該当する経費はありません。</p> : <div className="scroll expense-table"><table>
     <thead><tr><th>日付</th><th>区分</th><th>内容</th><th className="num">金額</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.id}><td>{row.incurred_on}</td><td>{row.category}</td><td className="detail-description">{row.name}</td><td className="num">{yen(row.amount)}</td></tr>)}</tbody>
+    <tbody>{rows.map(row => <tr key={row.id}><td>{row.incurred_on}</td><td>{expenseCategoryLabel(row.category)}</td><td className="detail-description">{row.name}</td><td className="num">{yen(row.amount)}</td></tr>)}</tbody>
   </table></div>;
 }
 
@@ -38,7 +39,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const filtered = rows.filter(row => row.incurred_on.slice(0, 7) === month
     && (!query.trim() || row.name.toLowerCase().includes(query.trim().toLowerCase())));
   const pending = drafts.filter(d => d.target_month.slice(0, 7) === month
-    && !rows.some(row => row.id === d.id || (row.category === '固定費' && row.incurred_on.slice(0, 7) === month && row.name === d.name))
+    && !rows.some(row => row.id === d.id || (expenseCategoryLabel(row.category) === d.category && row.incurred_on.slice(0, 7) === month && row.name === d.name))
     && (!query.trim() || d.name.toLowerCase().includes(query.trim().toLowerCase())));
   return <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費一覧">
@@ -52,15 +53,16 @@ export default function ExpenseList({ revision }: { revision: number }) {
     {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
       <div className="expense-columns-scroll"><div className="expense-columns">{columns.map(category => {
         const entries = filtered.filter(row => displayCategory(row) === category);
+        const categoryDrafts = pending.filter(row => row.category === category);
         return <section className="expense-column" key={category} aria-label={category}>
           <header><h3>{category}</h3><p>{entries.length}件 · <strong>{yen(entries.reduce((sum, row) => sum + row.amount, 0))}</strong></p></header>
-          {entries.length === 0 && (category !== '固定費' || pending.length === 0) ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{entries.map(row => <li key={row.id}>
+          {entries.length === 0 && categoryDrafts.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{entries.map(row => <li key={row.id}>
             <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.incurred_on} ${row.name}を編集`} onClick={() => { setEditing(row); setDraft(undefined); setExpenseOpen(true); }}>
             <div className="expense-entry-top"><time dateTime={row.incurred_on}>{row.incurred_on}</time><strong>{yen(row.amount)}</strong></div>
             <div>{row.name}</div>
-            {row.category !== category && <span className="expense-hint">{row.category}</span>}
+            {expenseCategoryLabel(row.category) !== category && <span className="expense-hint">{expenseCategoryLabel(row.category)}</span>}
             </button>
-          </li>)}{category === '固定費' && pending.map(row => <li key={row.id}>
+          </li>)}{categoryDrafts.map(row => <li key={row.id}>
             <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.name}の金額と日付を入力`} onClick={() => { setEditing(undefined); setDraft(row); setExpenseOpen(true); }}>
               <div>{row.name}</div><span className="expense-hint">日付・金額の入力待ち</span>
             </button>
