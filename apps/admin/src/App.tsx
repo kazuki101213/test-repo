@@ -8,11 +8,10 @@ import Products from './pages/Products';
 import Ledger from './pages/Ledger';
 import AmazonInventory from './pages/AmazonInventory';
 
-type Page = 'dashboard' | 'inventory' | 'new' | 'products' | 'ledger' | 'amazon';
+type Page = 'dashboard' | 'inventory' | 'products' | 'ledger' | 'amazon';
 
 const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
-  { key: 'new',       label: '仕入登録' },
   { key: 'inventory', label: '在庫一覧' },
   { key: 'products',  label: '商品マスタ' },
   { key: 'ledger',    label: '古物台帳' },
@@ -23,7 +22,6 @@ export default function App() {
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<Page>('dashboard');
-  const [purchaseOpen, setPurchaseOpen] = useState(false);
 
   async function refresh() {
     try {
@@ -68,10 +66,7 @@ export default function App() {
         <h1>物販管理</h1>
         <p className="who">{session.staff.name}（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</p>
         {NAV.map((n) => (
-          <button key={n.key} className="nav" data-active={n.key === 'new' ? page === 'inventory' && purchaseOpen : page === n.key} onClick={() => {
-            if (n.key === 'new') { setPage('inventory'); setPurchaseOpen(true); }
-            else setPage(n.key);
-          }}>
+          <button key={n.key} className="nav" data-active={page === n.key} onClick={() => setPage(n.key)}>
             {n.label}
           </button>
         ))}
@@ -82,7 +77,7 @@ export default function App() {
 
       <main>
         {page === 'dashboard' && <Dashboard />}
-        {page === 'inventory' && <Inventory me={session.staff} purchaseOpen={purchaseOpen} onPurchaseOpen={setPurchaseOpen} />}
+        {page === 'inventory' && <Inventory me={session.staff} />}
         {page === 'products'  && <Products />}
         {page === 'ledger'    && <Ledger />}
         {page === 'amazon' && session.staff.role === 'admin' && <AmazonInventory />}

@@ -102,11 +102,28 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .purchase-panel .grid.cols2 { grid-template-columns: minmax(0, 1fr); }
 .purchase-panel .card { padding: 12px; }
 .purchase-panel .sku { overflow-wrap: anywhere; }
-.purchase-close { margin-bottom: 14px; }
 .amazon-sales { margin: 12px 0; }
 .amazon-sales summary { cursor: pointer; font-weight: 600; }
 .amazon-sales .toolbar { margin-top: 12px; }
 @media (max-width: 1050px) {
-  .inventory-workspace.with-purchase { grid-template-columns: minmax(0, 1fr); }
-  .purchase-panel { position: fixed; top: 12px; right: 12px; bottom: 12px; width: min(420px, calc(100vw - 24px)); max-height: none; z-index: 15; box-shadow: 0 16px 60px #0009; }
+  .inventory-workspace.with-purchase { grid-template-columns: minmax(360px, 1fr) 340px; overflow-x: auto; }
+  .purchase-panel { position: sticky; top: 12px; max-height: calc(100vh - 24px); }
+}
+input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
+.daily-sales { margin-top: 16px; }
+.sales-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; }
+.sales-summary strong { font-size: 22px; }
+.sales-summary span { color: var(--muted); }
+.sales-chart-scroll { overflow-x: auto; }
+.sales-chart { display: block; width: 100%; min-width: 600px; margin-top: 12px; }
+.sales-chart text { fill: var(--muted); font-size: 13px; }
+.chart-grid { stroke: var(--border); stroke-dasharray: 4 4; }
+.chart-hit { fill: transparent; cursor: pointer; }
+.chart-hit:focus { outline: none; stroke: var(--text); stroke-width: 2; }
+.sales-day { min-height: 24px; color: var(--accent); }
+@media (max-width: 860px) {
+  .sidebar { height: auto; flex-direction: row; flex-wrap: wrap; }
+  .sidebar h1, .sidebar .who { width: 100%; margin-bottom: 4px; }
+  .sidebar .nav { width: auto; }
+  main { padding: 16px 12px 40px; }
 }

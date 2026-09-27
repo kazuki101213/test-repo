@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
-import type { ItemView, Staff } from '@bussan/shared';
+import type { Staff } from '@bussan/shared';
+import type { InventoryItem } from '../api';
 import { fetchAmazonFeed, fetchItems, fetchStaff, recordSale } from '../api';
 import { downloadCsv, downloadTsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 
-export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: Staff; purchaseOpen: boolean; onPurchaseOpen: (open: boolean) => void }) {
-  const [items, setItems] = useState<ItemView[]>([]);
+export default function Inventory({ me }: { me: Staff }) {
+  const [items, setItems] = useState<InventoryItem[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [status, setStatus] = useState('');
   const [delivererId, setDelivererId] = useState('');
@@ -19,7 +20,7 @@ export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: St
   const request = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [saleFor, setSaleFor] = useState<ItemView | null>(null);
+  const [saleFor, setSaleFor] = useState<InventoryItem | null>(null);
 
   const load = useCallback(async () => {
     const current = ++request.current;
@@ -53,10 +54,10 @@ export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: St
   }
 
   return (
-    <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
+    <div className="inventory-workspace with-purchase">
       <section className="inventory-list" aria-label="在庫一覧">
       <h2>在庫一覧</h2>
-      <p className="sub">仕入れから販売までを一覧で確認できます。過去の仕入れも年を指定して表示できます。</p>
+      <p className="sub">仕入先ごとの行は残し、同じ通番号を1商品として扱います。販売記録・仕入合計は同じ商品内で共有します。右側から仕入登録できます。</p>
 
       <div className="toolbar">
         <input
@@ -88,7 +89,6 @@ export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: St
           表示中の100件をCSV
         </button>
         <button className="btn" onClick={() => void exportAmazon()}>Amazon出品ファイル</button>
-        <button className="btn primary" aria-expanded={purchaseOpen} onClick={() => onPurchaseOpen(!purchaseOpen)}>仕入登録</button>
       </div>
 
       {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
@@ -107,7 +107,7 @@ export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: St
           <table>
             <thead>
               <tr>
-                <th>SKU</th><th>状態</th><th>商品名</th><th>ASIN</th>
+                <th>通番号 / SKU</th><th>状態</th><th>商品名</th><th>ASIN</th>
                 <th>仕入日</th><th className="num">仕入</th>
                 <th>仕入先</th><th>納品担当</th><th>進捗</th>
                 <th className="num">予定価格</th><th className="num">見込利益</th>
@@ -118,7 +118,7 @@ export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: St
             <tbody>
               {items.map((i) => (
                 <tr key={i.id}>
-                  <td className="sku">{i.sku}</td>
+                  <td><strong>通番号 {i.lot_seq}</strong><div className="sku">{i.sku}</div>{i.product_row_count > 1 && <small className="sub">同一商品・{i.product_row_count}行 / 仕入合計 {yen(i.product_cost)}</small>}</td>
                   <td>
                     <span className="dot" style={{ background: STATUS_COLORS[i.status] }} />
                     {i.status}
@@ -138,12 +138,12 @@ export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: St
                   </td>
                   <td className="num">{yen(i.planned_price)}</td>
                   <td className="num">{yen(i.expected_profit)}</td>
-                  <td>{jpDate(i.sold_on)}</td>
-                  <td className="num">{yen(i.sold_price)}</td>
-                  <td className="num">{yen(i.payout_amount)}</td>
+                  <td>{i.product_sale_conflict ? <span className="badge">販売記録の確認が必要</span> : jpDate(i.product_sold_on)}</td>
+                  <td className="num">{yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price)}</td>
+                  <td className="num">{yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount)}</td>
                   <td className="num">{i.days_in_stock ?? '—'}</td>
                   <td>
-                    {i.sold_on === null && (
+                    {i.sale_row_count === 0 && (
                       <button className="btn" onClick={() => setSaleFor(i)}>販売登録</button>
                     )}
                   </td>
@@ -154,10 +154,9 @@ export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: St
         </div>
       )}
       </section>
-      {purchaseOpen && <aside className="purchase-panel" aria-label="仕入登録パネル">
-        <button className="btn purchase-close" onClick={() => onPurchaseOpen(false)}>仕入登録を閉じる</button>
+      <aside className="purchase-panel" aria-label="仕入登録パネル">
         <NewPurchase me={me} onSaved={() => void load()} />
-      </aside>}
+      </aside>
 
       {saleFor && (
         <SaleDialog
@@ -170,7 +169,7 @@ export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: St
   );
 }
 
-function SaleDialog({ item, onClose, onSaved }: { item: ItemView; onClose: () => void; onSaved: () => void }) {
+function SaleDialog({ item, onClose, onSaved }: { item: InventoryItem; onClose: () => void; onSaved: () => void }) {
   const [soldOn, setSoldOn] = useState(new Date().toISOString().slice(0, 10));
   const [price, setPrice] = useState(item.planned_price ?? 0);
   const [payout, setPayout] = useState(item.planned_payout ?? 0);
@@ -192,13 +191,14 @@ function SaleDialog({ item, onClose, onSaved }: { item: ItemView; onClose: () =>
     }
   }
 
-  const profit = payout - item.cost_amount;
+  const profit = payout - item.product_cost;
 
   return (
     <div className="card" style={{ position: 'fixed', inset: 'auto 24px 24px auto', width: 340, zIndex: 20, boxShadow: '0 12px 40px rgba(0,0,0,.5)' }}>
       <h3>販売登録</h3>
       <p className="sku">{item.sku}</p>
       <p className="sub" style={{ margin: '0 0 10px' }}>{item.title}</p>
+      <p className="sub">通番号 {item.lot_seq} の{item.product_row_count}行を同じ商品として、売上は1回だけ登録します。</p>
 
       <label className="field"><span>販売日</span>
         <input type="date" value={soldOn} onChange={(e) => setSoldOn(e.target.value)} />
@@ -212,7 +212,7 @@ function SaleDialog({ item, onClose, onSaved }: { item: ItemView; onClose: () =>
 
       <p style={{ marginTop: 10 }}>
         振込額 − 仕入額 <strong style={{ color: profit >= 0 ? 'var(--ok)' : 'var(--danger)' }}>{yen(profit)}</strong>
-        <span className="sub"> （仕入 {yen(item.cost_amount)}）</span>
+        <span className="sub"> （同一商品の仕入合計 {yen(item.product_cost)}）</span>
       </p>
 
       {error && <div className="error">{error}</div>}

@@ -65,7 +65,7 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
   }
   return <details className="card amazon-sales">
     <summary>Amazonの販売情報を在庫に反映</summary>
-    <p className="sub" style={{ marginTop: 12 }}>SKUが一致する1個の販売について、注文日・販売価格・商品別の手数料控除後金額を記入します。既存の販売記録と異なるものは確認対象になります。</p>
+    <p className="sub" style={{ marginTop: 12 }}>SKU、または同じ通番号の本体行と照合し、注文日・販売価格・商品別の手数料控除後金額を1商品につき1回だけ記入します。仕入先ごとの行は残します。既存の販売記録と異なるものは確認対象になります。</p>
     <div className="toolbar">
       <label className="field"><span>Amazon計上期間・開始日</span><input type="date" value={start} disabled={busy} onChange={e => setStart(e.target.value)} /></label>
       <label className="field"><span>終了日</span><input type="date" value={end} disabled={busy} onChange={e => setEnd(e.target.value)} /></label>

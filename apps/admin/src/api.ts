@@ -1,4 +1,5 @@
 import { getSupabase } from '@bussan/shared';
+import type { SaleRow } from './sales';
 import type {
   DelivererWorkload, ItemInsert, ItemView, LedgerRow,
   MonthlySummary, Product, Staff, StockSummary,
@@ -26,7 +27,7 @@ export async function fetchStockSummary(): Promise<StockSummary | null> {
 
 export async function fetchMonthly(limit = 12): Promise<MonthlySummary[]> {
   const { data, error } = await getSupabase()
-    .from('v_monthly_summary').select('*').limit(limit);
+    .from('v_monthly_summary').select('*').not('month', 'is', null).order('month', { ascending: false }).limit(limit);
   if (error) throw error;
   return (data ?? []) as MonthlySummary[];
 }
@@ -45,14 +46,33 @@ export interface ItemFilter {
   purchaseYear?: string;
 }
 
-export async function fetchItems(filter: ItemFilter = {}, page = 0, pageSize = 100): Promise<{ items: ItemView[]; count: number }> {
-  let q = getSupabase().from('v_items').select('*', { count: 'exact' })
+export type InventoryItem = ItemView & {
+  product_row_count: number; product_cost: number; sale_row_count: number;
+  product_sale_conflict: boolean; product_sold_on: string | null;
+  product_sold_price: number | null; product_payout_amount: number | null;
+};
+
+/** Read every authorized purchase row so a lot split across pages is still one product. */
+export async function fetchSaleRows(): Promise<SaleRow[]> {
+  const rows: SaleRow[] = [];
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await getSupabase().from('items')
+      .select('id,lot_seq,is_accessory,cost_amount,sold_on,sold_price,payout_amount')
+      .order('id').range(offset, offset + 499);
+    if (error) throw error;
+    rows.push(...(data ?? []) as SaleRow[]);
+    if ((data?.length ?? 0) < 500) return rows;
+  }
+}
+
+export async function fetchItems(filter: ItemFilter = {}, page = 0, pageSize = 100): Promise<{ items: InventoryItem[]; count: number }> {
+  let q = getSupabase().from('v_inventory_items').select('*', { count: 'exact' })
     .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
     .range(page * pageSize, (page + 1) * pageSize - 1);
 
   if (filter.status) q = q.eq('status', filter.status);
   if (filter.delivererId) q = q.eq('deliverer_id', filter.delivererId);
-  if (filter.unsoldOnly) q = q.is('sold_on', null);
+  if (filter.unsoldOnly) q = q.eq('sale_row_count', 0);
   if (filter.purchaseYear === 'unknown') q = q.is('purchased_at', null);
   else if (filter.purchaseYear) q = q.gte('purchased_at', `${filter.purchaseYear}-01-01`).lt('purchased_at', `${Number(filter.purchaseYear) + 1}-01-01`);
   if (filter.query) {
@@ -62,7 +82,7 @@ export async function fetchItems(filter: ItemFilter = {}, page = 0, pageSize = 1
 
   const { data, error, count } = await q;
   if (error) throw error;
-  return { items: (data ?? []) as ItemView[], count: count ?? 0 };
+  return { items: (data ?? []) as InventoryItem[], count: count ?? 0 };
 }
 
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {

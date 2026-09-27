@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { DelivererWorkload, MonthlySummary, StockSummary } from '@bussan/shared';
 import { fetchMonthly, fetchStockSummary, fetchWorkload } from '../api';
+import DailySalesChart from '../components/DailySalesChart';
+import { japanMonth } from '../sales';
 
 function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'pos' | 'neg' }) {
   return (
@@ -24,7 +26,7 @@ export default function Dashboard() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
-  const current = months[0];
+  const current = months.find(m => m.month?.startsWith(japanMonth()));
   const maxWork = Math.max(1, ...workload.map((w) => w.未完了));
 
   return (
@@ -48,18 +50,8 @@ export default function Dashboard() {
         <Kpi label="作業中 / 入荷待ち" value={`${stock?.作業中 ?? 0} / ${stock?.入荷待ち ?? 0}`} />
       </div>
 
+      <DailySalesChart />
       <div className="grid cols2" style={{ marginTop: 16 }}>
-        <div className="card">
-          <h3>在庫の滞留（仕入からの経過日数）</h3>
-          <table>
-            <tbody>
-              <tr><td>高回転（〜7日）</td><td className="num">{stock?.高回転 ?? 0} 点</td></tr>
-              <tr><td>中回転（8〜14日）</td><td className="num">{stock?.中回転 ?? 0} 点</td></tr>
-              <tr><td>低回転（15日〜）</td><td className="num">{stock?.低回転 ?? 0} 点</td></tr>
-            </tbody>
-          </table>
-        </div>
-
         <div className="card">
           <h3>納品担当者の稼働</h3>
           {workload.length === 0 && <p className="empty">データがありません。</p>}
