@@ -32,3 +32,7 @@ file_size_limit = "20MiB"
 # JWT is validated with Supabase Auth inside the function before any Amazon call.
 [functions.amazon-fba-inventory]
 verify_jwt = false
+
+# Auth.getUser and app.is_admin are checked before reads or writes.
+[functions.amazon-payments]
+verify_jwt = false

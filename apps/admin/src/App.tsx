@@ -8,8 +8,9 @@ import NewPurchase from './pages/NewPurchase';
 import Products from './pages/Products';
 import Ledger from './pages/Ledger';
 import AmazonInventory from './pages/AmazonInventory';
+import AmazonPayments from './pages/AmazonPayments';
 
-type Page = 'dashboard' | 'inventory' | 'new' | 'products' | 'ledger' | 'amazon';
+type Page = 'dashboard' | 'inventory' | 'new' | 'products' | 'ledger' | 'amazon' | 'payments';
 
 const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
@@ -74,6 +75,7 @@ export default function App() {
         ))}
         <span style={{ flex: 1 }} />
         {session.staff.role === 'admin' && <button className="nav" data-active={page === 'amazon'} onClick={() => setPage('amazon')}>Amazon FBA</button>}
+        {session.staff.role === 'admin' && <button className="nav" data-active={page === 'payments'} onClick={() => setPage('payments')}>Amazon ペイメント</button>}
         <button className="nav" onClick={() => void signOut().then(refresh)}>ログアウト</button>
       </aside>
 
@@ -84,6 +86,7 @@ export default function App() {
         {page === 'products'  && <Products />}
         {page === 'ledger'    && <Ledger />}
         {page === 'amazon' && session.staff.role === 'admin' && <AmazonInventory />}
+        {page === 'payments' && session.staff.role === 'admin' && <AmazonPayments />}
       </main>
     </div>
   );
