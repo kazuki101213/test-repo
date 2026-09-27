@@ -32,7 +32,6 @@ export default function Dashboard() {
   return (
     <>
       <h2>ダッシュボード</h2>
-      <p className="sub">在庫と今月の数字。総合管理表の集計シートに対応します。</p>
       {error && <div className="error">{error}</div>}
 
       <div className="grid kpi">
