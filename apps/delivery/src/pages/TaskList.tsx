@@ -45,9 +45,10 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
     const q = normalizeSku(query);
     return tasks.filter((t) => {
       if (q && !normalizeSku(t.sku).includes(q) && !t.title.toUpperCase().includes(q)) return false;
+      const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
-        case 'todo':    return t.arrived_on === null;
-        case 'arrived': return t.arrived_on !== null && t.shipped_on === null;
+        case 'todo':    return active && t.arrived_on === null && t.shipped_on === null && !t.inspected && !t.cleaned && !t.product_registered && !t.photo_uploaded;
+        case 'arrived': return active && (t.arrived_on !== null || t.inspected || t.cleaned || t.product_registered || t.photo_uploaded) && t.shipped_on === null;
         case 'shipped': return t.shipped_on !== null;
         case 'all':     return true;
       }

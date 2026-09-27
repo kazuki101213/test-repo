@@ -36,10 +36,9 @@ export const STATUS_COLORS: Record<ItemStatus, string> = {
 
 /** 納品担当者の作業フロー。この順番でアプリに並べる。 */
 export const WORK_STEPS: { key: WorkStep; label: string; hint: string }[] = [
-  { key: 'arrived',    label: '入荷',        hint: '商品が手元に届いた' },
-  { key: 'registered', label: '商品登録',    hint: 'Amazon へ商品登録した' },
-  { key: 'inspected',  label: '検品・清掃',  hint: '動作確認と清掃・除菌が済んだ' },
-  { key: 'photo',      label: '写真登録',    hint: '商品写真をアップロードした' },
+  { key: 'inspected',  label: '検品',        hint: '商品の状態・付属品を確認した' },
+  { key: 'cleaned',    label: '清掃',        hint: '清掃・除菌が済んだ' },
+  { key: 'listing',    label: '商品登録・写真登録', hint: '商品登録と商品写真の登録が済んだ' },
   { key: 'packed',     label: '梱包',        hint: '梱包が完了した' },
   { key: 'shipped',    label: '出荷',        hint: '発送した' },
 ];

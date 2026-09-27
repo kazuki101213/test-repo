@@ -18,12 +18,25 @@ export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
  */
 
 export async function fetchMyTasks(): Promise<DeliveryTask[]> {
-  const { data, error } = await getSupabase()
-    .from('v_delivery_tasks')
-    .select('*')
-    .order('purchased_at', { ascending: true });
+  const rows: DeliveryTask[] = [];
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await getSupabase().from('v_delivery_tasks').select('*')
+      .order('purchased_at', { ascending: false, nullsFirst: false })
+      .order('lot_seq', { ascending: false }).order('id').range(offset, offset + 499);
+    if (error) throw error;
+    rows.push(...(data ?? []) as DeliveryTask[]);
+    if ((data?.length ?? 0) < 500) return rows;
+  }
+}
+
+export async function saveDeliveryDescription(itemId: string, input: {
+  condition: ItemCondition | null; accessories: string; description: string; template: string | null; year: number | null;
+}) {
+  const { error } = await getSupabase().rpc('save_delivery_description', {
+    p_item_id: itemId, p_condition: input.condition, p_accessories: input.accessories,
+    p_description: input.description, p_template: input.template, p_manufacture_year: input.year,
+  });
   if (error) throw error;
-  return (data ?? []) as DeliveryTask[];
 }
 
 export async function fetchTask(id: string): Promise<DeliveryTask | null> {

@@ -2,10 +2,9 @@ import { jpDate } from '@bussan/shared';
 import type { DeliveryTask } from '@bussan/shared';
 
 const STEP_FLAGS = (t: DeliveryTask) => [
-  t.arrived_on !== null,
-  t.product_registered,
   t.inspected,
-  t.photo_uploaded,
+  t.cleaned,
+  t.product_registered && t.photo_uploaded,
   t.packed_on !== null,
   t.shipped_on !== null,
 ];

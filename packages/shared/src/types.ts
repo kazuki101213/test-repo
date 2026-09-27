@@ -22,7 +22,7 @@ export type TurnoverClass = '高' | '中' | '低';
 
 export type ExpenseCategory = '固定費' | '変動費' | '給与' | '外注費' | '諸経費';
 
-export type WorkStep = 'arrived' | 'registered' | 'inspected' | 'photo' | 'packed' | 'shipped';
+export type WorkStep = 'arrived' | 'registered' | 'inspected' | 'cleaned' | 'photo' | 'listing' | 'packed' | 'shipped';
 
 export interface Staff {
   id: string;
@@ -153,6 +153,9 @@ export interface DeliveryTask {
   tracking_no: string | null;
   accessories: string | null;
   description: string | null;
+  description_template: string | null;
+  manufacture_year: number | null;
+  cleaned: boolean;
   sales_channel: SalesChannel | null;
   planned_price: number | null;
   deliverer_id: string | null;
