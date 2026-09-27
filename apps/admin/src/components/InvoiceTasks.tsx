@@ -86,8 +86,8 @@ export default function InvoiceTasks({ onApproved }: { onApproved: () => void })
   }, [revision]);
   const pending = rows.filter(row => !approval(row)).length;
   const filtered = rows.filter(row => filter === 'pending' ? !approval(row) : !!approval(row));
-  return <section className="card invoice-tasks" aria-label="タスク表">
-    <div className="toolbar"><h3>タスク表</h3><span>承認待ち {pending}件</span><select aria-label="請求書の状態" value={filter} onChange={e => setFilter(e.target.value as 'pending' | 'approved')}><option value="pending">承認待ち</option><option value="approved">承認済み</option></select></div>
+  return <section className="card invoice-tasks" aria-label="タスク">
+    <div className="toolbar"><h3>タスク</h3><span>承認待ち {pending}件</span><select aria-label="請求書の状態" value={filter} onChange={e => setFilter(e.target.value as 'pending' | 'approved')}><option value="pending">承認待ち</option><option value="approved">承認済み</option></select></div>
     {error && <div className="error" role="alert">{error}<button className="btn" onClick={() => setRevision(n => n + 1)}>再読み込み</button></div>}
     {message && <p className="ok" role="status">{message}</p>}
     {loading ? <p>読み込み中…</p> : filtered.length === 0 ? <p className="sub">{filter === 'pending' ? '承認待ちの請求書はありません。' : '承認済みの請求書はありません。'}</p> : <ul className="invoice-task-rows">{filtered.map(row => <li key={row.id}><button onClick={() => setSelected(row)}><span>{row.snapshot.profile.issuer_name}<small>{row.billing_month.slice(0, 7)} 請求書</small></span><strong>{yen(row.total)}</strong><span>確認 ›</span></button></li>)}</ul>}

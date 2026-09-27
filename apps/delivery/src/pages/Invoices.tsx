@@ -116,7 +116,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     setBusy(true); setError(''); setMessage('');
     try {
       const saved = await saveInvoice(staffId, month, issued, extras, note, invoice);
-      setInvoice(saved); setSnapshot(saved.snapshot); setExtras(saved.extras); setDirty(false); setMessage('請求書を提出しました。管理者のタスク表に追加され、承認後に経費へ反映されます。');
+      setInvoice(saved); setSnapshot(saved.snapshot); setExtras(saved.extras); setDirty(false); setMessage('請求書を提出しました。管理者のタスクに追加され、承認後に経費へ反映されます。');
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   }
