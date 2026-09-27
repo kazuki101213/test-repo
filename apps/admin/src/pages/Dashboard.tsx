@@ -50,6 +50,7 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
       {error && <div className="error">{error}</div>}
 
       <div className="grid kpi">
+        {isAdmin && <InvoiceTasks onApproved={() => setExpenseRevision(n => n + 1)} />}
         <div className="card">
           <div className="kpi-label">今月の利益</div>
           <div style={{ marginTop: 10 }}>
@@ -61,7 +62,6 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
             <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
           </div>
         </div>
-        {isAdmin && <InvoiceTasks onApproved={() => setExpenseRevision(n => n + 1)} />}
         <div className="card sales-summary-card">
           <div className="kpi-label">今月の販売</div>
           <div className="sales-kpi-line"><span>今月の売上</span><strong>{yen(current?.売上)} / {current?.販売数 ?? 0} 点</strong></div>
