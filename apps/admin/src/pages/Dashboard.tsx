@@ -52,18 +52,24 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
       {error && <div className="error">{error}</div>}
 
       <div className="grid kpi">
-        <Kpi label="現在庫数" value={`${stock?.現在庫数 ?? 0} 点`} detail="在庫一覧から販売済・返品処理・廃棄を除外。同じ通番号は1点として集計します。Amazon返品は含みます。" />
-        <Kpi label="在庫の仕入金額" value={yen(stock?.仕入金額合計)} />
+        <div className="card">
+          <div className="kpi-label">今月の利益</div>
+          <div style={{ marginTop: 10 }}>
+            <div className="kpi-label">粗利益</div>
+            <div className={`kpi-value ${(current?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.粗利益)}</div>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <div className="kpi-label">純利益</div>
+            <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
+          </div>
+        </div>
+        <Kpi label="今月の販売" value={`${yen(current?.売上)} / ${current?.販売数 ?? 0} 点`} />
+        <Kpi label="今月の経費" value={yen(current?.経費)} />
+        <Kpi label="今月の仕入" value={`${yen(current?.仕入金額)} / ${current?.仕入数 ?? 0} 点`} />
         <Kpi label="在庫の売上見込み" value={yen(stock?.売上見込み合計)} />
         <Kpi label="在庫の見込み利益" value={yen(stock?.見込み利益合計)} tone="pos" />
-        <Kpi label="今月の仕入" value={`${current?.仕入数 ?? 0} 点 / ${yen(current?.仕入金額)}`} />
-        <Kpi label="今月の販売" value={`${current?.販売数 ?? 0} 点 / ${yen(current?.売上)}`} />
-        <Kpi label="今月の経費" value={yen(current?.経費)} />
-        <Kpi
-          label="今月の純利益"
-          value={yen(current?.純利益)}
-          tone={(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}
-        />
+        <Kpi label="現在庫数" value={`${stock?.現在庫数 ?? 0} 点`} detail="在庫一覧から販売済・返品処理・廃棄を除外。同じ通番号は1点として集計します。Amazon返品は含みます。" />
+        <Kpi label="在庫の仕入金額" value={yen(stock?.仕入金額合計)} />
         <Kpi label="作業中 / 入荷待ち" value={`${stock?.作業中 ?? 0} / ${stock?.入荷待ち ?? 0}`} />
       </div>
 
