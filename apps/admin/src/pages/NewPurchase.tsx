@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, buildSku, yen,
+  CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen,
 } from '@bussan/shared';
 import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
@@ -40,6 +40,8 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [plannedPrice, setPlannedPrice] = useState<number | ''>('');
   const [plannedPayout, setPlannedPayout] = useState<number | ''>('');
   const [note, setNote] = useState('');
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const noteInput = useRef<HTMLTextAreaElement>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -67,23 +69,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   }, [product]);
 
   const purchaser = staff.find((s) => s.id === purchaserId);
-  const deliverer = staff.find((s) => s.id === delivererId);
-
-  // 保存前に SKU を確認できるようにする（DB 側の app.build_sku と同じ規則）
-  const skuPreview = useMemo(() => {
-    if (!purchaser || lotSeq === '' || cost === '') return null;
-    try {
-      return buildSku({
-        lotSeq, purchaserCode: purchaser.code, delivererCode: deliverer?.code,
-        purchasedAt, costAmount: Number(cost),
-      });
-    } catch {
-      return null;
-    }
-  }, [purchaser, deliverer, lotSeq, cost, purchasedAt]);
-
   // 利益が出ない仕入れはその場で気づけるようにする
-  const expected = plannedPayout !== '' && cost !== '' ? Number(plannedPayout) - Number(cost) : null;
   const overTarget = product?.target_cost != null && cost !== '' && Number(cost) > product.target_cost;
 
   function changeItemId(value: string) {
@@ -140,7 +126,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       setDone(`登録しました: ${created.sku}`);
       // 続けて同じ商品の仕入れを登録できるよう、通番号と担当者は残す
       setTitle(''); setCost(''); setMarketplaceItemId(''); setUrlOverride(null);
-      setProductId(''); setNote('');
+      setProductId(''); setNote(''); setTemplatesOpen(false);
       onSaved?.();
     } catch (e2) {
       setError(e2 instanceof Error ? e2.message : String(e2));
@@ -253,33 +239,23 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                 <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
               </label>
             </div>
-            <label className="field" style={{ marginTop: 10 }}><span>納品担当者への申し送り</span>
-              <select aria-label="申し送りの定型文" value="" onChange={(e) => {
-                const template = e.target.value;
-                if (template) setNote(current => current ? `${current.trimEnd()}\n${template}` : template);
-              }}>
-                <option value="">定型文を選択</option>
-                {handoffTemplates.map(template => <option key={template} value={template}>{template.replace('\n', ' ')}</option>)}
-              </select>
-            </label>
-            <label className="field" style={{ marginTop: 8 }}><span>申し送り内容</span>
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="自由に入力・編集できます" />
-            </label>
-          </div>
-
-          <div className="card">
-            <h3>確認</h3>
-            <p className="kpi-label">発番される SKU</p>
-            <p className="sku" style={{ fontSize: 16 }}>{skuPreview ?? '— 担当者・通番号・仕入金額を入力してください —'}</p>
-            <p className="kpi-label" style={{ marginTop: 14 }}>見込み利益</p>
-            <p className="kpi-value" style={{ color: expected == null ? undefined : expected >= 0 ? 'var(--ok)' : 'var(--danger)' }}>
-              {expected == null ? '—' : yen(expected)}
-            </p>
-            <button className="btn primary" style={{ marginTop: 16, width: '100%' }} disabled={busy}>
-              {busy ? '登録中…' : 'この内容で登録する'}
-            </button>
+            <div className="field" style={{ marginTop: 10 }}>
+              <label htmlFor="purchase-handoff">納品担当者への申し送り</label>
+              <div className="handoff-input" onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget)) setTemplatesOpen(false); }} onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setTemplatesOpen(false); } }}>
+                <textarea ref={noteInput} id="purchase-handoff" value={note} onChange={e => setNote(e.target.value)} placeholder="手入力、または右の▼から定型文を選択" />
+                <button type="button" className="handoff-toggle" aria-label="申し送りの定型文を選択" aria-expanded={templatesOpen} aria-controls="handoff-templates" onClick={() => setTemplatesOpen(open => !open)}>▼</button>
+                {templatesOpen && <div id="handoff-templates" className="handoff-options">
+                  {handoffTemplates.map(template => <button type="button" key={template} onClick={() => {
+                    setNote(current => current ? `${current.trimEnd()}\n${template}` : template);
+                    setTemplatesOpen(false);
+                    noteInput.current?.focus();
+                  }}>{template}</button>)}
+                </div>}
+              </div>
+            </div>
           </div>
         </div>
+        <button className="btn primary" style={{ marginTop: 16, width: '100%' }} disabled={busy}>{busy ? '登録中…' : '登録する'}</button>
       </form>
     </>
   );

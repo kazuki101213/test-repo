@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { DelivererWorkload, MonthlySummary, StockSummary } from '@bussan/shared';
-import { fetchMonthly, fetchStockSummary, fetchWorkload } from '../api';
+import { fetchMonthly, fetchStockSummary, fetchWorkload, type WorkloadMetric } from '../api';
 import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
 import ExpensePanel from '../components/ExpensePanel';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
+import WorkloadDetail from '../components/WorkloadDetail';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
 
@@ -26,6 +27,7 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
   const [error, setError] = useState<string | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [detail, setDetail] = useState<{ month: string; metric: MonthlyMetric } | null>(null);
+  const [workloadDetail, setWorkloadDetail] = useState<{ delivererId: string; name: string; metric: WorkloadMetric } | null>(null);
   const [expenseBusy, setExpenseBusy] = useState(false);
   const [revision, setRevision] = useState(0);
 
@@ -83,9 +85,9 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
                   <td>
                     {w.deliverer_name}
                   </td>
-                  <td className="num">{w.未完了}</td>
-                  <td className="num">{w.今月出荷}</td>
-                  <td className="num">{w.平均作業日数 ?? '—'}</td>
+                  {(['未完了', '今月出荷', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
+                    <button className="metric-link" aria-label={`${w.deliverer_name} ${metric}の詳細`} onClick={() => setWorkloadDetail({ delivererId: w.deliverer_id, name: w.deliverer_name, metric })}>{w[metric] ?? '—'}</button>
+                  </td>)}
                 </tr>
               ))}
             </tbody>
@@ -127,6 +129,7 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
       </section>
       {canManageExpenses && expenseOpen && <ExpensePanel onSaved={() => setRevision(v => v + 1)} onBusyChange={setExpenseBusy} />}
       {detail && <MonthlyDetail month={detail.month} metric={detail.metric} onClose={() => setDetail(null)} />}
+      {workloadDetail && <WorkloadDetail {...workloadDetail} onClose={() => setWorkloadDetail(null)} />}
     </div>
   );
 }

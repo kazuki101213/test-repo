@@ -112,6 +112,12 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .purchase-panel .grid.cols2 { grid-template-columns: minmax(0, 1fr); }
 .purchase-panel .card { padding: 12px; }
 .purchase-panel .sku { overflow-wrap: anywhere; }
+.handoff-input { position: relative; }
+.handoff-input textarea { width: 100%; padding-right: 40px; min-height: 90px; }
+.handoff-toggle { position: absolute; top: 1px; right: 1px; width: 34px; height: 34px; border: 0; border-radius: 7px; background: var(--surface-2); color: var(--text); cursor: pointer; }
+.handoff-options { position: absolute; z-index: 5; top: 36px; right: 0; left: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px #0005; overflow: hidden; }
+.handoff-options button { display: block; width: 100%; padding: 10px; border: 0; border-bottom: 1px solid var(--border); text-align: left; white-space: pre-wrap; background: transparent; color: var(--text); cursor: pointer; }
+.handoff-options button:hover, .handoff-options button:focus-visible { background: var(--surface); color: var(--accent); }
 .dashboard-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .dashboard-workspace.with-expense { grid-template-columns: minmax(360px, 1fr) minmax(320px, 380px); overflow-x: auto; }
 .dashboard-content { min-width: 0; }
@@ -122,6 +128,16 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .expense-fields textarea { min-height: 52px; }
 .expense-hint { margin: 0; align-self: center; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .expense-list { margin-bottom: 16px; }
+.expense-columns-scroll { overflow-x: auto; }
+.expense-columns { display: grid; grid-template-columns: repeat(3, minmax(240px, 1fr)); gap: 16px; align-items: start; }
+.expense-column { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.expense-column header p { margin: 0 0 12px; color: var(--muted); }
+.expense-column header strong { color: var(--text); }
+.expense-entries { list-style: none; padding: 0; margin: 0; max-height: 65vh; overflow-y: auto; }
+.expense-entries li { padding: 12px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.expense-entry-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.expense-entry-top time { color: var(--muted); font-size: 12px; }
+.expense-entries .expense-hint { margin-top: 4px; white-space: pre-wrap; }
 .expense-table { max-height: 40vh; }
 .expense-list .expense-table { max-height: 65vh; }
 td.detail-description { white-space: normal; min-width: 200px; max-width: 400px; overflow-wrap: anywhere; }

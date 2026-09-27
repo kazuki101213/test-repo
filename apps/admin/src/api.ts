@@ -53,6 +53,25 @@ export interface ItemFilter {
   purchasedTo?: string;
 }
 
+export type WorkloadMetric = '未完了' | '今月出荷' | '平均作業日数';
+export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'arrived_on' | 'shipped_on'>;
+
+export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric): Promise<WorkloadItem[]> {
+  // Match v_deliverer_workload: row counts and the database's UTC calendar month.
+  const monthStart = new Date().toISOString().slice(0, 7) + '-01';
+  return readAllRows<WorkloadItem>(async (from, to) => {
+    let query = getSupabase().from('items')
+      .select('id,lot_seq,sku,title,status,marketplace,purchased_at,arrived_on,shipped_on')
+      .eq('deliverer_id', delivererId);
+    if (metric === '未完了') query = query.in('status', ['仕入済', '入荷済', '作業中', 'Amazon返品']);
+    else if (metric === '今月出荷') query = query.gte('shipped_on', monthStart);
+    else query = query.not('shipped_on', 'is', null).not('arrived_on', 'is', null);
+    const { data, error } = await query.order('lot_seq', { ascending: false }).order('id').range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as WorkloadItem[];
+  });
+}
+
 export async function saveExpense(input: ExpenseInput): Promise<void> {
   return saveExpenses([input]);
 }
