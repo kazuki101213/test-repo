@@ -74,8 +74,17 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
         </div>
         <Kpi label="今月の経費" value={yen(current?.経費)} />
         <Kpi label="今月の仕入" value={yen(current?.仕入金額)} count={current?.仕入数 ?? 0} />
-        <Kpi label="在庫の見込み売上" value={yen(stock?.売上見込み合計)} />
-        <Kpi label="在庫の見込み利益" value={yen(stock?.見込み利益合計)} tone="pos" />
+        <div className="card">
+          <div className="kpi-label">在庫の見込み</div>
+          <div style={{ marginTop: 10 }}>
+            <div className="kpi-label">見込み売上</div>
+            <div className="kpi-value">{yen(stock?.売上見込み合計)}</div>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <div className="kpi-label">見込み利益</div>
+            <div className={`kpi-value ${(stock?.見込み利益合計 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(stock?.見込み利益合計)}</div>
+          </div>
+        </div>
         <Kpi label="作業中 / 入荷待ち" value={`${stock?.作業中 ?? 0} / ${stock?.入荷待ち ?? 0}`} />
       </div>
 
