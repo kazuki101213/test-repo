@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { WORK_STEPS, jpDate, yen } from '@bussan/shared';
+import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
   fetchComments, fetchPhotoUrls, fetchTask, postComment,
@@ -120,16 +120,11 @@ export default function TaskDetail({
             : <div className="photo-placeholder">写真未登録</div>}
         </section>
         <div className="product-info">
-        <div className="muted">購入日 {jpDate(task.purchased_at)}</div>
-        <div className="sku">{task.sku}</div>
-        <div className="title">{task.title}</div>
-        <div className="muted">追跡番号 {task.tracking_no || '—'}</div>
-        <div className="muted">
-          {task.asin && <>ASIN {task.asin}<br /></>}
-          仕入先 {task.marketplace}
-          {task.purchaser_name && <> ／ 仕入担当 {task.purchaser_name}</>}<br />
-          販売先 {task.sales_channel ?? '—'} ／ 予定価格 {yen(task.planned_price)}
-        </div>
+        <div>購入日 {jpDate(task.purchased_at)}</div>
+        <div>SKU {task.sku}</div>
+        <div>型番 {task.title || '—'}</div>
+        <div>ASIN {task.asin || '—'}</div>
+        <div>追跡番号 {task.tracking_no || '—'}</div>
         </div>
       </div>
 
