@@ -17,6 +17,7 @@ export interface InvoiceSnapshot {
 export interface Invoice {
   id: string; staff_id: string; billing_month: string; issued_on: string; extras: InvoiceLine[];
   note: string; snapshot: InvoiceSnapshot; total: number; version: number; updated_at: string;
+  approved_at?: string;
 }
 
 export async function invoiceProfiles(): Promise<InvoiceProfile[]> {
@@ -27,7 +28,10 @@ export async function invoiceProfiles(): Promise<InvoiceProfile[]> {
 export async function findInvoice(staff: string, month: string): Promise<Invoice | null> {
   const { data, error } = await getSupabase().from('delivery_invoices').select('*').eq('staff_id', staff).eq('billing_month', month + '-01').maybeSingle();
   if (error) throw error;
-  return data as Invoice | null;
+  if (!data) return null;
+  const { data: approval, error: approvalError } = await getSupabase().from('delivery_invoice_approvals').select('approved_at').eq('invoice_id', data.id).maybeSingle();
+  if (approvalError) throw approvalError;
+  return { ...data, approved_at: approval?.approved_at } as Invoice;
 }
 export async function prepareInvoice(staff: string, month: string): Promise<InvoiceSnapshot> {
   const { data, error } = await getSupabase().rpc('prepare_delivery_invoice', { p_staff: staff, p_month: month + '-01' });

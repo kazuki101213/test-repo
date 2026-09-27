@@ -116,7 +116,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     setBusy(true); setError(''); setMessage('');
     try {
       const saved = await saveInvoice(staffId, month, issued, extras, note, invoice);
-      setInvoice(saved); setSnapshot(saved.snapshot); setExtras(saved.extras); setDirty(false); setMessage('請求書を保存しました。');
+      setInvoice(saved); setSnapshot(saved.snapshot); setExtras(saved.extras); setDirty(false); setMessage('請求書を提出しました。管理者のタスク表に追加され、承認後に経費へ反映されます。');
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   }
@@ -137,8 +137,9 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     {settings && profile && <ProfileEditor key={staffId} profile={profile} onCancel={() => setSettings(false)} onSave={p => { setProfiles(rows => rows.map(row => row.staff_id === p.staff_id ? p : row)); setSettings(false); }} />}
     {(loading || profileLoading) && <div className="empty no-print">読み込み中…</div>}
     {!loading && snapshot && !settings && <>
+      {invoice?.approved_at ? <div className="card no-print"><p>承認済み・外注費に計上済みです。</p><button type="button" className="btn" onClick={() => window.print()}>PDF保存・印刷</button></div> :
       <form className="card no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save(); }}>
-        <div className="row"><label>請求日<input type="date" required value={issued} disabled={busy} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label><span className="muted">{invoice ? '保存済み' : '未保存'}・納品 {snapshot.lines.length}点</span></div>
+        <div className="row"><label>請求日<input type="date" required value={issued} disabled={busy} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label><span className="muted">{invoice ? '承認待ち' : '未提出'}・納品 {snapshot.lines.length}点</span></div>
         <h3>送料・資材費・手当など</h3>
         {extras.map((line, i) => <div className="invoice-extra" key={i}>
           <label>日付<input type="date" value={line.date ?? ''} disabled={busy} onChange={e => changeExtra(i, { date: e.target.value || null })} /></label>
@@ -151,8 +152,8 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         <button type="button" className="btn ghost" disabled={busy || extras.length >= 100} onClick={() => { setExtras(rows => [...rows, { date: null, description: '', quantity: 1, unit_price: 0 }]); setDirty(true); }}>明細を追加</button>
         <label className="invoice-note-input">備考<textarea maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>
         <p className="muted">保存時に梱包実績と設定単価を再集計します。消費税の別途加算はありません。</p>
-        <div className="row"><button className="btn" disabled={busy || (!snapshot.lines.length && !extras.length)}>{busy ? '保存中…' : '請求書を保存'}</button><button type="button" className="btn ghost" disabled={busy || dirty || !invoice} onClick={() => window.print()}>PDF保存・印刷</button></div>
-      </form>
+        <div className="row"><button className="btn" disabled={busy || (!snapshot.lines.length && !extras.length)}>{busy ? '提出中…' : invoice ? '修正して再提出' : '請求書を作成・提出'}</button><button type="button" className="btn ghost" disabled={busy || dirty || !invoice} onClick={() => window.print()}>PDF保存・印刷</button></div>
+      </form>}
       <InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} saved={invoice} />
     </>}
   </section>;

@@ -6,6 +6,7 @@ import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
 import WorkloadDetail from '../components/WorkloadDetail';
+import InvoiceTasks from '../components/InvoiceTasks';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
 
@@ -20,7 +21,8 @@ function Kpi({ label, value, tone, detail, count }: { label: string; value: stri
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
+  const [expenseRevision, setExpenseRevision] = useState(0);
   const [stock, setStock] = useState<StockSummary | null>(null);
   const [months, setMonths] = useState<MonthlySummary[]>([]);
   const [workload, setWorkload] = useState<DelivererWorkload[]>([]);
@@ -35,7 +37,7 @@ export default function Dashboard() {
       .then(([s, m, w]) => { if (active) { setStock(s); setMonths(m); setWorkload(w); } })
       .catch((e) => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     return () => { active = false; };
-  }, []);
+  }, [expenseRevision]);
 
   const current = months.find(m => m.month?.startsWith(japanMonth()));
   const visibleWorkload = workload.filter(w => !hiddenWorkloadNames.has(w.deliverer_name));
@@ -59,13 +61,18 @@ export default function Dashboard() {
             <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
           </div>
         </div>
-        <Kpi label="今月の販売" value={yen(current?.売上)} count={current?.販売数 ?? 0} />
+        {isAdmin && <InvoiceTasks onApproved={() => setExpenseRevision(n => n + 1)} />}
+        <div className="card">
+          <div className="kpi-label">今月の販売</div>
+          <div className="kpi-value">{yen(current?.売上)}</div>
+          <div className="kpi-value">{current?.販売数 ?? 0} 点</div>
+          <div className="kpi-label" style={{ marginTop: 12 }}>現在の在庫数</div>
+          <div className="kpi-value">{stock?.現在庫数 ?? 0} 点</div>
+        </div>
         <Kpi label="今月の経費" value={yen(current?.経費)} />
         <Kpi label="今月の仕入" value={yen(current?.仕入金額)} count={current?.仕入数 ?? 0} />
         <Kpi label="在庫の見込み売上" value={yen(stock?.売上見込み合計)} />
         <Kpi label="在庫の見込み利益" value={yen(stock?.見込み利益合計)} tone="pos" />
-        <Kpi label="現在庫数" value={`${stock?.現在庫数 ?? 0} 点`} detail="在庫一覧から販売済・返品処理・廃棄を除外。同じ通番号は1点として集計します。Amazon返品は含みます。" />
-        <Kpi label="在庫の仕入金額" value={yen(stock?.仕入金額合計)} />
         <Kpi label="作業中 / 入荷待ち" value={`${stock?.作業中 ?? 0} / ${stock?.入荷待ち ?? 0}`} />
       </div>
 

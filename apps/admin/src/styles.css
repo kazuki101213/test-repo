@@ -44,6 +44,18 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 
 .grid { display: grid; gap: 12px; }
 .grid.kpi { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.invoice-tasks { grid-column: span 2; min-width: 0; }
+.invoice-tasks .toolbar { gap: 8px; margin-bottom: 10px; }
+.invoice-tasks .toolbar h3 { margin: 0; }
+.invoice-tasks .toolbar span { color: var(--muted); font-size: 12px; }
+.invoice-tasks .toolbar select { padding: 4px 6px; margin-left: auto; font-size: 12px; }
+.invoice-task-rows { padding: 0 6px 0 0; margin: 0; list-style: none; max-height: 200px; overflow-y: auto; scrollbar-gutter: stable; }
+.invoice-task-rows button { display: flex; align-items: center; gap: 10px; justify-content: space-between; width: 100%; padding: 10px 0; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.invoice-task-rows button:hover { background: var(--surface-2); }
+.invoice-task-rows small { display: block; margin-top: 4px; color: var(--muted); }
+.invoice-task-rows strong { margin-left: auto; white-space: nowrap; }
+.invoice-task-rows button > span:last-child { font-size: 12px; color: var(--accent); white-space: nowrap; }
+@media (max-width: 620px) { .invoice-tasks { grid-column: 1 / -1; } }
 .grid.cols2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 
 .card {
