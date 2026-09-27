@@ -47,8 +47,16 @@ export const japanMonth = () => new Date(Date.now() + 9 * 3600000).toISOString()
 
 export function recentDailySales(groups: Iterable<ProductGroup>, endDate: string) {
   const end = Date.parse(endDate + 'T00:00:00Z');
-  const days = Array.from({ length: 7 }, (_, i) => ({
-    date: new Date(end - (6 - i) * 86400000).toISOString().slice(0, 10), amount: 0, count: 0,
+  return dailySalesRange(groups, new Date(end - 6 * 86400000).toISOString().slice(0, 10), endDate);
+}
+
+export function dailySalesRange(groups: Iterable<ProductGroup>, startDate: string, endDate: string) {
+  const start = Date.parse(startDate + 'T00:00:00Z');
+  const end = Date.parse(endDate + 'T00:00:00Z');
+  const length = Math.round((end - start) / 86400000) + 1;
+  if (!Number.isFinite(length) || length < 1 || length > 36600) throw new Error('開始日・終了日を確認してください。期間は100年以内で指定してください。');
+  const days = Array.from({ length }, (_, i) => ({
+    date: new Date(start + i * 86400000).toISOString().slice(0, 10), amount: 0, count: 0,
   }));
   const byDate = new Map(days.map(day => [day.date, day]));
   const conflicts: number[] = [];
