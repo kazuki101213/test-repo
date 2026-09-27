@@ -115,6 +115,20 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .expense-fields .field { min-width: 0; }
 .expense-wide { grid-column: 1 / -1; }
 .expense-fields textarea { min-height: 52px; }
+.expense-bulk-switch { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.expense-hint { margin: 0; align-self: center; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.expense-list { margin-bottom: 16px; }
+.expense-table { max-height: 40vh; }
+td.detail-description { white-space: normal; min-width: 200px; max-width: 400px; overflow-wrap: anywhere; }
+.metric-link { border: 0; background: transparent; color: inherit; padding: 4px 0; cursor: pointer; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 4px; font-variant-numeric: tabular-nums; }
+.metric-link:hover { color: var(--accent); }
+.metric-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.monthly-detail { width: min(1200px, 94vw); max-height: 90vh; overflow: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+.monthly-detail::backdrop { background: rgba(0, 0, 0, .6); }
+.monthly-detail .scroll { max-height: 48vh; margin-bottom: 16px; }
+.monthly-detail-totals { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 16px 0; }
+.monthly-detail-totals span { color: var(--muted); }
+.monthly-detail-totals strong { color: var(--text); }
 .amazon-sales { margin: 12px 0; }
 .amazon-sales summary { cursor: pointer; font-weight: 600; }
 .amazon-sales .toolbar { margin-top: 12px; }

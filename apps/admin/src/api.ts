@@ -50,16 +50,59 @@ export interface ItemFilter {
 }
 
 export async function saveExpense(input: ExpenseInput): Promise<void> {
-  validateExpense(input);
-  const { error } = await getSupabase().from('expenses').insert(input);
+  return saveExpenses([input]);
+}
+
+export async function saveExpenses(inputs: ExpenseInput[]): Promise<void> {
+  if (inputs.length === 0 || inputs.length > 120) throw new Error('登録する経費は1〜120件で指定してください。');
+  inputs.forEach(validateExpense);
+  const { error } = await getSupabase().from('expenses').insert(inputs);
   if (!error) return;
   // Reuse the form's UUID after an uncertain network result, without duplicating an expense.
   if (error.code === '23505') {
-    const { data, error: readError } = await getSupabase().from('expenses').select('*').eq('id', input.id).single();
-    if (!readError && data && Object.entries(input).every(([key, value]) => data[key] === value)) return;
+    const { data, error: readError } = await getSupabase().from('expenses').select('*').in('id', inputs.map(input => input.id));
+    if (!readError && data?.length === inputs.length && inputs.every(input => {
+      const saved = data.find(row => row.id === input.id);
+      return saved && Object.entries(input).every(([key, value]) => saved[key] === value);
+    })) return;
     throw new Error('前回の保存内容と異なります。保存済みの可能性があるため、再登録を中止しました。');
   }
   throw new Error(error.message);
+}
+
+export async function fetchExpenses(): Promise<ExpenseInput[]> {
+  return readAllRows<ExpenseInput>(async (from, to) => {
+    const { data, error } = await getSupabase().from('expenses')
+      .select('id,incurred_on,category,name,amount,card_id,staff_id,memo')
+      .order('incurred_on', { ascending: false }).order('id').range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as ExpenseInput[];
+  });
+}
+
+export type MonthlyDetailItem = Pick<ItemView, 'id' | 'lot_seq' | 'is_accessory' | 'title' | 'marketplace' | 'purchased_at' | 'sold_on' | 'cost_amount' | 'sold_price' | 'payout_amount' | 'refund_amount' | 'profit'> & { shipping_cost: number; other_cost: number };
+export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale' | 'expense' | 'profit') {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('対象月が不正です。');
+  const year = Number(month.slice(0, 4)), monthNumber = Number(month.slice(5));
+  const from = month + '-01';
+  const to = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+  const items = kind === 'expense' ? Promise.resolve([] as MonthlyDetailItem[]) : readAllRows<MonthlyDetailItem>(async (start, end) => {
+    const dateColumn = kind === 'purchase' ? 'purchased_at' : 'sold_on';
+    const { data, error } = await getSupabase().from('items')
+      .select('id,lot_seq,is_accessory,title,marketplace,purchased_at,sold_on,cost_amount,sold_price,payout_amount,refund_amount,profit,shipping_cost,other_cost')
+      .gte(dateColumn, from).lte(dateColumn, to).order('lot_seq', { ascending: false }).order('id').range(start, end);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as MonthlyDetailItem[];
+  });
+  const expenses = kind !== 'expense' && kind !== 'profit' ? Promise.resolve([] as ExpenseInput[]) : readAllRows<ExpenseInput>(async (start, end) => {
+    const { data, error } = await getSupabase().from('expenses')
+      .select('id,incurred_on,category,name,amount,card_id,staff_id,memo')
+      .gte('incurred_on', from).lte('incurred_on', to).order('incurred_on').order('id').range(start, end);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as ExpenseInput[];
+  });
+  const [itemRows, expenseRows] = await Promise.all([items, expenses]);
+  return { items: itemRows, expenses: expenseRows };
 }
 
 export type InventoryItem = ItemView & {
