@@ -120,12 +120,18 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
   .purchase-panel { position: sticky; top: 12px; max-height: calc(100vh - 24px); }
 }
 input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
-.daily-sales { margin-top: 16px; }
+.dashboard-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+.dashboard-charts > * { min-width: 0; }
+.workload-card { overflow-x: auto; }
+.workload-card td { border-bottom: 0; }
+.kpi-detail { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.kpi-detail summary { cursor: pointer; }
+@media (max-width: 700px) { .dashboard-charts { grid-template-columns: minmax(0, 1fr); } }
 .sales-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; }
 .sales-summary strong { font-size: 22px; }
 .sales-summary span { color: var(--muted); }
 .sales-chart-scroll { overflow-x: auto; }
-.sales-chart { display: block; width: 100%; min-width: 600px; margin-top: 12px; }
+.sales-chart { display: block; width: 100%; margin-top: 12px; }
 .sales-chart text { fill: var(--muted); font-size: 13px; }
 .chart-grid { stroke: var(--border); stroke-dasharray: 4 4; }
 .chart-hit { fill: transparent; cursor: pointer; }

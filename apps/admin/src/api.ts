@@ -27,9 +27,9 @@ export async function fetchStockSummary(): Promise<StockSummary | null> {
   return (data as StockSummary) ?? null;
 }
 
-export async function fetchMonthly(limit = 12): Promise<MonthlySummary[]> {
+export async function fetchMonthly(): Promise<MonthlySummary[]> {
   const { data, error } = await getSupabase()
-    .from('v_monthly_summary').select('*').not('month', 'is', null).order('month', { ascending: false }).limit(limit);
+    .from('v_monthly_summary').select('*').not('month', 'is', null).order('month', { ascending: false });
   if (error) throw error;
   return (data ?? []) as MonthlySummary[];
 }

@@ -44,3 +44,18 @@ export function dailySales(groups: Iterable<ProductGroup>, month: string) {
 }
 
 export const japanMonth = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 7);
+
+export function recentDailySales(groups: Iterable<ProductGroup>, endDate: string) {
+  const end = Date.parse(endDate + 'T00:00:00Z');
+  const days = Array.from({ length: 7 }, (_, i) => ({
+    date: new Date(end - (6 - i) * 86400000).toISOString().slice(0, 10), amount: 0, count: 0,
+  }));
+  const byDate = new Map(days.map(day => [day.date, day]));
+  const conflicts: number[] = [];
+  for (const group of groups) {
+    if (group.conflict && group.saleDates.some(date => byDate.has(date))) { conflicts.push(group.lot); continue; }
+    const day = group.sale?.sold_on ? byDate.get(group.sale.sold_on) : undefined;
+    if (day) { day.amount += group.sale?.sold_price ?? 0; day.count++; }
+  }
+  return { days, conflicts };
+}
