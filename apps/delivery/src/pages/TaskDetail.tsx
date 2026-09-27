@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { WORK_STEPS, jpDate, yen } from '@bussan/shared';
-import type { DeliveryTask, ItemComment, ItemCondition, Staff, WorkStep } from '@bussan/shared';
+import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
   fetchComments, fetchPhotoUrls, fetchTask, postComment,
-  setWorkProgress, updateDeliveryFields, uploadPhoto,
+  setWorkProgress, uploadPhoto,
 } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
 
@@ -78,17 +78,6 @@ export default function TaskDetail({
     }
   }
 
-  async function saveField(patch: { condition?: ItemCondition; accessories?: string; tracking_no?: string }) {
-    if (!task) return;
-    setError(null);
-    try {
-      await updateDeliveryFields(task.id, patch);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
   async function send() {
     if (!task || !draft.trim()) return;
     setError(null);
@@ -121,24 +110,25 @@ export default function TaskDetail({
       <div className="card product-overview">
         <section className="product-photos" aria-label="商品写真">
           <div className="spread">
-            <strong>商品写真 {photos.length > 0 && <span className="muted">({photos.length}枚)</span>}</strong>
+            {photos.length > 0 && <span className="muted">{photos.length}枚</span>}
             <label className="btn photo-upload">{uploading ? '追加中…' : '追加'}
               <input type="file" aria-label="商品写真を追加" accept="image/*" multiple disabled={uploading || pending !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
             </label>
           </div>
           {photos.length > 0 ? <div className="photos">{photos.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`商品写真 ${index + 1}`} /></a>)}</div>
-            : task.reference_image_url ? <><img className="reference-photo" src={task.reference_image_url} alt={`${task.title}の参考画像`} /><p className="muted">参考画像（Amazon）</p></>
+            : task.reference_image_url ? <img className="reference-photo" src={task.reference_image_url} alt={`${task.title}の参考画像`} />
             : <div className="photo-placeholder">写真未登録</div>}
         </section>
         <div className="product-info">
+        <div className="muted">購入日 {jpDate(task.purchased_at)}</div>
         <div className="sku">{task.sku}</div>
         <div className="title">{task.title}</div>
+        <div className="muted">追跡番号 {task.tracking_no || '—'}</div>
         <div className="muted">
           {task.asin && <>ASIN {task.asin}<br /></>}
-          仕入 {jpDate(task.purchased_at)} ／ {task.marketplace}
+          仕入先 {task.marketplace}
           {task.purchaser_name && <> ／ 仕入担当 {task.purchaser_name}</>}<br />
           販売先 {task.sales_channel ?? '—'} ／ 予定価格 {yen(task.planned_price)}
-          {task.tracking_no && <><br />追跡 {task.tracking_no}</>}
         </div>
         </div>
       </div>
@@ -166,14 +156,6 @@ export default function TaskDetail({
       </div>
 
       <DescriptionEditor key={task.id} task={task} onSaved={reload} />
-      <div className="card">
-        <label htmlFor="delivery-tracking">追跡番号</label>
-        <input
-          id="delivery-tracking"
-          type="text" defaultValue={task.tracking_no ?? ''} placeholder="ヤマト1234-5678-9012"
-          onBlur={(e) => void saveField({ tracking_no: e.target.value })}
-        />
-      </div>
 
       {/* ── 仕入担当者とのやり取り ───────────────── */}
       <div className="card">

@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { normalizeSku } from '@bussan/shared';
 import type { DeliveryTask } from '@bussan/shared';
 import { fetchAmazonFeed, fetchMyTasks } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 
-type Filter = 'all' | 'todo' | 'arrived' | 'shipped';
+type Filter = 'all' | 'arrived' | 'shipped';
+const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
 
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'todo',    label: '未着手' },
   { key: 'arrived', label: '作業中' },
   { key: 'all',     label: 'すべて' },
   { key: 'shipped', label: '出荷済' },
@@ -16,18 +15,21 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
-  const [filter, setFilter] = useState<Filter>('todo');
+  const [filter, setFilter] = useState<Filter>('arrived');
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   async function exportAmazon() {
-    if (exporting) return;
+    if (exporting || selected.size === 0) return;
     setExporting(true); setError(null);
     try {
       const rows = await fetchAmazonFeed();
-      const cleaned = rows.map(({ item_id: _id, status: _status, deliverer_id: _deliverer, ...rest }) => rest);
+      const chosen = rows.filter(row => selected.has(String(row.item_id)));
+      if (chosen.length !== selected.size) throw new Error('選択した商品に出品準備が未完了の商品が含まれています。商品登録・写真登録などを完了してから出力してください。');
+      const cleaned = chosen.map(({ item_id: _id, status: _status, deliverer_id: _deliverer, ...rest }) => rest);
       if (!cleaned.length) throw new Error('出品対象（写真登録まで完了した商品）がありません。');
       downloadTsv(`amazon-listing-${new Date().toISOString().slice(0, 10)}.txt`, cleaned);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
@@ -42,13 +44,12 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
   }, []);
 
   const shown = useMemo(() => {
-    const q = normalizeSku(query);
+    const q = normalizeSearch(query);
     return tasks.filter((t) => {
-      if (q && !normalizeSku(t.sku).includes(q) && !t.title.toUpperCase().includes(q)) return false;
+      if (q && ![String(t.lot_seq ?? ''), t.sku, t.title].some(value => normalizeSearch(value).includes(q))) return false;
       const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
-        case 'todo':    return active && t.arrived_on === null && t.shipped_on === null && !t.inspected && !t.cleaned && !t.product_registered && !t.photo_uploaded;
-        case 'arrived': return active && (t.arrived_on !== null || t.inspected || t.cleaned || t.product_registered || t.photo_uploaded) && t.shipped_on === null;
+        case 'arrived': return active && t.shipped_on === null;
         case 'shipped': return t.shipped_on !== null;
         case 'all':     return true;
       }
@@ -58,13 +59,13 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
   return (
     <>
       <input
-        type="search" placeholder="SKU / 商品名で検索"
+        type="search" placeholder="通番号 / SKU / 商品名で検索" aria-label="通番号・SKU・商品名を部分一致で検索"
         value={query} onChange={(e) => setQuery(e.target.value)}
         style={{ marginTop: 12 }}
       />
 
       <div className="filters">
-        <button className="btn" disabled={exporting} onClick={() => void exportAmazon()}>{exporting ? '出力中…' : 'Amazon出品ファイル'}</button>
+        <button className="btn" disabled={exporting || selected.size === 0} onClick={() => void exportAmazon()}>{exporting ? '出力中…' : `Amazon出品ファイル（${selected.size}件）`}</button>
         {FILTERS.map((f) => (
           <button
             key={f.key} className="btn" data-active={filter === f.key}
@@ -74,12 +75,20 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
           </button>
         ))}
       </div>
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="btn" disabled={exporting || shown.length === 0} onClick={() => setSelected(current => new Set([...current, ...shown.map(t => t.id)]))}>表示中を選択</button>
+        <button className="btn" disabled={exporting || selected.size === 0} onClick={() => setSelected(new Set())}>選択解除</button>
+      </div>
 
       {error && <div className="error">{error}</div>}
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shown.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shown.map((t) => <TaskCard key={t.id} task={t} onOpen={() => onOpen(t.id)} />)}
+      {shown.map((t) => <TaskCard key={t.id} task={t} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+        const next = new Set(current);
+        if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+        return next;
+      })} onOpen={() => onOpen(t.id)} />)}
     </>
   );
 }

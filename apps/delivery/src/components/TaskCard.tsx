@@ -9,30 +9,32 @@ const STEP_FLAGS = (t: DeliveryTask) => [
   t.shipped_on !== null,
 ];
 
-export default function TaskCard({ task, onOpen }: { task: DeliveryTask; onOpen: () => void }) {
+export default function TaskCard({ task, onOpen, selected, onSelect, disabled }: { task: DeliveryTask; onOpen: () => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
 
   return (
-    <button className="card" style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }} onClick={onOpen}>
+    <div className="card task-card">
+      <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
+      <button className="task-open" onClick={onOpen}>
       <div className="spread">
-        <span className="sku">{task.sku}</span>
+        <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
         <span className={`badge ${done === flags.length ? 'done' : 'todo'}`}>
           {done}/{flags.length}
         </span>
       </div>
+      <div className="sku">SKU {task.sku}</div>
       <div className="title">
         {task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}
         {task.title}
       </div>
       <div className="muted">
-        {task.work_stream ? `${task.work_stream}・` : ''}
-        購入 {jpDate(task.purchased_at)}
-        {task.tracking_no ? ` ・ ${task.tracking_no}` : ''}
+        追跡番号 {task.tracking_no || '—'}
       </div>
       <div className="progress">
         {flags.map((f, i) => <span key={i} data-done={f} />)}
       </div>
-    </button>
+      </button>
+    </div>
   );
 }
