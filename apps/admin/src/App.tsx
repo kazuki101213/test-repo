@@ -76,7 +76,7 @@ export default function App() {
       </aside>
 
       <main>
-        {page === 'dashboard' && <Dashboard />}
+        {page === 'dashboard' && <Dashboard canManageExpenses={session.staff.role === 'admin'} />}
         {page === 'inventory' && <Inventory me={session.staff} />}
         {page === 'products'  && <Products />}
         {page === 'ledger'    && <Ledger />}

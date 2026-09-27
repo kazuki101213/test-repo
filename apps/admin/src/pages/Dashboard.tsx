@@ -4,6 +4,7 @@ import type { DelivererWorkload, MonthlySummary, StockSummary } from '@bussan/sh
 import { fetchMonthly, fetchStockSummary, fetchWorkload } from '../api';
 import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
+import ExpensePanel from '../components/ExpensePanel';
 
 function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'pos' | 'neg' }) {
   return (
@@ -14,24 +15,32 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: 'pos
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ canManageExpenses }: { canManageExpenses: boolean }) {
   const [stock, setStock] = useState<StockSummary | null>(null);
   const [months, setMonths] = useState<MonthlySummary[]>([]);
   const [workload, setWorkload] = useState<DelivererWorkload[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [expenseOpen, setExpenseOpen] = useState(false);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    setError(null);
     Promise.all([fetchStockSummary(), fetchMonthly(12), fetchWorkload()])
-      .then(([s, m, w]) => { setStock(s); setMonths(m); setWorkload(w); })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, []);
+      .then(([s, m, w]) => { if (active) { setStock(s); setMonths(m); setWorkload(w); } })
+      .catch((e) => { if (active) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { active = false; };
+  }, [revision]);
 
   const current = months.find(m => m.month?.startsWith(japanMonth()));
   const maxWork = Math.max(1, ...workload.map((w) => w.未完了));
 
   return (
-    <>
-      <h2>ダッシュボード</h2>
+    <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
+      <section className="dashboard-content" aria-label="ダッシュボード">
+      <div className="toolbar"><h2>ダッシュボード</h2><span style={{ flex: 1 }} />
+        {canManageExpenses && <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseOpen} onClick={() => setExpenseOpen(true)}>経費を入力</button>}
+      </div>
       {error && <div className="error">{error}</div>}
 
       <div className="grid kpi">
@@ -41,6 +50,7 @@ export default function Dashboard() {
         <Kpi label="在庫の見込み利益" value={yen(stock?.見込み利益合計)} tone="pos" />
         <Kpi label="今月の仕入" value={`${current?.仕入数 ?? 0} 点 / ${yen(current?.仕入金額)}`} />
         <Kpi label="今月の販売" value={`${current?.販売数 ?? 0} 点 / ${yen(current?.売上)}`} />
+        <Kpi label="今月の経費" value={yen(current?.経費)} />
         <Kpi
           label="今月の純利益"
           value={yen(current?.純利益)}
@@ -115,6 +125,8 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
-    </>
+      </section>
+      {canManageExpenses && expenseOpen && <ExpensePanel onClose={() => setExpenseOpen(false)} onSaved={() => setRevision(v => v + 1)} />}
+    </div>
   );
 }

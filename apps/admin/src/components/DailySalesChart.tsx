@@ -38,7 +38,6 @@ export default function DailySalesChart() {
       <button className="btn" aria-label="翌月の売上" onClick={() => shift(1)}>翌月</button>
       <button className="btn" onClick={() => { setMonth(japanMonth()); setSelected(null); }}>今月</button>
     </div>
-    <p className="sub">在庫の販売日・販売価格を集計。同じ通番号の商品は1件として計上します。</p>
     {loading ? <p role="status">売上を読み込み中…</p> : error ? <div className="error" role="alert">{error}</div> : <>
       <div className="sales-summary"><strong>{month} の売上 {yen(total)}</strong><span>{days.reduce((n, d) => n + d.count, 0)}商品</span></div>
       {conflicts.length > 0 && <div className="error">同じ通番号で販売記録が異なる{conflicts.length}商品は集計に含めていません。元の記録は保持しています。<details><summary>確認が必要な通番号</summary>{conflicts.join('、')}</details></div>}
@@ -56,7 +55,7 @@ export default function DailySalesChart() {
           </g>; })}
         </svg>
       </div>
-      <p className="sales-day" aria-live="polite">{active ? `${active.date}：${yen(active.amount)}（${active.count}商品）` : 'グラフ上の日付を選ぶと、その日の売上が表示されます。'}</p>
+      <p className="sales-day" aria-live="polite">{active ? `${active.date}：${yen(active.amount)}（${active.count}商品）` : ''}</p>
       <details><summary>日ごとの金額を表で確認</summary><div className="scroll"><table><thead><tr><th>販売日</th><th className="num">売上</th><th className="num">販売商品数</th></tr></thead><tbody>{days.map(d => <tr key={d.date}><td>{d.date}</td><td className="num">{yen(d.amount)}</td><td className="num">{d.count}</td></tr>)}</tbody></table></div></details>
     </>}
   </section>;
