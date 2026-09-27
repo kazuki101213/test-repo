@@ -71,7 +71,7 @@ tbody tr:hover { background: var(--surface-2); }
 
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
 input[type='text'], input[type='number'], input[type='date'], input[type='search'],
-input[type='email'], input[type='password'], select, textarea {
+input[type='email'], input[type='password'], input[type='url'], select, textarea {
   padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface-2); color: var(--text);
 }

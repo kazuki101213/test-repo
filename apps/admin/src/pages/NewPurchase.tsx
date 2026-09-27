@@ -6,8 +6,10 @@ import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
 } from '@bussan/shared';
 import { createItem, fetchCards, fetchProducts, fetchStaff, nextLotSeq } from '../api';
+import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
+const purchaserNames = ['長部一輝', '石川秀樹'];
 
 export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () => void }) {
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -25,7 +27,9 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [cost, setCost] = useState<number | ''>('');
   const [marketplace, setMarketplace] = useState<Marketplace>('メルカリ');
   const [marketplaceItemId, setMarketplaceItemId] = useState('');
-  const [marketplaceUrl, setMarketplaceUrl] = useState('');
+  const [urlOverride, setUrlOverride] = useState<string | null>(null);
+  const generatedReference = buildPurchaseUrl(marketplace, marketplaceItemId);
+  const marketplaceUrl = urlOverride ?? generatedReference?.url ?? '';
   const [cardId, setCardId] = useState('');
   const [condition, setCondition] = useState<ItemCondition | ''>('非常に良い');
   const [salesChannel, setSalesChannel] = useState<SalesChannel>('FBA');
@@ -38,7 +42,11 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    fetchStaff().then(setStaff).catch((e) => setError(String(e)));
+    fetchStaff().then(rows => {
+      setStaff(rows);
+      setPurchaserId(current => rows.some(s => s.id === current && purchaserNames.includes(s.name))
+        ? current : rows.find(s => s.name === purchaserNames[0])?.id ?? '');
+    }).catch((e) => setError(String(e)));
     fetchCards().then(setCards).catch(() => undefined);
     fetchProducts().then(setProducts).catch(() => undefined);
     nextLotSeq().then(setLotSeq).catch(() => undefined);
@@ -74,12 +82,35 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const expected = plannedPayout !== '' && cost !== '' ? Number(plannedPayout) - Number(cost) : null;
   const overTarget = product?.target_cost != null && cost !== '' && Number(cost) > product.target_cost;
 
+  function changeItemId(value: string) {
+    const parsed = parsePurchaseUrl(value);
+    if (parsed) setMarketplace(parsed.marketplace as Marketplace);
+    setMarketplaceItemId(parsed?.itemId ?? value);
+    setUrlOverride(null);
+  }
+
+  function changePurchaseUrl(value: string) {
+    const parsed = parsePurchaseUrl(value);
+    if (parsed) {
+      setMarketplace(parsed.marketplace as Marketplace);
+      setMarketplaceItemId(parsed.itemId);
+      setUrlOverride(null);
+    } else setUrlOverride(value);
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setDone(null);
     try {
+      if (!purchaser || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
+      if (marketplaceUrl.trim()) {
+        let url: URL;
+        try { url = new URL(marketplaceUrl.trim()); }
+        catch { throw new Error('仕入れURLは https:// から始まるURLを入力してください。'); }
+        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('仕入れURLの形式を確認してください。');
+      }
       const payload: ItemInsert = {
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
         is_accessory: isAccessory,
@@ -90,8 +121,8 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         title: title.trim(),
         cost_amount: Number(cost),
         marketplace,
-        marketplace_item_id: marketplaceItemId || null,
-        marketplace_url: marketplaceUrl || null,
+        marketplace_item_id: generatedReference?.itemId ?? (marketplaceItemId.trim() || null),
+        marketplace_url: marketplaceUrl.trim() || null,
         card_id: cardId || null,
         product_id: productId || null,
         asin: product?.asin ?? null,
@@ -105,7 +136,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       const created = await createItem(payload);
       setDone(`登録しました: ${created.sku}`);
       // 続けて同じロットの付属品を登録することが多いので、ロットと担当者は残す
-      setTitle(''); setCost(''); setMarketplaceItemId(''); setMarketplaceUrl('');
+      setTitle(''); setCost(''); setMarketplaceItemId(''); setUrlOverride(null);
       setProductId(''); setNote('');
       onSaved?.();
     } catch (e2) {
@@ -137,7 +168,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                 <input type="number" min={0} value={cost} onChange={(e) => setCost(e.target.value === '' ? '' : Number(e.target.value))} required />
               </label>
               <label className="field"><span>仕入先</span>
-                <select value={marketplace} onChange={(e) => setMarketplace(e.target.value as Marketplace)}>
+                <select value={marketplace} onChange={(e) => { setMarketplace(e.target.value as Marketplace); setUrlOverride(null); }}>
                   {MARKETPLACES.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               </label>
@@ -147,16 +178,17 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                   {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </label>
-              <label className="field"><span>取引ID（m123… / q123…）</span>
-                <input type="text" value={marketplaceItemId} onChange={(e) => setMarketplaceItemId(e.target.value)} />
+              <label className="field"><span>商品ID（仕入先の商品番号）</span>
+                <input type="text" value={marketplaceItemId} onChange={(e) => changeItemId(e.target.value)} placeholder="商品ID または 商品ページのURL" />
               </label>
-              <label className="field"><span>商品URL</span>
-                <input type="text" value={marketplaceUrl} onChange={(e) => setMarketplaceUrl(e.target.value)} />
+              <label className="field"><span>仕入れURL</span>
+                <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} placeholder="仕入先と商品IDから自動入力" />
               </label>
             </div>
             <p className="sub" style={{ margin: '10px 0 0' }}>
-              取引IDとURLは古物台帳の「相手方の確認」の記録になります。必ず残してください。
+              メルカリ・ヤフオク・ヤフフリ・ラクマの商品IDから自動入力します。商品ページのURLを貼り付けても入力できます。
             </p>
+            {marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入れURLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           </div>
 
           <div className="card">
@@ -205,7 +237,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <label className="field"><span>仕入担当者</span>
                 <select value={purchaserId} onChange={(e) => setPurchaserId(e.target.value)} required>
-                  {staff.map((s) => <option key={s.id} value={s.id}>{s.code} {s.name}</option>)}
+                  {staff.filter(s => purchaserNames.includes(s.name)).map((s) => <option key={s.id} value={s.id}>{s.code} {s.name}</option>)}
                 </select>
               </label>
               <label className="field"><span>納品担当者</span>

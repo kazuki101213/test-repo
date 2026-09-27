@@ -15,19 +15,22 @@ export default function Inventory({ me }: { me: Staff }) {
   const [query, setQuery] = useState('');
   const [unsoldOnly, setUnsoldOnly] = useState(false);
   const [purchaseYear, setPurchaseYear] = useState('');
-  const [page, setPage] = useState(0);
   const [count, setCount] = useState(0);
   const request = useRef(0);
+  const controller = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saleFor, setSaleFor] = useState<InventoryItem | null>(null);
 
   const load = useCallback(async () => {
     const current = ++request.current;
+    controller.current?.abort();
+    const active = new AbortController();
+    controller.current = active;
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchItems({ status: status || undefined, delivererId: delivererId || undefined, query: query || undefined, unsoldOnly, purchaseYear }, page);
+      const result = await fetchItems({ status: status || undefined, delivererId: delivererId || undefined, query: query || undefined, unsoldOnly, purchaseYear }, active.signal);
       if (current !== request.current) return;
       setItems(result.items); setCount(result.count);
     } catch (e) {
@@ -37,9 +40,9 @@ export default function Inventory({ me }: { me: Staff }) {
     } finally {
       if (current === request.current) setLoading(false);
     }
-  }, [status, delivererId, query, unsoldOnly, purchaseYear, page]);
+  }, [status, delivererId, query, unsoldOnly, purchaseYear]);
 
-  useEffect(() => { void load(); return () => { request.current++; }; }, [load]);
+  useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
 
   async function exportAmazon() {
@@ -57,45 +60,43 @@ export default function Inventory({ me }: { me: Staff }) {
     <div className="inventory-workspace with-purchase">
       <section className="inventory-list" aria-label="在庫一覧">
       <h2>在庫一覧</h2>
-      <p className="sub">通番号の大きい順に、同じ商品の行を続けて表示します。仕入先ごとの行は残し、販売記録・仕入合計は同じ商品内で共有します。右側から仕入登録できます。</p>
+
 
       <div className="toolbar">
         <input
           type="search" placeholder="SKU / 商品名 / ASIN / 型番" value={query}
-          aria-label="在庫を検索" onChange={(e) => { setQuery(e.target.value); setPage(0); }} style={{ minWidth: 240 }}
+          aria-label="在庫を検索" onChange={(e) => { setQuery(e.target.value); }} style={{ minWidth: 240 }}
         />
-        <select aria-label="状態" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }}>
+        <select aria-label="状態" value={status} onChange={(e) => { setStatus(e.target.value); }}>
           <option value="">すべての状態</option>
           {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select aria-label="納品担当者" value={delivererId} onChange={(e) => { setDelivererId(e.target.value); setPage(0); }}>
+        <select aria-label="納品担当者" value={delivererId} onChange={(e) => { setDelivererId(e.target.value); }}>
           <option value="">すべての納品担当者</option>
           {staff.filter((s) => s.role === 'deliverer').map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
-        <select aria-label="仕入年" value={purchaseYear} onChange={e => { setPurchaseYear(e.target.value); setPage(0); }}>
+        <select aria-label="仕入年" value={purchaseYear} onChange={e => { setPurchaseYear(e.target.value); }}>
           <option value="">すべての仕入年</option>
           {Array.from({ length: new Date().getFullYear() - 1999 }, (_, n) => new Date().getFullYear() - n).map(y => <option key={y} value={y}>{y}年</option>)}
           <option value="unknown">仕入日未記入</option>
         </select>
         <label className="row" style={{ color: 'var(--muted)' }}>
-          <input type="checkbox" checked={unsoldOnly} onChange={(e) => { setUnsoldOnly(e.target.checked); setPage(0); }} />
+          <input type="checkbox" checked={unsoldOnly} onChange={(e) => { setUnsoldOnly(e.target.checked); }} />
           未販売のみ
         </label>
         <button className="btn" onClick={() => void load()}>再読込</button>
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>
-          表示中の{items.length}件をCSV
+          一覧をCSV
         </button>
         <button className="btn" onClick={() => void exportAmazon()}>Amazon出品ファイル</button>
       </div>
 
       {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
-      <div className="toolbar" aria-label="在庫のページ送り">
-        <span>{count.toLocaleString()}件中 {count ? page * 100 + 1 : 0}～{Math.min((page + 1) * 100, count)}件 {unsoldOnly ? '（未販売のみ）' : '（販売済みを含む）'}</span>
-        <button className="btn" disabled={loading || page === 0} onClick={() => setPage(p => p - 1)}>前へ</button>
-        <button className="btn" disabled={loading || (page + 1) * 100 >= count} onClick={() => setPage(p => p + 1)}>次へ</button>
+      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite">
+        <span>{loading ? '読み込み中…' : `${count.toLocaleString()}商品（通番号の重複を除く）・全件表示`} {unsoldOnly ? '（未販売のみ）' : '（販売済みを含む）'}</span>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -118,7 +119,7 @@ export default function Inventory({ me }: { me: Staff }) {
             <tbody>
               {items.map((i, index) => (
                 <tr key={i.id} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
-                  <td><strong>通番号 {i.lot_seq}</strong><div className="sku">{i.sku}</div>{i.product_row_count > 1 && <small className="sub">同一商品・{i.product_row_count}行 / 仕入合計 {yen(i.product_cost)}</small>}</td>
+                  <td>{i.lot_seq !== items[index - 1]?.lot_seq && <strong>通番号 {i.lot_seq}</strong>}<div className="sku">{i.sku}</div>{i.lot_seq !== items[index - 1]?.lot_seq && i.product_row_count > 1 && <small className="sub">同一商品・{i.product_row_count}行 / 仕入合計 {yen(i.product_cost)}</small>}</td>
                   <td>
                     <span className="dot" style={{ background: STATUS_COLORS[i.status] }} />
                     {i.status}

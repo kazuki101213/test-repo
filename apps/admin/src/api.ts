@@ -1,5 +1,6 @@
 import { getSupabase } from '@bussan/shared';
 import type { SaleRow } from './sales';
+import { productCount, readAllRows } from './inventory';
 import type {
   DelivererWorkload, ItemInsert, ItemView, LedgerRow,
   MonthlySummary, Product, Staff, StockSummary,
@@ -65,25 +66,29 @@ export async function fetchSaleRows(): Promise<SaleRow[]> {
   }
 }
 
-export async function fetchItems(filter: ItemFilter = {}, page = 0, pageSize = 100): Promise<{ items: InventoryItem[]; count: number }> {
-  let q = getSupabase().from('v_inventory_items').select('*', { count: 'exact' })
-    .order('lot_seq', { ascending: false }).order('is_accessory')
-    .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
-    .range(page * pageSize, (page + 1) * pageSize - 1);
+export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal): Promise<{ items: InventoryItem[]; count: number }> {
+  const items = await readAllRows<InventoryItem>(async (from, to) => {
+    let q = getSupabase().from('v_inventory_items').select('*')
+      .order('lot_seq', { ascending: false }).order('is_accessory')
+      .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
+      .range(from, to);
 
-  if (filter.status) q = q.eq('status', filter.status);
-  if (filter.delivererId) q = q.eq('deliverer_id', filter.delivererId);
-  if (filter.unsoldOnly) q = q.eq('sale_row_count', 0);
-  if (filter.purchaseYear === 'unknown') q = q.is('purchased_at', null);
-  else if (filter.purchaseYear) q = q.gte('purchased_at', `${filter.purchaseYear}-01-01`).lt('purchased_at', `${Number(filter.purchaseYear) + 1}-01-01`);
-  if (filter.query) {
-    const term = `%${filter.query.replace(/[(),.%_*"\\]/g, ' ')}%`;
-    q = q.or(`sku.ilike.${term},title.ilike.${term},asin.ilike.${term},model_no.ilike.${term}`);
-  }
+    if (filter.status) q = q.eq('status', filter.status);
+    if (filter.delivererId) q = q.eq('deliverer_id', filter.delivererId);
+    if (filter.unsoldOnly) q = q.eq('sale_row_count', 0);
+    if (filter.purchaseYear === 'unknown') q = q.is('purchased_at', null);
+    else if (filter.purchaseYear) q = q.gte('purchased_at', `${filter.purchaseYear}-01-01`).lt('purchased_at', `${Number(filter.purchaseYear) + 1}-01-01`);
+    if (filter.query) {
+      const term = `%${filter.query.replace(/[(),.%_*"\\]/g, ' ')}%`;
+      q = q.or(`sku.ilike.${term},title.ilike.${term},asin.ilike.${term},model_no.ilike.${term}`);
+    }
 
-  const { data, error, count } = await q;
-  if (error) throw error;
-  return { items: (data ?? []) as InventoryItem[], count: count ?? 0 };
+    if (signal) q = q.abortSignal(signal);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []) as InventoryItem[];
+  });
+  return { items, count: productCount(items) };
 }
 
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
