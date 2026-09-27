@@ -45,12 +45,12 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
 
   const shown = useMemo(() => {
     const q = normalizeSearch(query);
-    const groups = new Map<string, DeliveryTask[]>();
+    const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
     for (const task of tasks) {
       const key = task.lot_seq ? String(task.lot_seq) : task.id;
-      const members = groups.get(key) ?? [];
-      members.push(task);
-      groups.set(key, members);
+      const members = groups.get(key);
+      if (members) members.push(task);
+      else groups.set(key, [task]);
     }
     return [...groups.values()].map(members => ({
       task: members.find(t => !t.is_accessory) ?? members[0],
