@@ -58,4 +58,9 @@ export async function saveInvoiceProfile(profile: InvoiceProfile): Promise<void>
   if (!data) throw new Error('設定を保存する権限がありません。');
 }
 export const yen = (amount: number) => '¥' + amount.toLocaleString('ja-JP');
+export async function submitDocuments(staff: string, month: string, issued: string, extras: InvoiceLine[], note: string, previous: Invoice | null, invoice: boolean, receipts: boolean): Promise<Invoice | null> {
+  const { data, error } = await getSupabase().rpc('submit_invoice_documents', { p_staff: staff, p_month: month + '-01', p_invoice: invoice, p_receipts: receipts, p_issued: issued || null, p_extras: extras, p_note: note, p_version: previous?.version ?? null });
+  if (error) throw error;
+  return data.invoice as Invoice | null;
+}
 export const japanToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());

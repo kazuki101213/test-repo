@@ -6,7 +6,7 @@ import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
 import WorkloadDetail from '../components/WorkloadDetail';
-import InvoiceTasks from '../components/InvoiceTasks';
+import InvoiceTasks, { AdminPackedSummary } from '../components/InvoiceTasks';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
 
@@ -75,6 +75,7 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
         </div>
       </div>
 
+      {isAdmin && <AdminPackedSummary />}
       <div className="dashboard-charts">
         <DailySalesChart />
         <div className="card workload-card">
