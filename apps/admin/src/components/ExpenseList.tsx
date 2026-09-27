@@ -29,7 +29,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const filtered = rows.filter(row => (!from || row.incurred_on >= from) && (!to || row.incurred_on <= to)
     && (!category || row.category === category) && (!query.trim() || (row.name + ' ' + (row.memo || '')).toLowerCase().includes(query.trim().toLowerCase())));
   return <section id="expense-list" className="card expense-list" aria-label="経費一覧">
-    <h3>経費一覧</h3>
+    <h2>経費一覧</h2>
     <div className="toolbar">
       <label className="field"><span>開始日</span><input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label>
       <label className="field"><span>終了日</span><input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} /></label>

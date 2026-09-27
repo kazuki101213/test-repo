@@ -100,7 +100,9 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-list { min-width: 0; }
 .inventory-table tr[data-group-end='false'] > td { border-bottom: 0; }
 .inventory-table thead tr { height: 40px; }
-.inventory-table tr[data-lot] { height: 88px; }
+.inventory-table tr[data-lot] { height: 64px; }
+.inventory-table tr[data-lot] > td { padding: 4px 8px; line-height: 18px; }
+.inventory-table .btn { padding: 5px 10px; }
 .inventory-table .virtual-spacer > td { padding: 0; border: 0; }
 .inventory-table .virtual-spacer:hover { background: transparent; }
 .purchase-panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
@@ -115,10 +117,10 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .expense-fields .field { min-width: 0; }
 .expense-wide { grid-column: 1 / -1; }
 .expense-fields textarea { min-height: 52px; }
-.expense-bulk-switch { display: flex; align-items: center; gap: 4px; font-size: 12px; }
 .expense-hint { margin: 0; align-self: center; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .expense-list { margin-bottom: 16px; }
 .expense-table { max-height: 40vh; }
+.expense-list .expense-table { max-height: 65vh; }
 td.detail-description { white-space: normal; min-width: 200px; max-width: 400px; overflow-wrap: anywhere; }
 .metric-link { border: 0; background: transparent; color: inherit; padding: 4px 0; cursor: pointer; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 4px; font-variant-numeric: tabular-nums; }
 .metric-link:hover { color: var(--accent); }

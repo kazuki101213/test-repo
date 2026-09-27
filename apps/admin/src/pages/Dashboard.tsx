@@ -5,7 +5,6 @@ import { fetchMonthly, fetchStockSummary, fetchWorkload } from '../api';
 import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
 import ExpensePanel from '../components/ExpensePanel';
-import ExpenseList from '../components/ExpenseList';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
@@ -26,7 +25,6 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
   const [workload, setWorkload] = useState<DelivererWorkload[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
-  const [expenseListOpen, setExpenseListOpen] = useState(false);
   const [detail, setDetail] = useState<{ month: string; metric: MonthlyMetric } | null>(null);
   const [expenseBusy, setExpenseBusy] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -47,11 +45,9 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
     <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
       <section className="dashboard-content" aria-label="ダッシュボード">
       <div className="toolbar"><h2>ダッシュボード</h2><span style={{ flex: 1 }} />
-        {canManageExpenses && <button className="btn" aria-expanded={expenseListOpen} aria-controls="expense-list" onClick={() => setExpenseListOpen(open => !open)}>{expenseListOpen ? '経費一覧を閉じる' : '経費一覧'}</button>}
         {canManageExpenses && <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => setExpenseOpen(open => !open)}>{expenseOpen ? '経費入力を閉じる' : '経費を入力'}</button>}
       </div>
       {error && <div className="error">{error}</div>}
-      {canManageExpenses && expenseListOpen && <ExpenseList revision={revision} />}
 
       <div className="grid kpi">
         <Kpi label="現在庫数" value={`${stock?.現在庫数 ?? 0} 点`} detail="在庫一覧から販売済・返品処理・廃棄を除外。同じ通番号は1点として集計します。Amazon返品は含みます。" />

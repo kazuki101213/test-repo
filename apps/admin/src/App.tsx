@@ -6,13 +6,14 @@ import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import Products from './pages/Products';
 import Ledger from './pages/Ledger';
-import AmazonInventory from './pages/AmazonInventory';
+import ExpenseList from './components/ExpenseList';
 
-type Page = 'dashboard' | 'inventory' | 'products' | 'ledger' | 'amazon';
+type Page = 'dashboard' | 'inventory' | 'expenses' | 'products' | 'ledger';
 
 const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
   { key: 'inventory', label: '在庫一覧' },
+  { key: 'expenses', label: '経費一覧' },
   { key: 'products',  label: '商品マスタ' },
   { key: 'ledger',    label: '古物台帳' },
 ];
@@ -65,22 +66,21 @@ export default function App() {
       <aside className="sidebar">
         <h1>物販管理</h1>
         <p className="who">{session.staff.name}（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</p>
-        {NAV.map((n) => (
+        {NAV.filter(n => n.key !== 'expenses' || session.staff.role === 'admin').map((n) => (
           <button key={n.key} className="nav" data-active={page === n.key} onClick={() => setPage(n.key)}>
             {n.label}
           </button>
         ))}
         <span style={{ flex: 1 }} />
-        {session.staff.role === 'admin' && <button className="nav" data-active={page === 'amazon'} onClick={() => setPage('amazon')}>Amazon FBA</button>}
         <button className="nav" onClick={() => void signOut().then(refresh)}>ログアウト</button>
       </aside>
 
       <main>
         {page === 'dashboard' && <Dashboard canManageExpenses={session.staff.role === 'admin'} />}
         {page === 'inventory' && <Inventory me={session.staff} />}
+        {page === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
         {page === 'products'  && <Products />}
         {page === 'ledger'    && <Ledger />}
-        {page === 'amazon' && session.staff.role === 'admin' && <AmazonInventory />}
       </main>
     </div>
   );
