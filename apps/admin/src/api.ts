@@ -1,7 +1,7 @@
 import { getSupabase } from '@bussan/shared';
 import type { SaleRow } from './sales';
 import { productCount, readAllRows } from './inventory';
-import { validateExpense, type ExpenseInput } from './expenses';
+import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import type {
   DelivererWorkload, ItemInsert, ItemView, LedgerRow,
   MonthlySummary, Product, Staff, StockSummary,
@@ -76,6 +76,19 @@ export async function saveExpense(input: ExpenseInput): Promise<void> {
   return saveExpenses([input]);
 }
 
+export async function updateExpense(input: ExpenseInput, original: ExpenseInput): Promise<void> {
+  validateExpense(input);
+  const { id, ...fields } = input;
+  let request = getSupabase().from('expenses').update(fields).eq('id', id);
+  for (const [key, value] of Object.entries(original)) {
+    if (key === 'id') continue;
+    request = value === null ? request.is(key, null) : request.eq(key, value);
+  }
+  const { data, error } = await request.select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('明細が別の画面で変更されたか、更新できません。一覧を読み直してから編集してください。');
+}
+
 export async function saveExpenses(inputs: ExpenseInput[]): Promise<void> {
   if (inputs.length === 0 || inputs.length > 120) throw new Error('登録する経費は1〜120件で指定してください。');
   inputs.forEach(validateExpense);
@@ -100,6 +113,15 @@ export async function fetchExpenses(): Promise<ExpenseInput[]> {
       .order('incurred_on', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as ExpenseInput[];
+  });
+}
+
+export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
+  return readAllRows<ExpenseDraft>(async (from, to) => {
+    const { data, error } = await getSupabase().from('expense_drafts')
+      .select('id,target_month,name,card_id').order('target_month').order('id').range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as ExpenseDraft[];
   });
 }
 

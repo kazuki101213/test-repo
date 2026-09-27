@@ -3,6 +3,7 @@ export type ExpenseInput = {
   id: string; incurred_on: string; category: typeof expenseCategories[number]; name: string;
   amount: number; card_id: string | null; staff_id: string | null; memo: string | null;
 };
+export type ExpenseDraft = { id: string; target_month: string; name: string; card_id: string | null };
 export function validateExpense(input: ExpenseInput) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.incurred_on) || !Number.isFinite(Date.parse(input.incurred_on)) || new Date(input.incurred_on).toISOString().slice(0, 10) !== input.incurred_on) throw new Error('経費の日付を選択してください。');
   if (!expenseCategories.includes(input.category)) throw new Error('経費の区分を選択してください。');

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
-import { fetchExpenses } from '../api';
-import type { ExpenseInput } from '../expenses';
+import { fetchExpenses, fetchExpenseDrafts } from '../api';
+import type { ExpenseInput, ExpenseDraft } from '../expenses';
 import ExpensePanel from './ExpensePanel';
 import { japanMonth } from '../sales';
 
@@ -17,6 +17,9 @@ export function ExpenseTable({ rows }: { rows: ExpenseInput[] }) {
 
 export default function ExpenseList({ revision }: { revision: number }) {
   const [rows, setRows] = useState<ExpenseInput[]>([]);
+  const [drafts, setDrafts] = useState<ExpenseDraft[]>([]);
+  const [editing, setEditing] = useState<ExpenseInput | undefined>();
+  const [draft, setDraft] = useState<ExpenseDraft | undefined>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState(japanMonth);
@@ -27,17 +30,20 @@ export default function ExpenseList({ revision }: { revision: number }) {
   useEffect(() => {
     let active = true;
     setLoading(true); setError('');
-    fetchExpenses().then(data => { if (active) setRows(data); })
+    Promise.all([fetchExpenses(), fetchExpenseDrafts()]).then(([data, pending]) => { if (active) { setRows(data); setDrafts(pending); } })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [revision, savedRevision]);
   const filtered = rows.filter(row => row.incurred_on.slice(0, 7) === month
     && (!query.trim() || row.name.toLowerCase().includes(query.trim().toLowerCase())));
+  const pending = drafts.filter(d => d.target_month.slice(0, 7) === month
+    && !rows.some(row => row.id === d.id || (row.category === '固定費' && row.incurred_on.slice(0, 7) === month && row.name === d.name))
+    && (!query.trim() || d.name.toLowerCase().includes(query.trim().toLowerCase())));
   return <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費一覧">
     <div className="toolbar"><h2>経費一覧</h2><span style={{ flex: 1 }} />
-      <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => setExpenseOpen(open => !open)}>{expenseOpen ? '経費入力を閉じる' : '経費を入力'}</button>
+      <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => { setExpenseOpen(open => !open); setEditing(undefined); setDraft(undefined); }}>{expenseOpen ? '経費入力を閉じる' : '経費を入力'}</button>
     </div>
     <div className="toolbar">
       <label className="field"><span>表示月</span><input type="month" value={month} onChange={e => { if (e.target.value) setMonth(e.target.value); }} /></label>
@@ -48,15 +54,21 @@ export default function ExpenseList({ revision }: { revision: number }) {
         const entries = filtered.filter(row => displayCategory(row) === category);
         return <section className="expense-column" key={category} aria-label={category}>
           <header><h3>{category}</h3><p>{entries.length}件 · <strong>{yen(entries.reduce((sum, row) => sum + row.amount, 0))}</strong></p></header>
-          {entries.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{entries.map(row => <li key={row.id}>
+          {entries.length === 0 && (category !== '固定費' || pending.length === 0) ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{entries.map(row => <li key={row.id}>
+            <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.incurred_on} ${row.name}を編集`} onClick={() => { setEditing(row); setDraft(undefined); setExpenseOpen(true); }}>
             <div className="expense-entry-top"><time dateTime={row.incurred_on}>{row.incurred_on}</time><strong>{yen(row.amount)}</strong></div>
             <div>{row.name}</div>
             {row.category !== category && <span className="expense-hint">{row.category}</span>}
+            </button>
+          </li>)}{category === '固定費' && pending.map(row => <li key={row.id}>
+            <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.name}の金額と日付を入力`} onClick={() => { setEditing(undefined); setDraft(row); setExpenseOpen(true); }}>
+              <div>{row.name}</div><span className="expense-hint">日付・金額の入力待ち</span>
+            </button>
           </li>)}</ul>}
         </section>;
       })}</div></div>
     </>}
   </section>
-  {expenseOpen && <ExpensePanel onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} />}
+  {expenseOpen && <ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={saved => { setMonth(saved.incurred_on.slice(0, 7)); setSavedRevision(value => value + 1); }} onBusyChange={setExpenseBusy} />}
   </div>;
 }

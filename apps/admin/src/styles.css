@@ -133,7 +133,11 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .expense-column { min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .expense-column header p { margin: 0 0 12px; color: var(--muted); }
 .expense-column header strong { color: var(--text); }
-.expense-entries { list-style: none; padding: 0; margin: 0; max-height: 65vh; overflow-y: auto; }
+.expense-entries { list-style: none; padding: 0 14px 0 0; margin: 0; max-height: 65vh; overflow-y: auto; scrollbar-gutter: stable; }
+.expense-edit { display: block; width: 100%; text-align: left; color: inherit; background: transparent; border: 0; padding: 4px 0; font: inherit; cursor: pointer; }
+.expense-edit:hover { background: var(--surface-2); }
+.expense-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.expense-edit:disabled { opacity: .6; cursor: progress; }
 .expense-entries li { padding: 12px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .expense-entry-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
 .expense-entry-top time { color: var(--muted); font-size: 12px; }

@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { yen } from '@bussan/shared';
-import { fetchCards, saveExpense } from '../api';
+import { fetchCards, saveExpense, updateExpense } from '../api';
 import { expenseCategories, type ExpenseInput } from '../expenses';
 
-export default function ExpensePanel({ onSaved, onBusyChange }: { onSaved: () => void; onBusyChange: (busy: boolean) => void }) {
-  const [date, setDate] = useState(() => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10));
-  const [category, setCategory] = useState<ExpenseInput['category']>('諸経費');
-  const [name, setName] = useState('');
-  const [amount, setAmount] = useState('');
-  const [card, setCard] = useState('');
-  const [memo, setMemo] = useState('');
+export default function ExpensePanel({ onSaved, onBusyChange, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; initial?: ExpenseInput; template?: { id: string; name: string; card_id: string | null; month: string } }) {
+  const [date, setDate] = useState(() => initial?.incurred_on ?? (template ? '' : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)));
+  const [category, setCategory] = useState<ExpenseInput['category']>(initial?.category ?? (template ? '固定費' : '諸経費'));
+  const [name, setName] = useState(initial?.name ?? template?.name ?? '');
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
+  const [card, setCard] = useState(initial?.card_id ?? template?.card_id ?? '');
+  const [memo, setMemo] = useState(initial?.memo ?? '');
+  const [original, setOriginal] = useState(initial);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
   const [busy, setBusy] = useState(false);
-  const id = useRef(crypto.randomUUID());
+  const id = useRef(initial?.id ?? template?.id ?? crypto.randomUUID());
   const saving = useRef(false);
 
   useEffect(() => {
@@ -30,21 +31,23 @@ export default function ExpensePanel({ onSaved, onBusyChange }: { onSaved: () =>
     saving.current = true; setBusy(true); onBusyChange(true); setError(''); setDone('');
     try {
       if (!amount.trim()) throw new Error('金額を入力してください。');
+      if (template && date.slice(0, 7) !== template.month) throw new Error(`${template.month}の日付を入力してください。`);
       const input: ExpenseInput = {
         id: id.current, incurred_on: date, category, name: name.trim(), amount: Number(amount),
-        card_id: card || null, staff_id: null, memo: memo.trim() || null,
+        card_id: card || null, staff_id: original?.staff_id ?? null, memo: memo.trim() || null,
       };
-      await saveExpense(input);
+      if (original) await updateExpense(input, original);
+      else await saveExpense(input);
       setDone(`${date} ${input.name} ${yen(input.amount)}を保存しました。左メニューの「経費一覧」で確認できます。`);
-      id.current = crypto.randomUUID();
-      setName(''); setAmount(''); setMemo('');
-      onSaved();
+      if (initial || template) setOriginal(input);
+      else { id.current = crypto.randomUUID(); setName(''); setAmount(''); setMemo(''); }
+      onSaved(input);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { saving.current = false; setBusy(false); onBusyChange(false); }
   }
 
   return <aside id="expense-panel" className="expense-panel card" aria-label="経費入力パネル">
-    <div className="toolbar"><h2>経費入力</h2></div>
+    <div className="toolbar"><h2>{original ? '経費編集' : '経費入力'}</h2></div>
     {error && <div className="error" role="alert">{error}</div>}
     {done && <div className="ok" role="status">{done}</div>}
     <form onSubmit={submit}>
