@@ -4,6 +4,7 @@ import { signIn, getSupabase } from '@bussan/shared';
 export default function Login({ onDone }: { onDone: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -41,10 +42,16 @@ export default function Login({ onDone }: { onDone: () => void }) {
           type="email" placeholder="メールアドレス" value={email} autoComplete="username"
           onChange={(e) => setEmail(e.target.value)} required
         />
-        <input
-          type="password" placeholder="パスワード" value={password} autoComplete="current-password"
-          onChange={(e) => setPassword(e.target.value)} required
-        />
+        <div className="password-field">
+          <input id="login-password"
+            type={showPassword ? 'text' : 'password'} placeholder="パスワード" aria-label="パスワード" value={password} autoComplete="current-password"
+            onChange={(e) => setPassword(e.target.value)} required
+          />
+          <button className="btn" type="button" aria-controls="login-password" aria-pressed={showPassword}
+                  aria-label={showPassword ? 'パスワードを隠す' : 'パスワードを表示'} onClick={() => setShowPassword(value => !value)}>
+            {showPassword ? '隠す' : '表示'}
+          </button>
+        </div>
         <button className="btn primary" style={{ width: '100%' }} disabled={busy}>
           {busy ? 'ログイン中…' : 'ログイン'}
         </button>

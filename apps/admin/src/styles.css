@@ -91,6 +91,9 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .login { max-width: 360px; margin: 16vh auto; }
 .login .card > * + * { margin-top: 10px; }
 .login input { width: 100%; }
+.login .password-field { display: flex; align-items: center; gap: 8px; }
+.login .password-field input { flex: 1; min-width: 0; width: 0; }
+.login .password-field .btn { flex: none; white-space: nowrap; }
 
 .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--accent); }

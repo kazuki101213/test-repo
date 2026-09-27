@@ -10,6 +10,11 @@ import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const purchaserNames = ['長部一輝', '石川秀樹'];
+const handoffTemplates = [
+  '着払いです。',
+  '動作確認は出来る環境があればやってください。\nできなければ大丈夫です。',
+  '付属品は揃っていますか。',
+];
 
 export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () => void }) {
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -20,7 +25,6 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [delivererId, setDelivererId] = useState('');
   const [workStream, setWorkStream] = useState<WorkStream | ''>('');
   const [lotSeq, setLotSeq] = useState<number | ''>('');
-  const [isAccessory, setIsAccessory] = useState(false);
   const [purchasedAt, setPurchasedAt] = useState(today());
   const [productId, setProductId] = useState('');
   const [title, setTitle] = useState('');
@@ -113,7 +117,6 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       }
       const payload: ItemInsert = {
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
-        is_accessory: isAccessory,
         purchaser_id: purchaserId,
         deliverer_id: delivererId || null,
         work_stream: workStream || null,
@@ -135,7 +138,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
 
       const created = await createItem(payload);
       setDone(`登録しました: ${created.sku}`);
-      // 続けて同じロットの付属品を登録することが多いので、ロットと担当者は残す
+      // 続けて同じ商品の仕入れを登録できるよう、通番号と担当者は残す
       setTitle(''); setCost(''); setMarketplaceItemId(''); setUrlOverride(null);
       setProductId(''); setNote('');
       onSaved?.();
@@ -149,9 +152,6 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   return (
     <>
       <h2>仕入登録</h2>
-      <p className="sub">
-        登録すると SKU が自動で発番され、納品担当者のアプリにその場で現れます。
-      </p>
 
       {done && <div className="ok">{done}</div>}
       {error && <div className="error">{error}</div>}
@@ -185,9 +185,6 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                 <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} placeholder="仕入先と商品IDから自動入力" />
               </label>
             </div>
-            <p className="sub" style={{ margin: '10px 0 0' }}>
-              メルカリ・ヤフオク・ヤフフリ・ラクマの商品IDから自動入力します。商品ページのURLを貼り付けても入力できます。
-            </p>
             {marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入れURLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           </div>
 
@@ -256,12 +253,17 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                 <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
               </label>
             </div>
-            <label className="row" style={{ marginTop: 10, color: 'var(--muted)' }}>
-              <input type="checkbox" checked={isAccessory} onChange={(e) => setIsAccessory(e.target.checked)} />
-              &nbsp;付属品（リモコン等）として同じ通番号にぶら下げる
-            </label>
             <label className="field" style={{ marginTop: 10 }}><span>納品担当者への申し送り</span>
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="着払いです / 電源ケーブル欠品の可能性あり" />
+              <select aria-label="申し送りの定型文" value="" onChange={(e) => {
+                const template = e.target.value;
+                if (template) setNote(current => current ? `${current.trimEnd()}\n${template}` : template);
+              }}>
+                <option value="">定型文を選択</option>
+                {handoffTemplates.map(template => <option key={template} value={template}>{template.replace('\n', ' ')}</option>)}
+              </select>
+            </label>
+            <label className="field" style={{ marginTop: 8 }}><span>申し送り内容</span>
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="自由に入力・編集できます" />
             </label>
           </div>
 

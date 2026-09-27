@@ -122,6 +122,9 @@ textarea { min-height: 80px; resize: vertical; }
 .login { max-width: 360px; margin: 15vh auto; padding: 0 16px; }
 .login h1 { font-size: 20px; }
 .login .card > * + * { margin-top: 10px; }
+.login .password-field { display: flex; align-items: center; gap: 8px; }
+.login .password-field input { flex: 1; min-width: 0; width: 0; }
+.login .password-field .btn { flex: none; white-space: nowrap; }
 
 .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
 .photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
