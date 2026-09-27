@@ -9,7 +9,7 @@ import { createItem, fetchCards, fetchProducts, fetchStaff, nextLotSeq } from '.
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export default function NewPurchase({ me }: { me: Staff }) {
+export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () => void }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -107,6 +107,7 @@ export default function NewPurchase({ me }: { me: Staff }) {
       // 続けて同じロットの付属品を登録することが多いので、ロットと担当者は残す
       setTitle(''); setCost(''); setMarketplaceItemId(''); setMarketplaceUrl('');
       setProductId(''); setNote('');
+      onSaved?.();
     } catch (e2) {
       setError(e2 instanceof Error ? e2.message : String(e2));
     } finally {

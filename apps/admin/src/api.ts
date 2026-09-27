@@ -42,22 +42,27 @@ export interface ItemFilter {
   delivererId?: string;
   query?: string;
   unsoldOnly?: boolean;
+  purchaseYear?: string;
 }
 
-export async function fetchItems(filter: ItemFilter = {}, limit = 500): Promise<ItemView[]> {
-  let q = getSupabase().from('v_items').select('*').order('purchased_at', { ascending: false }).limit(limit);
+export async function fetchItems(filter: ItemFilter = {}, page = 0, pageSize = 100): Promise<{ items: ItemView[]; count: number }> {
+  let q = getSupabase().from('v_items').select('*', { count: 'exact' })
+    .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
+    .range(page * pageSize, (page + 1) * pageSize - 1);
 
   if (filter.status) q = q.eq('status', filter.status);
   if (filter.delivererId) q = q.eq('deliverer_id', filter.delivererId);
   if (filter.unsoldOnly) q = q.is('sold_on', null);
+  if (filter.purchaseYear === 'unknown') q = q.is('purchased_at', null);
+  else if (filter.purchaseYear) q = q.gte('purchased_at', `${filter.purchaseYear}-01-01`).lt('purchased_at', `${Number(filter.purchaseYear) + 1}-01-01`);
   if (filter.query) {
-    const term = `%${filter.query}%`;
+    const term = `%${filter.query.replace(/[(),.%_*"\\]/g, ' ')}%`;
     q = q.or(`sku.ilike.${term},title.ilike.${term},asin.ilike.${term},model_no.ilike.${term}`);
   }
 
-  const { data, error } = await q;
+  const { data, error, count } = await q;
   if (error) throw error;
-  return (data ?? []) as ItemView[];
+  return { items: (data ?? []) as ItemView[], count: count ?? 0 };
 }
 
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
@@ -68,10 +73,11 @@ export async function createItem(input: ItemInsert): Promise<{ id: string; sku: 
 }
 
 export async function recordSale(itemId: string, sale: {
-  sold_on: string; sold_price: number; payout_amount: number; shipping_cost?: number;
+  sold_on: string; sold_price: number; payout_amount: number;
 }) {
-  const { error } = await getSupabase().from('items').update(sale).eq('id', itemId);
+  const { data, error } = await getSupabase().from('items').update(sale).eq('id', itemId).is('sold_on', null).select('id');
   if (error) throw error;
+  if (!data?.length) throw new Error('販売済み、または編集権限がありません。一覧を再読み込みしてください。');
 }
 
 export async function fetchProducts(query?: string): Promise<Product[]> {

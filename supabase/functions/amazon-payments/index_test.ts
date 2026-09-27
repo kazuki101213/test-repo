@@ -15,6 +15,52 @@ Deno.test('invalid date ranges are rejected', () => {
     assert(failed, 'Invalid range accepted');
   }
 });
+Deno.test('stores product identity and item net amount for exact inventory matching', () => {
+  const result = normalizeTransaction({ ...sample, items: [{ totalAmount: { currencyCode: 'JPY', currencyAmount: 8200 }, contexts: [{ contextType: 'ProductContext', sku: 'sample-sku', asin: 'B000SAMPLE', quantityShipped: 1 }] }] }, 'hash', '');
+  assert(result.item_breakdowns[0].sku === 'sample-sku' && result.item_breakdowns[0].amount === 8200 && result.item_breakdowns[0].quantity === 1, 'Product metadata was lost');
+});
+for (const mode of ['apply', 'orders403', 'rpcFailure', 'unknownTransaction', 'refund'] as const) {
+  Deno.test(`reconciliation endpoint: ${mode}`, async () => {
+    const originalFetch = globalThis.fetch;
+    const names = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'AMAZON_SELLER_ID', 'AMAZON_LWA_CLIENT_ID', 'AMAZON_LWA_CLIENT_SECRET', 'AMAZON_LWA_REFRESH_TOKEN'];
+    const saved = names.map(n => Deno.env.get(n));
+    let applied = 0, orders = 0;
+    try {
+      for (const n of names) Deno.env.set(n, n === 'SUPABASE_URL' ? 'https://test.supabase.co' : 'fake-secret');
+      globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const json = (data: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }));
+        if (url.includes('/auth/v1/user')) return json({ id: 'test-admin', aud: 'authenticated' });
+        if (url.includes('/rpc/is_admin')) return json(true);
+        if (url.includes('/auth/o2/token')) return json({ access_token: 'fake-token' });
+        if (url.includes('/amazon_payment_transactions')) return json(mode === 'unknownTransaction' ? null : {
+          transaction_id: 'test-transaction', transaction_type: mode === 'refund' ? 'Refund' : 'Shipment', status: 'RELEASED', order_id: '123-1234567-1234567',
+          item_breakdowns: [{ sku: 'sample-sku', asin: 'B000SAMPLE', quantity: 1, currency: 'JPY', amount: 8200 }],
+        });
+        if (url.includes('/orders/2026-01-01/')) {
+          orders++;
+          assert((init?.method ?? 'GET') === 'GET' && new URL(url).searchParams.get('includedData') === 'PROCEEDS', 'Amazon write or PII requested');
+          return mode === 'orders403' ? json({},403) : json({ order: { orderId: '123-1234567-1234567', createdTime: '2026-08-01T16:30:00Z', salesChannel: { marketplaceId: 'A1VC38T7YXB528' }, orderItems: [{ quantityOrdered: 1, product: { sellerSku: 'sample-sku', asin: 'B000SAMPLE', price: { unitPrice: { amount: '10000', currencyCode: 'JPY' } } } }] } });
+        }
+        if (url.includes('/rpc/apply_amazon_sale')) {
+          const body = JSON.parse(String(init?.body)); applied++;
+          assert(body.p_sku === 'sample-sku' && body.p_actor === 'test-admin' && body.p_sold_on === '2026-08-02' && body.p_price === 10000 && body.p_payout === 8200, 'Incorrect sale payload');
+          return mode === 'rpcFailure' ? json({ message:'do-not-echo' },500) : json({ status:'applied', reason:'ok' });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }) as typeof fetch;
+      const response = await handler(new Request('https://test/function', { method:'POST', headers:{ Authorization:'Bearer fake-session' }, body: JSON.stringify({ action:'reconcile', transactionId:'test-transaction', ...range }) }));
+      const expected = mode === 'orders403' ? 502 : mode === 'rpcFailure' ? 503 : mode === 'unknownTransaction' ? 404 : 200;
+      assert(response.status === expected, `Wrong status ${response.status}`);
+      assert(applied === (mode === 'apply' || mode === 'rpcFailure' ? 1 : 0), 'Unexpected item write');
+      if (mode === 'refund') assert(orders === 0, 'Refund unnecessarily fetched order');
+      assert(!/fake-secret|fake-token|fake-session|do-not-echo/.test(await response.text()), 'Sensitive response');
+    } finally {
+      globalThis.fetch=originalFetch;
+      names.forEach((n,i)=>saved[i] === undefined ? Deno.env.delete(n) : Deno.env.set(n,saved[i]!));
+    }
+  });
+}
 for (const scenario of ['anonymous', 'invalid', 'nonadmin', 'missing', 'invalidRange', 'invalidPage', 'lwaError', 'amazon403', 'amazon429', 'malformed', 'badRecord', 'saveError', 'empty', 'emptyWithNext', 'success', 'history']) {
   Deno.test(scenario, async () => {
     const originalFetch = globalThis.fetch;

@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { candidates } from './reconcile.ts';
 
 const marketplace = 'A1VC38T7YXB528';
 const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
@@ -27,7 +28,12 @@ export function normalizeTransaction(value: unknown, accountKey: string, fetched
     order_id: str(list(t.relatedIdentifiers).map(obj).find(i => i.relatedIdentifierName === 'ORDER_ID')?.relatedIdentifierValue),
     payment_date: typeof payment?.paymentDate === 'string' && Number.isFinite(Date.parse(payment.paymentDate)) ? new Date(payment.paymentDate).toISOString() : null,
     breakdowns: breakdowns(t.breakdowns),
-    item_breakdowns: list(t.items).map(item => ({ breakdowns: breakdowns(obj(item).breakdowns) })),
+    item_breakdowns: list(t.items).map(item => {
+      const entry = obj(item), product = list(entry.contexts).map(obj).find(c => c.contextType === 'ProductContext');
+      const total = obj(entry.totalAmount);
+      return { breakdowns: breakdowns(entry.breakdowns), sku: str(product?.sku), asin: str(product?.asin, 20),
+        quantity: amount(product?.quantityShipped), amount: amount(total.currencyAmount), currency: str(total.currencyCode, 3) };
+    }),
     fetched_at: fetchedAt,
   };
 }
@@ -54,7 +60,7 @@ export async function handler(req: Request): Promise<Response> {
     if (roleError) throw new SafeError(503, '管理者権限を確認できません。');
     if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
     const body = obj(await req.json().catch(() => null));
-    if (body.action !== 'history' && body.action !== 'sync') throw new SafeError(400, '操作の指定が不正です。');
+    if (!['history', 'sync', 'reconcile'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
     const range = dateRange(body);
     const seller = Deno.env.get('AMAZON_SELLER_ID')?.trim();
     if (!seller) throw new SafeError(503, 'AMAZON_SELLER_IDが未設定です。');
@@ -86,6 +92,36 @@ export async function handler(req: Request): Promise<Response> {
     }
     const token = await lwa.json();
     if (typeof token.access_token !== 'string' || !token.access_token) throw new SafeError(502, 'Amazon LWAの応答が不正です。');
+    if (body.action === 'reconcile') {
+      if (typeof body.transactionId !== 'string' || !body.transactionId || body.transactionId.length > 500) throw new SafeError(400, '取引IDを指定してください。');
+      const { data: transaction, error: readError } = await sb.from('amazon_payment_transactions').select('*')
+        .eq('account_key', accountKey).eq('marketplace_id', marketplace).eq('transaction_id', body.transactionId).maybeSingle();
+      if (readError) throw new SafeError(503, '照合する履歴を読み込めません。');
+      if (!transaction) throw new SafeError(404, '先にAmazonの販売情報を取得してください。');
+      if (transaction.transaction_type !== 'Shipment' || !['RELEASED', 'DEFERRED_RELEASED'].includes(transaction.status)) {
+        return respond(200, { results: candidates(transaction, null).results });
+      }
+      if (typeof transaction.order_id !== 'string' || !/^\d{3}-\d{7}-\d{7}$/.test(transaction.order_id)) {
+        return respond(200, { results: [{ sku: '—', status: 'review', reason: 'Amazon注文IDがありません。' }] });
+      }
+      // Only request non-PII product/order data. Financial posting dates are NOT sale dates.
+      const response = await fetch(`https://sellingpartnerapi-fe.amazon.com/orders/2026-01-01/orders/${encodeURIComponent(transaction.order_id)}?includedData=PROCEEDS`, {
+        headers: { 'x-amz-access-token': token.access_token, 'user-agent': 'BussanAdmin/1.0' }, signal: AbortSignal.timeout(20000),
+      });
+      if (!response.ok) throw new SafeError(502, `Amazon注文情報の取得エラー（HTTP ${response.status}）。注文情報の取得権限・アプリ認可を確認してください。販売日は推測して登録していません。`);
+      const data = await response.json();
+      const { sales, results } = candidates(transaction, data.order);
+      const writer = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false } });
+      for (const sale of sales) {
+        const { data: result, error } = await writer.rpc('apply_amazon_sale', {
+          p_account: accountKey, p_transaction: transaction.transaction_id, p_sku: sale.sku, p_asin: sale.asin,
+          p_sold_on: sale.soldOn, p_price: sale.price, p_payout: sale.payout, p_actor: user.user.id,
+        });
+        if (error) throw new SafeError(503, '在庫への反映に失敗しました。途中まで反映された分は重複せず、再実行できます。');
+        results.push({ sku: sale.sku, ...result });
+      }
+      return respond(200, { results });
+    }
     const params = new URLSearchParams({ ...range, marketplaceId: marketplace });
     if (body.nextToken) params.set('nextToken', String(body.nextToken));
     const response = await fetch(`https://sellingpartnerapi-fe.amazon.com/finances/2024-06-19/transactions?${params}`, {

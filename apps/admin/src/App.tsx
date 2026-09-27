@@ -4,13 +4,11 @@ import type { Session } from '@bussan/shared';
 import Login from './components/Login';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
-import NewPurchase from './pages/NewPurchase';
 import Products from './pages/Products';
 import Ledger from './pages/Ledger';
 import AmazonInventory from './pages/AmazonInventory';
-import AmazonPayments from './pages/AmazonPayments';
 
-type Page = 'dashboard' | 'inventory' | 'new' | 'products' | 'ledger' | 'amazon' | 'payments';
+type Page = 'dashboard' | 'inventory' | 'new' | 'products' | 'ledger' | 'amazon';
 
 const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
@@ -25,6 +23,7 @@ export default function App() {
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<Page>('dashboard');
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
 
   async function refresh() {
     try {
@@ -69,24 +68,24 @@ export default function App() {
         <h1>物販管理</h1>
         <p className="who">{session.staff.name}（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</p>
         {NAV.map((n) => (
-          <button key={n.key} className="nav" data-active={page === n.key} onClick={() => setPage(n.key)}>
+          <button key={n.key} className="nav" data-active={n.key === 'new' ? page === 'inventory' && purchaseOpen : page === n.key} onClick={() => {
+            if (n.key === 'new') { setPage('inventory'); setPurchaseOpen(true); }
+            else setPage(n.key);
+          }}>
             {n.label}
           </button>
         ))}
         <span style={{ flex: 1 }} />
         {session.staff.role === 'admin' && <button className="nav" data-active={page === 'amazon'} onClick={() => setPage('amazon')}>Amazon FBA</button>}
-        {session.staff.role === 'admin' && <button className="nav" data-active={page === 'payments'} onClick={() => setPage('payments')}>Amazon ペイメント</button>}
         <button className="nav" onClick={() => void signOut().then(refresh)}>ログアウト</button>
       </aside>
 
       <main>
         {page === 'dashboard' && <Dashboard />}
-        {page === 'new'       && <NewPurchase me={session.staff} />}
-        {page === 'inventory' && <Inventory />}
+        {page === 'inventory' && <Inventory me={session.staff} purchaseOpen={purchaseOpen} onPurchaseOpen={setPurchaseOpen} />}
         {page === 'products'  && <Products />}
         {page === 'ledger'    && <Ledger />}
         {page === 'amazon' && session.staff.role === 'admin' && <AmazonInventory />}
-        {page === 'payments' && session.staff.role === 'admin' && <AmazonPayments />}
       </main>
     </div>
   );

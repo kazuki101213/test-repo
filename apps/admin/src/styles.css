@@ -94,3 +94,19 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 
 .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--accent); }
+
+.inventory-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+.inventory-workspace.with-purchase { grid-template-columns: minmax(320px, 1fr) minmax(340px, 420px); }
+.inventory-list { min-width: 0; }
+.purchase-panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.purchase-panel .grid.cols2 { grid-template-columns: minmax(0, 1fr); }
+.purchase-panel .card { padding: 12px; }
+.purchase-panel .sku { overflow-wrap: anywhere; }
+.purchase-close { margin-bottom: 14px; }
+.amazon-sales { margin: 12px 0; }
+.amazon-sales summary { cursor: pointer; font-weight: 600; }
+.amazon-sales .toolbar { margin-top: 12px; }
+@media (max-width: 1050px) {
+  .inventory-workspace.with-purchase { grid-template-columns: minmax(0, 1fr); }
+  .purchase-panel { position: fixed; top: 12px; right: 12px; bottom: 12px; width: min(420px, calc(100vw - 24px)); max-height: none; z-index: 15; box-shadow: 0 16px 60px #0009; }
+}

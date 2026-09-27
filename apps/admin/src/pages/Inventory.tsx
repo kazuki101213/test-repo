@@ -1,33 +1,44 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
 import type { ItemView, Staff } from '@bussan/shared';
 import { fetchAmazonFeed, fetchItems, fetchStaff, recordSale } from '../api';
 import { downloadCsv, downloadTsv } from '../csv';
+import NewPurchase from './NewPurchase';
+import AmazonSalesSync from '../components/AmazonSalesSync';
 
-export default function Inventory() {
+export default function Inventory({ me, purchaseOpen, onPurchaseOpen }: { me: Staff; purchaseOpen: boolean; onPurchaseOpen: (open: boolean) => void }) {
   const [items, setItems] = useState<ItemView[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [status, setStatus] = useState('');
   const [delivererId, setDelivererId] = useState('');
   const [query, setQuery] = useState('');
-  const [unsoldOnly, setUnsoldOnly] = useState(true);
+  const [unsoldOnly, setUnsoldOnly] = useState(false);
+  const [purchaseYear, setPurchaseYear] = useState('');
+  const [page, setPage] = useState(0);
+  const [count, setCount] = useState(0);
+  const request = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saleFor, setSaleFor] = useState<ItemView | null>(null);
 
   const load = useCallback(async () => {
+    const current = ++request.current;
     setLoading(true);
     setError(null);
     try {
-      setItems(await fetchItems({ status: status || undefined, delivererId: delivererId || undefined, query: query || undefined, unsoldOnly }));
+      const result = await fetchItems({ status: status || undefined, delivererId: delivererId || undefined, query: query || undefined, unsoldOnly, purchaseYear }, page);
+      if (current !== request.current) return;
+      setItems(result.items); setCount(result.count);
     } catch (e) {
+      if (current !== request.current) return;
+      setItems([]); setCount(0);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (current === request.current) setLoading(false);
     }
-  }, [status, delivererId, query, unsoldOnly]);
+  }, [status, delivererId, query, unsoldOnly, purchaseYear, page]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); return () => { request.current++; }; }, [load]);
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
 
   async function exportAmazon() {
@@ -42,42 +53,56 @@ export default function Inventory() {
   }
 
   return (
-    <>
+    <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
+      <section className="inventory-list" aria-label="在庫一覧">
       <h2>在庫一覧</h2>
-      <p className="sub">納品管理表の各担当者シートをひとつにまとめたものです。</p>
+      <p className="sub">仕入れから販売までを一覧で確認できます。過去の仕入れも年を指定して表示できます。</p>
 
       <div className="toolbar">
         <input
           type="search" placeholder="SKU / 商品名 / ASIN / 型番" value={query}
-          onChange={(e) => setQuery(e.target.value)} style={{ minWidth: 240 }}
+          aria-label="在庫を検索" onChange={(e) => { setQuery(e.target.value); setPage(0); }} style={{ minWidth: 240 }}
         />
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select aria-label="状態" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }}>
           <option value="">すべての状態</option>
           {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)}>
+        <select aria-label="納品担当者" value={delivererId} onChange={(e) => { setDelivererId(e.target.value); setPage(0); }}>
           <option value="">すべての納品担当者</option>
           {staff.filter((s) => s.role === 'deliverer').map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
+        <select aria-label="仕入年" value={purchaseYear} onChange={e => { setPurchaseYear(e.target.value); setPage(0); }}>
+          <option value="">すべての仕入年</option>
+          {Array.from({ length: new Date().getFullYear() - 1999 }, (_, n) => new Date().getFullYear() - n).map(y => <option key={y} value={y}>{y}年</option>)}
+          <option value="unknown">仕入日未記入</option>
+        </select>
         <label className="row" style={{ color: 'var(--muted)' }}>
-          <input type="checkbox" checked={unsoldOnly} onChange={(e) => setUnsoldOnly(e.target.checked)} />
+          <input type="checkbox" checked={unsoldOnly} onChange={(e) => { setUnsoldOnly(e.target.checked); setPage(0); }} />
           未販売のみ
         </label>
         <button className="btn" onClick={() => void load()}>再読込</button>
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>
-          CSV
+          表示中の100件をCSV
         </button>
         <button className="btn" onClick={() => void exportAmazon()}>Amazon出品ファイル</button>
+        <button className="btn primary" aria-expanded={purchaseOpen} onClick={() => onPurchaseOpen(!purchaseOpen)}>仕入登録</button>
+      </div>
+
+      {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
+      <div className="toolbar" aria-label="在庫のページ送り">
+        <span>{count.toLocaleString()}件中 {count ? page * 100 + 1 : 0}～{Math.min((page + 1) * 100, count)}件 {unsoldOnly ? '（未販売のみ）' : '（販売済みを含む）'}</span>
+        <button className="btn" disabled={loading || page === 0} onClick={() => setPage(p => p - 1)}>前へ</button>
+        <button className="btn" disabled={loading || (page + 1) * 100 >= count} onClick={() => setPage(p => p + 1)}>次へ</button>
       </div>
 
       {error && <div className="error">{error}</div>}
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {items.length > 0 && (
+      {!loading && items.length > 0 && (
         <div className="scroll">
           <table>
             <thead>
@@ -86,6 +111,7 @@ export default function Inventory() {
                 <th>仕入日</th><th className="num">仕入</th>
                 <th>仕入先</th><th>納品担当</th><th>進捗</th>
                 <th className="num">予定価格</th><th className="num">見込利益</th>
+                <th>販売日</th><th className="num">販売価格</th><th className="num">振込額（手数料控除後）</th>
                 <th className="num">在庫日数</th><th></th>
               </tr>
             </thead>
@@ -112,6 +138,9 @@ export default function Inventory() {
                   </td>
                   <td className="num">{yen(i.planned_price)}</td>
                   <td className="num">{yen(i.expected_profit)}</td>
+                  <td>{jpDate(i.sold_on)}</td>
+                  <td className="num">{yen(i.sold_price)}</td>
+                  <td className="num">{yen(i.payout_amount)}</td>
                   <td className="num">{i.days_in_stock ?? '—'}</td>
                   <td>
                     {i.sold_on === null && (
@@ -124,6 +153,11 @@ export default function Inventory() {
           </table>
         </div>
       )}
+      </section>
+      {purchaseOpen && <aside className="purchase-panel" aria-label="仕入登録パネル">
+        <button className="btn purchase-close" onClick={() => onPurchaseOpen(false)}>仕入登録を閉じる</button>
+        <NewPurchase me={me} onSaved={() => void load()} />
+      </aside>}
 
       {saleFor && (
         <SaleDialog
@@ -132,7 +166,7 @@ export default function Inventory() {
           onSaved={() => { setSaleFor(null); void load(); }}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -140,7 +174,6 @@ function SaleDialog({ item, onClose, onSaved }: { item: ItemView; onClose: () =>
   const [soldOn, setSoldOn] = useState(new Date().toISOString().slice(0, 10));
   const [price, setPrice] = useState(item.planned_price ?? 0);
   const [payout, setPayout] = useState(item.planned_payout ?? 0);
-  const [shipping, setShipping] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -148,8 +181,9 @@ function SaleDialog({ item, onClose, onSaved }: { item: ItemView; onClose: () =>
     setBusy(true);
     setError(null);
     try {
+      if (!soldOn || !Number.isSafeInteger(price) || price < 0 || !Number.isSafeInteger(payout) || payout < 0) throw new Error('販売日と0円以上の整数の金額を入力してください。');
       await recordSale(item.id, {
-        sold_on: soldOn, sold_price: price, payout_amount: payout, shipping_cost: shipping,
+        sold_on: soldOn, sold_price: price, payout_amount: payout,
       });
       onSaved();
     } catch (e) {
@@ -158,7 +192,7 @@ function SaleDialog({ item, onClose, onSaved }: { item: ItemView; onClose: () =>
     }
   }
 
-  const profit = payout - item.cost_amount - shipping;
+  const profit = payout - item.cost_amount;
 
   return (
     <div className="card" style={{ position: 'fixed', inset: 'auto 24px 24px auto', width: 340, zIndex: 20, boxShadow: '0 12px 40px rgba(0,0,0,.5)' }}>
@@ -170,17 +204,14 @@ function SaleDialog({ item, onClose, onSaved }: { item: ItemView; onClose: () =>
         <input type="date" value={soldOn} onChange={(e) => setSoldOn(e.target.value)} />
       </label>
       <label className="field" style={{ marginTop: 8 }}><span>販売価格</span>
-        <input type="number" value={price} onChange={(e) => setPrice(Number(e.target.value))} />
+        <input type="number" min={0} step={1} value={price} onChange={(e) => setPrice(Number(e.target.value))} />
       </label>
       <label className="field" style={{ marginTop: 8 }}><span>振込額（手数料控除後）</span>
-        <input type="number" value={payout} onChange={(e) => setPayout(Number(e.target.value))} />
-      </label>
-      <label className="field" style={{ marginTop: 8 }}><span>送料など</span>
-        <input type="number" value={shipping} onChange={(e) => setShipping(Number(e.target.value))} />
+        <input type="number" min={0} step={1} value={payout} onChange={(e) => setPayout(Number(e.target.value))} />
       </label>
 
       <p style={{ marginTop: 10 }}>
-        粗利 <strong style={{ color: profit >= 0 ? 'var(--ok)' : 'var(--danger)' }}>{yen(profit)}</strong>
+        振込額 − 仕入額 <strong style={{ color: profit >= 0 ? 'var(--ok)' : 'var(--danger)' }}>{yen(profit)}</strong>
         <span className="sub"> （仕入 {yen(item.cost_amount)}）</span>
       </p>
 
