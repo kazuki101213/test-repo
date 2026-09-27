@@ -44,8 +44,8 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   useEffect(() => {
     fetchStaff().then(rows => {
       setStaff(rows);
-      setPurchaserId(current => rows.some(s => s.id === current && purchaserNames.includes(s.name))
-        ? current : rows.find(s => s.name === purchaserNames[0])?.id ?? '');
+      setPurchaserId(current => rows.some(s => s.id === current && s.role !== 'deliverer' && purchaserNames.includes(s.name))
+        ? current : rows.find(s => s.name === purchaserNames[0] && s.role !== 'deliverer')?.id ?? '');
     }).catch((e) => setError(String(e)));
     fetchCards().then(setCards).catch(() => undefined);
     fetchProducts().then(setProducts).catch(() => undefined);
@@ -104,7 +104,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
     setError(null);
     setDone(null);
     try {
-      if (!purchaser || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
+      if (!purchaser || purchaser.role === 'deliverer' || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
       if (marketplaceUrl.trim()) {
         let url: URL;
         try { url = new URL(marketplaceUrl.trim()); }
@@ -237,7 +237,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <label className="field"><span>仕入担当者</span>
                 <select value={purchaserId} onChange={(e) => setPurchaserId(e.target.value)} required>
-                  {staff.filter(s => purchaserNames.includes(s.name)).map((s) => <option key={s.id} value={s.id}>{s.code} {s.name}</option>)}
+                  {staff.filter(s => s.role !== 'deliverer' && purchaserNames.includes(s.name)).map((s) => <option key={s.id} value={s.id}>{s.code} {s.name}</option>)}
                 </select>
               </label>
               <label className="field"><span>納品担当者</span>

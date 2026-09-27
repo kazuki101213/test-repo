@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { normalizeSku } from '@bussan/shared';
 import type { DeliveryTask } from '@bussan/shared';
-import { fetchMyTasks } from '../api';
+import { fetchAmazonFeed, fetchMyTasks } from '../api';
+import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 
 type Filter = 'all' | 'todo' | 'arrived' | 'shipped';
@@ -19,6 +20,19 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  async function exportAmazon() {
+    if (exporting) return;
+    setExporting(true); setError(null);
+    try {
+      const rows = await fetchAmazonFeed();
+      const cleaned = rows.map(({ item_id: _id, status: _status, deliverer_id: _deliverer, ...rest }) => rest);
+      if (!cleaned.length) throw new Error('出品対象（写真登録まで完了した商品）がありません。');
+      downloadTsv(`amazon-listing-${new Date().toISOString().slice(0, 10)}.txt`, cleaned);
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setExporting(false); }
+  }
 
   useEffect(() => {
     fetchMyTasks()
@@ -49,6 +63,7 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
       />
 
       <div className="filters">
+        <button className="btn" disabled={exporting} onClick={() => void exportAmazon()}>{exporting ? '出力中…' : 'Amazon出品ファイル'}</button>
         {FILTERS.map((f) => (
           <button
             key={f.key} className="btn" data-active={filter === f.key}

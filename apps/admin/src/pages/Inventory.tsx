@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
 import type { InventoryItem } from '../api';
-import { fetchAmazonFeed, fetchItems, fetchStaff, recordSale } from '../api';
-import { downloadCsv, downloadTsv } from '../csv';
+import { fetchItems, fetchStaff, recordSale } from '../api';
+import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import { inventoryWindow } from '../inventory';
@@ -61,17 +61,6 @@ export default function Inventory({ me }: { me: Staff }) {
     return () => observer.disconnect();
   }, [items, loading]);
 
-  async function exportAmazon() {
-    try {
-      const rows = await fetchAmazonFeed();
-      const cleaned = rows.map(({ item_id: _i, status: _s, deliverer_id: _d, ...rest }) => rest);
-      if (cleaned.length === 0) { setError('出品対象（写真登録まで完了した商品）がありません。'); return; }
-      downloadTsv(`amazon-listing-${new Date().toISOString().slice(0, 10)}.txt`, cleaned);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
   return (
     <div className="inventory-workspace with-purchase">
       <section className="inventory-list" aria-label="在庫一覧">
@@ -109,7 +98,6 @@ export default function Inventory({ me }: { me: Staff }) {
         <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>
           一覧をCSV
         </button>
-        <button className="btn" onClick={() => void exportAmazon()}>Amazon出品ファイル</button>
       </div>
 
       {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
@@ -140,7 +128,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const index = window.start + offset;
                 return (
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
-                  <td>{i.lot_seq !== items[index - 1]?.lot_seq && <strong>通番号 {i.lot_seq}</strong>}<div className="sku">{i.sku}</div>{i.lot_seq !== items[index - 1]?.lot_seq && i.product_row_count > 1 && <small className="sub">同一商品・{i.product_row_count}行 / 仕入合計 {yen(i.product_cost)}</small>}</td>
+                  <td>{i.lot_seq !== items[index - 1]?.lot_seq && <strong>{i.lot_seq}</strong>}<div className="sku">{i.sku}</div>{i.lot_seq !== items[index - 1]?.lot_seq && i.product_row_count > 1 && <small className="sub">同一商品・{i.product_row_count}行 / 仕入合計 {yen(i.product_cost)}</small>}</td>
                   <td>
                     <span className="dot" style={{ background: STATUS_COLORS[i.status] }} />
                     {i.status}

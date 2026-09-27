@@ -186,12 +186,6 @@ export async function fetchLedger(from: string, to: string): Promise<LedgerRow[]
   return (data ?? []) as LedgerRow[];
 }
 
-export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
-  const { data, error } = await getSupabase().from('v_amazon_listing_feed').select('*');
-  if (error) throw error;
-  return (data ?? []) as Record<string, unknown>[];
-}
-
 /** 次に使う通番号（画面の初期値用）。同じロットに紐付けたいときは手で上書きする。 */
 export async function nextLotSeq(): Promise<number> {
   const { data, error } = await getSupabase()

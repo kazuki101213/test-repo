@@ -1,6 +1,17 @@
 import { getSupabase, PHOTO_BUCKET } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, ItemCondition, WorkStep } from '@bussan/shared';
 
+export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = [];
+  for (let from = 0; ; from += 500) {
+    const { data, error } = await getSupabase().from('v_amazon_listing_feed').select('*')
+      .order('item_id').range(from, from + 499);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < 500) return rows;
+  }
+}
+
 /**
  * 納品担当アプリは app.items を直接 UPDATE しない。
  * RLS で自分の担当行しか見えないうえ、更新は RPC 経由に限定されている。
