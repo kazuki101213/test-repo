@@ -57,16 +57,9 @@ export async function saveExpense(input: ExpenseInput): Promise<void> {
   if (error.code === '23505') {
     const { data, error: readError } = await getSupabase().from('expenses').select('*').eq('id', input.id).single();
     if (!readError && data && Object.entries(input).every(([key, value]) => data[key] === value)) return;
-    throw new Error('前回の保存内容と異なるため再登録していません。入力画面を閉じて、経費一覧を確認してください。');
+    throw new Error('前回の保存内容と異なります。保存済みの可能性があるため、再登録を中止しました。');
   }
   throw new Error(error.message);
-}
-
-export async function fetchRecentExpenses(): Promise<ExpenseInput[]> {
-  const { data, error } = await getSupabase().from('expenses').select('id,incurred_on,category,name,amount,card_id,staff_id,memo')
-    .order('incurred_on', { ascending: false }).order('created_at', { ascending: false }).limit(20);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as ExpenseInput[];
 }
 
 export type InventoryItem = ItemView & {

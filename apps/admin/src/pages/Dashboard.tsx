@@ -6,6 +6,8 @@ import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
 import ExpensePanel from '../components/ExpensePanel';
 
+const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
+
 function Kpi({ label, value, tone, detail }: { label: string; value: string; tone?: 'pos' | 'neg'; detail?: string }) {
   return (
     <div className="card">
@@ -35,6 +37,7 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
   }, [revision]);
 
   const current = months.find(m => m.month?.startsWith(japanMonth()));
+  const visibleWorkload = workload.filter(w => !hiddenWorkloadNames.has(w.deliverer_name));
 
   return (
     <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
@@ -64,7 +67,7 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
         <DailySalesChart />
         <div className="card workload-card">
           <h3>納品担当者の稼働</h3>
-          {workload.length === 0 && <p className="empty">データがありません。</p>}
+          {visibleWorkload.length === 0 && <p className="empty">データがありません。</p>}
           <table>
             <thead>
               <tr>
@@ -73,7 +76,7 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
               </tr>
             </thead>
             <tbody>
-              {workload.map((w) => (
+              {visibleWorkload.map((w) => (
                 <tr key={w.deliverer_id}>
                   <td>
                     {w.deliverer_name}
@@ -124,7 +127,7 @@ export default function Dashboard({ canManageExpenses }: { canManageExpenses: bo
         </div>
       </div>
       </section>
-      {canManageExpenses && expenseOpen && <ExpensePanel onClose={() => setExpenseOpen(false)} onSaved={() => setRevision(v => v + 1)} onBusyChange={setExpenseBusy} />}
+      {canManageExpenses && expenseOpen && <ExpensePanel onSaved={() => setRevision(v => v + 1)} onBusyChange={setExpenseBusy} />}
     </div>
   );
 }
