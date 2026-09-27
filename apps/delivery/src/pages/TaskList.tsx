@@ -45,8 +45,18 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
 
   const shown = useMemo(() => {
     const q = normalizeSearch(query);
-    return tasks.filter((t) => {
-      if (q && ![String(t.lot_seq ?? ''), t.sku, t.title].some(value => normalizeSearch(value).includes(q))) return false;
+    const groups = new Map<string, DeliveryTask[]>();
+    for (const task of tasks) {
+      const key = task.lot_seq ? String(task.lot_seq) : task.id;
+      const members = groups.get(key) ?? [];
+      members.push(task);
+      groups.set(key, members);
+    }
+    return [...groups.values()].map(members => ({
+      task: members.find(t => !t.is_accessory) ?? members[0],
+      members,
+    })).filter(({ task: t, members }) => {
+      if (q && !members.some(member => [String(member.lot_seq ?? ''), member.sku, member.title].some(value => normalizeSearch(value).includes(q)))) return false;
       const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;
@@ -64,8 +74,7 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
         style={{ marginTop: 12 }}
       />
 
-      <div className="filters">
-        <button className="btn" disabled={exporting || selected.size === 0} onClick={() => void exportAmazon()}>{exporting ? '出力中…' : `Amazon出品ファイル（${selected.size}件）`}</button>
+      <div className="filters task-filters">
         {FILTERS.map((f) => (
           <button
             key={f.key} className="btn" data-active={filter === f.key}
@@ -75,8 +84,9 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
           </button>
         ))}
       </div>
-      <div className="row" style={{ marginTop: 8 }}>
-        <button className="btn" disabled={exporting || shown.length === 0} onClick={() => setSelected(current => new Set([...current, ...shown.map(t => t.id)]))}>表示中を選択</button>
+      <div className="export-actions">
+        <button className="btn" disabled={exporting || selected.size === 0} onClick={() => void exportAmazon()}>{exporting ? '出力中…' : `Amazon出品ファイル（${selected.size}件）`}</button>
+        <button className="btn" disabled={exporting || shown.length === 0} onClick={() => setSelected(current => new Set([...current, ...shown.map(group => group.task.id)]))}>表示中を選択</button>
         <button className="btn" disabled={exporting || selected.size === 0} onClick={() => setSelected(new Set())}>選択解除</button>
       </div>
 
@@ -84,7 +94,7 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shown.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shown.map((t) => <TaskCard key={t.id} task={t} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shown.map(({ task: t, members }) => <TaskCard key={t.id} task={t} members={members} onOpenMember={onOpen} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;

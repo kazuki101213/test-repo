@@ -153,4 +153,12 @@ textarea { min-height: 80px; resize: vertical; }
 .task-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .task-open .sku { margin-top: 8px; }
 .task-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.task-content { flex: 1; min-width: 0; }
+.task-content .task-open { width: 100%; }
+.task-members { display: grid; gap: 6px; margin-top: 10px; }
+.task-members .btn { text-align: left; font-size: 13px; padding: 8px 10px; }
+.task-members .muted { display: block; margin-top: 4px; }
+.task-filters .btn { font-size: 16px; padding: 12px 22px; min-height: 46px; }
+.export-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.export-actions .btn { font-size: 12px; padding: 7px 9px; min-height: 34px; }
 @media (max-width: 420px) { .product-overview { grid-template-columns: 100px minmax(0, 1fr); gap: 10px; } .description-options { grid-template-columns: minmax(0, 1fr); } }

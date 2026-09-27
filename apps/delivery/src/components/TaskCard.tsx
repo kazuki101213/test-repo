@@ -9,13 +9,14 @@ const STEP_FLAGS = (t: DeliveryTask) => [
   t.shipped_on !== null,
 ];
 
-export default function TaskCard({ task, onOpen, selected, onSelect, disabled }: { task: DeliveryTask; onOpen: () => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
+export default function TaskCard({ task, members, onOpenMember, onOpen, selected, onSelect, disabled }: { task: DeliveryTask; members: DeliveryTask[]; onOpenMember: (id: string) => void; onOpen: () => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
 
   return (
     <div className="card task-card">
       <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
+      <div className="task-content">
       <button className="task-open" onClick={onOpen}>
       <div className="spread">
         <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
@@ -35,6 +36,13 @@ export default function TaskCard({ task, onOpen, selected, onSelect, disabled }:
         {flags.map((f, i) => <span key={i} data-done={f} />)}
       </div>
       </button>
+      {members.length > 1 && <div className="task-members">
+        {members.filter(member => member.id !== task.id).map(member => <button key={member.id} className="btn" onClick={() => onOpenMember(member.id)}>
+          {member.is_accessory ? '付属品' : '同じ商品'}：{member.title}
+          <span className="muted">購入日 {jpDate(member.purchased_at)} ／ 追跡番号 {member.tracking_no || '—'}</span>
+        </button>)}
+      </div>}
+      </div>
     </div>
   );
 }
