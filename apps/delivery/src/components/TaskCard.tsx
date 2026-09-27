@@ -19,7 +19,7 @@ export default function TaskCard({ task, members, onOpenMember, onOpen, selected
       <div className="task-content">
       <button className="task-open" onClick={onOpen}>
       <div className="spread">
-        <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
+        <span className="muted">{jpDate(task.purchased_at)}</span>
         <span className={`badge ${done === flags.length ? 'done' : 'todo'}`}>
           {done}/{flags.length}
         </span>
@@ -28,6 +28,9 @@ export default function TaskCard({ task, members, onOpenMember, onOpen, selected
       <div className="title">
         {task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}
         {task.title}
+      </div>
+      <div className="muted">
+        ASIN {task.asin || '—'}
       </div>
       <div className="muted">
         追跡番号 {task.tracking_no || '—'}
@@ -39,7 +42,7 @@ export default function TaskCard({ task, members, onOpenMember, onOpen, selected
       {members.length > 1 && <div className="task-members">
         {members.filter(member => member.id !== task.id).map(member => <button key={member.id} className="btn" onClick={() => onOpenMember(member.id)}>
           {member.is_accessory ? '付属品' : '同じ商品'}：{member.title}
-          <span className="muted">購入日 {jpDate(member.purchased_at)} ／ 追跡番号 {member.tracking_no || '—'}</span>
+          <span className="muted">{jpDate(member.purchased_at)} ／ 追跡番号 {member.tracking_no || '—'}</span>
         </button>)}
       </div>}
       </div>

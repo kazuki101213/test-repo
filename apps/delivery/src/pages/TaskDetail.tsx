@@ -120,11 +120,11 @@ export default function TaskDetail({
             : <div className="photo-placeholder">写真未登録</div>}
         </section>
         <div className="product-info">
-        <div>購入日 {jpDate(task.purchased_at)}</div>
-        <div>SKU {task.sku}</div>
-        <div>型番 {task.title || '—'}</div>
-        <div>ASIN {task.asin || '—'}</div>
-        <div>追跡番号 {task.tracking_no || '—'}</div>
+        <div className="muted">購入日 {jpDate(task.purchased_at)}</div>
+        <div className="sku">SKU {task.sku}</div>
+        <div className="product-name">型番 {task.title || '—'}</div>
+        <div className="muted">ASIN {task.asin || '—'}</div>
+        <div className="muted">追跡番号 {task.tracking_no || '—'}</div>
         </div>
       </div>
 
