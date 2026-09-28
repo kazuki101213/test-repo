@@ -158,6 +158,12 @@ export async function handler(req: Request): Promise<Response> {
       const financeParams = new URLSearchParams({ ...range, marketplaceId: marketplace });
       const financeResponse = await fetch(`https://sellingpartnerapi-fe.amazon.com/finances/2024-06-19/transactions?${financeParams}`, { headers: commonHeaders, signal: AbortSignal.timeout(20000) });
       const financeBody = await financeResponse.json().catch(() => null);
+      const [inventoryResponse, financeLegacyResponse] = await Promise.all([
+        fetch(`https://sellingpartnerapi-fe.amazon.com/fba/inventory/v1/summaries?granularityType=Marketplace&granularityId=${encodeURIComponent(marketplace)}&marketplaceIds=${encodeURIComponent(marketplace)}`, { headers: commonHeaders, signal: AbortSignal.timeout(20000) }),
+        fetch('https://sellingpartnerapi-fe.amazon.com/finances/v0/financialEventGroups?MaxResultsPerPage=1', { headers: commonHeaders, signal: AbortSignal.timeout(20000) }),
+      ]);
+      const inventoryBody = await inventoryResponse.json().catch(() => null);
+      const financeLegacyBody = await financeLegacyResponse.json().catch(() => null);
       const detailClass = (body: unknown) => {
         const detail = str(list(obj(body).errors).map(obj)[0]?.details, 500);
         if (detail === 'The LWA secret token you provided has expired.') return 'client_secret_expired';
@@ -167,10 +173,15 @@ export async function handler(req: Request): Promise<Response> {
       };
       return respond(200, {
         lwa: 'ok', sellerStatus: sellerResponse.status, financeStatus: financeResponse.status, otherRegions,
+        inventoryStatus: inventoryResponse.status, financeLegacyStatus: financeLegacyResponse.status,
         sellerRequestId: str(sellerResponse.headers.get('x-amzn-requestid'), 100),
         financeRequestId: str(financeResponse.headers.get('x-amzn-requestid'), 100),
+        inventoryRequestId: str(inventoryResponse.headers.get('x-amzn-requestid'), 100),
+        financeLegacyRequestId: str(financeLegacyResponse.headers.get('x-amzn-requestid'), 100),
         sellerMessage: str(list(obj(sellerBody).errors).map(obj)[0]?.message, 200),
         financeMessage: str(list(obj(financeBody).errors).map(obj)[0]?.message, 200),
+        inventoryMessage: str(list(obj(inventoryBody).errors).map(obj)[0]?.message, 200),
+        financeLegacyMessage: str(list(obj(financeLegacyBody).errors).map(obj)[0]?.message, 200),
         jpMarketplace: list(obj(sellerBody).payload).some(p => obj(obj(p).marketplace).id === marketplace),
         sellerCode: str(list(obj(sellerBody).errors).map(obj)[0]?.code, 80),
         financeCode: str(list(obj(financeBody).errors).map(obj)[0]?.code, 80),
