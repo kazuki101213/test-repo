@@ -11,7 +11,6 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [pageChoice, setPageChoice] = useState<0 | 1 | 2>(0);
-  const [preview, setPreview] = useState(false);
   const camera = useRef<HTMLInputElement>(null);
   const files = useRef<HTMLInputElement>(null);
   useEffect(() => { onBusyChange(busy || loading); return () => onBusyChange(false); }, [busy, loading, onBusyChange]);
@@ -51,10 +50,9 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
       {error && <div className="error" role="alert">{error}</div>}
       <div className="receipt-thumbnails">{rows.map((row, i) => <figure key={row.id}><img src={row.url} alt={`領収書 ${i + 1}`} /><figcaption>{i + 1}. {row.original_name}</figcaption>{!approved && <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => void remove(row.id)}>削除</button>}</figure>)}</div>
       <div className="row"><label>PDFのページ数<select value={pageChoice} onChange={e => setPageChoice(Number(e.target.value) as 0 | 1 | 2)}><option value={0}>自動（1〜2ページ）</option><option value={1}>1ページ</option><option value={2}>2ページ</option></select></label>
-        <button type="button" className="btn ghost" disabled={!rows.length || loading} onClick={() => setPreview(v => !v)}>領収書プレビュー</button>
         <button type="button" className="btn ghost" disabled={!rows.length || loading} onClick={onPrint}>領収書PDF保存・印刷</button>
       </div>
     </div>
-    <div className={`receipt-document${preview ? ' is-preview' : ''}`}>{pages.map((page, i) => <article className="receipt-sheet" key={i} style={{ gridTemplateColumns: `repeat(${Math.min(3, page.length)}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${Math.ceil(page.length / 3)}, minmax(0, 1fr))` }}>{page.map((row, index) => <div key={row.id}><img src={row.url} alt={`領収書 ${i * perPage + index + 1}`} /></div>)}</article>)}</div>
+    <div className="receipt-document is-preview">{pages.map((page, i) => <article className="receipt-sheet" key={i} style={{ gridTemplateColumns: `repeat(${Math.min(3, page.length)}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${Math.ceil(page.length / 3)}, minmax(0, 1fr))` }}>{page.map((row, index) => <div key={row.id}><img src={row.url} alt={`領収書 ${i * perPage + index + 1}`} /></div>)}</article>)}</div>
   </section>;
 }

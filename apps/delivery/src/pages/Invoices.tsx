@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Staff } from '@bussan/shared';
 import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday } from '../invoices';
@@ -56,6 +56,8 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const [printMode, setPrintMode] = useState<'invoice' | 'receipts'>('invoice');
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [receiptCount, setReceiptCount] = useState(0);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(0.45);
   const profile = profiles.find(p => p.staff_id === staffId);
 
   useEffect(() => {
@@ -96,6 +98,16 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  useEffect(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    const resize = () => setPreviewScale(Math.min(1, preview.clientWidth / 718));
+    const observer = new ResizeObserver(resize);
+    observer.observe(preview);
+    resize();
+    return () => observer.disconnect();
+  }, [loading, snapshot, settings]);
+
   const leave = () => !dirty || window.confirm('保存していない変更を破棄しますか？');
   const changeExtra = (index: number, patch: Partial<InvoiceLine>) => { setExtras(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row)); setDirty(true); setMessage(''); };
   async function printDocument(mode: 'invoice' | 'receipts') {
@@ -134,11 +146,12 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     {settings && profile && <ProfileEditor key={staffId} profile={profile} onCancel={() => setSettings(false)} onSave={p => { setProfiles(rows => rows.map(row => row.staff_id === p.staff_id ? p : row)); setSettings(false); }} />}
     {(loading || profileLoading) && <div className="empty no-print">読み込み中…</div>}
     {!loading && snapshot && !settings && <>
+      <div className="invoice-documents">
       <div className="invoice-section">
       {invoice?.approved_at ? <div className="card no-print"><p>承認済み・外注費に計上済みです。</p></div> :
       <form className="card no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save((e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'both' ? 'both' : 'invoice'); }}>
         <h3>請求書</h3>
-        <div className="row"><label>発生日<input type="date" required value={issued} disabled={busy} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label><span className="muted">{invoice ? '承認待ち' : '未提出'}・納品 {snapshot.lines.length}点</span></div>
+        <div className="row"><label>請求日<input type="date" required value={issued} disabled={busy} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label><span className="muted">{invoice ? '承認待ち' : '未提出'}・納品 {snapshot.lines.length}点</span></div>
         <h3>送料・資材費・手当など</h3>
         {extras.map((line, i) => <div className="invoice-extra" key={i}>
           <label>日付<input type="date" value={line.date ?? ''} disabled={busy} onChange={e => changeExtra(i, { date: e.target.value || null })} /></label>
@@ -155,11 +168,12 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
           <button className="btn" value="both" disabled={busy || receiptBusy || !receiptCount || (!snapshot.lines.length && !extras.length)}>請求書・領収書をまとめて送信</button>
         </div>
       </form>}
-      <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} /></div>
+      <div className="invoice-preview is-preview" ref={previewRef}><div className="invoice-preview-scale" style={{ zoom: previewScale }}><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} /></div></div>
       </div>
       <div className="receipt-section">
       <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onCountChange={setReceiptCount} onPrint={() => void printDocument('receipts')} />
       {!invoice?.approved_at && <div className="card no-print"><button type="button" className="btn" disabled={busy || receiptBusy || !receiptCount} onClick={() => void save('receipts')}>領収書のみ送信</button></div>}
+      </div>
       </div>
     </>}
     <div className="card no-print"><PackedSummary key={`${staff.id}/${month}`} staffId={staff.id} initialMonth={month} billedCount={staffId === staff.id && snapshot ? snapshot.lines.reduce((n, l) => n + l.quantity, 0) : undefined} /></div>
