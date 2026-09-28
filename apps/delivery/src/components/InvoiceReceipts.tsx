@@ -38,7 +38,7 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
   const perPage = Math.ceil(rows.length / pageCount);
   const pages = Array.from({ length: Math.min(pageCount, rows.length) }, (_, i) => rows.slice(i * perPage, (i + 1) * perPage)).filter(page => page.length);
   return <section className="invoice-receipts">
-    <div className="card no-print"><h3>領収書</h3>
+    <div className="receipt-editor no-print"><h3>領収書</h3>
       {!approved && <div className="row">
         <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={e => void upload(e.target.files)} />
         <input ref={files} type="file" accept="image/*" multiple hidden onChange={e => void upload(e.target.files)} />
