@@ -150,6 +150,11 @@ export async function handler(req: Request): Promise<Response> {
       const commonHeaders = { 'x-amz-access-token': token.access_token, 'x-amz-date': new Date().toISOString().replace(/[:-]|\.\d{3}/g, ''), 'user-agent': 'BussanAdmin/1.0 (Language=TypeScript; Platform=Supabase)' };
       const sellerResponse = await fetch('https://sellingpartnerapi-fe.amazon.com/sellers/v1/marketplaceParticipations', { headers: commonHeaders, signal: AbortSignal.timeout(20000) });
       const sellerBody = await sellerResponse.json().catch(() => null);
+      const otherRegions = await Promise.all(['na', 'eu'].map(async region => {
+        const response = await fetch(`https://sellingpartnerapi-${region}.amazon.com/sellers/v1/marketplaceParticipations`, { headers: commonHeaders, signal: AbortSignal.timeout(20000) });
+        const payload = await response.json().catch(() => null);
+        return { region, status: response.status, code: str(list(obj(payload).errors).map(obj)[0]?.code, 80) };
+      }));
       const financeParams = new URLSearchParams({ ...range, marketplaceId: marketplace });
       const financeResponse = await fetch(`https://sellingpartnerapi-fe.amazon.com/finances/2024-06-19/transactions?${financeParams}`, { headers: commonHeaders, signal: AbortSignal.timeout(20000) });
       const financeBody = await financeResponse.json().catch(() => null);
@@ -161,7 +166,11 @@ export async function handler(req: Request): Promise<Response> {
         return detail ? 'other_detail' : 'no_detail';
       };
       return respond(200, {
-        lwa: 'ok', sellerStatus: sellerResponse.status, financeStatus: financeResponse.status,
+        lwa: 'ok', sellerStatus: sellerResponse.status, financeStatus: financeResponse.status, otherRegions,
+        sellerRequestId: str(sellerResponse.headers.get('x-amzn-requestid'), 100),
+        financeRequestId: str(financeResponse.headers.get('x-amzn-requestid'), 100),
+        sellerMessage: str(list(obj(sellerBody).errors).map(obj)[0]?.message, 200),
+        financeMessage: str(list(obj(financeBody).errors).map(obj)[0]?.message, 200),
         jpMarketplace: list(obj(sellerBody).payload).some(p => obj(obj(p).marketplace).id === marketplace),
         sellerCode: str(list(obj(sellerBody).errors).map(obj)[0]?.code, 80),
         financeCode: str(list(obj(financeBody).errors).map(obj)[0]?.code, 80),
