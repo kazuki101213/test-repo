@@ -28,7 +28,9 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [lotSeq, setLotSeq] = useState<number | ''>('');
   const [purchasedAt, setPurchasedAt] = useState(today());
   const [productId, setProductId] = useState('');
+  const [productSearch, setProductSearch] = useState('');
   const [title, setTitle] = useState('');
+  const [asin, setAsin] = useState('');
   const [cost, setCost] = useState<number | ''>('');
   const [marketplace, setMarketplace] = useState<Marketplace>('メルカリ');
   const [marketplaceItemId, setMarketplaceItemId] = useState('');
@@ -55,19 +57,28 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         ? current : rows.find(s => s.name === purchaserNames[0] && s.role !== 'deliverer')?.id ?? '');
     }).catch((e) => setError(String(e)));
     fetchCards().then(setCards).catch(() => undefined);
-    fetchProducts().then(setProducts).catch(() => undefined);
     nextLotSeq().then(setLotSeq).catch(() => undefined);
   }, []);
+  useEffect(() => {
+    if (productId) return;
+    const term = productSearch.trim();
+    if (!term) { setProducts([]); return; }
+    let active = true;
+    const timer = setTimeout(() => { fetchProducts(term).then(rows => { if (active) setProducts(rows); }).catch(() => undefined); }, 220);
+    return () => { active = false; clearTimeout(timer); };
+  }, [productSearch, productId]);
 
   const product = products.find((p) => p.id === productId);
 
   // 商品マスタを選んだら、想定販売価格と振込額を引き継ぐ
   useEffect(() => {
     if (!product) return;
-    setTitle((t) => t || product.model_no || '');
+    setTitle(product.model_no || '');
+    setAsin(product.asin || '');
     setPlannedPrice(product.list_price ?? '');
     setPlannedPayout(product.payout_estimate ?? '');
   }, [product]);
+  const matchingProducts = products;
 
   const purchaser = staff.find((s) => s.id === purchaserId);
   // 利益が出ない仕入れはその場で気づけるようにする
@@ -99,8 +110,8 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       if (marketplaceUrl.trim()) {
         let url: URL;
         try { url = new URL(marketplaceUrl.trim()); }
-        catch { throw new Error('仕入れURLは https:// から始まるURLを入力してください。'); }
-        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('仕入れURLの形式を確認してください。');
+        catch { throw new Error('仕入先URLは https:// から始まるURLを入力してください。'); }
+        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('仕入先URLの形式を確認してください。');
       }
       const payload: ItemInsert = {
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
@@ -115,7 +126,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         marketplace_url: marketplaceUrl.trim() || null,
         card_id: cardId || null,
         product_id: productId || null,
-        asin: product?.asin ?? null,
+        asin: asin.trim() || null,
         condition: condition || null,
         planned_price: plannedPrice === '' ? null : Number(plannedPrice),
         planned_payout: plannedPayout === '' ? null : Number(plannedPayout),
@@ -126,7 +137,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       const created = await createItem(payload);
       setDone(`登録しました: ${created.sku}`);
       // 続けて同じ商品の仕入れを登録できるよう、通番号と担当者は残す
-      setTitle(''); setCost(''); setMarketplaceItemId(''); setUrlOverride(null);
+      setTitle(''); setAsin(''); setProductSearch(''); setCost(''); setMarketplaceItemId(''); setUrlOverride(null);
       setProductId(''); setNote(''); setTemplatesOpen(false);
       onSaved?.();
     } catch (e2) {
@@ -138,15 +149,14 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
 
   return (
     <>
-      <h2>仕入登録</h2>
+      <h2>在庫登録</h2>
 
       {done && <div className="ok">{done}</div>}
       {error && <div className="error">{error}</div>}
 
       <form onSubmit={submit}>
-        <div className="grid cols2">
-          <div className="card">
-            <h3>仕入れ</h3>
+        <div className="card">
+          <div className="grid cols2">
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <label className="field"><span>購入日</span>
                 <input type="date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} required />
@@ -165,32 +175,30 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                   {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </label>
-              <label className="field"><span>商品ID（仕入先の商品番号）</span>
-                <input type="text" value={marketplaceItemId} onChange={(e) => changeItemId(e.target.value)} placeholder="商品ID または 商品ページのURL" />
+              <label className="field"><span>商品ID</span>
+                <input type="text" value={marketplaceItemId} onChange={(e) => changeItemId(e.target.value)} />
               </label>
-              <label className="field"><span>仕入れURL</span>
-                <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} placeholder="仕入先と商品IDから自動入力" />
+              <label className="field"><span>仕入先URL</span>
+                <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} />
               </label>
             </div>
-            {marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入れURLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
-          </div>
-
-          <div className="card">
-            <h3>商品</h3>
-            <label className="field"><span>商品リスト（ASIN）</span>
-              <select value={productId} onChange={(e) => setProductId(e.target.value)}>
-                <option value="">— マスタを使わない —</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.product_no ? `${p.product_no}. ` : ''}{p.model_no ?? p.asin} / {p.maker ?? ''} / 目標 {p.target_cost ? yen(p.target_cost) : '—'}
-                  </option>
-                ))}
-              </select>
+            {marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
+          <div>
+            <label className="field"><span>商品リスト検索</span>
+              <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
             </label>
-            <label className="field" style={{ marginTop: 8 }}><span>商品名</span>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="DMR-BRZ1020" />
-            </label>
+            {matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
+              {matchingProducts.slice(0, 20).map(p => <button type="button" role="option" aria-selected={productId === p.id} key={p.id} onClick={() => { setProductId(p.id); setProductSearch(`${p.model_no ?? ''} / ${p.asin ?? ''}`); }}>
+                {p.model_no ?? '型番なし'} / {p.asin ?? 'ASINなし'} / 目標 {p.target_cost ? yen(p.target_cost) : '—'}
+              </button>)}
+            </div>}
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 8 }}>
+              <label className="field"><span>型番</span>
+                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+              </label>
+              <label className="field"><span>ASIN</span>
+                <input type="text" value={asin} onChange={(e) => setAsin(e.target.value)} />
+              </label>
               <label className="field"><span>コンディション</span>
                 <select value={condition} onChange={(e) => setCondition(e.target.value as ItemCondition)}>
                   <option value="">—</option>
@@ -215,9 +223,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
               </div>
             )}
           </div>
-
-          <div className="card">
-            <h3>担当</h3>
+          <div>
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <label className="field"><span>仕入担当者</span>
                 <select value={purchaserId} onChange={(e) => setPurchaserId(e.target.value)} required>
@@ -255,6 +261,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
               </div>
             </div>
           </div>
+        </div>
         </div>
         <button className="btn primary" style={{ marginTop: 16, width: '100%' }} disabled={busy}>{busy ? '登録中…' : '登録する'}</button>
       </form>

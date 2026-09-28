@@ -17,7 +17,7 @@ export const CONDITIONS: ItemCondition[] = [
 export const WORK_STREAMS: WorkStream[] = ['テレビ', 'ブルーレイ', '付属品', 'その他'];
 
 export const STATUSES: ItemStatus[] = [
-  '仕入済', '入荷済', '作業中', '出荷済', '出品中', '販売済',
+  '作業中', '出品中', '販売済',
   '返品処理', 'Amazon返品', '保留', '廃棄',
 ];
 

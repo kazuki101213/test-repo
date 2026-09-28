@@ -1499,3 +1499,1063 @@ order by s.code;
 grant select on app.v_logins to authenticated;
 
 
+-- ▼▼▼ 20260927063022_amazon_payment_history.sql ▼▼▼
+
+create table app.amazon_payment_transactions (
+  account_key text not null,
+  marketplace_id text not null,
+  transaction_id text not null,
+  posted_at timestamptz not null,
+  transaction_type text,
+  status text,
+  description text,
+  amount numeric,
+  currency text,
+  order_id text,
+  payment_date timestamptz,
+  breakdowns jsonb not null default '[]'::jsonb,
+  item_breakdowns jsonb not null default '[]'::jsonb,
+  fetched_at timestamptz not null,
+  primary key (account_key, marketplace_id, transaction_id),
+  check (jsonb_typeof(breakdowns) = 'array'),
+  check (jsonb_typeof(item_breakdowns) = 'array')
+);
+create index amazon_payments_history_idx on app.amazon_payment_transactions (account_key, marketplace_id, posted_at desc, transaction_id);
+alter table app.amazon_payment_transactions enable row level security;
+revoke all on app.amazon_payment_transactions from anon, authenticated;
+grant select on app.amazon_payment_transactions to authenticated;
+grant select, insert, update on app.amazon_payment_transactions to service_role;
+create policy amazon_payments_admin_read on app.amazon_payment_transactions
+for select to authenticated using ((select app.is_admin()));
+comment on table app.amazon_payment_transactions is 'Amazon JP Finances transaction history. Service-side imports only. No Amazon writes.';
+
+
+-- ▼▼▼ 20260927063954_restrict_login_linking_to_operators.sql ▼▼▼
+
+-- Account linking is an operator-only action; normal login does not use this function.
+revoke execute on function app.link_login(text, text) from public, anon, authenticated;
+grant execute on function app.link_login(text, text) to service_role;
+
+
+-- ▼▼▼ 20260927074728_amazon_inventory_sale_reconciliation.sql ▼▼▼
+
+create table app.amazon_sale_matches (
+  item_id uuid primary key references app.items(id),
+  account_key text not null,
+  transaction_id text not null,
+  sku text not null,
+  sold_on date not null,
+  sold_price bigint not null check (sold_price >= 0),
+  payout_amount bigint not null check (payout_amount >= 0),
+  applied_by uuid not null references auth.users(id),
+  applied_at timestamptz not null default now(),
+  unique(account_key, transaction_id, sku)
+);
+alter table app.amazon_sale_matches enable row level security;
+revoke all on app.amazon_sale_matches from public, anon, authenticated;
+grant select, insert, update on app.amazon_sale_matches to service_role;
+comment on table app.amazon_sale_matches is 'Exact-SKU Amazon sale reconciliation provenance. Does not store buyer details.';
+
+create or replace function app.apply_amazon_sale(
+  p_account text, p_transaction text, p_sku text, p_asin text,
+  p_sold_on date, p_price bigint, p_payout bigint, p_actor uuid
+) returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare
+  inventory app.items%rowtype;
+  previous app.amazon_sale_matches%rowtype;
+  evidence jsonb;
+begin
+  if not exists(select 1 from app.profiles p join app.staff s on s.id=p.staff_id
+      where p.user_id=p_actor and s.role='admin' and s.is_active) then
+    raise exception 'Administrator required';
+  end if;
+  if p_sold_on is null or p_sold_on > (now() at time zone 'Asia/Tokyo')::date
+      or p_price is null or p_payout is null or p_price < 0 or p_payout < 0 then
+    raise exception 'Invalid sale';
+  end if;
+  select t.item_breakdowns into evidence from app.amazon_payment_transactions t
+    where t.account_key=p_account and t.transaction_id=p_transaction and t.marketplace_id='A1VC38T7YXB528'
+      and t.transaction_type='Shipment' and t.status in ('RELEASED','DEFERRED_RELEASED');
+  if evidence is null or (select count(*) from jsonb_array_elements(evidence) e where e->>'sku'=p_sku) <> 1
+    or not exists(select 1 from jsonb_array_elements(evidence) e where e->>'sku'=p_sku and e->>'currency'='JPY'
+        and (e->>'quantity')::numeric=1 and (e->>'amount')::numeric=p_payout) then
+    return jsonb_build_object('status','review','reason','確定した商品別金額の根拠がありません。');
+  end if;
+  select * into inventory from app.items where sku=p_sku for update;
+  if not found then return jsonb_build_object('status','review','reason','一致するSKUが在庫一覧にありません。'); end if;
+  if inventory.asin is not null and p_asin is not null and inventory.asin<>p_asin then
+    return jsonb_build_object('status','review','reason','在庫とAmazonのASINが一致しません。');
+  end if;
+  if inventory.sales_channel is not null and inventory.sales_channel not in ('FBA','自己発送') then
+    return jsonb_build_object('status','review','reason','在庫の販売先がAmazon以外です。');
+  end if;
+  if inventory.status in ('返品処理','Amazon返品','廃棄') or inventory.amazon_returned_on is not null
+      or inventory.returned_on is not null or (inventory.purchased_at is not null and inventory.purchased_at > p_sold_on) then
+    return jsonb_build_object('status','review','reason','返品・廃棄、または仕入日より前の販売のため確認が必要です。');
+  end if;
+  select * into previous from app.amazon_sale_matches where item_id=inventory.id;
+  if found then
+    if previous.account_key<>p_account or previous.transaction_id<>p_transaction or previous.sku<>p_sku then
+      return jsonb_build_object('status','review','reason','この在庫には別のAmazon取引が反映済みです。');
+    end if;
+    if inventory.sold_on is distinct from previous.sold_on or inventory.sold_price is distinct from previous.sold_price
+      or inventory.payout_amount is distinct from previous.payout_amount then
+      return jsonb_build_object('status','review','reason','反映後に手動変更されています。自動上書きしません。');
+    end if;
+    if previous.sold_on=p_sold_on and previous.sold_price=p_price and previous.payout_amount=p_payout then
+      return jsonb_build_object('status','unchanged','reason','同じ内容を反映済みです。');
+    end if;
+  elsif (inventory.sold_on is not null and inventory.sold_on<>p_sold_on)
+      or (inventory.sold_price is not null and inventory.sold_price<>p_price)
+      or (inventory.payout_amount is not null and inventory.payout_amount<>p_payout) then
+    return jsonb_build_object('status','review','reason','既存の販売記録と異なります。自動上書きしません。');
+  end if;
+  update app.items set sold_on=p_sold_on,sold_price=p_price,payout_amount=p_payout where id=inventory.id;
+  insert into app.amazon_sale_matches(item_id,account_key,transaction_id,sku,sold_on,sold_price,payout_amount,applied_by)
+    values(inventory.id,p_account,p_transaction,p_sku,p_sold_on,p_price,p_payout,p_actor)
+    on conflict(item_id) do update set sold_on=excluded.sold_on,sold_price=excluded.sold_price,
+      payout_amount=excluded.payout_amount,applied_by=excluded.applied_by,applied_at=now();
+  return jsonb_build_object('status','applied','reason','販売日・販売価格・振込額を反映しました。');
+end;
+$$;
+revoke all on function app.apply_amazon_sale(text,text,text,text,date,bigint,bigint,uuid) from public,anon,authenticated;
+grant execute on function app.apply_amazon_sale(text,text,text,text,date,bigint,bigint,uuid) to service_role;
+
+
+-- ▼▼▼ 20260927074917_amazon_reconciliation_service_permissions.sql ▼▼▼
+
+grant select on app.items, app.staff, app.profiles to service_role;
+grant update (sold_on,sold_price,payout_amount) on app.items to service_role;
+
+
+-- ▼▼▼ 20260927082428_inventory_product_groups.sql ▼▼▼
+
+create or replace view app.v_product_groups with (security_invoker = true) as
+with grouped as (
+  select lot_seq, count(*)::integer as product_row_count, sum(cost_amount)::bigint as product_cost,
+    count(*) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0))::integer as sale_row_count,
+    count(distinct (sold_on,sold_price,payout_amount)) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as signatures,
+    bool_or(sold_on is not null and sold_price is null and not is_accessory) as missing_price,
+    min(sold_on) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as sale_date,
+    max(sold_price) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as sale_price,
+    max(payout_amount) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as sale_payout
+  from app.items group by lot_seq
+)
+select lot_seq,product_row_count,product_cost,sale_row_count,
+  (signatures > 1 or coalesce(missing_price,false)) as product_sale_conflict,
+  case when signatures=1 and not coalesce(missing_price,false) then sale_date end as product_sold_on,
+  case when signatures=1 and not coalesce(missing_price,false) then sale_price end as product_sold_price,
+  case when signatures=1 and not coalesce(missing_price,false) then sale_payout end as product_payout_amount
+from grouped;
+grant select on app.v_product_groups to authenticated,service_role;
+create or replace view app.v_inventory_items with (security_invoker = true) as
+select i.*,g.product_row_count,g.product_cost,g.sale_row_count,g.product_sale_conflict,
+  g.product_sold_on,g.product_sold_price,g.product_payout_amount
+from app.v_items i join app.v_product_groups g using(lot_seq);
+grant select on app.v_inventory_items to authenticated;
+create or replace function app.guard_single_product_sale()
+returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+  if TG_OP='UPDATE' and new.sold_on is not distinct from old.sold_on
+    and new.sold_price is not distinct from old.sold_price and new.payout_amount is not distinct from old.payout_amount then return new; end if;
+  if new.sold_on is null or (new.is_accessory and coalesce(new.sold_price,0)=0 and coalesce(new.payout_amount,0)=0) then return new; end if;
+  perform pg_advisory_xact_lock(179049,new.lot_seq);
+  if exists(select 1 from app.items i where i.lot_seq=new.lot_seq and i.id<>new.id and i.sold_on is not null
+      and not (i.is_accessory and coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0)) then
+    raise exception '同じ通番号の商品に販売記録があります。売上を重複登録できません。';
+  end if;
+  return new;
+end; $$;
+revoke all on function app.guard_single_product_sale() from public,anon,authenticated;
+create trigger items_single_product_sale before insert or update of sold_on,sold_price,payout_amount on app.items
+for each row execute function app.guard_single_product_sale();
+
+
+-- ▼▼▼ 20260927082703_amazon_reconcile_same_product.sql ▼▼▼
+
+create or replace function app.apply_amazon_sale(
+  p_account text, p_transaction text, p_sku text, p_asin text,
+  p_sold_on date, p_price bigint, p_payout bigint, p_actor uuid
+) returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare
+  inventory app.items%rowtype;
+  previous app.amazon_sale_matches%rowtype;
+  evidence jsonb;
+  target_id uuid;
+  target_lot integer;
+  target_count integer;
+begin
+  if not exists(select 1 from app.profiles p join app.staff s on s.id=p.staff_id
+      where p.user_id=p_actor and s.role='admin' and s.is_active) then
+    raise exception 'Administrator required';
+  end if;
+  if p_sold_on is null or p_sold_on > (now() at time zone 'Asia/Tokyo')::date
+      or p_price is null or p_payout is null or p_price < 0 or p_payout < 0 then
+    raise exception 'Invalid sale';
+  end if;
+  select t.item_breakdowns into evidence from app.amazon_payment_transactions t
+    where t.account_key=p_account and t.transaction_id=p_transaction and t.marketplace_id='A1VC38T7YXB528'
+      and t.transaction_type='Shipment' and t.status in ('RELEASED','DEFERRED_RELEASED');
+  if evidence is null or (select count(*) from jsonb_array_elements(evidence) e where e->>'sku'=p_sku) <> 1
+    or not exists(select 1 from jsonb_array_elements(evidence) e where e->>'sku'=p_sku and e->>'currency'='JPY'
+        and (e->>'quantity')::numeric=1 and (e->>'amount')::numeric=p_payout) then
+    return jsonb_build_object('status','review','reason','確定した商品別金額の根拠がありません。');
+  end if;
+  select id,lot_seq into target_id,target_lot from app.items where sku=p_sku;
+  if target_id is null and p_sku ~ '^[0-9]{1,9}[a-z]?[-_]' then
+    target_lot := substring(p_sku from '^([0-9]{1,9})')::integer;
+    select count(*),min(id::text)::uuid into target_count,target_id from app.items where lot_seq=target_lot and not is_accessory;
+    if target_count<>1 then return jsonb_build_object('status','review','reason','同じ通番号の本体行を1件に特定できません。'); end if;
+  end if;
+  if target_id is null then return jsonb_build_object('status','review','reason','一致するSKU・通番号が在庫一覧にありません。'); end if;
+  perform pg_advisory_xact_lock(179049,target_lot);
+  select * into inventory from app.items where id=target_id for update;
+  if inventory.asin is not null and p_asin is not null and inventory.asin<>p_asin then
+    return jsonb_build_object('status','review','reason','在庫とAmazonのASINが一致しません。');
+  end if;
+  if inventory.sales_channel is not null and inventory.sales_channel not in ('FBA','自己発送') then
+    return jsonb_build_object('status','review','reason','在庫の販売先がAmazon以外です。');
+  end if;
+  if inventory.status in ('返品処理','Amazon返品','廃棄') or inventory.amazon_returned_on is not null
+      or inventory.returned_on is not null or (inventory.purchased_at is not null and inventory.purchased_at > p_sold_on) then
+    return jsonb_build_object('status','review','reason','返品・廃棄、または仕入日より前の販売のため確認が必要です。');
+  end if;
+  if exists(select 1 from app.items i where i.lot_seq=inventory.lot_seq and i.id<>inventory.id and i.sold_on is not null
+      and not (i.is_accessory and coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0)) then
+    if exists(select 1 from app.items i where i.lot_seq=inventory.lot_seq and i.id<>inventory.id and i.sold_on is not null
+        and not (i.is_accessory and coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0)
+        and (i.sold_on is distinct from p_sold_on or i.sold_price is distinct from p_price or i.payout_amount is distinct from p_payout)) then
+      return jsonb_build_object('status','review','reason','同じ通番号に異なる販売記録があります。自動上書きしません。');
+    end if;
+    return jsonb_build_object('status','unchanged','reason','同じ通番号の商品に同じ販売内容を登録済みです。重複記入しません。');
+  end if;
+  select * into previous from app.amazon_sale_matches where item_id=inventory.id;
+  if found then
+    if previous.account_key<>p_account or previous.transaction_id<>p_transaction or previous.sku<>p_sku then
+      return jsonb_build_object('status','review','reason','この在庫には別のAmazon取引が反映済みです。');
+    end if;
+    if inventory.sold_on is distinct from previous.sold_on or inventory.sold_price is distinct from previous.sold_price
+      or inventory.payout_amount is distinct from previous.payout_amount then
+      return jsonb_build_object('status','review','reason','反映後に手動変更されています。自動上書きしません。');
+    end if;
+    if previous.sold_on=p_sold_on and previous.sold_price=p_price and previous.payout_amount=p_payout then
+      return jsonb_build_object('status','unchanged','reason','同じ内容を反映済みです。');
+    end if;
+  elsif (inventory.sold_on is not null and inventory.sold_on<>p_sold_on)
+      or (inventory.sold_price is not null and inventory.sold_price<>p_price)
+      or (inventory.payout_amount is not null and inventory.payout_amount<>p_payout) then
+    return jsonb_build_object('status','review','reason','既存の販売記録と異なります。自動上書きしません。');
+  end if;
+  update app.items set sold_on=p_sold_on,sold_price=p_price,payout_amount=p_payout where id=inventory.id;
+  insert into app.amazon_sale_matches(item_id,account_key,transaction_id,sku,sold_on,sold_price,payout_amount,applied_by)
+    values(inventory.id,p_account,p_transaction,p_sku,p_sold_on,p_price,p_payout,p_actor)
+    on conflict(item_id) do update set sold_on=excluded.sold_on,sold_price=excluded.sold_price,
+      payout_amount=excluded.payout_amount,applied_by=excluded.applied_by,applied_at=now();
+  return jsonb_build_object('status','applied','reason','販売日・販売価格・振込額を反映しました。');
+end;
+$$;
+revoke all on function app.apply_amazon_sale(text,text,text,text,date,bigint,bigint,uuid) from public,anon,authenticated;
+grant execute on function app.apply_amazon_sale(text,text,text,text,date,bigint,bigint,uuid) to service_role;
+
+
+-- ▼▼▼ 20260927083232_product_sale_missing_price_validation.sql ▼▼▼
+
+create or replace view app.v_product_groups with (security_invoker = true) as
+with grouped as (
+  select lot_seq, count(*)::integer as product_row_count, sum(cost_amount)::bigint as product_cost,
+    count(*) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0))::integer as sale_row_count,
+    count(distinct (sold_on,sold_price,payout_amount)) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as signatures,
+    bool_or(sold_on is not null and sold_price is null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as missing_price,
+    min(sold_on) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as sale_date,
+    max(sold_price) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as sale_price,
+    max(payout_amount) filter(where sold_on is not null and not (is_accessory and coalesce(sold_price,0)=0 and coalesce(payout_amount,0)=0)) as sale_payout
+  from app.items group by lot_seq
+)
+select lot_seq,product_row_count,product_cost,sale_row_count,
+  (signatures > 1 or coalesce(missing_price,false)) as product_sale_conflict,
+  case when signatures=1 and not coalesce(missing_price,false) then sale_date end as product_sold_on,
+  case when signatures=1 and not coalesce(missing_price,false) then sale_price end as product_sold_price,
+  case when signatures=1 and not coalesce(missing_price,false) then sale_payout end as product_payout_amount
+from grouped;
+
+
+-- ▼▼▼ 20260927102345_expense_refunds_and_product_counts.sql ▼▼▼
+
+-- Expense refunds reduce expense totals; retain existing access policies.
+ALTER TABLE app.expenses DROP CONSTRAINT expenses_amount_check;
+ALTER TABLE app.expenses ADD CONSTRAINT expenses_amount_check CHECK (amount BETWEEN -9007199254740991 AND 9007199254740991);
+CREATE OR REPLACE VIEW app.v_monthly_summary WITH (security_invoker = true) AS  WITH purchased AS (
+         SELECT date_trunc('month'::text, items.purchased_at::timestamp with time zone)::date AS month,
+            count(*) AS "仕入数",
+            sum(items.cost_amount) AS "仕入金額",
+            avg(items.cost_amount)::bigint AS "平均仕入額"
+           FROM app.items
+          GROUP BY (date_trunc('month'::text, items.purchased_at::timestamp with time zone)::date)
+        ), sold AS (
+         SELECT date_trunc('month'::text, items.sold_on::timestamp with time zone)::date AS month,
+            count(DISTINCT items.lot_seq) FILTER (WHERE NOT (items.is_accessory AND COALESCE(items.sold_price, 0) = 0 AND COALESCE(items.payout_amount, 0) = 0)) AS "販売数",
+            sum(items.sold_price) AS "売上",
+            sum(items.payout_amount) AS "振込金額",
+            sum(items.profit) AS "粗利益",
+            avg(items.sold_price)::bigint AS "平均販売額",
+            avg(items.sold_on - items.purchased_at)::numeric(10,1) AS "平均回転日数"
+           FROM app.items
+          WHERE items.sold_on IS NOT NULL
+          GROUP BY (date_trunc('month'::text, items.sold_on::timestamp with time zone)::date)
+        ), expense AS (
+         SELECT date_trunc('month'::text, expenses.incurred_on::timestamp with time zone)::date AS month,
+            sum(expenses.amount) AS "経費"
+           FROM app.expenses
+          GROUP BY (date_trunc('month'::text, expenses.incurred_on::timestamp with time zone)::date)
+        )
+ SELECT COALESCE(p.month, s.month, e.month) AS month,
+    COALESCE(p."仕入数", 0::bigint) AS "仕入数",
+    COALESCE(p."仕入金額", 0::numeric) AS "仕入金額",
+    COALESCE(p."平均仕入額", 0::bigint) AS "平均仕入額",
+    COALESCE(s."販売数", 0::bigint) AS "販売数",
+    COALESCE(s."売上", 0::numeric) AS "売上",
+    COALESCE(s."振込金額", 0::numeric) AS "振込金額",
+    COALESCE(s."粗利益", 0::numeric) AS "粗利益",
+    COALESCE(s."平均販売額", 0::bigint) AS "平均販売額",
+    s."平均回転日数",
+    COALESCE(e."経費", 0::numeric) AS "経費",
+    COALESCE(s."粗利益", 0::numeric) - COALESCE(e."経費", 0::numeric) AS "純利益"
+   FROM purchased p
+     FULL JOIN sold s ON s.month = p.month
+     FULL JOIN expense e ON e.month = COALESCE(p.month, s.month)
+  ORDER BY (COALESCE(p.month, s.month, e.month)) DESC;
+CREATE OR REPLACE VIEW app.v_stock_summary WITH (security_invoker = true) AS  SELECT count(DISTINCT lot_seq) AS "現在庫数",
+    sum(cost_amount) AS "仕入金額合計",
+    sum(COALESCE(planned_payout, 0::bigint)) AS "売上見込み合計",
+    sum(COALESCE(planned_payout, 0::bigint) - cost_amount) AS "見込み利益合計",
+    count(*) FILTER (WHERE (CURRENT_DATE - purchased_at) <= 7) AS "高回転",
+    count(*) FILTER (WHERE (CURRENT_DATE - purchased_at) >= 8 AND (CURRENT_DATE - purchased_at) <= 14) AS "中回転",
+    count(*) FILTER (WHERE (CURRENT_DATE - purchased_at) >= 15) AS "低回転",
+    count(*) FILTER (WHERE status = '作業中'::app.item_status) AS "作業中",
+    count(*) FILTER (WHERE status = '仕入済'::app.item_status) AS "入荷待ち"
+   FROM app.items
+  WHERE status <> ALL (ARRAY['販売済'::app.item_status, '返品処理'::app.item_status, '廃棄'::app.item_status]);
+
+
+-- ▼▼▼ 20260927122855_delivery_five_steps_and_descriptions.sql ▼▼▼
+
+alter table app.items add column if not exists cleaned_at timestamptz;
+alter table app.items add column if not exists description_template text;
+alter table app.items add column if not exists manufacture_year integer;
+alter table app.items add constraint items_description_template_check check (description_template is null or description_template in ('小物','ブルーレイレコーダー','モニター','テレビ'));
+alter table app.items add constraint items_manufacture_year_check check (manufacture_year is null or manufacture_year between 1900 and 2100);
+-- Previously inspection and cleaning were one completed step.
+update app.items set cleaned_at = inspected_at where cleaned_at is null and inspected_at is not null;
+CREATE OR REPLACE FUNCTION app.items_sync_status()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+begin
+  -- 手動で設定された終端ステータスは尊重する
+  if new.status in ('返品処理', '保留', '廃棄', '販売済') then
+    return new;
+  end if;
+
+  -- Amazon から戻ってきた個体は、再出荷するまで「Amazon返品」のまま。
+  -- 既に作業済みの個体が返ってくるので、過去の作業チェックは消さずに残す。
+  -- 返品日が分からない行（移行元に日付が無かったもの）でも印だけは保てるよう、
+  -- 日付と status のどちらかが立っていれば返品扱いにする。
+  if new.amazon_returned_on is not null or new.status = 'Amazon返品' then
+    if new.shipped_on is not null
+       and (new.amazon_returned_on is null or new.shipped_on > new.amazon_returned_on) then
+      null;   -- 返品後に出荷し直したので、通常の進捗に戻す
+    else
+      new.status := 'Amazon返品';
+      return new;
+    end if;
+  end if;
+
+  new.status := case
+    when new.shipped_on is not null then '出荷済'
+    when new.product_registered_at is not null
+      or new.inspected_at is not null
+      or new.cleaned_at is not null
+      or new.photo_uploaded_at is not null
+      or new.packed_on is not null then '作業中'
+    when new.arrived_on is not null then '入荷済'
+    else '仕入済'
+  end;
+
+  -- 出荷済みかつ出品日が入っていれば出品中
+  if new.listed_on is not null and new.status = '出荷済' then
+    new.status := '出品中';
+  end if;
+
+  return new;
+end;
+$function$
+;
+drop trigger if exists items_sync_status on app.items;
+create trigger items_sync_status before insert or update of arrived_on, product_registered_at, inspected_at, cleaned_at, photo_uploaded_at, packed_on, shipped_on, listed_on, amazon_returned_on on app.items for each row execute function app.items_sync_status();
+
+create or replace function app.set_work_progress(p_item_id uuid, p_step text, p_done boolean default true)
+returns app.items language plpgsql security definer set search_path = app, public as $$
+declare v_item app.items;
+begin
+  if p_step is null or p_done is null or p_step not in ('arrived','registered','inspected','cleaned','photo','listing','packed','shipped') then
+    raise exception '不明な作業ステップです' using errcode = '22023';
+  end if;
+  perform app.assert_can_work_on(p_item_id);
+  update app.items set
+    arrived_on = case when p_step = 'arrived' then case when p_done then coalesce(arrived_on,current_date) else null end
+      when p_done then coalesce(arrived_on,current_date) else arrived_on end,
+    product_registered_at = case when p_step in ('registered','listing') then case when p_done then coalesce(product_registered_at,now()) else null end else product_registered_at end,
+    inspected_at = case when p_step = 'inspected' then case when p_done then coalesce(inspected_at,now()) else null end else inspected_at end,
+    cleaned_at = case when p_step = 'cleaned' then case when p_done then coalesce(cleaned_at,now()) else null end else cleaned_at end,
+    photo_uploaded_at = case when p_step in ('photo','listing') then case when p_done then coalesce(photo_uploaded_at,now()) else null end else photo_uploaded_at end,
+    packed_on = case when p_step = 'packed' then case when p_done then coalesce(packed_on,current_date) else null end else packed_on end,
+    shipped_on = case when p_step = 'shipped' then case when p_done then coalesce(shipped_on,current_date) else null end else shipped_on end
+  where id=p_item_id returning * into v_item;
+  return v_item;
+end;
+$$;
+revoke all on function app.set_work_progress(uuid,text,boolean) from public, anon;
+grant execute on function app.set_work_progress(uuid,text,boolean) to authenticated;
+
+create or replace function app.save_delivery_description(p_item_id uuid, p_condition app.item_condition, p_accessories text, p_description text, p_template text, p_manufacture_year integer)
+returns void language plpgsql security definer set search_path = app, public as $$
+begin
+  perform app.assert_can_work_on(p_item_id);
+  if p_template is not null and p_template not in ('小物','ブルーレイレコーダー','モニター','テレビ') then
+    raise exception '商品種別を確認してください' using errcode='22023';
+  end if;
+  if char_length(p_description)>10000 or char_length(p_accessories)>2000 then
+    raise exception '入力文字数が上限を超えています' using errcode='22023';
+  end if;
+  update app.items set condition=p_condition, accessories=p_accessories, description=p_description,
+    description_template=p_template, manufacture_year=p_manufacture_year where id=p_item_id;
+end;
+$$;
+revoke all on function app.save_delivery_description(uuid,app.item_condition,text,text,text,integer) from public, anon;
+grant execute on function app.save_delivery_description(uuid,app.item_condition,text,text,text,integer) to authenticated;
+
+create or replace view app.v_delivery_tasks with (security_invoker=true) as
+SELECT i.id,
+    i.sku,
+    i.lot_seq,
+    i.is_accessory,
+    i.status,
+    i.work_stream,
+    i.title,
+    i.asin,
+    i.condition,
+    i.purchased_at,
+    i.marketplace,
+    i.tracking_no,
+    i.accessories,
+    i.description,
+    i.sales_channel,
+    i.planned_price,
+    i.deliverer_id,
+    buyer.name AS purchaser_name,
+    i.arrived_on,
+    i.product_registered_at IS NOT NULL AS product_registered,
+    i.inspected_at IS NOT NULL AS inspected,
+    i.photo_uploaded_at IS NOT NULL AS photo_uploaded,
+    i.packed_on,
+    i.shipped_on,
+    i.amazon_returned_on,
+    p.image_url AS reference_image_url,
+    ( SELECT count(*) AS count
+           FROM app.item_photos ph
+          WHERE ph.item_id = i.id) AS photo_count,
+    ( SELECT max(cm.created_at) AS max
+           FROM app.item_comments cm
+          WHERE cm.item_id = i.id) AS last_comment_at,
+    (i.cleaned_at is not null) as cleaned,
+    i.description_template,
+    i.manufacture_year
+   FROM app.items i
+     LEFT JOIN app.products p ON p.id = i.product_id
+     LEFT JOIN app.staff buyer ON buyer.id = i.purchaser_id
+  WHERE i.status = ANY (ARRAY['仕入済'::app.item_status, '入荷済'::app.item_status, '作業中'::app.item_status, 'Amazon返品'::app.item_status, '出荷済'::app.item_status, '出品中'::app.item_status, '販売済'::app.item_status]);
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20260927135933_monthly_fixed_expense_drafts.sql ▼▼▼
+
+create extension if not exists pg_cron with schema pg_catalog;
+create table app.expense_drafts (
+ id uuid primary key default gen_random_uuid(),
+ target_month date not null check (extract(day from target_month)=1),
+ name text not null check (length(trim(name))>0),
+ card_id uuid references app.payment_cards(id),
+ created_at timestamptz not null default now(),
+ unique(target_month,name)
+);
+alter table app.expense_drafts enable row level security;
+revoke all on app.expense_drafts from anon, authenticated;
+grant select on app.expense_drafts to authenticated;
+create policy expense_drafts_admin_read on app.expense_drafts for select to authenticated using(app.is_admin());
+create function app.generate_next_month_fixed_expenses() returns integer language plpgsql security invoker set search_path = pg_catalog,app as $$
+declare today_jst date := (now() at time zone 'Asia/Tokyo')::date;
+ month_start date := date_trunc('month',today_jst)::date;
+ next_month date := (month_start + interval '1 month')::date;
+ inserted integer;
+begin
+ if today_jst <> next_month - 1 then return 0; end if;
+ insert into app.expense_drafts(target_month,name,card_id)
+ select next_month,src.name,src.card_id from (
+ select distinct on (name) name,card_id from (
+ select name,card_id,updated_at from app.expenses where category='固定費' and incurred_on>=month_start and incurred_on<next_month
+ union all
+ select d.name,d.card_id,d.created_at from app.expense_drafts d
+ where d.target_month=month_start and not exists(select 1 from app.expenses e where e.id=d.id)
+ ) candidates order by name,updated_at desc
+ ) src
+ where not exists(select 1 from app.expenses e where e.category='固定費' and e.name=src.name and e.incurred_on>=next_month and e.incurred_on<next_month+interval '1 month')
+ on conflict(target_month,name) do nothing;
+ get diagnostics inserted = row_count;
+ return inserted;
+end $$;
+revoke all on function app.generate_next_month_fixed_expenses() from public,anon,authenticated;
+select cron.schedule('next-month-fixed-expense-drafts','55 14 * * *','select app.generate_next_month_fixed_expenses()');
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20260927140653_monthly_outsourcing_expense_drafts.sql ▼▼▼
+
+alter table app.expense_drafts add column category text not null default '固定費' check(category in ('固定費','外注費'));
+alter table app.expense_drafts drop constraint expense_drafts_target_month_name_key;
+alter table app.expense_drafts add unique(target_month,category,name);
+create or replace function app.generate_next_month_fixed_expenses() returns integer language plpgsql security invoker set search_path=pg_catalog,app as $$
+declare today_jst date := (now() at time zone 'Asia/Tokyo')::date;
+ month_start date := date_trunc('month',today_jst)::date;
+ next_month date := (month_start + interval '1 month')::date;
+ inserted integer;
+begin
+ if today_jst <> next_month - 1 then return 0; end if;
+ insert into app.expense_drafts(target_month,category,name,card_id)
+ select next_month,src.category,src.name,src.card_id from (
+ select distinct on (category,name) category,name,card_id from (
+ select case when category::text='給与' then '外注費' else category::text end as category,name,card_id,updated_at
+ from app.expenses where category::text in ('固定費','給与','外注費') and incurred_on>=month_start and incurred_on<next_month
+ union all
+ select d.category,d.name,d.card_id,d.created_at from app.expense_drafts d
+ where d.target_month=month_start and not exists(select 1 from app.expenses e where e.id=d.id)
+ ) candidates order by category,name,updated_at desc
+ ) src
+ where not exists(select 1 from app.expenses e where (case when e.category::text='給与' then '外注費' else e.category::text end)=src.category
+ and e.name=src.name and e.incurred_on>=next_month and e.incurred_on<next_month+interval '1 month')
+ on conflict(target_month,category,name) do nothing;
+ get diagnostics inserted = row_count;
+ return inserted;
+end $$;
+revoke all on function app.generate_next_month_fixed_expenses() from public,anon,authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20260927142058_delivery_invoices.sql ▼▼▼
+
+create table app.delivery_invoice_profiles (
+ staff_id uuid primary key references app.staff(id),
+ details jsonb not null check(jsonb_typeof(details)='object'),
+ unit_price integer check(unit_price between 0 and 1000000),
+ tax_percent integer not null default 0 check(tax_percent in (0,10)),
+ enabled boolean not null default false,
+ updated_at timestamptz not null default now()
+);
+create table app.delivery_invoices (
+ id uuid primary key default gen_random_uuid(),
+ staff_id uuid not null references app.staff(id),
+ billing_month date not null check(extract(day from billing_month)=1),
+ issued_on date not null default (now() at time zone 'Asia/Tokyo')::date,
+ extras jsonb not null default '[]'::jsonb check(jsonb_typeof(extras)='array'),
+ note text not null default '' check(length(note)<=2000),
+ snapshot jsonb not null,
+ total bigint not null,
+ version integer not null default 1,
+ created_at timestamptz not null default now(),
+ updated_at timestamptz not null default now(),
+ unique(staff_id,billing_month)
+);
+alter table app.delivery_invoice_profiles enable row level security;
+alter table app.delivery_invoices enable row level security;
+revoke all on app.delivery_invoice_profiles,app.delivery_invoices from public,anon,authenticated;
+grant select on app.delivery_invoice_profiles,app.delivery_invoices to authenticated;
+grant insert(staff_id,billing_month,issued_on,extras,note) on app.delivery_invoices to authenticated;
+grant update(issued_on,extras,note) on app.delivery_invoices to authenticated;
+create policy invoice_profiles_read on app.delivery_invoice_profiles for select to authenticated
+ using (exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and (staff_id=(select app.current_staff_id()) or (select app.is_admin())));
+create policy invoices_read on app.delivery_invoices for select to authenticated
+ using (exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and (staff_id=(select app.current_staff_id()) or (select app.is_admin())));
+create policy invoices_insert on app.delivery_invoices for insert to authenticated
+ with check (exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and (staff_id=(select app.current_staff_id()) or (select app.is_admin())));
+create policy invoices_update on app.delivery_invoices for update to authenticated
+ using (exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and (staff_id=(select app.current_staff_id()) or (select app.is_admin())))
+ with check (exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and (staff_id=(select app.current_staff_id()) or (select app.is_admin())));
+
+create function app.prepare_delivery_invoice(p_staff uuid,p_month date)
+returns jsonb language plpgsql stable security invoker set search_path=pg_catalog,app as $$
+declare p app.delivery_invoice_profiles; lines jsonb; subtotal bigint;
+begin
+ if auth.uid() is null or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active)
+ or not coalesce(p_staff=app.current_staff_id() or app.is_admin(),false) then
+  raise exception '請求書へのアクセス権がありません' using errcode='42501';
+ end if;
+ if p_month is null or extract(day from p_month)<>1 then raise exception '対象月が不正です'; end if;
+ select * into p from app.delivery_invoice_profiles where staff_id=p_staff;
+ if not found or not p.enabled or p.unit_price is null then raise exception '請求単価の設定を管理者に確認してください'; end if;
+ -- One body per lot, regardless of supplier rows. Accessories never increase quantity.
+ with bodies as (
+ select distinct on (lot_seq) id,lot_seq,purchased_at,packed_on,work_stream,marketplace,title
+ from app.items where deliverer_id=p_staff and not is_accessory and packed_on is not null
+ order by lot_seq,packed_on,id
+ ), selected as (
+ select * from bodies where packed_on>=p_month and packed_on<p_month+interval '1 month'
+ )
+ select coalesce(jsonb_agg(jsonb_build_object(
+ 'item_id',id,'lot_seq',lot_seq,'date',purchased_at,'packed_on',packed_on,
+ 'description',case when marketplace::text='Amazon返品' then 'Amazon返品対応'
+ when work_stream::text='テレビ' then 'モニター・テレビ'
+ when work_stream::text='ブルーレイ' then 'ブルーレイレコーダー' else '小物' end,
+ 'title',title,'quantity',1,'unit_price',p.unit_price,'amount',p.unit_price
+ ) order by purchased_at nulls last,lot_seq),'[]'::jsonb),count(*)*p.unit_price into lines,subtotal from selected;
+ return jsonb_build_object('profile',p.details,'lines',lines,'subtotal',subtotal,'tax_percent',p.tax_percent);
+end $$;
+revoke all on function app.prepare_delivery_invoice(uuid,date) from public,anon,authenticated;
+grant execute on function app.prepare_delivery_invoice(uuid,date) to authenticated;
+
+create function app.fill_delivery_invoice()
+returns trigger language plpgsql security invoker set search_path=pg_catalog,app as $$
+declare doc jsonb; line jsonb; normalized jsonb:='[]'; qty integer; price bigint; sub bigint; tax bigint; date_value date;
+begin
+ if jsonb_typeof(new.extras)<>'array' or jsonb_array_length(new.extras)>100 then raise exception '追加明細は100行以内で入力してください'; end if;
+ doc:=app.prepare_delivery_invoice(new.staff_id,new.billing_month);
+ sub:=(doc->>'subtotal')::bigint;
+ for line in select value from jsonb_array_elements(new.extras) loop
+  if jsonb_typeof(line)<>'object' or length(trim(coalesce(line->>'description','')))=0 or length(line->>'description')>200
+  or coalesce(line->>'quantity','') !~ '^[0-9]+$' or coalesce(line->>'unit_price','') !~ '^[0-9]+$' then
+   raise exception '追加明細の内容・数量・単価を確認してください';
+  end if;
+  qty:=(line->>'quantity')::integer; price:=(line->>'unit_price')::bigint;
+  if qty<1 or qty>100000 or price<0 or price>10000000 then raise exception '追加明細の金額が範囲外です'; end if;
+  date_value:=nullif(line->>'date','')::date;
+  normalized:=normalized||jsonb_build_array(jsonb_build_object('date',date_value,'description',trim(line->>'description'),'quantity',qty,'unit_price',price,'amount',qty*price));
+  sub:=sub+qty*price;
+ end loop;
+ tax:=floor(sub*(doc->>'tax_percent')::numeric/100);
+ new.extras:=normalized;
+ new.snapshot:=doc||jsonb_build_object('extras',normalized,'subtotal',sub,'tax',tax);
+ new.total:=sub+tax;
+ new.updated_at:=clock_timestamp();
+ if tg_op='UPDATE' then new.version:=old.version+1; else new.version:=1; end if;
+ return new;
+end $$;
+revoke all on function app.fill_delivery_invoice() from public,anon,authenticated;
+create trigger fill_delivery_invoice before insert or update on app.delivery_invoices for each row execute function app.fill_delivery_invoice();
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20260927142132_delivery_invoice_profile_edit.sql ▼▼▼
+
+grant update(details,unit_price) on app.delivery_invoice_profiles to authenticated;
+create policy invoice_profiles_update on app.delivery_invoice_profiles for update to authenticated
+ using (exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and (staff_id=(select app.current_staff_id()) or (select app.is_admin())))
+ with check (exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and (staff_id=(select app.current_staff_id()) or (select app.is_admin())));
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20260927143313_invoice_approval_expenses.sql ▼▼▼
+
+create or replace function app.generate_next_month_fixed_expenses() returns integer language plpgsql security invoker set search_path=pg_catalog,app as $$
+declare today_jst date := (now() at time zone 'Asia/Tokyo')::date;
+ month_start date := date_trunc('month',today_jst)::date;
+ next_month date := (month_start + interval '1 month')::date;
+ inserted integer;
+begin
+ if today_jst <> next_month - 1 then return 0; end if;
+ insert into app.expense_drafts(target_month,category,name,card_id)
+ select next_month,'固定費',src.name,src.card_id from (
+ select distinct on (name) name,card_id from (
+ select name,card_id,updated_at from app.expenses where category::text='固定費' and incurred_on>=month_start and incurred_on<next_month
+ union all
+ select d.name,d.card_id,d.created_at from app.expense_drafts d
+ where d.category='固定費' and d.target_month=month_start and not exists(select 1 from app.expenses e where e.id=d.id)
+ ) candidates order by name,updated_at desc
+ ) src
+ where not exists(select 1 from app.expenses e where e.category::text='固定費' and e.name=src.name and e.incurred_on>=next_month and e.incurred_on<next_month+interval '1 month')
+ on conflict(target_month,category,name) do nothing;
+ get diagnostics inserted = row_count;
+ return inserted;
+end $$;
+revoke all on function app.generate_next_month_fixed_expenses() from public,anon,authenticated;
+-- Remove only unfilled outsourcing placeholders; recorded expenses are preserved.
+delete from app.expense_drafts d where d.category='外注費' and not exists(select 1 from app.expenses e where e.id=d.id);
+
+create table app.delivery_invoice_approvals (
+ invoice_id uuid primary key references app.delivery_invoices(id),
+ expense_id uuid not null unique references app.expenses(id),
+ approved_by uuid not null default app.current_staff_id() references app.staff(id),
+ approved_at timestamptz not null default now()
+);
+alter table app.delivery_invoice_approvals enable row level security;
+revoke all on app.delivery_invoice_approvals from public,anon,authenticated;
+grant select on app.delivery_invoice_approvals to authenticated;
+grant insert(invoice_id,expense_id) on app.delivery_invoice_approvals to authenticated;
+create policy invoice_approvals_read on app.delivery_invoice_approvals for select to authenticated
+ using (exists(select 1 from app.delivery_invoices i where i.id=invoice_id));
+create policy invoice_approvals_insert on app.delivery_invoice_approvals for insert to authenticated
+ with check ((select app.is_admin()) and exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and approved_by=app.current_staff_id());
+
+create function app.block_approved_invoice_changes() returns trigger language plpgsql security invoker set search_path=pg_catalog,app as $$
+begin
+ if exists(select 1 from app.delivery_invoice_approvals where invoice_id=old.id) then
+  raise exception '承認済みの請求書は変更できません。管理者にご連絡ください。';
+ end if;
+ return new;
+end $$;
+revoke all on function app.block_approved_invoice_changes() from public,anon,authenticated;
+create trigger a_block_approved_invoice_changes before update on app.delivery_invoices
+ for each row execute function app.block_approved_invoice_changes();
+
+create function app.approve_delivery_invoice(p_invoice uuid,p_version integer,p_incurred_on date)
+returns uuid language plpgsql security invoker set search_path=pg_catalog,app as $$
+declare inv app.delivery_invoices; existing uuid; expense uuid;
+begin
+ if auth.uid() is null or not app.is_admin()
+ or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active) then
+  raise exception '請求書を承認できるのは管理者だけです' using errcode='42501';
+ end if;
+ select * into inv from app.delivery_invoices where id=p_invoice for update;
+ if not found then raise exception '請求書が見つかりません'; end if;
+ select expense_id into existing from app.delivery_invoice_approvals where invoice_id=inv.id;
+ if found then return existing; end if;
+ if inv.version<>p_version then raise exception '請求書が更新されました。最新の内容を確認してください'; end if;
+ if p_incurred_on is null then raise exception '経費の計上日を指定してください'; end if;
+ if inv.total<=0 then raise exception '請求金額が0円のため承認できません'; end if;
+ insert into app.expenses(incurred_on,category,name,amount,staff_id,memo)
+ values(p_incurred_on,'外注費',
+ coalesce(inv.snapshot->'profile'->>'issuer_name','納品担当者')||' '||to_char(inv.billing_month,'YYYY年MM月')||' 請求書',
+ inv.total,inv.staff_id,'納品請求書 '||inv.id::text) returning id into expense;
+ insert into app.delivery_invoice_approvals(invoice_id,expense_id) values(inv.id,expense);
+ return expense;
+end $$;
+revoke all on function app.approve_delivery_invoice(uuid,integer,date) from public,anon,authenticated;
+grant execute on function app.approve_delivery_invoice(uuid,integer,date) to authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20260927145421_merge_waiting_into_work_in_progress.sql ▼▼▼
+
+create or replace view app.v_stock_summary with (security_invoker=true) as
+ SELECT count(DISTINCT lot_seq) AS "現在庫数",
+    sum(cost_amount) AS "仕入金額合計",
+    sum(COALESCE(planned_payout, 0::bigint)) AS "売上見込み合計",
+    sum(COALESCE(planned_payout, 0::bigint) - cost_amount) AS "見込み利益合計",
+    count(*) FILTER (WHERE (CURRENT_DATE - purchased_at) <= 7) AS "高回転",
+    count(*) FILTER (WHERE (CURRENT_DATE - purchased_at) >= 8 AND (CURRENT_DATE - purchased_at) <= 14) AS "中回転",
+    count(*) FILTER (WHERE (CURRENT_DATE - purchased_at) >= 15) AS "低回転",
+    count(DISTINCT lot_seq) FILTER (WHERE status::text IN ('仕入済','入荷済','作業中')) AS "作業中",
+    count(*) FILTER (WHERE status = '仕入済'::app.item_status) AS "入荷待ち"
+   FROM app.items
+  WHERE status <> ALL (ARRAY['販売済'::app.item_status, '返品処理'::app.item_status, '廃棄'::app.item_status]);
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20260927150714_private_invoice_receipts.sql ▼▼▼
+
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+values('invoice-receipts','invoice-receipts',false,20971520,array['image/jpeg','image/png','image/webp'])
+on conflict(id) do nothing;
+create table app.invoice_receipts (
+ id uuid primary key default gen_random_uuid(),
+ staff_id uuid not null references app.delivery_invoice_profiles(staff_id),
+ billing_month date not null check(extract(day from billing_month)=1),
+ storage_path text not null unique,
+ original_name text not null check(length(original_name) between 1 and 255),
+ created_at timestamptz not null default now(),
+ check(storage_path ~ ('^'||staff_id::text||'/'||to_char(billing_month,'YYYY-MM')||'/[0-9a-f-]{36}\.jpg$'))
+);
+create index invoice_receipts_staff_month_idx on app.invoice_receipts(staff_id,billing_month,created_at);
+alter table app.invoice_receipts enable row level security;
+revoke all on app.invoice_receipts from public,anon,authenticated;
+grant select,delete on app.invoice_receipts to authenticated;
+grant insert(staff_id,billing_month,storage_path,original_name) on app.invoice_receipts to authenticated;
+create function app.can_access_invoice_receipt(p_path text,p_write boolean default false)
+returns boolean language sql stable security invoker set search_path=pg_catalog,app as $$
+ select auth.uid() is not null
+ and (split_part(p_path,'/',1)=app.current_staff_id()::text or app.is_admin())
+ and exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active)
+ and exists(select 1 from app.delivery_invoice_profiles p where p.staff_id::text=split_part(p_path,'/',1))
+ and split_part(p_path,'/',2) ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'
+ and (not p_write or not exists(
+ select 1 from app.delivery_invoices i join app.delivery_invoice_approvals a on a.invoice_id=i.id
+ where i.staff_id::text=split_part(p_path,'/',1) and to_char(i.billing_month,'YYYY-MM')=split_part(p_path,'/',2)
+ ));
+$$;
+revoke all on function app.can_access_invoice_receipt(text,boolean) from public,anon,authenticated;
+grant execute on function app.can_access_invoice_receipt(text,boolean) to authenticated;
+create policy invoice_receipts_read on app.invoice_receipts for select to authenticated using(app.can_access_invoice_receipt(storage_path,false));
+create policy invoice_receipts_insert on app.invoice_receipts for insert to authenticated with check(app.can_access_invoice_receipt(storage_path,true));
+create policy invoice_receipts_delete on app.invoice_receipts for delete to authenticated using(app.can_access_invoice_receipt(storage_path,true));
+create policy invoice_receipt_objects_read on storage.objects for select to authenticated
+ using(bucket_id='invoice-receipts' and app.can_access_invoice_receipt(name,false));
+create policy invoice_receipt_objects_insert on storage.objects for insert to authenticated
+ with check(bucket_id='invoice-receipts' and app.can_access_invoice_receipt(name,true));
+-- Uploaded image objects are immutable. Removing an attachment only removes its metadata.
+create function app.lock_invoice_receipt_changes() returns trigger language plpgsql security invoker set search_path=pg_catalog,app as $$
+declare who uuid; target date; invoice uuid;
+begin
+ if tg_op='DELETE' then who:=old.staff_id; target:=old.billing_month; else who:=new.staff_id; target:=new.billing_month; end if;
+ select id into invoice from app.delivery_invoices where staff_id=who and billing_month=target for update;
+ if invoice is not null and exists(select 1 from app.delivery_invoice_approvals where invoice_id=invoice) then
+  raise exception '承認済み請求書の領収書は変更できません';
+ end if;
+ if tg_op='DELETE' then return old; else return new; end if;
+end $$;
+revoke all on function app.lock_invoice_receipt_changes() from public,anon,authenticated;
+create trigger lock_invoice_receipt_changes before insert or delete on app.invoice_receipts for each row execute function app.lock_invoice_receipt_changes();
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20260927151227_invoice_receipt_submissions.sql ▼▼▼
+
+
+create table app.invoice_receipt_submissions (
+ staff_id uuid not null references app.delivery_invoice_profiles(staff_id),
+ billing_month date not null check(extract(day from billing_month)=1),
+ files jsonb not null,
+ version integer not null default 1,
+ submitted_at timestamptz not null default now(),
+ primary key(staff_id,billing_month)
+);
+alter table app.invoice_receipt_submissions enable row level security;
+revoke all on app.invoice_receipt_submissions from public,anon,authenticated;
+grant select on app.invoice_receipt_submissions to authenticated;
+grant insert(staff_id,billing_month) on app.invoice_receipt_submissions to authenticated;
+grant update(submitted_at) on app.invoice_receipt_submissions to authenticated;
+create policy receipt_submissions_read on app.invoice_receipt_submissions for select to authenticated
+ using((staff_id=app.current_staff_id() or app.is_admin()) and exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active));
+create policy receipt_submissions_insert on app.invoice_receipt_submissions for insert to authenticated
+ with check((staff_id=app.current_staff_id() or app.is_admin()) and exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active));
+create policy receipt_submissions_update on app.invoice_receipt_submissions for update to authenticated
+ using((staff_id=app.current_staff_id() or app.is_admin()) and exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active))
+ with check((staff_id=app.current_staff_id() or app.is_admin()) and exists(select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active));
+create trigger a_lock_receipt_submission before insert or update on app.invoice_receipt_submissions for each row execute function app.lock_invoice_receipt_changes();
+create function app.fill_receipt_submission() returns trigger language plpgsql security invoker set search_path=pg_catalog,app as $$
+begin
+ select coalesce(jsonb_agg(jsonb_build_object('id',id,'storage_path',storage_path,'original_name',original_name) order by created_at,id),'[]'::jsonb)
+ into new.files from app.invoice_receipts where staff_id=new.staff_id and billing_month=new.billing_month;
+ if jsonb_array_length(new.files)=0 then raise exception '領収書の画像を追加してください'; end if;
+ new.submitted_at:=clock_timestamp();
+ if tg_op='UPDATE' then new.version:=old.version+1; else new.version:=1; end if;
+ return new;
+end $$;
+revoke all on function app.fill_receipt_submission() from public,anon,authenticated;
+create trigger fill_receipt_submission before insert or update on app.invoice_receipt_submissions for each row execute function app.fill_receipt_submission();
+
+create function app.submit_invoice_documents(p_staff uuid,p_month date,p_invoice boolean,p_receipts boolean,p_issued date,p_extras jsonb,p_note text,p_version integer)
+returns jsonb language plpgsql security invoker set search_path=pg_catalog,app as $$
+declare inv app.delivery_invoices; receipt_version integer;
+begin
+ if auth.uid() is null or not coalesce(p_staff=app.current_staff_id() or app.is_admin(),false)
+ or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active) then raise exception '送信する権限がありません' using errcode='42501'; end if;
+ if not coalesce(p_invoice,false) and not coalesce(p_receipts,false) then raise exception '送信する書類を選択してください'; end if;
+ -- Serialize invoice and receipt-only submissions for this staff/month.
+ perform pg_advisory_xact_lock(hashtextextended(p_staff::text||p_month::text,0));
+ if p_invoice then
+  select * into inv from app.delivery_invoices where staff_id=p_staff and billing_month=p_month for update;
+  if found then
+   if p_version is null or inv.version<>p_version then raise exception '請求書が更新されています。再読み込みしてください'; end if;
+   update app.delivery_invoices set issued_on=p_issued,extras=p_extras,note=p_note where id=inv.id returning * into inv;
+  else
+   if p_version is not null then raise exception '請求書を再読み込みしてください'; end if;
+   insert into app.delivery_invoices(staff_id,billing_month,issued_on,extras,note) values(p_staff,p_month,p_issued,p_extras,p_note) returning * into inv;
+  end if;
+ end if;
+ if p_receipts then
+  insert into app.invoice_receipt_submissions(staff_id,billing_month) values(p_staff,p_month)
+  on conflict(staff_id,billing_month) do update set submitted_at=clock_timestamp()
+  returning version into receipt_version;
+ end if;
+ return jsonb_build_object('invoice',case when p_invoice then to_jsonb(inv) else null end,'receipt_version',receipt_version);
+end $$;
+revoke all on function app.submit_invoice_documents(uuid,date,boolean,boolean,date,jsonb,text,integer) from public,anon,authenticated;
+grant execute on function app.submit_invoice_documents(uuid,date,boolean,boolean,date,jsonb,text,integer) to authenticated;
+notify pgrst,'reload schema';
+
+
+
+-- ▼▼▼ 20260927151712_packed_summary_and_document_approval.sql ▼▼▼
+
+create function app.packed_product_summary(p_staff uuid,p_month date default null)
+returns jsonb language plpgsql stable security invoker set search_path=pg_catalog,app as $$
+declare result jsonb;
+begin
+ if auth.uid() is null or not coalesce(p_staff=app.current_staff_id() or app.is_admin(),false)
+ or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active) then raise exception '閲覧する権限がありません' using errcode='42501'; end if;
+ if p_month is not null and extract(day from p_month)<>1 then raise exception '対象月が不正です'; end if;
+ with bodies as (
+ select distinct on(lot_seq) id,lot_seq,purchased_at,packed_on,title,sku
+ from app.items where deliverer_id=p_staff and not is_accessory and packed_on is not null
+ order by lot_seq,packed_on,id
+ )
+ select coalesce(jsonb_agg(jsonb_build_object('id',id,'lot_seq',lot_seq,'purchased_at',purchased_at,'packed_on',packed_on,'title',title,'sku',sku) order by packed_on desc,lot_seq desc),'[]'::jsonb)
+ into result from bodies where p_month is null or (packed_on>=p_month and packed_on<p_month+interval '1 month');
+ return result;
+end $$;
+revoke all on function app.packed_product_summary(uuid,date) from public,anon,authenticated;
+grant execute on function app.packed_product_summary(uuid,date) to authenticated;
+
+create function app.approve_invoice_documents(p_invoice uuid,p_version integer,p_receipt_version integer,p_incurred_on date)
+returns uuid language plpgsql security invoker set search_path=pg_catalog,app as $$
+declare inv app.delivery_invoices; actual integer; result uuid;
+begin
+ if not coalesce(app.is_admin(),false) or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active) then raise exception '承認する権限がありません' using errcode='42501'; end if;
+ select * into inv from app.delivery_invoices where id=p_invoice;
+ if not found then raise exception '請求書が見つかりません'; end if;
+ perform pg_advisory_xact_lock(hashtextextended(inv.staff_id::text||inv.billing_month::text,0));
+ select version into actual from app.invoice_receipt_submissions where staff_id=inv.staff_id and billing_month=inv.billing_month;
+ if actual is distinct from p_receipt_version then raise exception '領収書が再提出されています。タスクを開き直してください'; end if;
+ select app.approve_delivery_invoice(p_invoice,p_version,p_incurred_on) into result;
+ return result;
+end $$;
+revoke all on function app.approve_invoice_documents(uuid,integer,integer,date) from public,anon,authenticated;
+grant execute on function app.approve_invoice_documents(uuid,integer,integer,date) to authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20260928010000_inventory_status_workflow.sql ▼▼▼
+
+-- A purchase starts in work; shipping makes it listed. Preserve final/manual states.
+alter table app.items alter column status set default '作業中';
+
+create or replace function app.items_sync_status() returns trigger language plpgsql as $$
+begin
+  if new.status in ('返品処理', '保留', '廃棄', '販売済') then return new; end if;
+  if new.amazon_returned_on is not null or new.status = 'Amazon返品' then
+    if new.shipped_on is null or (new.amazon_returned_on is not null and new.shipped_on <= new.amazon_returned_on) then
+      new.status := 'Amazon返品';
+      return new;
+    end if;
+  end if;
+  new.status := case when new.shipped_on is not null then '出品中' else '作業中' end;
+  return new;
+end;
+$$;
+
+drop trigger if exists items_sync_status on app.items;
+create trigger items_sync_status before insert or update of status, arrived_on, product_registered_at,
+  inspected_at, cleaned_at, photo_uploaded_at, packed_on, shipped_on, listed_on, amazon_returned_on
+  on app.items for each row execute function app.items_sync_status();
+
+update app.items set status='作業中' where status in ('仕入済','入荷済');
+update app.items set status='出品中' where status='出荷済';
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20260928011000_amazon_daily_sync.sql ▼▼▼
+
+create extension if not exists pg_net with schema extensions;
+
+-- The scheduler reads the encrypted token from Vault. The function only receives
+-- its SHA-256 fingerprint, and browser users have no access to either record.
+create table app.amazon_cron_auth (
+  id boolean primary key default true check (id),
+  token_hash bytea not null
+);
+alter table app.amazon_cron_auth enable row level security;
+revoke all on app.amazon_cron_auth from public, anon, authenticated;
+grant select on app.amazon_cron_auth to service_role;
+
+do $$
+declare token text := encode(gen_random_bytes(32), 'hex');
+begin
+  perform vault.create_secret(token, 'amazon_daily_sync_token');
+  insert into app.amazon_cron_auth(id,token_hash) values(true,sha256(convert_to(token,'UTF8')));
+end;
+$$;
+
+create function app.verify_amazon_cron_token(p_token text)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select p_token is not null and length(p_token)=64 and exists (
+    select 1 from app.amazon_cron_auth where id=true and token_hash=sha256(convert_to(p_token,'UTF8'))
+  );
+$$;
+revoke all on function app.verify_amazon_cron_token(text) from public, anon, authenticated;
+grant execute on function app.verify_amazon_cron_token(text) to service_role;
+
+-- pg_cron uses UTC; 16:00 UTC is 01:00 the following day in Japan.
+select cron.schedule('amazon-daily-inventory-sync', '0 16 * * *', $job$
+  select net.http_post(
+    url := 'https://xgoppuqoqeppckyunnvx.supabase.co/functions/v1/amazon-payments',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-amazon-cron-token', (select decrypted_secret from vault.decrypted_secrets where name='amazon_daily_sync_token')
+    ),
+    body := '{"action":"daily"}'::jsonb,
+    timeout_milliseconds := 120000
+  );
+$job$);
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20260928012000_preserve_amazon_return_status.sql ▼▼▼
+
+create or replace function app.items_sync_status() returns trigger language plpgsql as $$
+begin
+  if new.status in ('返品処理', '保留', '廃棄', '販売済') then return new; end if;
+  if new.status='Amazon返品' or new.amazon_returned_on is not null then
+    -- Keep the return until a genuinely new shipping date is entered.
+    if tg_op='INSERT' or new.shipped_on is null
+       or new.shipped_on is not distinct from old.shipped_on
+       or (new.amazon_returned_on is not null and new.shipped_on <= new.amazon_returned_on) then
+      new.status := 'Amazon返品';
+      return new;
+    end if;
+  end if;
+  new.status := case when new.shipped_on is not null then '出品中' else '作業中' end;
+  return new;
+end;
+$$;
+
+
+-- ▼▼▼ 20260928013000_inventory_status_function_search_path.sql ▼▼▼
+
+alter function app.items_sync_status() set search_path = pg_catalog, app;
+
+
+-- ▼▼▼ 20260928095147_four_delivery_steps_with_editable_dates.sql ▼▼▼
+
+create function app.set_delivery_progress(p_item_id uuid,p_step text,p_done boolean,p_on date default null)
+returns app.items language plpgsql security definer set search_path='' as $$
+declare result app.items; today_jst date := (now() at time zone 'Asia/Tokyo')::date;
+begin
+ if auth.uid() is null then raise exception 'ログインが必要です' using errcode='42501'; end if;
+ if p_done is null or p_step not in ('inspection_cleaning','listing','packed','shipped') then
+  raise exception '作業項目を確認してください' using errcode='22023';
+ end if;
+ if p_done and p_step in ('packed','shipped') and p_on is null then
+  raise exception '日付を入力してください' using errcode='22023';
+ end if;
+ perform app.assert_can_work_on(p_item_id);
+ update app.items set
+  arrived_on=case when p_done then coalesce(arrived_on,today_jst) else arrived_on end,
+  inspected_at=case when p_step='inspection_cleaning' then case when p_done then coalesce(inspected_at,now()) else null end else inspected_at end,
+  cleaned_at=case when p_step='inspection_cleaning' then case when p_done then coalesce(cleaned_at,now()) else null end else cleaned_at end,
+  product_registered_at=case when p_step='listing' then case when p_done then coalesce(product_registered_at,now()) else null end else product_registered_at end,
+  photo_uploaded_at=case when p_step='listing' then case when p_done then coalesce(photo_uploaded_at,now()) else null end else photo_uploaded_at end,
+  packed_on=case when p_step='packed' then case when p_done then p_on else null end else packed_on end,
+  shipped_on=case when p_step='shipped' then case when p_done then p_on else null end else shipped_on end
+ where id=p_item_id returning * into result;
+ return result;
+end $$;
+revoke all on function app.set_delivery_progress(uuid,text,boolean,date) from public,anon,authenticated;
+grant execute on function app.set_delivery_progress(uuid,text,boolean,date) to authenticated;
+notify pgrst,'reload schema';
+
+

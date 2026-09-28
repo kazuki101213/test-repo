@@ -137,6 +137,12 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .purchase-panel .grid.cols2 { grid-template-columns: minmax(0, 1fr); }
 .purchase-panel .card { padding: 12px; }
 .purchase-panel .sku { overflow-wrap: anywhere; }
+.inventory-edit-overlay { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.65); display: flex; justify-content: flex-end; align-items: stretch; }
+.inventory-edit-panel { width: min(720px, 100vw); overflow: auto; border-radius: 0; }
+.inventory-edit-panel .field { margin-bottom: 10px; }
+.product-search-results { max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+.product-search-results button { display: block; width: 100%; padding: 8px; text-align: left; border: 0; border-bottom: 1px solid var(--border); background: var(--surface-2); color: var(--text); cursor: pointer; }
+.product-search-results button:hover, .product-search-results button[aria-selected="true"] { background: var(--surface); color: var(--accent); }
 .handoff-input { position: relative; }
 .handoff-input textarea { width: 100%; padding-right: 40px; min-height: 90px; }
 .handoff-toggle { position: absolute; top: 1px; right: 1px; width: 34px; height: 34px; border: 0; border-radius: 7px; background: var(--surface-2); color: var(--text); cursor: pointer; }

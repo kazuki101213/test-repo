@@ -209,10 +209,27 @@ export async function recordSale(itemId: string, sale: {
   if (!data?.length) throw new Error('販売済み、または編集権限がありません。一覧を再読み込みしてください。');
 }
 
+export type InventoryEdit = Pick<ItemView, 'title' | 'asin' | 'model_no' | 'tracking_no' | 'purchased_at' | 'cost_amount' | 'planned_price' | 'planned_payout' | 'packed_on' | 'shipped_on' | 'status' | 'memo'>;
+
+export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit): Promise<void> {
+  const title = fields.title.trim();
+  if (!title || title.length > 500) throw new Error('商品名を入力してください。');
+  if (!Number.isSafeInteger(fields.cost_amount) || fields.cost_amount < 0 ||
+      (fields.planned_price !== null && (!Number.isSafeInteger(fields.planned_price) || fields.planned_price < 0)) ||
+      (fields.planned_payout !== null && (!Number.isSafeInteger(fields.planned_payout) || fields.planned_payout < 0))) {
+    throw new Error('金額は0円以上の整数で入力してください。');
+  }
+  if (fields.status === '販売済' && (!item.sold_on || item.sold_price === null)) throw new Error('販売済にする場合は販売登録で販売日・価格を入力してください。');
+  const { data, error } = await getSupabase().from('items').update({ ...fields, title })
+    .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
+}
+
 export async function fetchProducts(query?: string): Promise<Product[]> {
-  let q = getSupabase().from('products').select('*').order('product_no').limit(1000);
+  let q = getSupabase().from('products').select('*').order('product_no').limit(query ? 100 : 1000);
   if (query) {
-    const term = `%${query}%`;
+    const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;
     q = q.or(`asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term}`);
   }
   const { data, error } = await q;

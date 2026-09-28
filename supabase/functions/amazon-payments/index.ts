@@ -49,18 +49,69 @@ export async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
   if (req.method !== 'POST') return respond(405, { error: 'POSTのみ利用できます。' });
   try {
-    const authorization = req.headers.get('authorization') ?? '';
-    if (!/^Bearer\s+\S+$/i.test(authorization)) throw new SafeError(401, 'ログインが必要です。');
-    const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authorization } }, auth: { persistSession: false, autoRefreshToken: false }, db: { schema: 'app' },
-    });
-    const { data: user, error: authError } = await sb.auth.getUser(authorization.replace(/^Bearer\s+/i, ''));
-    if (authError || !user.user) throw new SafeError(401, 'ログインが無効です。再ログインしてください。');
-    const { data: admin, error: roleError } = await sb.rpc('is_admin');
-    if (roleError) throw new SafeError(503, '管理者権限を確認できません。');
-    if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
     const body = obj(await req.json().catch(() => null));
-    if (!['history', 'sync', 'reconcile'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    const cronToken = req.headers.get('x-amazon-cron-token');
+    const scheduled = cronToken !== null;
+    const authorization = req.headers.get('authorization') ?? '';
+    const sb = scheduled
+      ? createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false }, db: { schema: 'app' } })
+      : createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authorization } }, auth: { persistSession: false, autoRefreshToken: false }, db: { schema: 'app' },
+      });
+    let actorId: string;
+    if (scheduled) {
+      const { data: authorized, error: cronError } = await sb.rpc('verify_amazon_cron_token', { p_token: cronToken });
+      if (cronError || authorized !== true) throw new SafeError(401, '定期更新の認証に失敗しました。');
+      const { data: adminStaff, error: staffError } = await sb.from('staff').select('id').eq('role', 'admin').eq('is_active', true).limit(1).maybeSingle();
+      if (staffError || !adminStaff) throw new SafeError(503, '管理者を確認できません。');
+      const { data: adminProfile, error: profileError } = await sb.from('profiles').select('user_id').eq('staff_id', adminStaff.id).limit(1).maybeSingle();
+      if (profileError || !adminProfile) throw new SafeError(503, '管理者の利用者情報を確認できません。');
+      actorId = adminProfile.user_id;
+    } else {
+      if (!/^Bearer\s+\S+$/i.test(authorization)) throw new SafeError(401, 'ログインが必要です。');
+      const { data: user, error: authError } = await sb.auth.getUser(authorization.replace(/^Bearer\s+/i, ''));
+      if (authError || !user.user) throw new SafeError(401, 'ログインが無効です。再ログインしてください。');
+      const { data: admin, error: roleError } = await sb.rpc('is_admin');
+      if (roleError) throw new SafeError(503, '管理者権限を確認できません。');
+      if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
+      actorId = user.user.id;
+    }
+    if (!['history', 'sync', 'reconcile', 'daily'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (body.action === 'daily') {
+      if (!scheduled) throw new SafeError(403, '定期更新からのみ実行できます。');
+      const now = Date.now();
+      const range = { postedAfter: new Date(now - 7 * 86400000).toISOString(), postedBefore: new Date(now - 180000).toISOString() };
+      const call = async (action: string, extra: Obj = {}) => {
+        const response = await handler(new Request(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-amazon-cron-token': cronToken! }, body: JSON.stringify({ action, ...range, ...extra }) }));
+        const result = await response.json();
+        if (!response.ok) throw new SafeError(response.status, result.error || '定期更新に失敗しました。');
+        return result;
+      };
+      let nextToken: string | undefined, saved = 0, applied = 0, reviewed = 0, processed = 0;
+      const seen = new Set<string>();
+      do {
+        const page = await call('sync', nextToken ? { nextToken } : {});
+        saved += page.saved;
+        nextToken = page.nextToken;
+        if (nextToken && seen.has(nextToken)) throw new SafeError(502, 'Amazonのページ情報が重複しました。');
+        if (nextToken) { seen.add(nextToken); await new Promise(resolve => setTimeout(resolve, 2100)); }
+      } while (nextToken);
+      let offset = 0, more = true;
+      while (more) {
+        const history = await call('history', { offset });
+        more = history.hasMore; offset += 100;
+        for (const row of history.rows as { transaction_id: string }[]) {
+          const match = await call('reconcile', { transactionId: row.transaction_id });
+          processed++;
+          for (const result of match.results as { status: string }[]) {
+            if (result.status === 'applied') applied++;
+            if (result.status === 'review') reviewed++;
+          }
+          await new Promise(resolve => setTimeout(resolve, 2100));
+        }
+      }
+      return respond(200, { saved, processed, applied, reviewed });
+    }
     const range = dateRange(body);
     const seller = Deno.env.get('AMAZON_SELLER_ID')?.trim();
     if (!seller) throw new SafeError(503, 'AMAZON_SELLER_IDが未設定です。');
@@ -115,7 +166,7 @@ export async function handler(req: Request): Promise<Response> {
       for (const sale of sales) {
         const { data: result, error } = await writer.rpc('apply_amazon_sale', {
           p_account: accountKey, p_transaction: transaction.transaction_id, p_sku: sale.sku, p_asin: sale.asin,
-          p_sold_on: sale.soldOn, p_price: sale.price, p_payout: sale.payout, p_actor: user.user.id,
+          p_sold_on: sale.soldOn, p_price: sale.price, p_payout: sale.payout, p_actor: actorId,
         });
         if (error) throw new SafeError(503, '在庫への反映に失敗しました。途中まで反映された分は重複せず、再実行できます。');
         results.push({ sku: sale.sku, ...result });
