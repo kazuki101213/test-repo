@@ -3,12 +3,13 @@ import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
   fetchComments, fetchPhotoUrls, fetchTask, postComment,
-  setWorkProgress, uploadPhoto,
+  setDeliveryProgress, setWorkProgress, uploadPhoto,
 } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
 
 function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
   switch (step) {
+    case 'inspection_cleaning': return task.inspected && task.cleaned;
     case 'arrived':    return task.arrived_on !== null;
     case 'registered': return task.product_registered;
     case 'inspected':  return task.inspected;
@@ -51,13 +52,25 @@ export default function TaskDetail({
     setPending(step);
     setError(null);
     try {
-      await setWorkProgress(task.id, step, !isStepDone(task, step));
+      if (step === 'inspection_cleaning' || step === 'listing' || step === 'packed' || step === 'shipped') {
+        const date = step === 'packed' ? task.packed_on : step === 'shipped' ? task.shipped_on : null;
+        const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+        await setDeliveryProgress(task.id, step, !isStepDone(task, step), date ?? today);
+      } else await setWorkProgress(task.id, step, !isStepDone(task, step));
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPending(null);
     }
+  }
+
+  async function setStepDate(step: 'packed' | 'shipped', date: string) {
+    if (!task) return;
+    setPending(step); setError(null);
+    try { await setDeliveryProgress(task.id, step, !!date, date || undefined); await reload(); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setPending(null); }
   }
 
   async function onPhotoPick(files: FileList | null) {
@@ -135,16 +148,21 @@ export default function TaskDetail({
           {WORK_STEPS.map((s) => {
             const done = isStepDone(task, s.key);
             return (
+              <div className="step-row" key={s.key}>
               <button
-                key={s.key} className="step" data-done={done}
+                className="step" data-done={done}
                 aria-pressed={done} disabled={pending !== null || uploading} onClick={() => void toggle(s.key)}
               >
                 <span className="check">{done ? '✓' : ''}</span>
                 <span>
-                  <span className="label">{s.label}</span><br />
-                  <span className="hint">{s.hint}</span>
+                  <span className="label">{s.label}</span>
                 </span>
               </button>
+              {(s.key === 'packed' || s.key === 'shipped') && <label className="step-date">{s.key === 'packed' ? '梱包日' : '出荷日'}
+                <input type="date" value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading}
+                  onChange={e => void setStepDate(s.key as 'packed' | 'shipped', e.target.value)} />
+              </label>}
+              </div>
             );
           })}
         </div>

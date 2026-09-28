@@ -116,14 +116,14 @@ export default function Inventory({ me }: { me: Staff }) {
               <tr aria-rowindex={1}>
                 <th>通番号 / SKU</th><th>状態</th><th>商品名</th><th>ASIN</th>
                 <th>仕入日</th><th className="num">仕入</th>
-                <th>仕入先</th><th>納品担当</th><th>進捗</th>
+                <th>仕入先</th><th>納品担当</th><th>進捗</th><th>梱包日</th><th>出荷日</th>
                 <th className="num">予定価格</th><th className="num">見込利益</th>
                 <th>販売日</th><th className="num">販売価格</th><th className="num">振込額（手数料控除後）</th>
                 <th className="num">在庫日数</th><th></th>
               </tr>
             </thead>
             <tbody>
-              {window.top > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={16} style={{ height: window.top }} /></tr>}
+              {window.top > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={18} style={{ height: window.top }} /></tr>}
               {items.slice(window.start, window.end).map((i, offset) => {
                 const index = window.start + offset;
                 return (
@@ -146,6 +146,8 @@ export default function Inventory({ me }: { me: Staff }) {
                     {[i.product_registered, i.inspected, i.photo_uploaded, i.shipped_on !== null]
                       .map((d, n) => <span key={n} style={{ color: d ? 'var(--ok)' : 'var(--border)' }}>●</span>)}
                   </td>
+                  <td>{jpDate(i.packed_on)}</td>
+                  <td>{jpDate(i.shipped_on)}</td>
                   <td className="num">{yen(i.planned_price)}</td>
                   <td className="num">{yen(i.expected_profit)}</td>
                   <td>{i.product_sale_conflict ? <span className="badge">販売記録の確認が必要</span> : jpDate(i.product_sold_on)}</td>
@@ -159,7 +161,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   </td>
                 </tr>
               ); })}
-              {window.bottom > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={16} style={{ height: window.bottom }} /></tr>}
+              {window.bottom > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={18} style={{ height: window.bottom }} /></tr>}
             </tbody>
           </table>
         </div>

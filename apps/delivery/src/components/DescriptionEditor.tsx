@@ -36,8 +36,9 @@ export default function DescriptionEditor({ task, onSaved }: { task: DeliveryTas
         <label>製造年（任意）<input type="number" min={1900} max={2100} step={1} value={year} onChange={e => { setYear(e.target.value); setManual(null); setNotice(''); }} placeholder="例：2020" /></label>
       </div>
       <fieldset className="accessory-options"><legend>付属品</legend>{accessoryOptions(product).map(value => <label key={value}><input type="checkbox" checked={selected.includes(value)} onChange={() => toggleAccessory(value)} />{value}</label>)}</fieldset>
-      <label>付属品の追記・編集<textarea maxLength={2000} value={accessories} onChange={e => { setAccessories(e.target.value); setManual(null); setNotice(''); }} placeholder="付属品を選択、または手入力" /></label>
-      <label>説明文<textarea className="description-text" maxLength={10000} value={description} onChange={e => { setManual(e.target.value); setNotice(''); }} placeholder="商品・コンディション・付属品を選ぶと自動生成されます" /></label>
+      <label>付属品<textarea maxLength={2000} value={accessories} onChange={e => { setAccessories(e.target.value); setManual(null); setNotice(''); }} placeholder="手入力" /></label>
+      {description ? <label>説明文(自動生成)<textarea className="description-text" maxLength={10000} value={description} onChange={e => { setManual(e.target.value); setNotice(''); }} /></label>
+        : <p className="muted">商品・コンディション・付属品を選ぶと説明文を表示します。</p>}
       {manual !== null && <div className="row"><span className="muted">保存済み・手入力の文章を表示しています。</span><button type="button" className="btn" disabled={!generated} onClick={() => { setManual(null); setNotice(''); }}>選択内容から再生成</button></div>}
       <button className="btn primary" type="submit">{busy ? '保存中…' : '説明文・商品情報を保存'}</button>
     </fieldset>

@@ -36,11 +36,10 @@ export const STATUS_COLORS: Record<ItemStatus, string> = {
 
 /** 納品担当者の作業フロー。この順番でアプリに並べる。 */
 export const WORK_STEPS: { key: WorkStep; label: string; hint: string }[] = [
-  { key: 'inspected',  label: '検品',        hint: '商品の状態・付属品を確認した' },
-  { key: 'cleaned',    label: '清掃',        hint: '清掃・除菌が済んだ' },
-  { key: 'listing',    label: '商品登録・写真登録', hint: '商品登録と商品写真の登録が済んだ' },
-  { key: 'packed',     label: '梱包',        hint: '梱包が完了した' },
-  { key: 'shipped',    label: '出荷',        hint: '発送した' },
+  { key: 'inspection_cleaning', label: '検品・清掃', hint: '' },
+  { key: 'listing', label: '商品登録・写真登録', hint: '' },
+  { key: 'packed', label: '梱包', hint: '' },
+  { key: 'shipped', label: '出荷', hint: '' },
 ];
 
 export const PHOTO_BUCKET = 'item-photos';

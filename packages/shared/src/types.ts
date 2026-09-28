@@ -22,7 +22,7 @@ export type TurnoverClass = '高' | '中' | '低';
 
 export type ExpenseCategory = '固定費' | '変動費' | '給与' | '外注費' | '諸経費';
 
-export type WorkStep = 'arrived' | 'registered' | 'inspected' | 'cleaned' | 'photo' | 'listing' | 'packed' | 'shipped';
+export type WorkStep = 'arrived' | 'registered' | 'inspected' | 'cleaned' | 'photo' | 'listing' | 'packed' | 'shipped' | 'inspection_cleaning';
 
 export interface Staff {
   id: string;

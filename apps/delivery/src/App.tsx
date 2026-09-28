@@ -55,7 +55,7 @@ export default function App() {
       </div>
       <nav className="row invoice-tabs no-print" aria-label="納品アプリのメニュー">
         <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('tasks'); }}>商品一覧</button>
-        <button className="btn ghost" aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => setTab('invoices')}>請求書</button>
+        <button className="btn ghost" aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => setTab('invoices')}>請求書・領収書</button>
       </nav>
       {tab === 'tasks' ? <TaskList onOpen={setOpenId} /> : <Invoices key={session.user.id} staff={session.staff} onNavigationChange={setInvoiceNavigation} />}
     </div>
