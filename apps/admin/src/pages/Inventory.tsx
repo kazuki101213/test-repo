@@ -7,6 +7,7 @@ import type { InventoryEdit } from '../api';
 import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
+import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { inventoryWindow } from '../inventory';
 
 export default function Inventory({ me }: { me: Staff }) {
@@ -103,6 +104,7 @@ export default function Inventory({ me }: { me: Staff }) {
       </div>
 
       {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
+      {me.role === 'admin' && <AmazonOrderHistory />}
       <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite">
         <span>{loading ? '読み込み中…' : `${count.toLocaleString()}商品（通番号の重複を除く）・全件表示`} {unsoldOnly ? '（未販売のみ）' : '（販売済みを含む）'}</span>
       </div>
