@@ -123,7 +123,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       <h2>請求書・領収書</h2>
       <div className="row">
         {staff.role === 'admin' && <label>担当者<select value={staffId} disabled={busy || receiptBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{p.details.issuer_name}</option>)}</select></label>}
-        <label>梱包した月<input aria-label="請求対象月" type="month" required value={month} disabled={busy || receiptBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
+        <label>請求月<input aria-label="請求対象月" type="month" required value={month} disabled={busy || receiptBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
         {profile && <button className="btn ghost" disabled={busy || receiptBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>単価・振込先</button>}
       </div>
       {snapshot && <div className="row"><button type="button" className="btn" onClick={() => void printDocument('invoice')}>請求書PDF保存・印刷</button></div>}
@@ -152,19 +152,19 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         <button type="button" className="btn ghost" disabled={busy || extras.length >= 100} onClick={() => { setExtras(rows => [...rows, { date: null, description: '', quantity: 1, unit_price: 0 }]); setDirty(true); }}>明細を追加</button>
         <label className="invoice-note-input">備考<textarea maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>
         <div className="row">
-          <button className="btn" value="invoice" disabled={busy || receiptBusy || (!snapshot.lines.length && !extras.length)}>請求書のみ送信</button>
+          <button className="btn" value="invoice" disabled={busy || receiptBusy || (!snapshot.lines.length && !extras.length)}>請求書送信</button>
           <button className="btn" value="both" disabled={busy || receiptBusy || !receiptCount || (!snapshot.lines.length && !extras.length)}>請求書・領収書をまとめて送信</button>
         </div>
       </form>}
       </div>
       <div className="receipt-section">
       <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onCountChange={setReceiptCount} onPrint={() => void printDocument('receipts')} />
-      {!invoice?.approved_at && <div className="receipt-submit no-print"><button type="button" className="btn" disabled={busy || receiptBusy || !receiptCount} onClick={() => void save('receipts')}>領収書のみ送信</button></div>}
+      {!invoice?.approved_at && <div className="receipt-submit no-print"><button type="button" className="btn" disabled={busy || receiptBusy || !receiptCount} onClick={() => void save('receipts')}>領収書送信</button></div>}
       </div>
       </div>
       <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} /></div>
     </>}
     </div>
-    <div className="card no-print"><PackedSummary key={`${staff.id}/${month}`} staffId={staff.id} initialMonth={month} billedCount={staffId === staff.id && snapshot ? snapshot.lines.reduce((n, l) => n + l.quantity, 0) : undefined} /></div>
+    <div className="card no-print"><PackedSummary staffId={staff.id} /></div>
   </section>;
 }

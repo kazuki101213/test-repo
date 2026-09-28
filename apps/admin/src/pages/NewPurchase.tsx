@@ -177,7 +177,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
 
           <div className="card">
             <h3>商品</h3>
-            <label className="field"><span>商品マスタ（ASIN）</span>
+            <label className="field"><span>商品リスト（ASIN）</span>
               <select value={productId} onChange={(e) => setProductId(e.target.value)}>
                 <option value="">— マスタを使わない —</option>
                 {products.map((p) => (

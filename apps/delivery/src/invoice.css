@@ -49,6 +49,9 @@
 .receipt-sheet > div { min-width:0; min-height:0; }
 .receipt-sheet img { width:100%; height:100%; object-fit:contain; }
 .packed-summary { margin:16px 0; }
+.packed-summary-scroll { max-height:1400px; overflow:auto; }
+.packed-summary-scroll table { width:100%; min-width:580px; border-collapse:collapse; }
+.packed-summary-scroll th { position:sticky; top:0; background:var(--surface); }
 .packed-summary td,.packed-summary th { padding:6px; text-align:left; border-bottom:1px solid var(--border); font-size:12px; }
 @media(max-width:620px) { .invoice-documents { display:block; } .invoice-section { padding-right:0; border-right:0; border-bottom:1px solid var(--border); padding-bottom:16px; } }
 @media(max-width:550px) { .invoice-extra { grid-template-columns:1fr 1fr; } .invoice-extra label:nth-child(2){grid-column:span 2;} .invoice-fields{grid-template-columns:1fr;} }

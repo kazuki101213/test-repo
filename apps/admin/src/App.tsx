@@ -14,7 +14,7 @@ const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
   { key: 'inventory', label: '在庫一覧' },
   { key: 'expenses', label: '経費一覧' },
-  { key: 'products',  label: '商品マスタ' },
+  { key: 'products',  label: '商品リスト' },
   { key: 'ledger',    label: '古物台帳' },
 ];
 

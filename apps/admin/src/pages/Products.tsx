@@ -20,7 +20,7 @@ export default function Products() {
 
   return (
     <>
-      <h2>商品マスタ</h2>
+      <h2>商品リスト</h2>
       <p className="sub">総合管理表の「商品リスト」。仕入れ目標を下回る値段で買えるかの判断に使います。</p>
 
       <div className="toolbar">
