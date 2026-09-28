@@ -76,7 +76,7 @@ export async function handler(req: Request): Promise<Response> {
       if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
       actorId = user.user.id;
     }
-    if (!['history', 'sync', 'reconcile', 'daily'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (!['history', 'sync', 'reconcile', 'daily', 'diagnose'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
     if (body.action === 'daily') {
       if (!scheduled) throw new SafeError(403, '定期更新からのみ実行できます。');
       const now = Date.now();
@@ -112,7 +112,10 @@ export async function handler(req: Request): Promise<Response> {
       }
       return respond(200, { saved, processed, applied, reviewed });
     }
-    const range = dateRange(body);
+    if (body.action === 'diagnose' && !scheduled) throw new SafeError(403, '診断は定期更新の認証からのみ実行できます。');
+    const range = body.action === 'diagnose'
+      ? { postedAfter: new Date(Date.now() - 4 * 86400000).toISOString(), postedBefore: new Date(Date.now() - 180000).toISOString() }
+      : dateRange(body);
     const seller = Deno.env.get('AMAZON_SELLER_ID')?.trim();
     if (!seller) throw new SafeError(503, 'AMAZON_SELLER_IDが未設定です。');
     // Separate histories by seller without persisting the credential itself.
@@ -143,6 +146,28 @@ export async function handler(req: Request): Promise<Response> {
     }
     const token = await lwa.json();
     if (typeof token.access_token !== 'string' || !token.access_token) throw new SafeError(502, 'Amazon LWAの応答が不正です。');
+    if (body.action === 'diagnose') {
+      const commonHeaders = { 'x-amz-access-token': token.access_token, 'x-amz-date': new Date().toISOString().replace(/[:-]|\.\d{3}/g, ''), 'user-agent': 'BussanAdmin/1.0 (Language=TypeScript; Platform=Supabase)' };
+      const sellerResponse = await fetch('https://sellingpartnerapi-fe.amazon.com/sellers/v1/marketplaceParticipations', { headers: commonHeaders, signal: AbortSignal.timeout(20000) });
+      const sellerBody = await sellerResponse.json().catch(() => null);
+      const financeParams = new URLSearchParams({ ...range, marketplaceId: marketplace });
+      const financeResponse = await fetch(`https://sellingpartnerapi-fe.amazon.com/finances/2024-06-19/transactions?${financeParams}`, { headers: commonHeaders, signal: AbortSignal.timeout(20000) });
+      const financeBody = await financeResponse.json().catch(() => null);
+      const detailClass = (body: unknown) => {
+        const detail = str(list(obj(body).errors).map(obj)[0]?.details, 500);
+        if (detail === 'The LWA secret token you provided has expired.') return 'client_secret_expired';
+        if (detail === 'Access token is missing in the request header.') return 'access_token_missing';
+        if (detail === 'The access token you provided has expired.') return 'access_token_expired';
+        return detail ? 'other_detail' : 'no_detail';
+      };
+      return respond(200, {
+        lwa: 'ok', sellerStatus: sellerResponse.status, financeStatus: financeResponse.status,
+        jpMarketplace: list(obj(sellerBody).payload).some(p => obj(obj(p).marketplace).id === marketplace),
+        sellerCode: str(list(obj(sellerBody).errors).map(obj)[0]?.code, 80),
+        financeCode: str(list(obj(financeBody).errors).map(obj)[0]?.code, 80),
+        sellerDetail: detailClass(sellerBody), financeDetail: detailClass(financeBody),
+      });
+    }
     if (body.action === 'reconcile') {
       if (typeof body.transactionId !== 'string' || !body.transactionId || body.transactionId.length > 500) throw new SafeError(400, '取引IDを指定してください。');
       const { data: transaction, error: readError } = await sb.from('amazon_payment_transactions').select('*')
