@@ -53,8 +53,6 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const [settings, setSettings] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [reload, setReload] = useState(0);
-  const [preview, setPreview] = useState(false);
-  const [documentTab, setDocumentTab] = useState<'invoice' | 'receipts'>('invoice');
   const [printMode, setPrintMode] = useState<'invoice' | 'receipts'>('invoice');
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [receiptCount, setReceiptCount] = useState(0);
@@ -122,17 +120,13 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   return <section className="invoices" data-print={printMode}>
     <div className="card no-print">
       <h2>請求書・領収書</h2>
-      <div className="row invoice-document-tabs" role="tablist" aria-label="書類">
-        <button type="button" className="btn ghost" role="tab" aria-selected={documentTab === 'invoice'} onClick={() => setDocumentTab('invoice')}>請求書</button>
-        <button type="button" className="btn ghost" role="tab" aria-selected={documentTab === 'receipts'} onClick={() => setDocumentTab('receipts')}>領収書</button>
-      </div>
       <div className="row">
         {staff.role === 'admin' && <label>担当者<select value={staffId} disabled={busy || receiptBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{p.details.issuer_name}</option>)}</select></label>}
         <label>梱包した月<input aria-label="請求対象月" type="month" required value={month} disabled={busy || receiptBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
         {profile && <button className="btn ghost" disabled={busy || receiptBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>単価・振込先</button>}
       </div>
       <p className="muted">その月に梱包した本体を集計します。同じ通番号は1点とし、明細には購入日を記載します。</p>
-      {snapshot && documentTab === 'invoice' && <div className="row"><button type="button" className="btn ghost" aria-expanded={preview} onClick={() => setPreview(v => !v)}>{preview ? 'プレビューを閉じる' : 'プレビュー'}</button><button type="button" className="btn" onClick={() => void printDocument('invoice')}>PDF保存・印刷</button></div>}
+      {snapshot && <div className="row"><button type="button" className="btn" onClick={() => void printDocument('invoice')}>請求書PDF保存・印刷</button></div>}
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に単価・振込先の登録を依頼してください。</p>}
       {message && <p role="status">{message}</p>}
       {error && <div className="error" role="alert">{error}<button className="btn ghost" disabled={busy} onClick={() => { if (leave()) setReload(n => n + 1); }}>再読み込み</button></div>}
@@ -140,7 +134,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     {settings && profile && <ProfileEditor key={staffId} profile={profile} onCancel={() => setSettings(false)} onSave={p => { setProfiles(rows => rows.map(row => row.staff_id === p.staff_id ? p : row)); setSettings(false); }} />}
     {(loading || profileLoading) && <div className="empty no-print">読み込み中…</div>}
     {!loading && snapshot && !settings && <>
-      <div className="invoice-section" style={{ display: documentTab === 'invoice' ? 'block' : 'none' }}>
+      <div className="invoice-section">
       {invoice?.approved_at ? <div className="card no-print"><p>承認済み・外注費に計上済みです。</p></div> :
       <form className="card no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save((e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'both' ? 'both' : 'invoice'); }}>
         <h3>請求書</h3>
@@ -161,9 +155,9 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
           <button className="btn" value="both" disabled={busy || receiptBusy || !receiptCount || (!snapshot.lines.length && !extras.length)}>請求書・領収書をまとめて送信</button>
         </div>
       </form>}
-      {snapshot && <div className={`invoice-preview${preview ? ' is-preview' : ''}`}><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} /></div>}
+      <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} /></div>
       </div>
-      <div className="receipt-section" style={{ display: documentTab === 'receipts' ? 'block' : 'none' }}>
+      <div className="receipt-section">
       <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onCountChange={setReceiptCount} onPrint={() => void printDocument('receipts')} />
       {!invoice?.approved_at && <div className="card no-print"><button type="button" className="btn" disabled={busy || receiptBusy || !receiptCount} onClick={() => void save('receipts')}>領収書のみ送信</button></div>}
       </div>

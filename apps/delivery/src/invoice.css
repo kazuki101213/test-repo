@@ -1,7 +1,5 @@
 .invoice-tabs { margin:16px 0; }
 .invoice-tabs [aria-current="page"] { background:var(--accent); color:#082f49; }
-.invoice-document-tabs { margin:0 0 14px; }
-.invoice-document-tabs .btn[aria-selected="true"] { background:var(--accent); color:#082f49; }
 .invoices h2 { font-size:19px; margin:0 0 16px; }
 .invoices h3 { font-size:15px; }
 .invoices label { display:grid; gap:5px; font-size:13px; }
@@ -28,8 +26,8 @@
 .invoice-sheet th { background:#93b5d8; font-weight:400; text-align:center; white-space:nowrap; }
 .invoice-lines tbody tr:nth-child(even),.invoice-bank-table tr:nth-child(odd) { background:#dce7f4; }
 .invoice-lines td { text-align:right; height:4mm; box-sizing:border-box; }
-.invoice-lines td:nth-child(1) { text-align:center; }
-.invoice-lines td:nth-child(2) { text-align:left; }
+.invoice-lines td:nth-child(1) { text-align:right; }
+.invoice-lines td:nth-child(2) { text-align:center; }
 .invoice-lines tfoot { font-weight:bold; background:#dce7f4; }
 .invoice-footer { display:grid; grid-template-columns:1fr 1fr; gap:6mm; margin-top:4mm; align-items:start; break-inside:avoid; }
 .invoice-note { white-space:pre-wrap; overflow-wrap:anywhere; border-bottom:1px solid #222; line-height:1.7; min-height:15mm; }

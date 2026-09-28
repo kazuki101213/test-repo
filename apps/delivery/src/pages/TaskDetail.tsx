@@ -148,9 +148,9 @@ export default function TaskDetail({
           {WORK_STEPS.map((s) => {
             const done = isStepDone(task, s.key);
             return (
-              <div className="step-row" key={s.key}>
+              <div className="step" key={s.key} data-done={done}>
               <button
-                className="step" data-done={done}
+                className="step-toggle"
                 aria-pressed={done} disabled={pending !== null || uploading} onClick={() => void toggle(s.key)}
               >
                 <span className="check">{done ? '✓' : ''}</span>
@@ -158,10 +158,10 @@ export default function TaskDetail({
                   <span className="label">{s.label}</span>
                 </span>
               </button>
-              {(s.key === 'packed' || s.key === 'shipped') && <label className="step-date">{s.key === 'packed' ? '梱包日' : '出荷日'}
-                <input type="date" value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading}
-                  onChange={e => void setStepDate(s.key as 'packed' | 'shipped', e.target.value)} />
-              </label>}
+              {(s.key === 'packed' || s.key === 'shipped') &&
+                <input className="step-date" aria-label={s.key === 'packed' ? '梱包の日付' : '出荷の日付'}
+                  type="date" value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading}
+                  onChange={e => void setStepDate(s.key as 'packed' | 'shipped', e.target.value)} />}
               </div>
             );
           })}
