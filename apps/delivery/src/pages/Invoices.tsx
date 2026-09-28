@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Staff } from '@bussan/shared';
 import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday } from '../invoices';
@@ -56,8 +56,6 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const [printMode, setPrintMode] = useState<'invoice' | 'receipts'>('invoice');
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [receiptCount, setReceiptCount] = useState(0);
-  const previewRef = useRef<HTMLDivElement>(null);
-  const [previewScale, setPreviewScale] = useState(0.45);
   const profile = profiles.find(p => p.staff_id === staffId);
 
   useEffect(() => {
@@ -98,16 +96,6 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  useEffect(() => {
-    const preview = previewRef.current;
-    if (!preview) return;
-    const resize = () => setPreviewScale(Math.min(1, preview.clientWidth / 718));
-    const observer = new ResizeObserver(resize);
-    observer.observe(preview);
-    resize();
-    return () => observer.disconnect();
-  }, [loading, snapshot, settings]);
-
   const leave = () => !dirty || window.confirm('保存していない変更を破棄しますか？');
   const changeExtra = (index: number, patch: Partial<InvoiceLine>) => { setExtras(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row)); setDirty(true); setMessage(''); };
   async function printDocument(mode: 'invoice' | 'receipts') {
@@ -137,7 +125,6 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         <label>梱包した月<input aria-label="請求対象月" type="month" required value={month} disabled={busy || receiptBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
         {profile && <button className="btn ghost" disabled={busy || receiptBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>単価・振込先</button>}
       </div>
-      <p className="muted">その月に梱包した本体を集計します。同じ通番号は1点とし、明細には購入日を記載します。</p>
       {snapshot && <div className="row"><button type="button" className="btn" onClick={() => void printDocument('invoice')}>請求書PDF保存・印刷</button></div>}
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に単価・振込先の登録を依頼してください。</p>}
       {message && <p role="status">{message}</p>}
@@ -168,13 +155,13 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
           <button className="btn" value="both" disabled={busy || receiptBusy || !receiptCount || (!snapshot.lines.length && !extras.length)}>請求書・領収書をまとめて送信</button>
         </div>
       </form>}
-      <div className="invoice-preview is-preview" ref={previewRef}><div className="invoice-preview-scale" style={{ zoom: previewScale }}><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} /></div></div>
       </div>
       <div className="receipt-section">
       <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onCountChange={setReceiptCount} onPrint={() => void printDocument('receipts')} />
       {!invoice?.approved_at && <div className="card no-print"><button type="button" className="btn" disabled={busy || receiptBusy || !receiptCount} onClick={() => void save('receipts')}>領収書のみ送信</button></div>}
       </div>
       </div>
+      <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} /></div>
     </>}
     <div className="card no-print"><PackedSummary key={`${staff.id}/${month}`} staffId={staff.id} initialMonth={month} billedCount={staffId === staff.id && snapshot ? snapshot.lines.reduce((n, l) => n + l.quantity, 0) : undefined} /></div>
   </section>;

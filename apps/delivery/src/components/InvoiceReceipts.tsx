@@ -42,8 +42,10 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
       {!approved && <div className="row">
         <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={e => void upload(e.target.files)} />
         <input ref={files} type="file" accept="image/*" multiple hidden onChange={e => void upload(e.target.files)} />
-        <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => camera.current?.click()}>領収書を撮影</button>
-        <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => files.current?.click()}>画像をアップロード</button>
+        <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => files.current?.click()}>画像アップロード</button>
+        <button type="button" className="btn ghost receipt-camera-btn" aria-label="カメラで領収書を撮影" title="カメラで領収書を撮影" disabled={busy || loading} onClick={() => camera.current?.click()}>
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7.5h3l1.8-2.5h8.4L18 7.5h3v11H3z" /><circle cx="12" cy="13" r="3.5" /></svg>
+        </button>
       </div>}
       {busy && <p role="status">領収書を保存しています…</p>}
       {loading && <p role="status">領収書を読み込み中…</p>}

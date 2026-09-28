@@ -12,10 +12,9 @@
 .invoice-extra .btn { min-height:40px; padding:8px; }
 .invoice-documents .invoice-extra { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .invoice-documents .invoice-extra label:nth-child(2) { grid-column:span 2; }
-.invoice-note-input { margin-top:16px; width:50%; }
+.invoice-note-input { margin-top:16px; width:100%; }
 .invoice-preview,.receipt-document { display:none; }
 .invoice-preview.is-preview,.receipt-document.is-preview { display:block; overflow:visible; }
-.invoice-preview-scale { width:718px; }
 .invoice-sheet { box-sizing:border-box; width:min(100%,190mm); min-height:270mm; background:white; color:#000; margin:20px auto; padding:5mm; font:10px/1.35 Arial,Meiryo,sans-serif; }
 .invoice-issued { text-align:right; margin-bottom:4mm; }
 .invoice-sheet h1 { background:#93b5d8; text-align:center; font-size:22px; letter-spacing:.3em; margin:0 0 4mm; padding:1mm; color:#000; }
@@ -38,6 +37,7 @@
 .invoice-note { white-space:pre-wrap; overflow-wrap:anywhere; border-bottom:1px solid #222; line-height:1.7; min-height:15mm; }
 .invoice-bank-table td { font-size:8px; }
 .receipt-thumbnails { display:flex; flex-wrap:wrap; gap:12px; margin:12px 0; }
+.receipt-camera-btn { display:grid; place-items:center; width:44px; height:44px; padding:0; }
 .receipt-thumbnails figure { margin:0; width:120px; }
 .receipt-thumbnails img { width:120px; height:150px; object-fit:contain; background:white; }
 .receipt-thumbnails figcaption { font-size:11px; overflow-wrap:anywhere; }
@@ -54,7 +54,6 @@
  body:has(.invoices) .app { max-width:none; padding:0; }
  body:has(.invoices) .topbar,.no-print { display:none!important; }
  .invoice-documents { display:block!important; }
- .invoice-preview-scale { width:190mm!important; zoom:1!important; }
  .invoice-preview,.receipt-document { display:none!important; }
  .invoices[data-print=receipts] .receipt-section { display:block!important; }
  .invoices[data-print=invoice] .invoice-preview,.invoices[data-print=receipts] .receipt-document { display:block!important; overflow:visible; }
