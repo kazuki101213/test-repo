@@ -22,8 +22,8 @@ function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
 }
 
 export default function TaskDetail({
-  itemId, staff, onBack,
-}: { itemId: string; staff: Staff; onBack: () => void }) {
+  itemId, staff, onClose, onChanged,
+}: { itemId: string; staff: Staff; onClose: () => void; onChanged: (task: DeliveryTask) => void }) {
   const [task, setTask] = useState<DeliveryTask | null>(null);
   const [comments, setComments] = useState<ItemComment[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -37,13 +37,15 @@ export default function TaskDetail({
       const [t, c, p] = await Promise.all([
         fetchTask(itemId), fetchComments(itemId), fetchPhotoUrls(itemId),
       ]);
+      if (!t) throw new Error('商品が見つかりません。');
       setTask(t);
+      onChanged(t);
       setComments(c);
       setPhotos(p);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [itemId]);
+  }, [itemId, onChanged]);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -105,17 +107,16 @@ export default function TaskDetail({
 
   if (!task) {
     return (
-      <div className="app">
-        <div className="topbar"><button className="btn ghost" onClick={onBack}>← 戻る</button></div>
+      <section className="task-detail-inline">
         {error ? <div className="error">{error}</div> : <div className="empty">読み込み中…</div>}
-      </div>
+      </section>
     );
   }
 
   return (
-    <div className="app">
-      <div className="topbar">
-        <button className="btn ghost" onClick={onBack}>← 一覧</button>
+    <section className="task-detail-inline" aria-label={`${task.sku}の詳細`}>
+      <div className="row inline-detail-header">
+        <button type="button" className="btn ghost" onClick={onClose}>詳細を閉じる</button>
         <span className="badge">{task.status}</span>
       </div>
 
@@ -191,6 +192,6 @@ export default function TaskDetail({
         </button>
       </div>
 
-    </div>
+    </section>
   );
 }

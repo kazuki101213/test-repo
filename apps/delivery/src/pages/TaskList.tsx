@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { DeliveryTask } from '@bussan/shared';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { DeliveryTask, Staff } from '@bussan/shared';
 import { fetchAmazonFeed, fetchMyTasks } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
@@ -13,7 +13,7 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all',     label: 'すべて' },
 ];
 
-export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
+export default function TaskList({ staff }: { staff: Staff }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
   const [filter, setFilter] = useState<Filter>('arrived');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -21,6 +21,11 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const toggleExpanded = (id: string) => setExpandedId(current => current === id ? null : id);
+  const updateTask = useCallback((updated: DeliveryTask) => {
+    setTasks(current => current.map(task => task.id === updated.id ? updated : task));
+  }, []);
 
   async function exportAmazon() {
     if (exporting || selected.size === 0) return;
@@ -94,11 +99,11 @@ export default function TaskList({ onOpen }: { onOpen: (id: string) => void }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shown.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shown.map(({ task: t, members }) => <TaskCard key={t.id} task={t} members={members} onOpenMember={onOpen} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shown.map(({ task: t, members }) => <TaskCard key={t.id} task={t} members={members} staff={staff} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;
-      })} onOpen={() => onOpen(t.id)} />)}
+      })} onOpen={() => toggleExpanded(t.id)} />)}
     </>
   );
 }
