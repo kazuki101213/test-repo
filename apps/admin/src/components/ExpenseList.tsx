@@ -4,7 +4,6 @@ import { fetchExpenses, fetchExpenseDrafts } from '../api';
 import type { ExpenseInput, ExpenseDraft } from '../expenses';
 import { expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
-import { japanMonth } from '../sales';
 
 const columns = ['固定費', '変動費', '外注費'] as const;
 const displayCategory = (row: ExpenseInput) => row.category === '固定費' ? '固定費' : row.category === '給与' || row.category === '外注費' ? '外注費' : '変動費';
@@ -23,7 +22,6 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const [draft, setDraft] = useState<ExpenseDraft | undefined>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [month, setMonth] = useState(japanMonth);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseBusy, setExpenseBusy] = useState(false);
   const [savedRevision, setSavedRevision] = useState(0);
@@ -36,10 +34,8 @@ export default function ExpenseList({ revision }: { revision: number }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [revision, savedRevision]);
-  const filtered = rows.filter(row => row.incurred_on.slice(0, 7) === month
-    && (!query.trim() || row.name.toLowerCase().includes(query.trim().toLowerCase())));
-  const pending = drafts.filter(d => d.target_month.slice(0, 7) === month
-    && !rows.some(row => row.id === d.id || (expenseCategoryLabel(row.category) === d.category && row.incurred_on.slice(0, 7) === month && row.name === d.name))
+  const filtered = rows.filter(row => !query.trim() || row.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const pending = drafts.filter(d => !rows.some(row => row.id === d.id || (expenseCategoryLabel(row.category) === d.category && row.incurred_on.slice(0, 7) === d.target_month.slice(0, 7) && row.name === d.name))
     && (!query.trim() || d.name.toLowerCase().includes(query.trim().toLowerCase())));
   return <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費一覧">
@@ -47,7 +43,6 @@ export default function ExpenseList({ revision }: { revision: number }) {
       <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => { setExpenseOpen(open => !open); setEditing(undefined); setDraft(undefined); }}>{expenseOpen ? '経費登録を閉じる' : '経費登録'}</button>
     </div>
     <div className="toolbar">
-      <label className="field"><span>表示月</span><input type="month" value={month} onChange={e => { if (e.target.value) setMonth(e.target.value); }} /></label>
       <label className="field"><span>内容</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} /></label>
     </div>
     {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
@@ -71,6 +66,6 @@ export default function ExpenseList({ revision }: { revision: number }) {
       })}</div></div>
     </>}
   </section>
-  {expenseOpen && <ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={saved => { setMonth(saved.incurred_on.slice(0, 7)); setSavedRevision(value => value + 1); }} onBusyChange={setExpenseBusy} />}
+  {expenseOpen && <ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} />}
   </div>;
 }

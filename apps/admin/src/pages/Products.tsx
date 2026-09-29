@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { Product } from '@bussan/shared';
-import { fetchProducts } from '../api';
+import { createProduct, fetchProducts, updateProductField } from '../api';
 import { downloadCsv } from '../csv';
 
 export default function Products() {
   const [rows, setRows] = useState<Product[]>([]);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [adding, setAdding] = useState(false);
+  const [newProduct, setNewProduct] = useState({ asin: '', model_no: '', maker: '', product_no: '' });
+  const [editing, setEditing] = useState<{ product: Product; field: 'asin' | 'model_no' | 'product_no'; value: string } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const id = setTimeout(() => {
@@ -16,7 +21,22 @@ export default function Products() {
         .catch((e) => setError(e instanceof Error ? e.message : String(e)));
     }, 250);
     return () => clearTimeout(id);
-  }, [query]);
+  }, [query, revision]);
+
+  async function saveEdit() {
+    if (!editing) return;
+    setBusy(true); setError(null);
+    try { await updateProductField(editing.product, editing.field, editing.value); setEditing(null); setRevision(n => n + 1); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function addProduct() {
+    setBusy(true); setError(null);
+    try { await createProduct(newProduct); setNewProduct({ asin: '', model_no: '', maker: '', product_no: '' }); setAdding(false); setRevision(n => n + 1); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
 
   return (
     <>
@@ -30,8 +50,13 @@ export default function Products() {
         />
         <span className="sub" style={{ margin: 0 }}>{rows.length} 件</span>
         <span style={{ flex: 1 }} />
+        <button className="btn" aria-expanded={adding} onClick={() => setAdding(open => !open)}>{adding ? '商品登録を閉じる' : '商品登録'}</button>
         <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
       </div>
+
+      {adding && <div className="card product-entry"><h3>商品登録</h3><div className="grid cols2">
+        {(['asin', 'model_no', 'maker', 'product_no'] as const).map(field => <label className="field" key={field}><span>{{ asin: 'ASIN', model_no: '型番', maker: 'メーカー', product_no: '品番' }[field]}</span><input value={newProduct[field]} onChange={e => setNewProduct(current => ({ ...current, [field]: e.target.value }))} /></label>)}
+      </div><button className="btn primary" disabled={busy} onClick={() => void addProduct()}>保存</button></div>}
 
       {error && <div className="error">{error}</div>}
 
@@ -48,9 +73,9 @@ export default function Products() {
           <tbody>
             {rows.map((p) => (
               <tr key={p.id}>
-                <td className="num">{p.product_no ?? '—'}</td>
-                <td><a href={p.amazon_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{p.asin}</a></td>
-                <td>{p.model_no ?? '—'}</td>
+                <td className="num"><button className="inventory-cell-edit" onClick={() => setEditing({ product: p, field: 'product_no', value: String(p.product_no ?? '') })}>{p.product_no ?? '—'}</button></td>
+                <td><button className="inventory-cell-edit" onClick={() => setEditing({ product: p, field: 'asin', value: p.asin })}>{p.asin}</button><a href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}>↗</a></td>
+                <td><button className="inventory-cell-edit" onClick={() => setEditing({ product: p, field: 'model_no', value: p.model_no ?? '' })}>{p.model_no ?? '—'}</button></td>
                 <td>{p.maker ?? '—'}</td>
                 <td>{p.genre ?? '—'}</td>
                 <td>{p.turnover ?? '—'}</td>
@@ -64,6 +89,12 @@ export default function Products() {
           </tbody>
         </table>
       </div>
+      {editing && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品リストの項目を編集"><div className="card inventory-comment-panel">
+        <h3>{{ asin: 'ASIN', model_no: '型番', product_no: '品番' }[editing.field]}を編集</h3>
+        <label className="field"><span>{{ asin: 'ASIN', model_no: '型番', product_no: '品番' }[editing.field]}</span><input autoFocus value={editing.value} onChange={e => setEditing(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveEdit(); }} /></label>
+        {error && <div className="error" role="alert">{error}</div>}
+        <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setEditing(null)}>閉じる</button></div>
+      </div></div>}
     </>
   );
 }
