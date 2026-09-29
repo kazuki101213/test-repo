@@ -45,7 +45,7 @@ export default function PhotoReviewTasks() {
       const paths = (data ?? []).map(row => row.storage_path);
       const { data: signed, error: signError } = await getSupabase().storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600);
       if (signError) throw signError;
-      if (active) setPhotos((signed ?? []).map(row => row.signedUrl).filter(Boolean));
+      if (active) setPhotos((signed ?? []).map(row => row.signedUrl).filter((url): url is string => !!url));
     })().catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); })
       .finally(() => { if (active) setLoadingPhotos(false); });
     return () => { active = false; };

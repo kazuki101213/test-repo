@@ -365,7 +365,9 @@ export async function fetchProducts(query?: string): Promise<Product[]> {
   });
 }
 
-export async function fetchLedger(from: string, to: string): Promise<LedgerRow[]> {
+export type LedgerDisplayRow = LedgerRow & { 仕入先: string | null; 商品ID: string | null };
+
+export async function fetchLedger(from: string, to: string): Promise<LedgerDisplayRow[]> {
   const { data, error } = await getSupabase()
     .from('v_antique_ledger')
     .select('*')

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { jpDate, yen } from '@bussan/shared';
-import type { LedgerRow } from '@bussan/shared';
 import { fetchLedger } from '../api';
+import type { LedgerDisplayRow } from '../api';
 import { downloadCsv } from '../csv';
 import { purchaseItemUrl } from '../purchaseUrl';
 
@@ -12,7 +12,7 @@ function firstOfYear(): string {
 export default function Ledger() {
   const [from, setFrom] = useState(firstOfYear());
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
-  const [rows, setRows] = useState<LedgerRow[]>([]);
+  const [rows, setRows] = useState<LedgerDisplayRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {

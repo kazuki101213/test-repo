@@ -231,6 +231,4 @@ export interface LedgerRow {
   相手方年齢: number | null;
   確認方法: string | null;
   取引記録リンク: string | null;
-  仕入先: string | null;
-  商品ID: string | null;
 }
