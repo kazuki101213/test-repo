@@ -18,3 +18,13 @@ create table if not exists storage.objects (
   name text
 );
 alter table storage.objects enable row level security;
+
+-- CI uses plain PostgreSQL. Keep the schema checks running without executing
+-- Supabase's external scheduler or Vault integration in this disposable DB.
+create schema if not exists cron;
+create or replace function cron.schedule(text, text, text) returns bigint
+language sql as $$ select 1::bigint $$;
+
+create schema if not exists vault;
+create or replace function vault.create_secret(text, text) returns uuid
+language sql as $$ select gen_random_uuid() $$;
