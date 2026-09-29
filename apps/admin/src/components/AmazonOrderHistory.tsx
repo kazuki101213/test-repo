@@ -57,7 +57,7 @@ export default function AmazonOrderHistory() {
   const [rows, setRows] = useState<Row[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [appOnly, setAppOnly] = useState<AppOnly[]>([]);
-  const [returnWorkRows, setReturnWorkRows] = useState<ReturnWorkRow[]>([]);
+  const [lotItems, setLotItems] = useState<ReturnWorkRow[]>([]);
   const [status, setStatus] = useState('要確認');
   const [month, setMonth] = useState('');
   const [search, setSearch] = useState('');
@@ -75,18 +75,18 @@ export default function AmazonOrderHistory() {
       if (reports.error) throw reports.error;
       if (unmatched.error) throw unmatched.error;
       const lots = resaleGroups(history).map(group => group.lot);
-      const workRows: ReturnWorkRow[] = [];
+      const itemRows: ReturnWorkRow[] = [];
       for (let start = 0; start < lots.length; start += 100) {
         const { data, error: workError } = await getSupabase().from('items')
           .select('lot_seq,sku,status,amazon_returned_on,returned_on')
           .in('lot_seq', lots.slice(start, start + 100));
         if (workError) throw workError;
-        workRows.push(...((data ?? []) as ReturnWorkRow[]).filter(row => isReturnWorkSku(row.sku)));
+        itemRows.push(...((data ?? []) as ReturnWorkRow[]));
       }
       setRows(history);
       setBatches((reports.data ?? []) as Batch[]);
       setAppOnly((unmatched.data ?? []) as AppOnly[]);
-      setReturnWorkRows(workRows);
+      setLotItems(itemRows);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Amazonの履歴を表示できませんでした。');
     } finally { setLoading(false); }
@@ -94,14 +94,17 @@ export default function AmazonOrderHistory() {
   useEffect(() => { void load(); }, []);
 
   const eligible = rows.filter(row => ['Shipped', 'Delivered', 'Shipped - Delivered to Buyer'].includes(row.order_status));
-  const resale = useMemo(() => resaleGroups(rows), [rows]);
+  const resale = useMemo(() => {
+    const actualLots = new Set(lotItems.map(item => item.lot_seq));
+    return resaleGroups(rows).filter(group => actualLots.has(group.lot));
+  }, [rows, lotItems]);
   const unmatchedBaseSales = appOnly.filter(row => !isReturnWorkSku(row.example_sku));
   const unmatchedWorkSales = appOnly.length - unmatchedBaseSales.length;
   const returnsByLot = useMemo(() => {
     const result = new Map<number, ReturnWorkRow[]>();
-    for (const row of returnWorkRows) result.set(row.lot_seq, [...(result.get(row.lot_seq) ?? []), row]);
+    for (const row of lotItems) if (isReturnWorkSku(row.sku)) result.set(row.lot_seq, [...(result.get(row.lot_seq) ?? []), row]);
     return result;
-  }, [returnWorkRows]);
+  }, [lotItems]);
   const counts = useMemo(() => {
     const result: Record<string, number> = {};
     for (const row of eligible) result[row.reconciliation_status] = (result[row.reconciliation_status] ?? 0) + 1;
