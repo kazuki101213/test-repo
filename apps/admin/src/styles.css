@@ -137,12 +137,14 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-table tr[data-lot] > td { padding: 4px 8px; line-height: 18px; }
 .inventory-table { min-width: 2180px; table-layout: fixed; }
 .inventory-table th { height: 40px; vertical-align: middle; }
+.inventory-table th:nth-child(2) { width: 240px; }
 .inventory-table th:nth-child(3) { width: 190px; }
 .inventory-table th:nth-child(5) { width: 88px; }
 .inventory-table th:nth-child(16) { width: 180px; }
 .inventory-table tr[data-lot] > td { height: 64px; max-height: 64px; overflow: hidden; vertical-align: middle; }
 .inventory-cell-edit, .inventory-comment { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .inventory-cell-edit > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inventory-table td:nth-child(2) .inventory-cell-edit > span:last-child { white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
 .inventory-cell-edit:hover, .inventory-comment:hover { color: var(--accent); }
 .inventory-cell-edit:focus-visible, .inventory-comment:focus-visible { outline: 2px solid var(--accent); }
 .inventory-photo { display: block; width: 52px; height: 52px; }

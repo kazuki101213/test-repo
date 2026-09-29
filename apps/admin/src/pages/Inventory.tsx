@@ -126,7 +126,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 <th>仕入担当者<br />納品担当者</th><th>Amazonの写真</th><th>仕入先</th>
                 <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th>
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
-                <th>見込利益額<br />予定利益率</th><th>販売日<br />在庫日数</th>
+                <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
                 <th>販売金額<br />振込金額</th><th>利益額<br />利益率</th>
                 <th>Amazon返金金額<br />Amazon以外からの返金</th><th>コメント</th>
               </tr>
