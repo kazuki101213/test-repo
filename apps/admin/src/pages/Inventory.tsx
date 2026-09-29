@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
 import type { InventoryItem } from '../api';
-import { fetchItems, fetchStaff, updateInventoryItem, updateProductNumber } from '../api';
-import type { InventoryEdit } from '../api';
+import { fetchItems, fetchStaff, updateInventoryField } from '../api';
+import type { InventoryField } from '../api';
 import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
@@ -25,7 +25,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
-  const [editFor, setEditFor] = useState<InventoryItem | null>(null);
+  const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
   const [expandedComment, setExpandedComment] = useState<InventoryItem | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -122,7 +122,7 @@ export default function Inventory({ me }: { me: Staff }) {
           <table className="inventory-table" aria-rowcount={items.length + 1}>
             <thead>
               <tr aria-rowindex={1}>
-                <th>作業状態</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />商品名</th>
+                <th>作業状態</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />商品名 / 型番</th>
                 <th>仕入担当者<br />納品担当者</th><th>Amazonの写真</th><th>仕入先</th>
                 <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th>
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
@@ -135,27 +135,31 @@ export default function Inventory({ me }: { me: Staff }) {
               {window.top > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={16} style={{ height: window.top }} /></tr>}
               {items.slice(window.start, window.end).map((i, offset) => {
                 const index = window.start + offset;
-                const edit = () => setEditFor(i);
-                const stacked = (top: ReactNode, bottom?: ReactNode) => <button type="button" className="inventory-cell-edit" onClick={edit} title="クリックして編集"><span>{top}</span>{bottom !== undefined && <span>{bottom}</span>}</button>;
+                const edit = (field: InventoryField) => setEditFor({ item: i, field });
+                const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
                 const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
                 return (
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
-                  <td>{stacked(<><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</>)}</td>
-                  <td>{stacked(i.lot_seq !== items[index - 1]?.lot_seq ? `${i.lot_seq} / ${i.product_no ?? '—'}` : `${i.product_no ?? '—'}`, <span className="sku">{i.sku}</span>)}</td>
-                  <td>{stacked(i.asin ?? '—', <>{i.is_accessory && <span className="badge">付属</span>}{i.title}</>)}</td>
-                  <td>{stacked(i.purchaser_name ?? '—', i.deliverer_name ?? '—')}</td>
+                  <td>{stacked(<><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</>, 'status')}</td>
+                  <td>{stacked(i.lot_seq !== items[index - 1]?.lot_seq ? `${i.lot_seq} / ${i.product_no ?? '—'}` : `${i.product_no ?? '—'}`, 'product_no', <span className="sku">{i.sku}</span>, 'product_no')}</td>
+                  <td><div className="inventory-cell-stack">
+                    <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>
+                    <button type="button" className="inventory-cell-edit" onClick={() => edit('title')}>{i.is_accessory && <span className="badge">付属</span>}{i.title}</button>
+                    <button type="button" className="inventory-cell-edit" onClick={() => edit('model_no')}>型番 {i.model_no ?? '—'}</button>
+                  </div></td>
+                  <td>{stacked(i.purchaser_name ?? '—', 'purchaser_id', i.deliverer_name ?? '—', 'deliverer_id')}</td>
                   <td>{i.amazon_image_url ? <a className="inventory-photo" href={i.amazon_image_url} target="_blank" rel="noreferrer"><img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /></a> : <span className="inventory-photo-empty">—</span>}</td>
-                  <td>{stacked(i.marketplace)}</td>
-                  <td>{stacked(jpDate(i.purchased_at), yen(i.cost_amount))}</td>
-                  <td>{stacked(i.sales_channel ?? '—', i.condition ?? '—')}</td>
-                  <td>{stacked(jpDate(i.packed_on), jpDate(i.shipped_on))}</td>
-                  <td>{stacked(yen(i.planned_price), yen(i.planned_payout))}</td>
-                  <td>{stacked(yen(i.expected_profit), expectedRate)}</td>
-                  <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), (i.days_in_stock ?? i.days_to_sell) == null ? '—' : `${i.days_in_stock ?? i.days_to_sell}日`)}</td>
-                  <td>{stacked(yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount))}</td>
-                  <td>{stacked(yen(i.product_profit), actualRate)}</td>
-                  <td>{stacked(yen(i.amazon_refund_amount), yen(i.non_amazon_refund_amount))}</td>
+                  <td>{stacked(i.marketplace, 'marketplace')}</td>
+                  <td>{stacked(jpDate(i.purchased_at), 'purchased_at', yen(i.cost_amount), 'cost_amount')}</td>
+                  <td>{stacked(i.sales_channel ?? '—', 'sales_channel', i.condition ?? '—', 'condition')}</td>
+                  <td>{stacked(jpDate(i.packed_on), 'packed_on', jpDate(i.shipped_on), 'shipped_on')}</td>
+                  <td>{stacked(yen(i.planned_price), 'planned_price', yen(i.planned_payout), 'planned_payout')}</td>
+                  <td>{stacked(yen(i.expected_profit), 'planned_payout', expectedRate, 'planned_price')}</td>
+                  <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', (i.days_in_stock ?? i.days_to_sell) == null ? '—' : `${i.days_in_stock ?? i.days_to_sell}日`, 'sold_on')}</td>
+                  <td>{stacked(yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
+                  <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
+                  <td>{stacked(yen(i.amazon_refund_amount), 'amazon_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td>{i.latest_comment ? <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示">{i.latest_comment.slice(0, 20)}{i.latest_comment.length > 20 ? '…' : ''}</button> : '—'}</td>
                 </tr>
               ); })}
@@ -169,65 +173,48 @@ export default function Inventory({ me }: { me: Staff }) {
         <NewPurchase me={me} onSaved={() => void load()} />
       </aside>}
 
-      {editFor && <InventoryEditDialog item={editFor} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
+      {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
       {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} のコメント</h3><p>{expandedComment.latest_comment}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
     </div>
   );
 }
 
-function InventoryEditDialog({ item, staff, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
-  const [productNo, setProductNo] = useState(item.product_no?.toString() ?? '');
-  const [fields, setFields] = useState<InventoryEdit>({
-    title: item.title, asin: item.asin, tracking_no: item.tracking_no,
-    purchased_at: item.purchased_at, cost_amount: item.cost_amount, planned_price: item.planned_price,
-    planned_payout: item.planned_payout, packed_on: item.packed_on, shipped_on: item.shipped_on,
-    status: item.status, memo: item.memo, purchaser_id: item.purchaser_id,
-    deliverer_id: item.deliverer_id, marketplace: item.marketplace,
-    condition: item.condition, sales_channel: item.sales_channel,
-    sold_on: item.sold_on, sold_price: item.sold_price, payout_amount: item.payout_amount,
-    amazon_refund_amount: item.amazon_refund_amount, non_amazon_refund_amount: item.non_amazon_refund_amount,
-  });
+const fieldLabels: Record<InventoryField, string> = {
+  title: '商品名', asin: 'ASIN', tracking_no: '追跡番号', purchased_at: '仕入日',
+  cost_amount: '仕入金額', planned_price: '販売予定金額', planned_payout: '振込予定金額',
+  packed_on: '梱包日', shipped_on: '出荷日', status: '作業状態', memo: 'メモ',
+  purchaser_id: '仕入担当者', deliverer_id: '納品担当者', marketplace: '仕入先',
+  condition: '商品状態', sales_channel: '販売先', sold_on: '販売日',
+  sold_price: '販売金額', payout_amount: '振込金額', amazon_refund_amount: 'Amazon返金金額',
+  non_amazon_refund_amount: 'Amazon以外からの返金', product_no: '品番', model_no: '型番',
+};
+
+function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
+  const initial = item[field] ?? '';
+  const [value, setValue] = useState(String(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const set = <K extends keyof InventoryEdit>(key: K, value: InventoryEdit[K]) => setFields(current => ({ ...current, [key]: value }));
+  const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
+  const numberFields = new Set<InventoryField>(['product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
+  const options = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
+    : field === 'marketplace' ? MARKETPLACES.map(v => ({ value: v, label: v }))
+    : field === 'sales_channel' ? SALES_CHANNELS.map(v => ({ value: v, label: v }))
+    : field === 'condition' ? CONDITIONS.map(v => ({ value: v, label: v }))
+    : field === 'purchaser_id' ? staff.filter(s => s.role !== 'deliverer').map(s => ({ value: s.id, label: s.name }))
+    : field === 'deliverer_id' ? staff.map(s => ({ value: s.id, label: s.name })) : null;
   async function save() {
     setBusy(true); setError('');
-    try { await updateInventoryItem(item, fields); onSaved(); }
+    try { await updateInventoryField(item, field, value); onSaved(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : '保存できませんでした。'); setBusy(false); }
   }
-  async function saveProductNo() {
-    setBusy(true); setError('');
-    try { await updateProductNumber(item, productNo === '' ? null : Number(productNo)); onSaved(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : '品番を保存できませんでした。'); setBusy(false); }
-  }
-  return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="在庫情報を編集">
-    <div className="card inventory-edit-panel">
-      <h3>在庫情報を編集</h3><p className="sku">{item.lot_seq} / 品番 {item.product_no ?? '—'} / {item.sku}</p>
-      {item.product_id && <div className="row"><label className="field"><span>品番（商品リストの共通番号）</span><input type="number" min="1" step="1" value={productNo} onChange={e => setProductNo(e.target.value)} /></label><button className="btn" disabled={busy} onClick={() => void saveProductNo()}>品番を保存</button></div>}
-      <div className="grid cols2">
-        <label className="field"><span>商品名</span><input value={fields.title} onChange={e => set('title', e.target.value)} /></label>
-        <label className="field"><span>状態</span><select value={fields.status} onChange={e => set('status', e.target.value as InventoryEdit['status'])}>{STATUSES.map(s => <option key={s} value={s}>{s}</option>)}</select></label>
-        <label className="field"><span>ASIN</span><input value={fields.asin ?? ''} onChange={e => set('asin', e.target.value || null)} /></label>
-        <label className="field"><span>仕入担当者</span><select value={fields.purchaser_id ?? ''} onChange={e => set('purchaser_id', e.target.value || null)}><option value="">未設定</option>{staff.filter(s => s.role === 'admin' || s.role === 'purchaser').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-        <label className="field"><span>納品担当者</span><select value={fields.deliverer_id ?? ''} onChange={e => set('deliverer_id', e.target.value || null)}><option value="">未設定</option>{staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-        <label className="field"><span>仕入先</span><select value={fields.marketplace} onChange={e => set('marketplace', e.target.value as InventoryEdit['marketplace'])}>{MARKETPLACES.map(value => <option key={value}>{value}</option>)}</select></label>
-        <label className="field"><span>販売先</span><select value={fields.sales_channel ?? ''} onChange={e => set('sales_channel', e.target.value ? e.target.value as InventoryEdit['sales_channel'] : null)}><option value="">未設定</option>{SALES_CHANNELS.map(value => <option key={value}>{value}</option>)}</select></label>
-        <label className="field"><span>商品状態</span><select value={fields.condition ?? ''} onChange={e => set('condition', e.target.value ? e.target.value as InventoryEdit['condition'] : null)}><option value="">未設定</option>{CONDITIONS.map(value => <option key={value}>{value}</option>)}</select></label>
-        <label className="field"><span>追跡番号</span><input value={fields.tracking_no ?? ''} onChange={e => set('tracking_no', e.target.value || null)} /></label>
-        <label className="field"><span>仕入日</span><input type="date" value={fields.purchased_at ?? ''} onChange={e => set('purchased_at', e.target.value || null)} /></label>
-        <label className="field"><span>仕入額</span><input type="number" min="0" step="1" value={fields.cost_amount} onChange={e => set('cost_amount', Number(e.target.value))} /></label>
-        <label className="field"><span>予定価格</span><input type="number" min="0" step="1" value={fields.planned_price ?? ''} onChange={e => set('planned_price', e.target.value === '' ? null : Number(e.target.value))} /></label>
-        <label className="field"><span>見込み振込額</span><input type="number" min="0" step="1" value={fields.planned_payout ?? ''} onChange={e => set('planned_payout', e.target.value === '' ? null : Number(e.target.value))} /></label>
-        <label className="field"><span>梱包日</span><input type="date" value={fields.packed_on ?? ''} onChange={e => set('packed_on', e.target.value || null)} /></label>
-        <label className="field"><span>出荷日</span><input type="date" value={fields.shipped_on ?? ''} onChange={e => set('shipped_on', e.target.value || null)} /></label>
-        <label className="field"><span>販売日</span><input type="date" value={fields.sold_on ?? ''} onChange={e => set('sold_on', e.target.value || null)} /></label>
-        <label className="field"><span>販売金額</span><input type="number" min="0" step="1" value={fields.sold_price ?? ''} onChange={e => set('sold_price', e.target.value === '' ? null : Number(e.target.value))} /></label>
-        <label className="field"><span>振込金額</span><input type="number" min="0" step="1" value={fields.payout_amount ?? ''} onChange={e => set('payout_amount', e.target.value === '' ? null : Number(e.target.value))} /></label>
-        <label className="field"><span>Amazon返金金額</span><input type="number" min="0" step="1" value={fields.amazon_refund_amount} onChange={e => set('amazon_refund_amount', Number(e.target.value))} /></label>
-        <label className="field"><span>Amazon以外からの返金</span><input type="number" min="0" step="1" value={fields.non_amazon_refund_amount} onChange={e => set('non_amazon_refund_amount', Number(e.target.value))} /></label>
-      </div>
-      <label className="field"><span>メモ</span><textarea value={fields.memo ?? ''} onChange={e => set('memo', e.target.value || null)} /></label>
-      <p className="sub">出荷日を入れると出品中、販売登録をすると販売済になります。返品処理は状態から選べます。</p>
+  return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label={`${fieldLabels[field]}を編集`}>
+    <div className="card inventory-comment-panel">
+      <h3>{fieldLabels[field]}を編集</h3><p className="sku">{item.lot_seq} / {item.sku}</p>
+      <label className="field"><span>{fieldLabels[field]}</span>
+        {options ? <select value={value} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          : field === 'memo' ? <textarea value={value} onChange={e => setValue(e.target.value)} />
+            : <input autoFocus type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
+      </label>
       {error && <div className="error" role="alert">{error}</div>}
       <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
     </div>

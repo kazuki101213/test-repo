@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DeliveryTask, Staff } from '@bussan/shared';
-import { fetchAmazonFeed, fetchMyTasks, fetchTaskThumbnails } from '../api';
+import { fetchAmazonFeed, fetchDeliveryStaff, fetchMyTasks, fetchTaskThumbnails } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 
@@ -15,6 +15,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 
 export default function TaskList({ staff }: { staff: Staff }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
+  const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
+  const [delivererId, setDelivererId] = useState('');
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<Filter>('arrived');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -49,6 +51,9 @@ export default function TaskList({ staff }: { staff: Staff }) {
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => {
+    if (staff.role === 'admin') void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(e instanceof Error ? e.message : String(e)));
+  }, [staff.role]);
+  useEffect(() => {
     let active = true;
     if (tasks.length) void fetchTaskThumbnails(tasks).then(urls => { if (active) setThumbnails(urls); }).catch(() => undefined);
     return () => { active = false; };
@@ -58,6 +63,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     const q = normalizeSearch(query);
     const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
     for (const task of tasks) {
+      if (staff.role === 'admin' && delivererId && task.deliverer_id !== delivererId) continue;
       const key = task.lot_seq ? String(task.lot_seq) : task.id;
       const members = groups.get(key);
       if (members) members.push(task);
@@ -75,10 +81,11 @@ export default function TaskList({ staff }: { staff: Staff }) {
         case 'all':     return true;
       }
     });
-  }, [tasks, filter, query]);
+  }, [tasks, filter, query, staff.role, delivererId]);
 
   return (
     <>
+      {staff.role === 'admin' && <label className="field"><span>納品担当者の在庫一覧</span><select value={delivererId} onChange={e => { setDelivererId(e.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">すべての担当者</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{deliverer.name}</option>)}</select></label>}
       <input
         type="search" placeholder="通番号 / SKU / 商品名で検索" aria-label="通番号・SKU・商品名を部分一致で検索"
         value={query} onChange={(e) => setQuery(e.target.value)}

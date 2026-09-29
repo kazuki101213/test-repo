@@ -147,6 +147,12 @@ export async function fetchPhotoUrls(itemId: string): Promise<string[]> {
     .filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
 
+export async function fetchDeliveryStaff(): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await getSupabase().from('staff').select('id,name').eq('role', 'deliverer').eq('is_active', true).order('name');
+  if (error) throw error;
+  return data ?? [];
+}
+
 /** One signed uploaded photo per visible inventory card; Amazon art is used as fallback. */
 export async function fetchTaskThumbnails(tasks: DeliveryTask[]): Promise<Record<string, string>> {
   const sb = getSupabase();

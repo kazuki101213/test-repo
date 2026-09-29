@@ -182,7 +182,7 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
 
     if (filter.status) q = q.eq('status', filter.status);
     if (filter.delivererId) q = q.eq('deliverer_id', filter.delivererId);
-    if (filter.unsoldOnly) q = q.eq('sale_row_count', 0);
+    if (filter.unsoldOnly) q = q.eq('sale_row_count', 0).neq('status', '返品処理').neq('status', '廃棄');
     if (filter.purchasedFrom) q = q.gte('purchased_at', filter.purchasedFrom);
     if (filter.purchasedTo) q = q.lte('purchased_at', filter.purchasedTo);
     if (filter.query) {
@@ -250,15 +250,65 @@ export async function updateProductNumber(item: InventoryItem, productNo: number
   if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
 }
 
-export async function fetchProducts(query?: string): Promise<Product[]> {
-  let q = getSupabase().from('products').select('*').eq('is_active', true).order('product_no').limit(query ? 100 : 1000);
-  if (query) {
-    const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;
-    q = q.or(`asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term}`);
+export type InventoryField = keyof InventoryEdit | 'product_no' | 'model_no';
+
+/** A cell edit writes only the selected column so another cell cannot be overwritten. */
+export async function updateInventoryField(item: InventoryItem, field: InventoryField, value: string): Promise<void> {
+  const text = value.trim();
+  if (field === 'product_no') return updateProductNumber(item, text ? Number(text) : null);
+  if (field === 'model_no') {
+    if (!item.product_id) throw new Error('商品リストに紐付いていないため型番を編集できません。');
+    let query = getSupabase().from('products').update({ model_no: text || null }).eq('id', item.product_id);
+    query = item.model_no === null ? query.is('model_no', null) : query.eq('model_no', item.model_no);
+    const { data, error } = await query.select('id').maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('型番が変更されたか、編集権限がありません。再読み込みしてください。');
+    return;
   }
-  const { data, error } = await q;
+  if (field === 'title' && (!text || text.length > 500)) throw new Error('商品名を入力してください。');
+  const numbers = new Set<InventoryField>(['cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
+  if (numbers.has(field) && text && (!Number.isSafeInteger(Number(text)) || Number(text) < 0)) throw new Error('金額は0円以上の整数で入力してください。');
+  if (field === 'cost_amount' && !text) throw new Error('仕入金額を入力してください。');
+  const requiredText = new Set<InventoryField>(['title', 'status', 'marketplace']);
+  const next = numbers.has(field) ? (text ? Number(text) : field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
+  const { data, error } = await getSupabase().from('items').update({ [field]: next }).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
-  return (data ?? []) as Product[];
+  if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
+}
+
+export async function updateProductField(product: Product, field: 'asin' | 'model_no' | 'product_no', value: string): Promise<void> {
+  const next = field === 'asin' ? value.trim().toUpperCase() : value.trim();
+  if (field === 'asin' && !/^[A-Z0-9]{10}$/.test(next)) throw new Error('ASINは英数字10文字で入力してください。');
+  const productNo = next ? Number(next) : null;
+  if (field === 'product_no' && productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
+  const update = field === 'model_no' ? { model_no: next || null } : field === 'product_no' ? { product_no: productNo } : { asin: next };
+  let query = getSupabase().from('products').update(update).eq('id', product.id);
+  query = product[field] === null ? query.is(field, null) : query.eq(field, product[field]);
+  const { data, error } = await query.select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
+}
+
+export async function createProduct(input: { asin: string; model_no: string; maker: string; product_no: string }): Promise<void> {
+  const asin = input.asin.trim().toUpperCase();
+  if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは英数字10文字で入力してください。');
+  const productNo = input.product_no.trim() ? Number(input.product_no) : null;
+  if (productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
+  const { error } = await getSupabase().from('products').insert({ asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null, product_no: productNo });
+  if (error) throw error;
+}
+
+export async function fetchProducts(query?: string): Promise<Product[]> {
+  return readAllRows<Product>(async (from, to) => {
+    let q = getSupabase().from('products').select('*').eq('is_active', true).order('product_no').order('id').range(from, to);
+    if (query) {
+      const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;
+      q = q.or(`asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term}`);
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data ?? []) as Product[];
+  });
 }
 
 export async function fetchLedger(from: string, to: string): Promise<LedgerRow[]> {
