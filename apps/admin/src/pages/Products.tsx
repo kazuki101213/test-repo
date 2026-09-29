@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { Product } from '@bussan/shared';
-import { createProduct, fetchProducts, updateProductField } from '../api';
+import { createProduct, fetchProducts, updateProductField, type ProductField } from '../api';
 import { downloadCsv } from '../csv';
 
 export default function Products() {
@@ -11,7 +11,7 @@ export default function Products() {
   const [revision, setRevision] = useState(0);
   const [adding, setAdding] = useState(false);
   const [newProduct, setNewProduct] = useState({ asin: '', model_no: '', maker: '', product_no: '' });
-  const [editing, setEditing] = useState<{ product: Product; field: 'asin' | 'model_no' | 'product_no'; value: string } | null>(null);
+  const [editing, setEditing] = useState<{ product: Product; field: ProductField; value: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -37,6 +37,14 @@ export default function Products() {
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
+
+  const fieldLabels: Record<ProductField, string> = {
+    product_no: '品番', asin: 'ASIN', model_no: '型番', maker: 'メーカー', genre: 'ジャンル',
+    turnover: '回転', list_price: '販売価格', payout_estimate: '振込額', target_cost: '仕入れ目標',
+    monthly_purchase_cap: '月間上限', has_sold_before: '実績',
+  };
+  const startEdit = (product: Product, field: ProductField) => setEditing({ product, field, value: String(product[field] ?? '') });
+  const cell = (product: Product, field: ProductField, label: string) => <button className="inventory-cell-edit" onClick={() => startEdit(product, field)}>{label}</button>;
 
   return (
     <>
@@ -73,25 +81,28 @@ export default function Products() {
           <tbody>
             {rows.map((p) => (
               <tr key={p.id}>
-                <td className="num"><button className="inventory-cell-edit" onClick={() => setEditing({ product: p, field: 'product_no', value: String(p.product_no ?? '') })}>{p.product_no ?? '—'}</button></td>
-                <td><button className="inventory-cell-edit" onClick={() => setEditing({ product: p, field: 'asin', value: p.asin })}>{p.asin}</button><a href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}>↗</a></td>
-                <td><button className="inventory-cell-edit" onClick={() => setEditing({ product: p, field: 'model_no', value: p.model_no ?? '' })}>{p.model_no ?? '—'}</button></td>
-                <td>{p.maker ?? '—'}</td>
-                <td>{p.genre ?? '—'}</td>
-                <td>{p.turnover ?? '—'}</td>
-                <td className="num">{yen(p.list_price)}</td>
-                <td className="num">{yen(p.payout_estimate)}</td>
-                <td className="num" style={{ color: 'var(--accent)' }}>{yen(p.target_cost)}</td>
-                <td className="num">{p.monthly_purchase_cap ?? '—'}</td>
-                <td>{p.has_sold_before ? <span className="badge">販売実績あり</span> : '—'}</td>
+                <td className="num">{cell(p, 'product_no', String(p.product_no ?? '—'))}</td>
+                <td>{cell(p, 'asin', p.asin)}<a href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}>↗</a></td>
+                <td>{cell(p, 'model_no', p.model_no ?? '—')}</td>
+                <td>{cell(p, 'maker', p.maker ?? '—')}</td>
+                <td>{cell(p, 'genre', p.genre ?? '—')}</td>
+                <td>{cell(p, 'turnover', p.turnover ?? '—')}</td>
+                <td className="num">{cell(p, 'list_price', yen(p.list_price))}</td>
+                <td className="num">{cell(p, 'payout_estimate', yen(p.payout_estimate))}</td>
+                <td className="num" style={{ color: 'var(--accent)' }}>{cell(p, 'target_cost', yen(p.target_cost))}</td>
+                <td className="num">{cell(p, 'monthly_purchase_cap', String(p.monthly_purchase_cap ?? '—'))}</td>
+                <td>{cell(p, 'has_sold_before', p.has_sold_before ? '販売実績あり' : '—')}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       {editing && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品リストの項目を編集"><div className="card inventory-comment-panel">
-        <h3>{{ asin: 'ASIN', model_no: '型番', product_no: '品番' }[editing.field]}を編集</h3>
-        <label className="field"><span>{{ asin: 'ASIN', model_no: '型番', product_no: '品番' }[editing.field]}</span><input autoFocus value={editing.value} onChange={e => setEditing(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveEdit(); }} /></label>
+        <h3>{fieldLabels[editing.field]}を編集</h3>
+        <label className="field"><span>{fieldLabels[editing.field]}</span>
+          {editing.field === 'turnover' || editing.field === 'has_sold_before' ? <select value={editing.value} onChange={e => setEditing(current => current && { ...current, value: e.target.value })}>{(editing.field === 'turnover' ? [['', '未設定'], ['高', '高'], ['中', '中'], ['低', '低']] : [['false', 'なし'], ['true', '販売実績あり']]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+            : <input autoFocus type={['product_no', 'list_price', 'payout_estimate', 'target_cost', 'monthly_purchase_cap'].includes(editing.field) ? 'number' : 'text'} min={editing.field === 'product_no' ? 1 : 0} value={editing.value} onChange={e => setEditing(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveEdit(); }} />}
+        </label>
         {error && <div className="error" role="alert">{error}</div>}
         <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setEditing(null)}>閉じる</button></div>
       </div></div>}

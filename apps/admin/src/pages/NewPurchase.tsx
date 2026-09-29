@@ -115,6 +115,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       }
       const payload: ItemInsert = {
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
+        is_accessory: workStream === '付属品',
         purchaser_id: purchaserId,
         deliverer_id: delivererId || null,
         work_stream: workStream || null,
