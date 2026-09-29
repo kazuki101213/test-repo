@@ -1,0 +1,111 @@
+import { useEffect, useMemo, useState } from 'react';
+import { getSupabase, yen } from '@bussan/shared';
+
+type Row = {
+  order_item_id: string;
+  ordered_at: string;
+  order_on: string;
+  order_status: string;
+  sku: string | null;
+  canonical_sku: string | null;
+  quantity: number | null;
+  item_price: number | null;
+  app_sold_on: string | null;
+  app_sold_price: number | null;
+  reconciliation_status: string;
+};
+type Batch = { report_id: string; starts_on: string; ends_on: string; row_count: number };
+type AppOnly = { lot_seq: number; example_sku: string; app_sold_on: string; app_sold_price: number | null; sales_channels: string };
+
+async function readHistory(): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += 500) {
+    const { data, error } = await getSupabase().from('v_amazon_order_reconciliation')
+      .select('order_item_id,ordered_at,order_on,order_status,sku,canonical_sku,quantity,item_price,app_sold_on,app_sold_price,reconciliation_status')
+      .order('ordered_at', { ascending: false }).order('order_item_id').range(from, from + 499);
+    if (error) throw error;
+    rows.push(...(data ?? []) as Row[]);
+    if (!data || data.length < 500) return rows;
+  }
+}
+
+export default function AmazonOrderHistory() {
+  const [rows, setRows] = useState<Row[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [appOnly, setAppOnly] = useState<AppOnly[]>([]);
+  const [status, setStatus] = useState('要確認');
+  const [month, setMonth] = useState('');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function load() {
+    setLoading(true); setError('');
+    try {
+      const [history, reports, unmatched] = await Promise.all([
+        readHistory(),
+        getSupabase().from('amazon_order_report_batches').select('report_id,starts_on,ends_on,row_count').order('starts_on'),
+        getSupabase().from('v_amazon_unmatched_app_sales').select('lot_seq,example_sku,app_sold_on,app_sold_price,sales_channels').order('lot_seq', { ascending: false }),
+      ]);
+      if (reports.error) throw reports.error;
+      if (unmatched.error) throw unmatched.error;
+      setRows(history);
+      setBatches((reports.data ?? []) as Batch[]);
+      setAppOnly((unmatched.data ?? []) as AppOnly[]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Amazonの履歴を表示できませんでした。');
+    } finally { setLoading(false); }
+  }
+  useEffect(() => { void load(); }, []);
+
+  const eligible = rows.filter(row => ['Shipped', 'Delivered', 'Shipped - Delivered to Buyer'].includes(row.order_status));
+  const counts = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const row of eligible) result[row.reconciliation_status] = (result[row.reconciliation_status] ?? 0) + 1;
+    return result;
+  }, [rows]);
+  const filtered = rows.filter(row => {
+    if (status === '要確認' && ['対象外', '一致', '日付差'].includes(row.reconciliation_status)) return false;
+    if (status !== '要確認' && status && row.reconciliation_status !== status) return false;
+    if (month && !row.order_on.startsWith(month)) return false;
+    if (search && !(row.sku ?? '').toLowerCase().includes(search.toLowerCase()) && !(row.canonical_sku ?? '').toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+  const first = batches[0]?.starts_on;
+  const last = batches[batches.length - 1]?.ends_on;
+
+  return <details className="card amazon-sales">
+    <summary>Amazon販売履歴・照合</summary>
+    <div className="toolbar" style={{ marginTop: 12 }}>
+      <strong>取得済み注文 {rows.length.toLocaleString()}件</strong>
+      <span>期間 {first ?? '—'} ～ {last ?? '—'}（{batches.length}レポート）</span>
+      <button className="btn" onClick={() => void load()} disabled={loading}>再読込</button>
+    </div>
+    <p className="sub">Amazonの注文レポートを保存し、アプリのSKUと照合しています。古いSKU形式も変換します。注文日とアプリの販売日は計上基準が異なる場合があるため、「日付差」は自動修正しません。既存の販売記録も上書きしません。</p>
+    <div className="toolbar">
+      <span>出荷済 {eligible.length.toLocaleString()}件</span>
+      {['商品未登録', '同一SKU複数注文', 'アプリ未販売', '価格相違', '金額未確定', '複数個', '日付差', '一致'].map(key => <span key={key}>{key} {counts[key] ?? 0}</span>)}
+      <span>アプリのみ販売済 {appOnly.length}</span>
+    </div>
+    <div className="toolbar">
+      <label className="field"><span>注文月</span><input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>
+      <label className="field"><span>照合結果</span><select value={status} onChange={e => setStatus(e.target.value)}><option>要確認</option><option value="">すべて</option>{['商品未登録', '同一SKU複数注文', 'アプリ未販売', '価格相違', '金額未確定', '複数個', '日付差', '一致', '対象外'].map(key => <option key={key}>{key}</option>)}</select></label>
+      <input type="search" aria-label="Amazon SKUを検索" placeholder="SKUを検索" value={search} onChange={e => setSearch(e.target.value)} />
+      <span>{filtered.length.toLocaleString()}件</span>
+    </div>
+    {loading && <p>読み込み中…</p>}
+    {error && <div className="error" role="alert">{error}</div>}
+    <div className="scroll" style={{ maxHeight: 520 }}><table><thead><tr><th>Amazon注文日</th><th>SKU</th><th>Amazon価格</th><th>アプリ販売日</th><th>アプリ価格</th><th>照合結果</th></tr></thead><tbody>{filtered.map(row => <tr key={row.order_item_id}>
+      <td>{row.order_on}</td><td className="sku" title={row.canonical_sku ?? undefined}>{row.sku ?? '—'}</td>
+      <td className="num">{row.item_price === null ? '—' : yen(row.item_price)}</td>
+      <td>{row.app_sold_on ?? '—'}</td><td className="num">{row.app_sold_price === null ? '—' : yen(row.app_sold_price)}</td>
+      <td>{row.reconciliation_status}</td>
+    </tr>)}</tbody></table></div>
+    <details style={{ marginTop: 14 }}><summary>アプリに販売記録があり、Amazon注文を見つけられない商品（{appOnly.length}件）</summary>
+      <p className="sub">FBA・自己発送の本体を通番号で照合した確認候補です。別のSKUや販売経路で記録された可能性があります。</p>
+      <div className="scroll" style={{ maxHeight: 360 }}><table><thead><tr><th>通番号</th><th>SKU</th><th>アプリ販売日</th><th>アプリ価格</th><th>販売経路</th></tr></thead><tbody>{appOnly.map(row => <tr key={row.lot_seq}>
+        <td>{row.lot_seq}</td><td className="sku">{row.example_sku}</td><td>{row.app_sold_on}</td><td className="num">{yen(row.app_sold_price)}</td><td>{row.sales_channels}</td>
+      </tr>)}</tbody></table></div>
+    </details>
+  </details>;
+}

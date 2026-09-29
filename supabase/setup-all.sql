@@ -2559,3 +2559,236 @@ grant execute on function app.set_delivery_progress(uuid,text,boolean,date) to a
 notify pgrst,'reload schema';
 
 
+-- ▼▼▼ 20260929000000_amazon_order_report_history.sql ▼▼▼
+
+create table if not exists app.amazon_order_history (
+  account_key text not null,
+  order_item_id text not null,
+  order_id text not null,
+  ordered_at timestamptz not null,
+  order_status text not null,
+  fulfillment_channel text,
+  sku text,
+  asin text,
+  quantity integer,
+  currency text,
+  item_price numeric,
+  item_tax numeric,
+  shipping_price numeric,
+  shipping_tax numeric,
+  promotion_discount numeric,
+  source_report text not null,
+  imported_at timestamptz not null default now(),
+  primary key (account_key, order_item_id),
+  check (quantity is null or quantity >= 0)
+);
+create index if not exists amazon_order_history_ordered_idx on app.amazon_order_history (ordered_at desc);
+create index if not exists amazon_order_history_sku_idx on app.amazon_order_history (sku);
+alter table app.amazon_order_history enable row level security;
+revoke all on app.amazon_order_history from anon, authenticated;
+grant select on app.amazon_order_history to authenticated;
+grant select, insert, update on app.amazon_order_history to service_role;
+drop policy if exists amazon_order_history_admin_read on app.amazon_order_history;
+create policy amazon_order_history_admin_read on app.amazon_order_history
+  for select to authenticated using ((select app.is_admin()));
+comment on table app.amazon_order_history is 'Sanitized Amazon Seller Central all orders history. No buyer information or addresses. Existing app sale records are not overwritten.';
+
+create table if not exists app.amazon_order_report_batches (
+  account_key text not null,
+  report_id text not null,
+  starts_on date not null,
+  ends_on date not null,
+  row_count integer not null,
+  imported_at timestamptz not null default now(),
+  primary key(account_key,report_id),
+  check (starts_on <= ends_on),
+  check (row_count >= 0)
+);
+alter table app.amazon_order_report_batches enable row level security;
+revoke all on app.amazon_order_report_batches from anon, authenticated;
+grant select on app.amazon_order_report_batches to authenticated;
+grant select,insert,update on app.amazon_order_report_batches to service_role;
+drop policy if exists amazon_order_report_batches_admin_read on app.amazon_order_report_batches;
+create policy amazon_order_report_batches_admin_read on app.amazon_order_report_batches
+  for select to authenticated using ((select app.is_admin()));
+
+create or replace view app.v_amazon_order_reconciliation with (security_invoker = true) as
+with normalized as (
+  select h.*,
+    (h.ordered_at at time zone 'Asia/Tokyo')::date as order_on,
+    case
+      when h.sku ~ '^[A-Z]{2}-[0-9]+-[0-9]{8}-[0-9]+$'
+        then split_part(h.sku,'-',2)||'-AA'||split_part(h.sku,'-',1)||'-'||split_part(h.sku,'-',3)||'-'||split_part(h.sku,'-',4)
+      when h.sku ~ '^AA[A-Z]{2}-[0-9]+-[0-9]{8}-[0-9]+$'
+        then split_part(h.sku,'-',2)||'-'||split_part(h.sku,'-',1)||'-'||split_part(h.sku,'-',3)||'-'||split_part(h.sku,'-',4)
+      else h.sku
+    end as canonical_sku
+  from app.amazon_order_history h
+), items_by_sku as (
+  select sku, max(sold_on) as app_sold_on, max(sold_price) as app_sold_price, count(*) as app_row_count
+  from app.items group by sku
+), matched as (
+  select n.*, i.app_sold_on, i.app_sold_price, i.app_row_count,
+    count(*) filter (where n.order_status in ('Shipped','Delivered','Shipped - Delivered to Buyer') and n.item_price is not null)
+      over (partition by n.account_key, n.canonical_sku) as order_count_for_sku
+  from normalized n left join items_by_sku i on i.sku=n.canonical_sku
+)
+select account_key, order_item_id, order_id, ordered_at, order_on, order_status, fulfillment_channel,
+  sku, canonical_sku, asin, quantity, currency, item_price, item_tax, shipping_price, shipping_tax,
+  promotion_discount, source_report, imported_at, app_sold_on, app_sold_price, app_row_count,
+  order_count_for_sku,
+  case
+    when order_status not in ('Shipped','Delivered','Shipped - Delivered to Buyer') then '対象外'
+    when item_price is null then '金額未確定'
+    when quantity is distinct from 1 then '複数個'
+    when app_row_count is null then '商品未登録'
+    when order_count_for_sku > 1 then '同一SKU複数注文'
+    when app_sold_on is null then 'アプリ未販売'
+    when app_sold_price is distinct from item_price then '価格相違'
+    when app_sold_on is distinct from order_on then '日付差'
+    else '一致'
+  end as reconciliation_status
+from matched;
+grant select on app.v_amazon_order_reconciliation to authenticated;
+comment on view app.v_amazon_order_reconciliation is 'Administrator-only comparison of sanitized Amazon order report rows with inventory; source order data never overwrites inventory sales.';
+
+
+-- ▼▼▼ 20260929001000_amazon_unmatched_app_sales.sql ▼▼▼
+
+create or replace view app.v_amazon_unmatched_app_sales with (security_invoker=true) as
+with amazon_lots as (
+  select distinct case
+    when canonical_sku ~ '^[0-9]+-' then split_part(canonical_sku,'-',1)::integer
+    when canonical_sku ~ '^[0-9]+$' then canonical_sku::integer
+    else null end as lot_seq
+  from app.v_amazon_order_reconciliation
+  where order_status in ('Shipped','Delivered','Shipped - Delivered to Buyer') and item_price is not null
+), sold_products as (
+  select lot_seq, min(sold_on) as app_sold_on, max(sold_price) as app_sold_price,
+    min(sku) as example_sku, string_agg(distinct sales_channel::text, ', ') as sales_channels,
+    count(*) as app_row_count
+  from app.items
+  where sold_on is not null and sales_channel::text in ('FBA','自己発送') and is_accessory=false
+  group by lot_seq
+)
+select s.* from sold_products s where not exists (select 1 from amazon_lots a where a.lot_seq=s.lot_seq);
+grant select on app.v_amazon_unmatched_app_sales to authenticated;
+
+
+-- ▼▼▼ 20260929090000_inventory_display_fields.sql ▼▼▼
+
+-- Keep the two refund sources visible without changing the existing profit formula.
+alter table app.items
+  add column if not exists amazon_refund_amount bigint not null default 0 check (amazon_refund_amount >= 0),
+  add column if not exists non_amazon_refund_amount bigint not null default 0 check (non_amazon_refund_amount >= 0);
+
+update app.items
+set amazon_refund_amount = case when refund_note ilike '%Amazon%' then refund_amount else 0 end,
+    non_amazon_refund_amount = case when refund_note ilike '%Amazon%' then 0 else refund_amount end
+where refund_amount > 0
+  and amazon_refund_amount = 0 and non_amazon_refund_amount = 0;
+
+create or replace function app.sync_refund_sources() returns trigger
+language plpgsql security invoker set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.refund_amount > 0 and new.amazon_refund_amount = 0 and new.non_amazon_refund_amount = 0 then
+      if new.refund_note ilike '%Amazon%' then new.amazon_refund_amount := new.refund_amount;
+      else new.non_amazon_refund_amount := new.refund_amount; end if;
+    else
+      new.refund_amount := new.amazon_refund_amount + new.non_amazon_refund_amount;
+    end if;
+  elsif new.amazon_refund_amount is distinct from old.amazon_refund_amount
+     or new.non_amazon_refund_amount is distinct from old.non_amazon_refund_amount then
+    new.refund_amount := new.amazon_refund_amount + new.non_amazon_refund_amount;
+  elsif new.refund_amount is distinct from old.refund_amount then
+    if new.refund_note ilike '%Amazon%' then
+      new.amazon_refund_amount := new.refund_amount;
+      new.non_amazon_refund_amount := 0;
+    else
+      new.amazon_refund_amount := 0;
+      new.non_amazon_refund_amount := new.refund_amount;
+    end if;
+  end if;
+  return new;
+end; $$;
+revoke all on function app.sync_refund_sources() from public, anon, authenticated;
+drop trigger if exists items_sync_refund_sources on app.items;
+create trigger items_sync_refund_sources before insert or update of refund_amount, amazon_refund_amount, non_amazon_refund_amount
+on app.items for each row execute function app.sync_refund_sources();
+
+create or replace view app.v_inventory_display with (security_invoker = true) as
+select inventory.*,
+  raw.product_id, product.product_no, product.image_url as amazon_image_url,
+  raw.amazon_refund_amount, raw.non_amazon_refund_amount,
+  latest.body as latest_comment
+from app.v_inventory_items inventory
+join app.items raw on raw.id = inventory.id
+left join app.products product on product.id = raw.product_id
+left join lateral (
+  select body from app.item_comments
+  where item_id = inventory.id
+  order by created_at desc, id desc limit 1
+) latest on true;
+grant select on app.v_inventory_display to authenticated;
+
+
+-- ▼▼▼ 20260929091000_inventory_product_profit.sql ▼▼▼
+
+create or replace view app.v_inventory_display with (security_invoker = true) as
+select inventory.*,
+  raw.product_id, product.product_no, product.image_url as amazon_image_url,
+  raw.amazon_refund_amount, raw.non_amazon_refund_amount,
+  latest.body as latest_comment,
+  case when not inventory.product_sale_conflict and inventory.product_sold_on is not null
+      and inventory.product_payout_amount is not null
+    then inventory.product_payout_amount + totals.refunds - inventory.product_cost
+      - totals.shipping - totals.other_cost
+  end as product_profit
+from app.v_inventory_items inventory
+join app.items raw on raw.id = inventory.id
+left join app.products product on product.id = raw.product_id
+left join lateral (
+  select body from app.item_comments
+  where item_id = inventory.id
+  order by created_at desc, id desc limit 1
+) latest on true
+left join lateral (
+  select sum(refund_amount) as refunds, sum(shipping_cost) as shipping,
+    sum(other_cost) as other_cost
+  from app.items where lot_seq = inventory.lot_seq
+) totals on true;
+grant select on app.v_inventory_display to authenticated;
+
+
+-- ▼▼▼ 20260929135000_reship_amazon_return.sql ▼▼▼
+
+-- A completed shipping step after an Amazon return must record a new date.
+-- Keeping the old date leaves the item permanently marked as returned.
+create or replace function app.set_work_progress(p_item_id uuid, p_step text, p_done boolean default true)
+returns app.items language plpgsql security definer set search_path = app, public as $$
+declare v_item app.items;
+begin
+  if p_step is null or p_done is null or p_step not in ('arrived','registered','inspected','cleaned','photo','listing','packed','shipped') then
+    raise exception '不明な作業ステップです' using errcode = '22023';
+  end if;
+  perform app.assert_can_work_on(p_item_id);
+  update app.items set
+    arrived_on = case when p_step = 'arrived' then case when p_done then coalesce(arrived_on,current_date) else null end
+      when p_done then coalesce(arrived_on,current_date) else arrived_on end,
+    product_registered_at = case when p_step in ('registered','listing') then case when p_done then coalesce(product_registered_at,now()) else null end else product_registered_at end,
+    inspected_at = case when p_step = 'inspected' then case when p_done then coalesce(inspected_at,now()) else null end else inspected_at end,
+    cleaned_at = case when p_step = 'cleaned' then case when p_done then coalesce(cleaned_at,now()) else null end else cleaned_at end,
+    photo_uploaded_at = case when p_step in ('photo','listing') then case when p_done then coalesce(photo_uploaded_at,now()) else null end else photo_uploaded_at end,
+    packed_on = case when p_step = 'packed' then case when p_done then coalesce(packed_on,current_date) else null end else packed_on end,
+    shipped_on = case when p_step = 'shipped' then case when p_done then
+      case when (amazon_returned_on is not null and shipped_on <= amazon_returned_on)
+             or (amazon_returned_on is null and status = 'Amazon返品')
+        then current_date else coalesce(shipped_on,current_date) end
+      else null end else shipped_on end
+  where id=p_item_id returning * into v_item;
+  return v_item;
+end;
+$$;
+
+

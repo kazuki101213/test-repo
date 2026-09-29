@@ -146,3 +146,25 @@ export async function fetchPhotoUrls(itemId: string): Promise<string[]> {
     .map((s) => s.signedUrl)
     .filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
+
+/** One signed uploaded photo per visible inventory card; Amazon art is used as fallback. */
+export async function fetchTaskThumbnails(tasks: DeliveryTask[]): Promise<Record<string, string>> {
+  const sb = getSupabase();
+  const first = new Map<string, string>();
+  const ids = tasks.filter(task => task.photo_count > 0).map(task => task.id);
+  for (let start = 0; start < ids.length; start += 100) {
+    const { data, error } = await sb.from('item_photos').select('item_id,storage_path')
+      .in('item_id', ids.slice(start, start + 100)).order('sort_order').order('created_at');
+    if (error) throw error;
+    for (const row of data ?? []) if (!first.has(row.item_id)) first.set(row.item_id, row.storage_path);
+  }
+  const entries = [...first.entries()];
+  const thumbnails: Record<string, string> = {};
+  for (let start = 0; start < entries.length; start += 100) {
+    const chunk = entries.slice(start, start + 100);
+    const { data, error } = await sb.storage.from(PHOTO_BUCKET).createSignedUrls(chunk.map(([, path]) => path), 3600);
+    if (error) throw error;
+    chunk.forEach(([id], index) => { if (data?.[index]?.signedUrl) thumbnails[id] = data[index].signedUrl; });
+  }
+  return thumbnails;
+}

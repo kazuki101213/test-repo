@@ -157,6 +157,12 @@ textarea { min-height: 80px; resize: vertical; }
 .task-card > input { grid-column:1; width:22px; height:22px; margin-top:4px; accent-color:var(--accent); }
 .task-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .task-open { display: grid; gap: 3px; line-height: 1.4; }
+.task-card-overview { display: grid; grid-template-columns: minmax(0,1fr) 84px; gap: 10px; align-items: start; }
+.task-card-info { min-width: 0; display: grid; gap: 2px; }
+.task-card-info > span { display: block; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.task-card-info .title { margin: 0; }
+.task-card-photo { display: block; width: 84px; height: 84px; border-radius: 8px; object-fit: contain; background: var(--surface-2); }
+.task-card-no-photo { display: grid; place-items: center; color: var(--muted); font-size: 11px; }
 .task-open .sku, .task-open .title, .task-open .progress { margin: 0; }
 .task-open .muted, .task-open .sku, .task-open .title, .task-members .btn, .task-members .muted,
 .product-info > div { font-size: 14px; }

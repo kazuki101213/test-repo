@@ -121,25 +121,11 @@ export default function TaskDetail({
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
-      <div className="card product-overview">
-        <section className="product-photos" aria-label="商品写真">
-          <div className="spread">
-            {photos.length > 0 && <span className="muted">{photos.length}枚</span>}
-            <label className="btn photo-upload">{uploading ? '追加中…' : '追加'}
-              <input type="file" aria-label="商品写真を追加" accept="image/*" multiple disabled={uploading || pending !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
-            </label>
-          </div>
-          {photos.length > 0 ? <div className="photos">{photos.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`商品写真 ${index + 1}`} /></a>)}</div>
-            : task.reference_image_url ? <img className="reference-photo" src={task.reference_image_url} alt={`${task.title}の参考画像`} />
-            : <div className="photo-placeholder">写真未登録</div>}
-        </section>
-        <div className="product-info">
-        <div className="muted">購入日 {jpDate(task.purchased_at)}</div>
-        <div className="sku">SKU {task.sku}</div>
-        <div className="product-name">型番 {task.title || '—'}</div>
-        <div className="muted product-asin">ASIN {task.asin || '—'}</div>
-        <div className="muted">追跡番号 {task.tracking_no || '—'}</div>
-        </div>
+      <div className="card row">
+        <span className="muted">写真 {photos.length}枚</span>
+        <label className="btn photo-upload">{uploading ? '追加中…' : '写真を追加'}
+          <input type="file" aria-label="商品写真を追加" accept="image/*" multiple disabled={uploading || pending !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+        </label>
       </div>
 
       {/* ── 作業チェック ─────────────────────────── */}
