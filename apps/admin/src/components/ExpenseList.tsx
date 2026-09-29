@@ -44,7 +44,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   return <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費一覧">
     <div className="toolbar"><h2>経費一覧</h2><span style={{ flex: 1 }} />
-      <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => { setExpenseOpen(open => !open); setEditing(undefined); setDraft(undefined); }}>{expenseOpen ? '経費入力を閉じる' : '経費を入力'}</button>
+      <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => { setExpenseOpen(open => !open); setEditing(undefined); setDraft(undefined); }}>{expenseOpen ? '経費登録を閉じる' : '経費登録'}</button>
     </div>
     <div className="toolbar">
       <label className="field"><span>表示月</span><input type="month" value={month} onChange={e => { if (e.target.value) setMonth(e.target.value); }} /></label>
