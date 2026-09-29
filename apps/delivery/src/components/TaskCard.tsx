@@ -10,7 +10,7 @@ const STEP_FLAGS = (t: DeliveryTask) => [
   t.shipped_on !== null,
 ];
 
-export default function TaskCard({ task, members, staff, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; members: DeliveryTask[]; staff: Staff; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
+export default function TaskCard({ task, thumbnailUrl, members, staff, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; thumbnailUrl: string | null; members: DeliveryTask[]; staff: Staff; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
 
@@ -19,24 +19,18 @@ export default function TaskCard({ task, members, staff, expandedId, onOpenMembe
       <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
       <div className="task-content">
       <button className="task-open" aria-expanded={!!expandedId} onClick={onOpen}>
-      <div className="spread">
-        <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
-        <span className={`badge ${done === flags.length ? 'done' : 'todo'}`}>
-          {done}/{flags.length}
-        </span>
+      <div className="task-card-overview">
+        <div className="task-card-info">
+          <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
+          <span className="muted">販売先 {task.sales_channel || '—'}</span>
+          <span className="sku">SKU {task.sku}</span>
+          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}型番 {task.title}</span>
+          <span className="muted product-asin">ASIN {task.asin || '—'}</span>
+          <span className="muted">追跡番号 {task.tracking_no || '—'}</span>
+        </div>
+        {thumbnailUrl ? <img className="task-card-photo" src={thumbnailUrl} alt={`${task.title}の写真`} loading="lazy" /> : <div className="task-card-photo task-card-no-photo" aria-label="写真未登録">写真なし</div>}
       </div>
-      <div className="sku">SKU {task.sku}</div>
-      <div className="title">
-        {task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}
-        型番 {task.title}
-      </div>
-      <div className="muted product-asin">
-        ASIN {task.asin || '—'}
-      </div>
-      <div className="muted">
-        追跡番号 {task.tracking_no || '—'}
-      </div>
-      <div className="progress">
+      <div className="progress" aria-label={`作業 ${done}/${flags.length}`}>
         {flags.map((f, i) => <span key={i} data-done={f} />)}
       </div>
       </button>

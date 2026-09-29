@@ -154,6 +154,10 @@ export type InventoryItem = ItemView & {
   product_row_count: number; product_cost: number; sale_row_count: number;
   product_sale_conflict: boolean; product_sold_on: string | null;
   product_sold_price: number | null; product_payout_amount: number | null;
+  product_id: string | null; product_no: number | null; amazon_image_url: string | null;
+  amazon_refund_amount: number; non_amazon_refund_amount: number;
+  latest_comment: string | null;
+  product_profit: number | null;
 };
 
 /** Read every authorized purchase row so a lot split across pages is still one product. */
@@ -171,7 +175,7 @@ export async function fetchSaleRows(): Promise<SaleRow[]> {
 
 export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal): Promise<{ items: InventoryItem[]; count: number }> {
   const items = await readAllRows<InventoryItem>(async (from, to) => {
-    let q = getSupabase().from('v_inventory_items').select('*')
+    let q = getSupabase().from('v_inventory_display').select('*')
       .order('lot_seq', { ascending: false }).order('is_accessory')
       .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
       .range(from, to);
@@ -209,25 +213,45 @@ export async function recordSale(itemId: string, sale: {
   if (!data?.length) throw new Error('販売済み、または編集権限がありません。一覧を再読み込みしてください。');
 }
 
-export type InventoryEdit = Pick<ItemView, 'title' | 'asin' | 'model_no' | 'tracking_no' | 'purchased_at' | 'cost_amount' | 'planned_price' | 'planned_payout' | 'packed_on' | 'shipped_on' | 'status' | 'memo'>;
+export type InventoryEdit = Pick<ItemView,
+  'title' | 'asin' | 'tracking_no' | 'purchased_at' | 'cost_amount' |
+  'planned_price' | 'planned_payout' | 'packed_on' | 'shipped_on' | 'status' |
+  'memo' | 'purchaser_id' | 'deliverer_id' | 'marketplace' | 'condition' |
+  'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount'
+> & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount'>;
 
 export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit): Promise<void> {
   const title = fields.title.trim();
   if (!title || title.length > 500) throw new Error('商品名を入力してください。');
   if (!Number.isSafeInteger(fields.cost_amount) || fields.cost_amount < 0 ||
       (fields.planned_price !== null && (!Number.isSafeInteger(fields.planned_price) || fields.planned_price < 0)) ||
-      (fields.planned_payout !== null && (!Number.isSafeInteger(fields.planned_payout) || fields.planned_payout < 0))) {
+      (fields.planned_payout !== null && (!Number.isSafeInteger(fields.planned_payout) || fields.planned_payout < 0)) ||
+      (fields.sold_price !== null && (!Number.isSafeInteger(fields.sold_price) || fields.sold_price < 0)) ||
+      (fields.payout_amount !== null && (!Number.isSafeInteger(fields.payout_amount) || fields.payout_amount < 0)) ||
+      !Number.isSafeInteger(fields.amazon_refund_amount) || fields.amazon_refund_amount < 0 ||
+      !Number.isSafeInteger(fields.non_amazon_refund_amount) || fields.non_amazon_refund_amount < 0) {
     throw new Error('金額は0円以上の整数で入力してください。');
   }
-  if (fields.status === '販売済' && (!item.sold_on || item.sold_price === null)) throw new Error('販売済にする場合は販売登録で販売日・価格を入力してください。');
+  if (fields.status === '販売済' && (!fields.sold_on || fields.sold_price === null)) throw new Error('販売済にする場合は販売日・価格を入力してください。');
+  if (!!fields.sold_on !== (fields.sold_price !== null)) throw new Error('販売日と販売金額は両方入力してください。');
   const { data, error } = await getSupabase().from('items').update({ ...fields, title })
     .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
 }
 
+export async function updateProductNumber(item: InventoryItem, productNo: number | null): Promise<void> {
+  if (!item.product_id) throw new Error('商品リストに紐付いていないため、品番を編集できません。');
+  if (productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
+  let query = getSupabase().from('products').update({ product_no: productNo }).eq('id', item.product_id);
+  query = item.product_no === null ? query.is('product_no', null) : query.eq('product_no', item.product_no);
+  const { data, error } = await query.select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
+}
+
 export async function fetchProducts(query?: string): Promise<Product[]> {
-  let q = getSupabase().from('products').select('*').order('product_no').limit(query ? 100 : 1000);
+  let q = getSupabase().from('products').select('*').eq('is_active', true).order('product_no').limit(query ? 100 : 1000);
   if (query) {
     const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;
     q = q.or(`asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term}`);

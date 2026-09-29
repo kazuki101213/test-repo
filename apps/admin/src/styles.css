@@ -130,6 +130,21 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-table thead tr { height: 40px; }
 .inventory-table tr[data-lot] { height: 64px; }
 .inventory-table tr[data-lot] > td { padding: 4px 8px; line-height: 18px; }
+.inventory-table { min-width: 2180px; table-layout: fixed; }
+.inventory-table th { height: 40px; vertical-align: middle; }
+.inventory-table th:nth-child(3) { width: 190px; }
+.inventory-table th:nth-child(5) { width: 88px; }
+.inventory-table th:nth-child(16) { width: 180px; }
+.inventory-table tr[data-lot] > td { height: 64px; max-height: 64px; overflow: hidden; vertical-align: middle; }
+.inventory-cell-edit, .inventory-comment { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.inventory-cell-edit > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inventory-cell-edit:hover, .inventory-comment:hover { color: var(--accent); }
+.inventory-cell-edit:focus-visible, .inventory-comment:focus-visible { outline: 2px solid var(--accent); }
+.inventory-photo { display: block; width: 52px; height: 52px; }
+.inventory-photo img { display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 5px; background: var(--surface-2); }
+.inventory-photo-empty { display: block; width: 52px; text-align: center; }
+.inventory-comment { white-space: nowrap; text-overflow: ellipsis; }
+.inventory-comment-panel { width: min(440px, 100vw); margin: auto; overflow-wrap: anywhere; }
 .inventory-table .btn { padding: 5px 10px; }
 .inventory-table .virtual-spacer > td { padding: 0; border: 0; }
 .inventory-table .virtual-spacer:hover { background: transparent; }

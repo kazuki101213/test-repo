@@ -9,10 +9,11 @@ export default function DescriptionEditor({ task, onSaved }: { task: DeliveryTas
   const [accessories, setAccessories] = useState(task.accessories ?? '');
   const [year, setYear] = useState(task.manufacture_year?.toString() ?? '');
   const [manual, setManual] = useState<string | null>(task.description || null);
+  const [saved, setSaved] = useState(Boolean(task.description));
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [showDescription, setShowDescription] = useState(false);
+  const [showDescription, setShowDescription] = useState(Boolean(task.description));
   const generated = buildDescription({ product, condition, accessories, year, inspected: task.inspected, cleaned: task.cleaned, salesChannel: task.sales_channel });
   const description = manual ?? generated;
   const selected = accessories.split(/[、,\n]+/).map(value => value.trim()).filter(Boolean);
@@ -26,7 +27,7 @@ export default function DescriptionEditor({ task, onSaved }: { task: DeliveryTas
     setShowDescription(true); setBusy(true);
     try {
       await saveDeliveryDescription(task.id, { condition: condition || null, accessories, description, template: product || null, year: year ? Number(year) : null });
-      await onSaved(); setNotice('保存しました。');
+      await onSaved(); setSaved(true); setNotice('保存しました。');
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -43,7 +44,7 @@ export default function DescriptionEditor({ task, onSaved }: { task: DeliveryTas
       {showDescription && description ? <label>説明文(自動生成)<textarea className="description-text" maxLength={10000} value={description} onChange={e => { setManual(e.target.value); setNotice(''); }} /></label>
         : <p className="muted">商品・コンディション・付属品を選ぶと説明文を表示します。</p>}
       {showDescription && manual !== null && <div className="row"><span className="muted">保存済み・手入力の文章を表示しています。</span><button type="button" className="btn" disabled={!generated} onClick={() => { setManual(null); setNotice(''); }}>選択内容から再生成</button></div>}
-      <button className="btn primary" type="submit">{busy ? '表示中…' : '説明文を表示'}</button>
+      <button className="btn primary" type="submit">{busy ? '保存中…' : saved ? '上書き保存' : '説明文を表示'}</button>
     </fieldset>
     {notice && <p role="status">{notice}</p>}{error && <div className="error" role="alert">{error}</div>}
   </form>;
