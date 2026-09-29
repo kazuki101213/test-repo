@@ -3,6 +3,7 @@ import { jpDate, yen } from '@bussan/shared';
 import type { LedgerRow } from '@bussan/shared';
 import { fetchLedger } from '../api';
 import { downloadCsv } from '../csv';
+import { purchaseItemUrl } from '../purchaseUrl';
 
 function firstOfYear(): string {
   return `${new Date().getFullYear()}-01-01`;
@@ -41,7 +42,7 @@ export default function Ledger() {
         <button className="btn" onClick={load}>表示</button>
         <span className="sub" style={{ margin: 0 }}>{rows.length} 件</span>
         <span style={{ flex: 1 }} />
-        <button className="btn primary" onClick={() => downloadCsv(`古物台帳_${from}_${to}.csv`, rows as unknown as Record<string, unknown>[])}>
+        <button className="btn primary" onClick={() => downloadCsv(`古物台帳_${from}_${to}.csv`, rows.map(r => ({ ...r, 商品URL: r.取引区分 === '買受' ? purchaseItemUrl(r.仕入先, r.商品ID, r.取引記録リンク) : null })) as unknown as Record<string, unknown>[])}>
           CSV出力
         </button>
       </div>
@@ -60,7 +61,7 @@ export default function Ledger() {
             <tr>
               <th>取引年月日</th><th>区分</th><th>品目</th><th>特徴</th>
               <th className="num">数量</th><th className="num">代価</th>
-              <th>相手方</th><th>住所</th><th>確認方法</th><th>SKU</th>
+              <th>相手方</th><th>住所</th><th>確認方法</th><th>買取URL</th><th>SKU</th>
             </tr>
           </thead>
           <tbody>
@@ -75,6 +76,10 @@ export default function Ledger() {
                 <td>{r.相手方}</td>
                 <td>{r.相手方住所 ?? '—'}</td>
                 <td>{r.確認方法 ?? '—'}</td>
+                <td>{r.取引区分 === '買受' && (() => {
+                  const url = purchaseItemUrl(r.仕入先, r.商品ID, r.取引記録リンク);
+                  return url ? <a href={url} target="_blank" rel="noopener noreferrer">{r.仕入先 ?? '商品'} {r.商品ID ?? 'ページ'}</a> : '—';
+                })()}</td>
                 <td className="sku">{r.sku}</td>
               </tr>
             ))}

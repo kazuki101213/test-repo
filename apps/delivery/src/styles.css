@@ -181,3 +181,5 @@ textarea { min-height: 80px; resize: vertical; }
 .export-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .export-actions .btn { font-size: 12px; padding: 7px 9px; min-height: 34px; }
 @media (max-width: 420px) { .product-overview { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; } .description-options { grid-template-columns: minmax(0, 1fr); } }
+.spare-list { display: grid; gap: 8px; margin-top: 14px; }
+.spare-row { padding: 12px; border: 1px solid var(--border); border-radius: 10px; line-height: 1.6; overflow-wrap: anywhere; }

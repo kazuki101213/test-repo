@@ -8,6 +8,7 @@ import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
+import { purchaseItemUrl } from '../purchaseUrl';
 
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -121,7 +122,7 @@ export default function Inventory({ me }: { me: Staff }) {
             <thead>
               <tr aria-rowindex={1}>
                 <th>作業状態</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />商品名 / 型番</th>
-                <th>仕入担当者<br />納品担当者</th><th>Amazonの写真</th><th>仕入先</th>
+                <th>仕入担当者<br />納品担当者</th><th>Amazonの写真</th><th>仕入先<br />商品ID</th>
                 <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th>
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
                 <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
@@ -149,7 +150,13 @@ export default function Inventory({ me }: { me: Staff }) {
                   </div></td>
                   <td>{stacked(i.purchaser_name ?? '—', 'purchaser_id', i.deliverer_name ?? '—', 'deliverer_id')}</td>
                   <td>{i.amazon_image_url ? <a className="inventory-photo" href={i.amazon_image_url} target="_blank" rel="noreferrer"><img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /></a> : <span className="inventory-photo-empty">—</span>}</td>
-                  <td>{stacked(i.marketplace, 'marketplace')}</td>
+                  <td><div className="inventory-cell-stack">
+                    <button type="button" className="inventory-cell-edit" onClick={() => edit('marketplace')} title="仕入先を編集">{i.marketplace}</button>
+                    {i.marketplace_item_id ? (() => {
+                      const url = purchaseItemUrl(i.marketplace, i.marketplace_item_id, i.marketplace_url);
+                      return url ? <a href={url} target="_blank" rel="noopener noreferrer">{i.marketplace_item_id}</a> : <span>{i.marketplace_item_id}</span>;
+                    })() : <span>—</span>}
+                  </div></td>
                   <td>{stacked(jpDate(i.purchased_at), 'purchased_at', yen(i.cost_amount), 'cost_amount')}</td>
                   <td>{stacked(i.sales_channel ?? '—', 'sales_channel', i.condition ?? '—', 'condition')}</td>
                   <td>{stacked(jpDate(i.packed_on), 'packed_on', jpDate(i.shipped_on), 'shipped_on')}</td>

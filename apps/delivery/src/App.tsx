@@ -4,12 +4,13 @@ import type { Session } from '@bussan/shared';
 import Login from './components/Login';
 import TaskList from './pages/TaskList';
 import Invoices from './pages/Invoices';
+import Spares from './pages/Spares';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<'tasks' | 'invoices'>('tasks');
+  const [tab, setTab] = useState<'tasks' | 'spares' | 'invoices'>('tasks');
   const [invoiceNavigation, setInvoiceNavigation] = useState<'busy' | 'dirty' | null>(null);
   const canLeave = () => invoiceNavigation !== 'busy' && (invoiceNavigation !== 'dirty' || window.confirm('保存していない請求書の変更を破棄しますか？'));
 
@@ -49,9 +50,10 @@ export default function App() {
       </div>
       <nav className="row invoice-tabs no-print" aria-label="納品アプリのメニュー">
         <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('tasks'); }}>在庫一覧</button>
+        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'spares' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('spares'); }}>予備一覧</button>
         <button className="btn ghost" aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => setTab('invoices')}>請求書・領収書</button>
       </nav>
-      {tab === 'tasks' ? <TaskList staff={session.staff} /> : <Invoices key={session.user.id} staff={session.staff} onNavigationChange={setInvoiceNavigation} />}
+      {tab === 'tasks' ? <TaskList staff={session.staff} /> : tab === 'spares' ? <Spares staff={session.staff} /> : <Invoices key={session.user.id} staff={session.staff} onNavigationChange={setInvoiceNavigation} />}
     </div>
   );
 }

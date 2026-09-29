@@ -36,3 +36,6 @@ verify_jwt = false
 # Auth.getUser and app.is_admin are checked before reads or writes.
 [functions.amazon-payments]
 verify_jwt = false
+
+[functions.delivery-photo-drive]
+verify_jwt = false
