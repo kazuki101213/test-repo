@@ -3,8 +3,7 @@ import type { DeliveryTask, Staff } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
 
 const STEP_FLAGS = (t: DeliveryTask) => [
-  t.inspected,
-  t.cleaned,
+  t.inspected && t.cleaned,
   t.product_registered && t.photo_uploaded,
   t.packed_on !== null,
   t.shipped_on !== null,

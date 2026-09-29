@@ -126,18 +126,25 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .inventory-workspace.with-purchase { grid-template-columns: minmax(320px, 1fr) minmax(340px, 420px); }
 .inventory-list { min-width: 0; }
+@media (min-width: 861px) {
+  .inventory-workspace { height: calc(100dvh - 84px); min-height: 0; }
+  .inventory-list { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .inventory-list > .scroll { flex: 1; min-height: 0; max-height: none; }
+}
 .inventory-table tr[data-group-end='false'] > td { border-bottom: 0; }
 .inventory-table thead tr { height: 40px; }
 .inventory-table tr[data-lot] { height: 64px; }
 .inventory-table tr[data-lot] > td { padding: 4px 8px; line-height: 18px; }
 .inventory-table { min-width: 2180px; table-layout: fixed; }
 .inventory-table th { height: 40px; vertical-align: middle; }
+.inventory-table th:nth-child(2) { width: 240px; }
 .inventory-table th:nth-child(3) { width: 190px; }
 .inventory-table th:nth-child(5) { width: 88px; }
 .inventory-table th:nth-child(16) { width: 180px; }
 .inventory-table tr[data-lot] > td { height: 64px; max-height: 64px; overflow: hidden; vertical-align: middle; }
 .inventory-cell-edit, .inventory-comment { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .inventory-cell-edit > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inventory-table td:nth-child(2) .inventory-cell-edit > span:last-child { white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
 .inventory-cell-edit:hover, .inventory-comment:hover { color: var(--accent); }
 .inventory-cell-edit:focus-visible, .inventory-comment:focus-visible { outline: 2px solid var(--accent); }
 .inventory-photo { display: block; width: 52px; height: 52px; }
@@ -148,7 +155,7 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-table .btn { padding: 5px 10px; }
 .inventory-table .virtual-spacer > td { padding: 0; border: 0; }
 .inventory-table .virtual-spacer:hover { background: transparent; }
-.purchase-panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.purchase-panel { max-height: 100%; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
 .purchase-panel .grid.cols2 { grid-template-columns: minmax(0, 1fr); }
 .purchase-panel .card { padding: 12px; }
 .purchase-panel .sku { overflow-wrap: anywhere; }
@@ -204,8 +211,11 @@ td.detail-description { white-space: normal; min-width: 200px; max-width: 400px;
 .amazon-sales summary { cursor: pointer; font-weight: 600; }
 .amazon-sales .toolbar { margin-top: 12px; }
 @media (max-width: 1050px) {
+  .inventory-workspace.with-purchase { grid-template-columns: minmax(0, 1fr) minmax(300px, 340px); }
+}
+@media (max-width: 860px) {
   .inventory-workspace.with-purchase { grid-template-columns: minmax(360px, 1fr) 340px; overflow-x: auto; }
-  .purchase-panel { position: sticky; top: 12px; max-height: calc(100vh - 24px); }
+  .purchase-panel { max-height: calc(100dvh - 24px); }
 }
 input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
 .dashboard-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }

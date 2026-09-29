@@ -24,6 +24,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const controller = useRef<AbortController | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [editFor, setEditFor] = useState<InventoryItem | null>(null);
   const [expandedComment, setExpandedComment] = useState<InventoryItem | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -65,7 +66,7 @@ export default function Inventory({ me }: { me: Staff }) {
   }, [items, loading]);
 
   return (
-    <div className="inventory-workspace with-purchase">
+    <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
       <section className="inventory-list" aria-label="在庫一覧">
       <h2>在庫一覧</h2>
 
@@ -101,6 +102,9 @@ export default function Inventory({ me }: { me: Staff }) {
         <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>
           一覧をCSV
         </button>
+        <button className="btn" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
+          {purchaseOpen ? '在庫登録を閉じる' : '在庫登録'}
+        </button>
       </div>
 
       {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
@@ -122,7 +126,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 <th>仕入担当者<br />納品担当者</th><th>Amazonの写真</th><th>仕入先</th>
                 <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th>
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
-                <th>見込利益額<br />予定利益率</th><th>販売日<br />在庫日数</th>
+                <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
                 <th>販売金額<br />振込金額</th><th>利益額<br />利益率</th>
                 <th>Amazon返金金額<br />Amazon以外からの返金</th><th>コメント</th>
               </tr>
@@ -161,9 +165,9 @@ export default function Inventory({ me }: { me: Staff }) {
         </div>
       )}
       </section>
-      <aside className="purchase-panel" aria-label="仕入登録パネル">
+      {purchaseOpen && <aside id="inventory-purchase-panel" className="purchase-panel" aria-label="在庫登録">
         <NewPurchase me={me} onSaved={() => void load()} />
-      </aside>
+      </aside>}
 
       {editFor && <InventoryEditDialog item={editFor} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
       {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} のコメント</h3><p>{expandedComment.latest_comment}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
