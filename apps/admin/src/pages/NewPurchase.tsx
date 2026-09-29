@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen,
+  fetchSpareAccessories, getSupabase,
 } from '@bussan/shared';
 import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
+  SpareAccessory,
 } from '@bussan/shared';
 import { createItem, fetchCards, fetchProducts, fetchStaff, nextLotSeq } from '../api';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
@@ -21,6 +23,8 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [staff, setStaff] = useState<Staff[]>([]);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [spares, setSpares] = useState<SpareAccessory[]>([]);
+  const [spareId, setSpareId] = useState('');
 
   const [purchaserId, setPurchaserId] = useState(me.id);
   const [delivererId, setDelivererId] = useState('');
@@ -58,6 +62,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
     }).catch((e) => setError(String(e)));
     fetchCards().then(setCards).catch(() => undefined);
     nextLotSeq().then(setLotSeq).catch(() => undefined);
+    fetchSpareAccessories().then(setSpares).catch(() => undefined);
   }, []);
   useEffect(() => {
     if (productId) return;
@@ -136,6 +141,12 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       };
 
       const created = await createItem(payload);
+      if (spareId) {
+        const { error: spareError } = await getSupabase().rpc('allocate_spare_accessory', { p_spare_id: spareId, p_item_id: created.id });
+        if (spareError) throw new Error(`在庫 ${created.sku} は登録しましたが、予備の割り当てに失敗しました：${spareError.message}`);
+        setSpares(current => current.filter(row => row.id !== spareId));
+        setSpareId('');
+      }
       setDone(`登録しました: ${created.sku}`);
       // 続けて同じ商品の仕入れを登録できるよう、通番号と担当者は残す
       setTitle(''); setAsin(''); setProductSearch(''); setCost(''); setMarketplaceItemId(''); setUrlOverride(null);
@@ -245,6 +256,12 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
               </label>
               <label className="field"><span>通番号</span>
                 <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
+              </label>
+              <label className="field"><span>使用する予備付属品</span>
+                <select value={spareId} onChange={e => setSpareId(e.target.value)}>
+                  <option value="">使用しない</option>
+                  {spares.filter(row => !row.used_for_item_id && !row.usage_note).map(row => <option key={row.id} value={row.id}>{row.title} ／ {row.owner_name || '担当未設定'} ／ {row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</option>)}
+                </select>
               </label>
             </div>
             <div className="field" style={{ marginTop: 10 }}>

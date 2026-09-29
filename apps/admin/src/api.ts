@@ -158,7 +158,22 @@ export type InventoryItem = ItemView & {
   amazon_refund_amount: number; non_amazon_refund_amount: number;
   latest_comment: string | null;
   product_profit: number | null;
+  marketplace_item_id: string | null;
 };
+
+type PurchaseReference = Pick<ItemView, 'id' | 'sku' | 'marketplace' | 'marketplace_url'> & {
+  marketplace_item_id: string | null;
+};
+
+async function fetchPurchaseReferences(): Promise<PurchaseReference[]> {
+  return readAllRows<PurchaseReference>(async (from, to) => {
+    const { data, error } = await getSupabase().from('items')
+      .select('id,sku,marketplace,marketplace_url,marketplace_item_id')
+      .order('id').range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as PurchaseReference[];
+  });
+}
 
 /** Read every authorized purchase row so a lot split across pages is still one product. */
 export async function fetchSaleRows(): Promise<SaleRow[]> {
@@ -195,7 +210,11 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     if (error) throw error;
     return (data ?? []) as InventoryItem[];
   });
-  return { items, count: productCount(items) };
+  const references = new Map((await fetchPurchaseReferences()).map(row => [row.id, row]));
+  return {
+    items: items.map(item => ({ ...item, marketplace_item_id: references.get(item.id)?.marketplace_item_id ?? null })),
+    count: productCount(items),
+  };
 }
 
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
@@ -346,7 +365,9 @@ export async function fetchProducts(query?: string): Promise<Product[]> {
   });
 }
 
-export async function fetchLedger(from: string, to: string): Promise<LedgerRow[]> {
+export type LedgerDisplayRow = LedgerRow & { 仕入先: string | null; 商品ID: string | null };
+
+export async function fetchLedger(from: string, to: string): Promise<LedgerDisplayRow[]> {
   const { data, error } = await getSupabase()
     .from('v_antique_ledger')
     .select('*')
@@ -354,7 +375,16 @@ export async function fetchLedger(from: string, to: string): Promise<LedgerRow[]
     .lte('取引年月日', to)
     .order('取引年月日');
   if (error) throw error;
-  return (data ?? []) as LedgerRow[];
+  const references = new Map((await fetchPurchaseReferences()).map(row => [row.sku, row]));
+  return ((data ?? []) as LedgerRow[]).map(row => {
+    const reference = references.get(row.sku);
+    return {
+      ...row,
+      仕入先: row.取引区分 === '買受' ? reference?.marketplace ?? null : null,
+      商品ID: row.取引区分 === '買受' ? reference?.marketplace_item_id ?? null : null,
+      取引記録リンク: row.取引区分 === '買受' ? reference?.marketplace_url ?? row.取引記録リンク : null,
+    };
+  });
 }
 
 /** 次に使う通番号（画面の初期値用）。同じロットに紐付けたいときは手で上書きする。 */

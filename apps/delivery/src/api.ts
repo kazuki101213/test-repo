@@ -147,6 +147,35 @@ export async function fetchPhotoUrls(itemId: string): Promise<string[]> {
     .filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
 
+export interface PhotoReviewState {
+  submitted_at: string;
+  approved_at: string | null;
+  exported_photo_count: number;
+}
+
+export async function fetchPhotoReview(itemId: string): Promise<PhotoReviewState | null> {
+  const { data, error } = await getSupabase().from('photo_reviews')
+    .select('submitted_at,approved_at,exported_photo_count').eq('item_id', itemId).maybeSingle();
+  if (error) throw error;
+  return data as PhotoReviewState | null;
+}
+
+export async function fetchPhotoReviewPolicy(): Promise<boolean> {
+  const { data, error } = await getSupabase().rpc('photo_review_enforced');
+  if (error) throw error;
+  return data === true;
+}
+
+export async function addPhotosToDrive(itemId: string): Promise<{ added: number; total: number }> {
+  const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId } });
+  if (error) {
+    const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
+    throw new Error(message || error.message);
+  }
+  if (!data || typeof data.total !== 'number') throw new Error('Googleドライブの保存結果を確認できません。');
+  return data;
+}
+
 export async function fetchDeliveryStaff(): Promise<{ id: string; name: string }[]> {
   const { data, error } = await getSupabase().from('staff').select('id,name').eq('role', 'deliverer').eq('is_active', true).order('name');
   if (error) throw error;

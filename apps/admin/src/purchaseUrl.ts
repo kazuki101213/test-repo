@@ -28,3 +28,16 @@ export function buildPurchaseUrl(marketplace: string, input: string): Reference 
   const id = input.trim().toLowerCase();
   return rule?.id.test(id) ? { marketplace: name, itemId: id, url: rule.base + id } : null;
 }
+
+/** Prefer a recognized item ID; retain an existing safe purchase link for older rows. */
+export function purchaseItemUrl(marketplace: string | null, itemId: string | null, savedUrl: string | null): string | null {
+  if (marketplace && itemId) {
+    const generated = buildPurchaseUrl(marketplace, itemId);
+    if (generated) return generated.url;
+  }
+  if (!savedUrl) return null;
+  try {
+    const url = new URL(savedUrl);
+    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch { return null; }
+}

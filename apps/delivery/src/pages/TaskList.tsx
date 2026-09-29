@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DeliveryTask, Staff } from '@bussan/shared';
-import { fetchAmazonFeed, fetchDeliveryStaff, fetchMyTasks, fetchTaskThumbnails } from '../api';
+import { fetchAmazonFeed, fetchDeliveryStaff, fetchMyTasks } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 
@@ -17,7 +17,6 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState<Filter>('arrived');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
@@ -53,11 +52,6 @@ export default function TaskList({ staff }: { staff: Staff }) {
   useEffect(() => {
     if (staff.role === 'admin') void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(e instanceof Error ? e.message : String(e)));
   }, [staff.role]);
-  useEffect(() => {
-    let active = true;
-    if (tasks.length) void fetchTaskThumbnails(tasks).then(urls => { if (active) setThumbnails(urls); }).catch(() => undefined);
-    return () => { active = false; };
-  }, [tasks]);
 
   const shown = useMemo(() => {
     const q = normalizeSearch(query);
@@ -112,7 +106,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shown.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shown.map(({ task: t, members }) => <TaskCard key={t.id} task={t} thumbnailUrl={thumbnails[t.id] ?? t.reference_image_url} members={members} staff={staff} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shown.map(({ task: t, members }) => <TaskCard key={t.id} task={t} thumbnailUrl={t.reference_image_url} members={members} staff={staff} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;

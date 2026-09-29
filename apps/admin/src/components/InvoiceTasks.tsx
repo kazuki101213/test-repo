@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getSupabase, yen, loadReceiptImages, releaseReceiptImages } from '@bussan/shared';
 import type { InvoiceReceipt } from '@bussan/shared';
 import PackedSummary from './PackedSummary';
+import PhotoReviewTasks from './PhotoReviewTasks';
 
 interface Line { date:string|null; description:string; quantity:number; unit_price:number; lot_seq?:number }
 interface Approval { approved_at:string; expense_id:string }
@@ -89,6 +90,7 @@ export default function InvoiceTasks({onApproved}:{onApproved:()=>void}){
  {error&&<div className="error" role="alert">{error}<button className="btn" onClick={()=>setRevision(n=>n+1)}>再読み込み</button></div>}{message&&<p className="ok" role="status">{message}</p>}
  {loading?<p>読み込み中…</p>:!filtered.length?<p className="sub">該当するタスクはありません。</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id}><button onClick={()=>setSelected(row)}><span>{row.name}<small>{row.month.slice(0,7)} {row.invoice?'請求書':''}{row.invoice&&row.receipts?'・':''}{row.receipts?'領収書':''}</small></span><strong>{row.invoice?yen(row.invoice.total):'領収書のみ'}</strong><span>確認 ›</span></button></li>)}</ul>}
  {selected&&<InvoiceReview key={selected.id} task={selected} onClose={()=>setSelected(null)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費一覧の外注費に追加しました。');onApproved();}}/>}
+ <PhotoReviewTasks />
  </section>;
 }
 

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
-  fetchComments, fetchPhotoUrls, fetchTask, postComment,
+  addPhotosToDrive, fetchComments, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
   setDeliveryProgress, setWorkProgress, uploadPhoto,
 } from '../api';
+import type { PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
 
 function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
@@ -27,6 +28,10 @@ export default function TaskDetail({
   const [task, setTask] = useState<DeliveryTask | null>(null);
   const [comments, setComments] = useState<ItemComment[]>([]);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [photoReview, setPhotoReview] = useState<PhotoReviewState | null>(null);
+  const [reviewEnforced, setReviewEnforced] = useState(false);
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [driveMessage, setDriveMessage] = useState('');
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState<WorkStep | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -34,14 +39,16 @@ export default function TaskDetail({
 
   const reload = useCallback(async () => {
     try {
-      const [t, c, p] = await Promise.all([
-        fetchTask(itemId), fetchComments(itemId), fetchPhotoUrls(itemId),
+      const [t, c, p, review, enforced] = await Promise.all([
+        fetchTask(itemId), fetchComments(itemId), fetchPhotoUrls(itemId), fetchPhotoReview(itemId), fetchPhotoReviewPolicy(),
       ]);
       if (!t) throw new Error('商品が見つかりません。');
       setTask(t);
       onChanged(t);
       setComments(c);
       setPhotos(p);
+      setPhotoReview(review);
+      setReviewEnforced(enforced);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -83,6 +90,7 @@ export default function TaskDetail({
       for (const file of Array.from(files)) {
         await uploadPhoto(task.sku, task.id, staff.id, file);
       }
+      setDriveMessage('新しい写真があります。Googleドライブに追加してください。');
       // 写真が 1 枚でも入ったら「写真登録」を自動で済みにする
       if (!task.photo_uploaded) await setWorkProgress(task.id, 'photo', true);
       await reload();
@@ -91,6 +99,17 @@ export default function TaskDetail({
     } finally {
       setUploading(false);
     }
+  }
+
+  async function addToDrive() {
+    if (!task) return;
+    setDriveBusy(true); setError(null); setDriveMessage('');
+    try {
+      const result = await addPhotosToDrive(task.id);
+      setDriveMessage(`${result.total}枚をSKUフォルダに保存しました。管理アプリで写真確認を待っています。`);
+      await reload();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setDriveBusy(false); }
   }
 
   async function send() {
@@ -126,7 +145,18 @@ export default function TaskDetail({
         <label className="btn photo-upload">{uploading ? '追加中…' : '写真を追加'}
           <input type="file" aria-label="商品写真を追加" accept="image/*" multiple disabled={uploading || pending !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>
+        <button type="button" className="btn" disabled={driveBusy || uploading || photos.length === 0}
+          onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブに追加中…' : 'Googleドライブに追加'}</button>
       </div>
+      {driveMessage && <p className="ok" role="status">{driveMessage}</p>}
+      <div className="product-photos">
+        {photos.length > 0 && <div className="photos">{photos.map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={index}>
+          <img src={url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
+        </a>)}</div>}
+      </div>
+      {photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
+        写真確認：{photoReview.approved_at ? '完了' : '確認待ち'}
+      </p>}
 
       {/* ── 作業チェック ─────────────────────────── */}
       <div className="card">
@@ -138,7 +168,7 @@ export default function TaskDetail({
               <div className="step" key={s.key} data-done={done}>
               <button
                 className="step-toggle"
-                aria-pressed={done} disabled={pending !== null || uploading} onClick={() => void toggle(s.key)}
+                aria-pressed={done} disabled={pending !== null || uploading || (reviewEnforced && (s.key === 'packed' || s.key === 'shipped') && !photoReview?.approved_at && !done)} onClick={() => void toggle(s.key)}
               >
                 <span className="check">{done ? '✓' : ''}</span>
                 <span>
@@ -147,13 +177,14 @@ export default function TaskDetail({
               </button>
               {(s.key === 'packed' || s.key === 'shipped') &&
                 <input className="step-date" aria-label={s.key === 'packed' ? '梱包の日付' : '出荷の日付'}
-                  type="date" value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading}
+                  type="date" value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading || (reviewEnforced && !photoReview?.approved_at && !done)}
                   onChange={e => void setStepDate(s.key as 'packed' | 'shipped', e.target.value)} />}
               </div>
             );
           })}
         </div>
       </div>
+      {reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}
 
       <DescriptionEditor key={task.id} task={task} onSaved={reload} />
 
