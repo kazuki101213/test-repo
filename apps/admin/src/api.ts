@@ -199,6 +199,13 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
 }
 
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
+  if (input.is_accessory) {
+    if (!input.lot_seq) throw new Error('付属品には本体と同じ通番号を入力してください。');
+    const { data: parent, error: parentError } = await getSupabase()
+      .from('items').select('id').eq('lot_seq', input.lot_seq).eq('is_accessory', false).limit(1);
+    if (parentError) throw parentError;
+    if (!parent?.length) throw new Error('この通番号の本体が見つかりません。本体を先に登録してください。');
+  }
   const { data, error } = await getSupabase()
     .from('items').insert(input).select('id, sku').single();
   if (error) throw error;
@@ -240,6 +247,19 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
 }
 
+export type ExpenseField = 'incurred_on' | 'category' | 'name' | 'amount';
+export async function updateExpenseField(row: ExpenseInput, field: ExpenseField, value: string): Promise<void> {
+  const text = value.trim();
+  const next = field === 'amount' ? Number(text) : text;
+  if (field === 'amount' && (!text || !Number.isSafeInteger(Number(text)))) throw new Error('金額は整数で入力してください。');
+  const revised = { ...row, [field]: next } as ExpenseInput;
+  validateExpense(revised);
+  const { data, error } = await getSupabase().from('expenses').update({ [field]: next })
+    .eq('id', row.id).eq(field, row[field]).select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('明細が別の画面で変更されたか、更新できません。一覧を読み直してください。');
+}
+
 export async function updateProductNumber(item: InventoryItem, productNo: number | null): Promise<void> {
   if (!item.product_id) throw new Error('商品リストに紐付いていないため、品番を編集できません。');
   if (productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
@@ -250,11 +270,21 @@ export async function updateProductNumber(item: InventoryItem, productNo: number
   if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
 }
 
-export type InventoryField = keyof InventoryEdit | 'product_no' | 'model_no';
+export type InventoryField = keyof InventoryEdit | 'product_no' | 'model_no' | 'sku' | 'lot_seq';
 
 /** A cell edit writes only the selected column so another cell cannot be overwritten. */
 export async function updateInventoryField(item: InventoryItem, field: InventoryField, value: string): Promise<void> {
   const text = value.trim();
+  if (field === 'sku' || field === 'lot_seq') {
+    const { error } = await getSupabase().rpc('update_item_identity', {
+      p_item_id: item.id,
+      p_expected_updated_at: item.updated_at,
+      p_field: field,
+      p_value: text,
+    });
+    if (error) throw error;
+    return;
+  }
   if (field === 'product_no') return updateProductNumber(item, text ? Number(text) : null);
   if (field === 'model_no') {
     if (!item.product_id) throw new Error('商品リストに紐付いていないため型番を編集できません。');
@@ -276,12 +306,17 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
 }
 
-export async function updateProductField(product: Product, field: 'asin' | 'model_no' | 'product_no', value: string): Promise<void> {
+export type ProductField = 'asin' | 'model_no' | 'product_no' | 'maker' | 'genre' | 'turnover' |
+  'list_price' | 'payout_estimate' | 'target_cost' | 'monthly_purchase_cap' | 'has_sold_before';
+
+export async function updateProductField(product: Product, field: ProductField, value: string): Promise<void> {
   const next = field === 'asin' ? value.trim().toUpperCase() : value.trim();
   if (field === 'asin' && !/^[A-Z0-9]{10}$/.test(next)) throw new Error('ASINは英数字10文字で入力してください。');
-  const productNo = next ? Number(next) : null;
-  if (field === 'product_no' && productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
-  const update = field === 'model_no' ? { model_no: next || null } : field === 'product_no' ? { product_no: productNo } : { asin: next };
+  if (field === 'turnover' && next && !['高', '中', '低'].includes(next)) throw new Error('回転は高・中・低から選んでください。');
+  const numeric = ['product_no', 'list_price', 'payout_estimate', 'target_cost', 'monthly_purchase_cap'].includes(field);
+  if (numeric && next && (!Number.isSafeInteger(Number(next)) || Number(next) < (field === 'product_no' ? 1 : 0))) throw new Error('0以上の整数を入力してください（品番は1以上）。');
+  const parsed = field === 'has_sold_before' ? next === 'true' : numeric ? next ? Number(next) : null : field === 'asin' ? next : next || null;
+  const update = { [field]: parsed };
   let query = getSupabase().from('products').update(update).eq('id', product.id);
   query = product[field] === null ? query.is(field, null) : query.eq(field, product[field]);
   const { data, error } = await query.select('id').maybeSingle();

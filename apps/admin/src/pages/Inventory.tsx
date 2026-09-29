@@ -8,7 +8,6 @@ import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
-import { inventoryWindow } from '../inventory';
 
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -27,10 +26,8 @@ export default function Inventory({ me }: { me: Staff }) {
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
   const [expandedComment, setExpandedComment] = useState<InventoryItem | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(1000);
-  const window = inventoryWindow(items.length, scrollTop, viewportHeight);
+  const [visibleCount, setVisibleCount] = useState(80);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const current = ++request.current;
@@ -55,15 +52,16 @@ export default function Inventory({ me }: { me: Staff }) {
 
   useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
+  useEffect(() => { setVisibleCount(80); }, [items]);
   useEffect(() => {
-    setScrollTop(0);
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = 0;
-    const observer = new ResizeObserver(() => setViewportHeight(el.clientHeight));
+    const el = loadMoreRef.current;
+    if (!el || visibleCount >= items.length) return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0]?.isIntersecting) setVisibleCount(current => Math.min(current + 80, items.length));
+    }, { rootMargin: '400px' });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [items, loading]);
+  }, [items.length, visibleCount]);
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
@@ -118,7 +116,7 @@ export default function Inventory({ me }: { me: Staff }) {
       {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
       {!loading && items.length > 0 && (
-        <div className="scroll" ref={scrollRef} onScroll={e => setScrollTop(e.currentTarget.scrollTop)}>
+        <div className="scroll">
           <table className="inventory-table" aria-rowcount={items.length + 1}>
             <thead>
               <tr aria-rowindex={1}>
@@ -132,9 +130,7 @@ export default function Inventory({ me }: { me: Staff }) {
               </tr>
             </thead>
             <tbody>
-              {window.top > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={16} style={{ height: window.top }} /></tr>}
-              {items.slice(window.start, window.end).map((i, offset) => {
-                const index = window.start + offset;
+              {items.slice(0, visibleCount).map((i, index) => {
                 const edit = (field: InventoryField) => setEditFor({ item: i, field });
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
@@ -142,7 +138,10 @@ export default function Inventory({ me }: { me: Staff }) {
                 return (
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
                   <td>{stacked(<><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</>, 'status')}</td>
-                  <td>{stacked(i.lot_seq !== items[index - 1]?.lot_seq ? `${i.lot_seq} / ${i.product_no ?? '—'}` : `${i.product_no ?? '—'}`, 'product_no', <span className="sku">{i.sku}</span>, 'product_no')}</td>
+                  <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
+                    {i.lot_seq !== items[index - 1]?.lot_seq && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{i.lot_seq}</button><span> / </span></>}
+                    <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
+                  </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('title')}>{i.is_accessory && <span className="badge">付属</span>}{i.title}</button>
@@ -163,11 +162,11 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{i.latest_comment ? <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示">{i.latest_comment.slice(0, 20)}{i.latest_comment.length > 20 ? '…' : ''}</button> : '—'}</td>
                 </tr>
               ); })}
-              {window.bottom > 0 && <tr className="virtual-spacer" aria-hidden="true"><td colSpan={16} style={{ height: window.bottom }} /></tr>}
             </tbody>
           </table>
         </div>
       )}
+      {visibleCount < items.length && <div ref={loadMoreRef} className="toolbar"><button className="btn" onClick={() => setVisibleCount(current => Math.min(current + 80, items.length))}>さらに表示</button></div>}
       </section>
       {purchaseOpen && <aside id="inventory-purchase-panel" className="purchase-panel" aria-label="在庫登録">
         <NewPurchase me={me} onSaved={() => void load()} />
@@ -187,6 +186,7 @@ const fieldLabels: Record<InventoryField, string> = {
   condition: '商品状態', sales_channel: '販売先', sold_on: '販売日',
   sold_price: '販売金額', payout_amount: '振込金額', amazon_refund_amount: 'Amazon返金金額',
   non_amazon_refund_amount: 'Amazon以外からの返金', product_no: '品番', model_no: '型番',
+  lot_seq: '通番号', sku: 'SKU',
 };
 
 function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
@@ -195,7 +195,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
-  const numberFields = new Set<InventoryField>(['product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
+  const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
   const options = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
     : field === 'marketplace' ? MARKETPLACES.map(v => ({ value: v, label: v }))
     : field === 'sales_channel' ? SALES_CHANNELS.map(v => ({ value: v, label: v }))
@@ -213,7 +213,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
       <label className="field"><span>{fieldLabels[field]}</span>
         {options ? <select value={value} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
           : field === 'memo' ? <textarea value={value} onChange={e => setValue(e.target.value)} />
-            : <input autoFocus type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
+            : <input autoFocus type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={field === 'lot_seq' || field === 'product_no' ? '1' : numberFields.has(field) ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
       </label>
       {error && <div className="error" role="alert">{error}</div>}
       <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>

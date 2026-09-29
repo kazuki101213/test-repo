@@ -129,7 +129,7 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 @media (min-width: 861px) {
   .inventory-workspace { min-height: calc(100dvh - 84px); }
   .inventory-list { display: flex; flex-direction: column; min-height: 0; }
-  .inventory-list > .scroll { flex: none; height: max(710px, calc(100dvh - 240px)); max-height: none; }
+  .inventory-list > .scroll { flex: none; height: auto; max-height: none; overflow-y: visible; }
 }
 .inventory-table tr[data-group-end='false'] > td { border-bottom: 0; }
 .inventory-table thead tr { height: 40px; }
@@ -145,6 +145,9 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-cell-edit, .inventory-comment { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .inventory-cell-stack { min-width: 0; }
 .inventory-cell-stack .inventory-cell-edit { white-space: nowrap; text-overflow: ellipsis; }
+.inventory-identity-line { display: flex; align-items: center; gap: 3px; }
+.inventory-identity-line .inventory-cell-edit { width: auto; }
+.inventory-cell-stack .inventory-cell-edit.sku { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; }
 .inventory-cell-stack .inventory-cell-edit .sku { white-space: normal; overflow-wrap: anywhere; }
 .inventory-cell-edit > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .inventory-table td:nth-child(2) .inventory-cell-edit > span:last-child { white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
@@ -194,6 +197,8 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .expense-edit:hover { background: var(--surface-2); }
 .expense-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .expense-edit:disabled { opacity: .6; cursor: progress; }
+.expense-entry-top .expense-edit { width: auto; }
+.expense-month-group > h4 { margin: 12px 0 6px; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); font-size: 13px; }
 .expense-entries li { padding: 12px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .expense-entry-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
 .expense-entry-top time { color: var(--muted); font-size: 12px; }
