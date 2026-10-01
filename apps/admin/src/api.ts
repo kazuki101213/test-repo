@@ -224,7 +224,7 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     items: filteredItems.map(item => ({
       ...item,
       marketplace_item_id: references.get(item.id)?.marketplace_item_id ?? null,
-      product_has_sold_before: soldBeforeByAsin.get(item.asin) ?? false,
+      product_has_sold_before: soldBeforeByAsin.get(item.asin ?? '') ?? false,
     })),
     count: productCount(filteredItems),
   };
