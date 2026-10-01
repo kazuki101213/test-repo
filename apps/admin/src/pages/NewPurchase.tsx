@@ -25,12 +25,15 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [products, setProducts] = useState<Product[]>([]);
   const [spares, setSpares] = useState<SpareAccessory[]>([]);
   const [spareId, setSpareId] = useState('');
+  const availableSpares = spares.filter(row => !row.used_for_item_id && !row.usage_note);
+  const selectedSpare = availableSpares.find(row => row.id === spareId);
 
   const [purchaserId, setPurchaserId] = useState(me.id);
   const [delivererId, setDelivererId] = useState('');
   const [workStream, setWorkStream] = useState<WorkStream | ''>('');
   const [lotSeq, setLotSeq] = useState<number | ''>('');
   const [purchasedAt, setPurchasedAt] = useState(today());
+  const [trackingNo, setTrackingNo] = useState('');
   const [productId, setProductId] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [title, setTitle] = useState('');
@@ -83,6 +86,24 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
     setPlannedPrice(product.list_price ?? '');
     setPlannedPayout(product.payout_estimate ?? '');
   }, [product]);
+  useEffect(() => {
+    if (!selectedSpare) return;
+    setProductId('');
+    setProductSearch('');
+    setTitle(selectedSpare.title);
+    setAsin('');
+    setPlannedPrice('');
+    setPlannedPayout('');
+    if (selectedSpare.purchased_at) setPurchasedAt(selectedSpare.purchased_at);
+    setCost(selectedSpare.cost_amount);
+    setTrackingNo(selectedSpare.tracking_no ?? '');
+    setMarketplaceItemId(selectedSpare.marketplace_item_id ?? '');
+    setUrlOverride(null);
+    setMarketplace(selectedSpare.marketplace && MARKETPLACES.includes(selectedSpare.marketplace as Marketplace)
+      ? selectedSpare.marketplace as Marketplace : 'その他');
+    const spareOwner = staff.find(row => row.id === selectedSpare.owner_staff_id && row.role !== 'deliverer' && purchaserNames.includes(row.name));
+    if (spareOwner) setPurchaserId(spareOwner.id);
+  }, [selectedSpare, staff]);
   const matchingProducts = products;
 
   const purchaser = staff.find((s) => s.id === purchaserId);
@@ -130,6 +151,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         marketplace,
         marketplace_item_id: generatedReference?.itemId ?? (marketplaceItemId.trim() || null),
         marketplace_url: marketplaceUrl.trim() || null,
+        tracking_no: trackingNo.trim() || null,
         card_id: cardId || null,
         product_id: productId || null,
         asin: asin.trim() || null,
@@ -149,7 +171,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       }
       setDone(`登録しました: ${created.sku}`);
       // 続けて同じ商品の仕入れを登録できるよう、通番号と担当者は残す
-      setTitle(''); setAsin(''); setProductSearch(''); setCost(''); setMarketplaceItemId(''); setUrlOverride(null);
+      setTitle(''); setAsin(''); setProductSearch(''); setCost(''); setMarketplaceItemId(''); setTrackingNo(''); setUrlOverride(null);
       setProductId(''); setNote(''); setTemplatesOpen(false);
       onSaved?.();
     } catch (e2) {
@@ -189,6 +211,9 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
               </label>
               <label className="field"><span>商品ID</span>
                 <input type="text" value={marketplaceItemId} onChange={(e) => changeItemId(e.target.value)} />
+              </label>
+              <label className="field"><span>追跡番号</span>
+                <input type="text" value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} />
               </label>
               <label className="field"><span>仕入先URL</span>
                 <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} />
@@ -258,9 +283,9 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                 <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
               </label>
               <label className="field"><span>使用する予備付属品</span>
-                <select value={spareId} onChange={e => setSpareId(e.target.value)}>
+                <select value={spareId} size={6} onChange={e => setSpareId(e.target.value)}>
                   <option value="">使用しない</option>
-                  {spares.filter(row => !row.used_for_item_id && !row.usage_note).map(row => <option key={row.id} value={row.id}>{row.title} ／ {row.owner_name || '担当未設定'} ／ {row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</option>)}
+                  {availableSpares.map(row => <option key={row.id} value={row.id}>{row.title} ／ {row.owner_name || '担当未設定'} ／ {row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</option>)}
                 </select>
               </label>
             </div>
