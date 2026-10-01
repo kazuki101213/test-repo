@@ -135,13 +135,13 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-table thead tr { height: 40px; }
 .inventory-table tr[data-lot] { height: 64px; }
 .inventory-table tr[data-lot] > td { padding: 4px 8px; line-height: 18px; }
-.inventory-table { min-width: 2400px; table-layout: fixed; }
+.inventory-table { min-width: 2550px; table-layout: fixed; }
 .inventory-table th { height: 40px; vertical-align: middle; }
 .inventory-table th:nth-child(2) { width: 240px; }
 .inventory-table th:nth-child(3) { width: 190px; }
 .inventory-table th:nth-child(5) { width: 88px; }
 .inventory-table th:nth-child(6) { width: var(--tracking-column-width, 360px); }
-.inventory-table th:nth-child(16) { width: 180px; }
+.inventory-table th:nth-child(17) { width: 180px; }
 .inventory-table tr[data-lot] > td { height: 64px; max-height: 64px; overflow: hidden; vertical-align: middle; }
 .inventory-cell-edit, .inventory-comment { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .inventory-cell-stack { min-width: 0; }
@@ -161,7 +161,8 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-photo { display: block; width: 52px; height: 52px; }
 .inventory-photo img { display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 5px; background: var(--surface-2); }
 .inventory-photo-empty { display: block; width: 52px; text-align: center; }
-.inventory-comment { white-space: nowrap; text-overflow: ellipsis; }
+.inventory-comment { display: grid; grid-template-rows: repeat(2, 18px); width: 10em; max-width: 100%; line-height: 18px; white-space: nowrap; text-overflow: clip; }
+.inventory-comment span { display: block; overflow: hidden; text-overflow: clip; }
 .inventory-comment-panel { width: min(440px, 100vw); margin: auto; overflow-wrap: anywhere; }
 .inventory-table .btn { padding: 5px 10px; }
 .inventory-table .virtual-spacer > td { padding: 0; border: 0; }

@@ -8,7 +8,6 @@ import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
-import { purchaseItemUrl } from '../purchaseUrl';
 import { productSerial } from '../inventory';
 
 export default function Inventory({ me }: { me: Staff }) {
@@ -76,7 +75,7 @@ export default function Inventory({ me }: { me: Staff }) {
     return () => observer.disconnect();
   }, [items.length, visibleCount]);
   const trackingColumnWidth = items.reduce((width, item) => Math.max(width, (item.tracking_no?.length ?? 0) * 10 + 32), 360);
-  const inventoryTableWidth = Math.max(2400, 2040 + trackingColumnWidth);
+  const inventoryTableWidth = Math.max(2550, 2190 + trackingColumnWidth);
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
@@ -141,7 +140,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
                 <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
                 <th>販売金額<br />振込金額</th><th>利益額<br />利益率</th>
-                <th>Amazon返金金額<br />Amazon以外からの返金</th><th>コメント</th>
+                <th>在庫の払い戻し</th><th>Amazon返金金額<br />Amazon以外からの返金</th><th>納品担当者からのコメント</th>
               </tr>
             </thead>
             <tbody>
@@ -175,11 +174,8 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{i.amazon_image_url ? <a className="inventory-photo" href={i.amazon_image_url} target="_blank" rel="noreferrer"><img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /></a> : <span className="inventory-photo-empty">—</span>}</td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit inventory-marketplace-name" onClick={() => edit('marketplace')} title="仕入先を編集">{i.marketplace}</button>
-                    {i.marketplace_item_id ? (() => {
-                      const url = purchaseItemUrl(i.marketplace, i.marketplace_item_id, i.marketplace_url);
-                      return url ? <a className="inventory-marketplace-item-id" href={url} target="_blank" rel="noopener noreferrer">{i.marketplace_item_id}</a> : <span className="inventory-marketplace-item-id">{i.marketplace_item_id}</span>;
-                    })() : <span className="inventory-marketplace-item-id">—</span>}
-                    <span className="inventory-tracking-number">{i.tracking_no || '—'}</span>
+                    <button type="button" className="inventory-cell-edit inventory-marketplace-item-id" onClick={() => edit('marketplace_item_id')} title="商品IDをクリックして編集">{i.marketplace_item_id || '—'}</button>
+                    <button type="button" className="inventory-cell-edit inventory-tracking-number" onClick={() => edit('tracking_no')} title="追跡番号をクリックして編集">{i.tracking_no || '—'}</button>
                   </div></td>
                   <td>{stacked(jpDate(i.purchased_at), 'purchased_at', yen(i.cost_amount), 'cost_amount')}</td>
                   <td>{stacked(i.sales_channel ?? '—', 'sales_channel', i.condition ?? '—', 'condition')}</td>
@@ -189,8 +185,9 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
                   <td>{stacked(yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
                   <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
+                  <td><button type="button" className="inventory-cell-edit" onClick={() => edit('refund_amount')} title="在庫の払い戻しをクリックして編集">{yen(i.refund_amount)}</button></td>
                   <td>{stacked(yen(i.amazon_refund_amount), 'amazon_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
-                  <td>{i.latest_comment ? <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示">{i.latest_comment.slice(0, 20)}{i.latest_comment.length > 20 ? '…' : ''}</button> : '—'}</td>
+                  <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
                 </tr>
               ); })}
             </tbody>
@@ -217,7 +214,7 @@ const fieldLabels: Record<InventoryField, string> = {
   condition: '商品状態', sales_channel: '販売先', sold_on: '販売日',
   sold_price: '販売金額', payout_amount: '振込金額', amazon_refund_amount: 'Amazon返金金額',
   non_amazon_refund_amount: 'Amazon以外からの返金', product_no: '品番', model_no: '型番',
-  lot_seq: '通番号', sku: 'SKU',
+  lot_seq: '通番号', sku: 'SKU', marketplace_item_id: '商品ID', refund_amount: '在庫の払い戻し',
 };
 
 function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
@@ -226,7 +223,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
-  const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
+  const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
   const options = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
     : field === 'marketplace' ? MARKETPLACES.map(v => ({ value: v, label: v }))
     : field === 'sales_channel' ? SALES_CHANNELS.map(v => ({ value: v, label: v }))
