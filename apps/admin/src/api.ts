@@ -4,7 +4,7 @@ import { productCount, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import type {
   DelivererWorkload, ItemInsert, ItemView, LedgerRow,
-  MonthlySummary, Product, Staff, StockSummary,
+  MonthlySummary, Product, SpareAccessory, Staff, StockSummary,
 } from '@bussan/shared';
 
 export async function fetchStaff(): Promise<Staff[]> {
@@ -12,6 +12,26 @@ export async function fetchStaff(): Promise<Staff[]> {
     .from('staff').select('*').eq('is_active', true).order('code');
   if (error) throw error;
   return (data ?? []) as Staff[];
+}
+
+export type SpareAccessoryInput = Pick<SpareAccessory,
+  'source_sku' | 'owner_staff_id' | 'owner_name' | 'purchased_at' | 'title' | 'cost_amount' |
+  'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note'
+>;
+export type SpareAccessoryField = keyof Pick<SpareAccessory,
+  'source_sku' | 'owner_name' | 'purchased_at' | 'title' | 'cost_amount' |
+  'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note'
+>;
+
+export async function createSpareAccessory(input: SpareAccessoryInput): Promise<void> {
+  const { error } = await getSupabase().from('spare_accessories').insert(input);
+  if (error) throw error;
+}
+
+export async function updateSpareAccessory(id: string, field: SpareAccessoryField, value: string | number | null): Promise<void> {
+  const { data, error } = await getSupabase().from('spare_accessories').update({ [field]: value }).eq('id', id).select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('予備付属品が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
 
 export async function fetchCards(): Promise<{ id: string; name: string }[]> {

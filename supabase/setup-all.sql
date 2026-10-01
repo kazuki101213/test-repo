@@ -3262,6 +3262,30 @@ where i.status in ('仕入済', '入荷済', '作業中', 'Amazon返品', '出�
 notify pgrst, 'reload schema';
 
 
+-- ▼▼▼ 20261001172026_manage_spare_accessories.sql ▼▼▼
+
+-- Let administrators manage the shared spare ledger, and purchasers manage only their own spares.
+grant insert, update on app.spare_accessories to authenticated;
+
+create policy spare_accessories_insert on app.spare_accessories
+  for insert to authenticated
+  with check (
+    app.is_admin()
+    or (app.current_role() = 'purchaser' and owner_staff_id = app.current_staff_id())
+  );
+
+create policy spare_accessories_update on app.spare_accessories
+  for update to authenticated
+  using (
+    app.is_admin()
+    or (app.current_role() = 'purchaser' and owner_staff_id = app.current_staff_id())
+  )
+  with check (
+    app.is_admin()
+    or (app.current_role() = 'purchaser' and owner_staff_id = app.current_staff_id())
+  );
+
+
 -- ▼▼▼ 20261002010000_separate_suffix_product_identity.sql ▼▼▼
 
 -- SKU serials such as 1977, 1977A and 1977AA identify distinct physical products.

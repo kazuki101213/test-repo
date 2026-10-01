@@ -80,7 +80,7 @@ export default function App() {
       <main>
         {page === 'dashboard' && <Dashboard isAdmin={session.staff.role === 'admin'} />}
         {page === 'inventory' && <Inventory me={session.staff} />}
-        {page === 'spares' && <Spares />}
+        {page === 'spares' && <Spares me={session.staff} />}
         {page === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
         {page === 'products'  && <Products />}
         {page === 'ledger'    && <Ledger />}
