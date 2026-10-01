@@ -106,6 +106,7 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .btn.primary { background: var(--accent); color: #0b1220; border-color: var(--accent); font-weight: 600; }
 .btn.ghost { background: transparent; }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn:disabled { opacity: .6; cursor: not-allowed; }
 
 .filters { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; padding-bottom: 4px; }
@@ -137,8 +138,11 @@ textarea { min-height: 80px; resize: vertical; }
 .product-info { display: grid; gap: 3px; font-size: 14px; font-weight: 400; line-height: 1.4; overflow-wrap: anywhere; }
 .product-photos .spread { flex-wrap: wrap; align-items: center; }
 .product-photos .photos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.product-photos .photos a:first-child { grid-column: 1 / -1; }
+.uploaded-photo { display:grid; gap:6px; min-width:0; }
+.product-photos .photos a { display:block; min-width:0; }
+.product-photos .photos .uploaded-photo:first-child { grid-column:1 / -1; }
 .product-photos .photos img { object-fit: contain; background: var(--surface-2); }
+.photo-delete { width:100%; min-height:34px; font-size:12px; }
 .reference-photo { width: 100%; max-width: 100%; max-height: 320px; object-fit: contain; margin-top: 10px; border-radius: 8px; }
 .photo-placeholder { aspect-ratio: 1; display: grid; place-items: center; background: var(--surface-2); border-radius: 8px; color: var(--muted); margin-top: 10px; }
 .photo-upload { position: relative; padding: 6px 10px; font-size: 13px; }
@@ -171,12 +175,16 @@ textarea { min-height: 80px; resize: vertical; }
 .task-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .task-content { grid-column:2; min-width:0; }
 .task-content .task-open { width: 100%; }
+.task-copy-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.copy-button { min-height:32px; padding:5px 9px; font-size:12px; white-space:nowrap; }
 .task-detail-inline { grid-column:1 / -1; min-width:0; border-top:1px solid var(--border); padding-top:12px; }
 .inline-detail-header { justify-content:space-between; }
 .task-detail-inline > .card { border:0; border-top:1px solid var(--border); border-radius:0; background:transparent; padding:14px 0 0; }
 .task-members { display: grid; gap: 6px; margin-top: 10px; }
-.task-members .btn { text-align: left; font-size: 13px; padding: 8px 10px; }
+.task-member-row { display:flex; align-items:stretch; gap:6px; min-width:0; }
+.task-member-open { flex:1; min-width:0; text-align: left; font-size: 13px; padding: 8px 10px; }
 .task-members .muted { display: block; margin-top: 4px; }
+.staff-scope { margin:8px 0; }
 .task-filters .btn { font-size: 16px; padding: 12px 22px; min-height: 46px; }
 .export-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .export-actions .btn { font-size: 12px; padding: 7px 9px; min-height: 34px; }
