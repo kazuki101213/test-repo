@@ -147,8 +147,10 @@ export default function Inventory({ me }: { me: Staff }) {
             <tbody>
               {items.slice(0, visibleCount).map((i, index) => {
                 const serial = productSerial(i.sku, i.lot_seq);
-                const previousSerial = items[index - 1] ? productSerial(items[index - 1].sku, items[index - 1].lot_seq) : null;
-                const nextSerial = items[index + 1] ? productSerial(items[index + 1].sku, items[index + 1].lot_seq) : null;
+                const previous = items[index - 1];
+                const next = items[index + 1];
+                const previousSerial = previous ? productSerial(previous.sku, previous.lot_seq) : null;
+                const nextSerial = next ? productSerial(next.sku, next.lot_seq) : null;
                 const edit = (field: InventoryField) => setEditFor({ item: i, field });
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';

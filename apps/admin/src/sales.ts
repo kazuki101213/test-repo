@@ -11,7 +11,7 @@ export type ProductGroup = {
 export function groupProducts(rows: SaleRow[]): Map<string, ProductGroup> {
   const members = new Map<string, SaleRow[]>();
   for (const row of rows) {
-    const serial = row.sku.match(/^([0-9]+[a-z]*)[-_]/i)?.[1].toUpperCase() ?? String(row.lot_seq);
+    const serial = row.sku.match(/^([0-9]+[a-z]*)[-_]/i)?.[1]?.toUpperCase() ?? String(row.lot_seq);
     const group = members.get(serial) ?? [];
     group.push(row); members.set(serial, group);
   }
