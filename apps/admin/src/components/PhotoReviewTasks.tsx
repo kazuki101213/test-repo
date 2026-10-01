@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { getSupabase, PHOTO_BUCKET } from '@bussan/shared';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
@@ -62,16 +63,14 @@ export default function PhotoReviewTasks() {
     finally { setBusy(false); }
   }
 
-  return <div className="photo-review-tasks">
-    <h4>写真確認　{reviews.length}件</h4>
-    {reviews.length === 0 ? <p className="sub">確認待ちの写真はありません。</p> : <ul className="invoice-task-rows">
-      {reviews.map(review => <li key={review.item_id}><button onClick={() => setSelected(review)}>
+  return <>
+      {reviews.length === 0 && !error && <li className="sub">写真確認待ちはありません。</li>}
+      {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>
         <span>{items[review.item_id]?.sku || 'SKU確認中'}<small>{items[review.item_id]?.title || ''} ／ 写真 {review.exported_photo_count}枚</small></span>
-        <span>確認 ›</span>
+        <strong>写真確認</strong><span>確認 ›</span>
       </button></li>)}
-    </ul>}
-    {error && <p className="error" role="alert">{error}</p>}
-    {selected && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="写真確認">
+    {error && <li className="error" role="alert">写真確認タスクを読み込めませんでした：{error}<button className="btn" onClick={() => setRevision(value => value + 1)}>再読み込み</button></li>}
+    {selected && createPortal(<div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="写真確認">
       <div className="card inventory-comment-panel photo-review-panel">
         <div className="toolbar"><h3>{items[selected.item_id]?.sku} の写真確認</h3><span style={{ flex: 1 }} />
           <button className="btn" disabled={busy} onClick={() => setSelected(null)}>閉じる</button></div>
@@ -79,6 +78,6 @@ export default function PhotoReviewTasks() {
         {loadingPhotos ? <p>写真を読み込み中…</p> : <div className="photo-review-gallery">{photos.map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={index}><img src={url} alt={`商品写真 ${index + 1}`} /></a>)}</div>}
         <button className="btn primary" disabled={busy || loadingPhotos || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '確認中…' : '写真確認を完了'}</button>
       </div>
-    </div>}
-  </div>;
+    </div>, document.body)}
+  </>;
 }
