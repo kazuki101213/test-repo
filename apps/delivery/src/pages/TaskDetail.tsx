@@ -167,7 +167,7 @@ export default function TaskDetail({
             <img src={photo.url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
           </a>
           <button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={deletingPhotoId !== null || uploading || driveBusy} onClick={() => void removePhoto(photo)}>
-            {deletingPhotoId === photo.id ? '削除中…' : '写真を削除'}
+            {deletingPhotoId === photo.id ? '削除中…' : '削除'}
           </button>
         </div>)}</div>}
       </div>

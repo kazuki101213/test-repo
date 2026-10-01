@@ -121,7 +121,7 @@ export default function Inventory({ me }: { me: Staff }) {
           <table className="inventory-table" aria-rowcount={items.length + 1}>
             <thead>
               <tr aria-rowindex={1}>
-                <th>作業状態</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />商品名 / 型番</th>
+                <th>作業状態</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />型番</th>
                 <th>仕入担当者<br />納品担当者</th><th>Amazonの写真</th><th>仕入先<br />商品ID</th>
                 <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th>
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
@@ -145,8 +145,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>
-                    <button type="button" className="inventory-cell-edit" onClick={() => edit('title')}>{i.is_accessory && <span className="badge">付属</span>}{i.title}</button>
-                    <button type="button" className="inventory-cell-edit" onClick={() => edit('model_no')}>型番 {i.model_no ?? '—'}</button>
+                    <button type="button" className="inventory-cell-edit" onClick={() => edit('model_no')}>{i.model_no ?? '—'}</button>
                   </div></td>
                   <td>{stacked(i.purchaser_name ?? '—', 'purchaser_id', i.deliverer_name ?? '—', 'deliverer_id')}</td>
                   <td>{i.amazon_image_url ? <a className="inventory-photo" href={i.amazon_image_url} target="_blank" rel="noreferrer"><img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /></a> : <span className="inventory-photo-empty">—</span>}</td>
