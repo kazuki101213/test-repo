@@ -150,6 +150,7 @@ export interface DeliveryTask {
   condition: ItemCondition | null;
   purchased_at: string | null;
   marketplace: Marketplace;
+  marketplace_item_id: string | null;
   tracking_no: string | null;
   accessories: string | null;
   description: string | null;

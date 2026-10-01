@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useState, type SyntheticEvent, type KeyboardEvent } from 'react';
 import { jpDate } from '@bussan/shared';
 import type { DeliveryTask, Staff } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
@@ -10,10 +10,10 @@ const STEP_FLAGS = (t: DeliveryTask) => [
   t.shipped_on !== null,
 ];
 
-function CopyButton({ label, value }: { label: string; value: string }) {
+function CopyableText({ label, value }: { label: string; value: string }) {
   const [state, setState] = useState<'ready' | 'copied' | 'failed'>('ready');
 
-  async function copy(event: MouseEvent<HTMLButtonElement>) {
+  async function copy(event: SyntheticEvent<HTMLElement>) {
     event.stopPropagation();
     let copied = false;
     try {
@@ -39,9 +39,13 @@ function CopyButton({ label, value }: { label: string; value: string }) {
     window.setTimeout(() => setState('ready'), 1600);
   }
 
-  return <button type="button" className="btn ghost copy-button" aria-label={`${label}をコピー`} aria-live="polite" onClick={copy}>
-    {state === 'copied' ? `${label}をコピーしました` : state === 'failed' ? 'コピーできませんでした' : `${label}コピー`}
-  </button>;
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void copy(event); }
+  }
+
+  return <span className="copyable-text" role="button" tabIndex={0} aria-label={`${label}をコピー`} aria-live="polite" title={`${label}をクリックしてコピー`} onClick={copy} onKeyDown={handleKeyDown}>
+    {state === 'copied' ? `${label}✓` : state === 'failed' ? `${label}（コピー失敗）` : `${label} ${value || '—'}`}
+  </span>;
 }
 
 export default function TaskCard({ task, amazonImageUrl, members, staff, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; staff: Staff; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
@@ -52,35 +56,31 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
     <div className="card task-card" data-expanded={!!expandedId}>
       <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
       <div className="task-content">
-      <button type="button" className="task-open" aria-expanded={!!expandedId} onClick={onOpen}>
       <div className="task-card-overview">
         <div className="task-card-info">
           <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
           <span className="muted">販売先 {task.sales_channel || '—'}</span>
-          <span className="sku">SKU {task.sku}</span>
-          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}型番 {task.title}</span>
-          <span className="muted product-asin">ASIN {task.asin || '—'}</span>
-          <span className="muted">追跡番号 {task.tracking_no || '—'}</span>
+          <CopyableText label="SKU" value={task.sku} />
+          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}型番 <CopyableText label="型番" value={task.title} /></span>
+          <CopyableText label="ASIN" value={task.asin || '—'} />
+          <CopyableText label="商品ID" value={task.marketplace_item_id || '—'} />
+          <CopyableText label="追跡番号" value={task.tracking_no || '—'} />
         </div>
         {amazonImageUrl ? <img className="task-card-photo" src={amazonImageUrl} alt={`${task.title}のAmazon商品画像`} loading="lazy" /> : <div className="task-card-photo task-card-no-photo" aria-label="Amazon商品画像なし">写真なし</div>}
       </div>
-      <div className="progress" aria-label={`作業 ${done}/${flags.length}`}>
-        {flags.map((f, i) => <span key={i} data-done={f} />)}
-      </div>
+      <button type="button" className="task-open" aria-expanded={!!expandedId} onClick={onOpen}>
+        {expandedId ? '作業詳細を閉じる' : '作業詳細を開く'}
+        <div className="progress" aria-label={`作業 ${done}/${flags.length}`}>
+          {flags.map((f, i) => <span key={i} data-done={f} />)}
+        </div>
       </button>
-      <div className="task-copy-actions" aria-label={`${task.sku}の情報をコピー`}>
-        <CopyButton label="SKU" value={task.sku} />
-        <CopyButton label="型番" value={task.title} />
-        {task.asin && <CopyButton label="ASIN" value={task.asin} />}
-        {task.tracking_no && <CopyButton label="追跡番号" value={task.tracking_no} />}
-      </div>
       {members.length > 1 && <div className="task-members">
         {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className="task-member-row">
           <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
             {member.is_accessory ? '付属品' : '同じ商品'}：{member.title}
-            <span className="muted">{jpDate(member.purchased_at)} ／ 追跡番号 {member.tracking_no || '—'}</span>
+            <span className="muted">{jpDate(member.purchased_at)}</span>
           </button>
-          {member.tracking_no && <CopyButton label="追跡番号" value={member.tracking_no} />}
+          <span className="muted">追跡番号 <CopyableText label="追跡番号" value={member.tracking_no || '—'} /></span>
         </div>)}
       </div>}
       </div>
