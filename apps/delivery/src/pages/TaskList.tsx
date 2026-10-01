@@ -13,6 +13,11 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all',     label: 'すべて' },
 ];
 
+function serialNumber(task: DeliveryTask): string {
+  const prefix = task.sku.match(/^(\d+[a-z]*)-/i)?.[1];
+  return prefix?.toLocaleUpperCase() ?? `item:${task.id}`;
+}
+
 export default function TaskList({ staff }: { staff: Staff }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
@@ -76,7 +81,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
     for (const task of tasks) {
       if (staff.role === 'admin' && delivererId && task.deliverer_id !== delivererId) continue;
-      const key = task.lot_seq ? String(task.lot_seq) : task.id;
+      const key = serialNumber(task);
       const members = groups.get(key);
       if (members) members.push(task);
       else groups.set(key, [task]);
@@ -85,7 +90,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
-      if (q && !members.some(member => [String(member.lot_seq ?? ''), member.sku, member.title].some(value => normalizeSearch(value).includes(q)))) return false;
+      if (q && !members.some(member => [serialNumber(member), String(member.lot_seq ?? ''), member.sku, member.title].some(value => normalizeSearch(value).includes(q)))) return false;
       const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;

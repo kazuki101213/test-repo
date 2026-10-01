@@ -183,7 +183,7 @@ textarea { min-height: 80px; resize: vertical; }
 .task-member-row { display:grid; gap:4px; min-width:0; }
 .task-member-open { width:100%; min-width:0; text-align: left; font-size: 13px; padding: 8px 10px; }
 .task-members .muted { display: block; margin-top: 4px; }
-.task-member-tracking { padding-left:10px; }
+.task-member-row > .copyable-text, .task-member-date { padding-left:10px; }
 .staff-scope { margin:8px 0; }
 .task-filters .btn { font-size: 16px; padding: 12px 22px; min-height: 46px; }
 .export-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
