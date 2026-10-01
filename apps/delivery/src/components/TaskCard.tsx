@@ -44,7 +44,7 @@ function CopyButton({ label, value }: { label: string; value: string }) {
   </button>;
 }
 
-export default function TaskCard({ task, thumbnailUrl, members, staff, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; thumbnailUrl: string | null; members: DeliveryTask[]; staff: Staff; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
+export default function TaskCard({ task, amazonImageUrl, members, staff, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; staff: Staff; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
 
@@ -62,7 +62,7 @@ export default function TaskCard({ task, thumbnailUrl, members, staff, expandedI
           <span className="muted product-asin">ASIN {task.asin || '—'}</span>
           <span className="muted">追跡番号 {task.tracking_no || '—'}</span>
         </div>
-        {thumbnailUrl ? <img className="task-card-photo" src={thumbnailUrl} alt={`${task.title}の写真`} loading="lazy" /> : <div className="task-card-photo task-card-no-photo" aria-label="写真未登録">写真なし</div>}
+        {amazonImageUrl ? <img className="task-card-photo" src={amazonImageUrl} alt={`${task.title}のAmazon商品画像`} loading="lazy" /> : <div className="task-card-photo task-card-no-photo" aria-label="Amazon商品画像なし">写真なし</div>}
       </div>
       <div className="progress" aria-label={`作業 ${done}/${flags.length}`}>
         {flags.map((f, i) => <span key={i} data-done={f} />)}
