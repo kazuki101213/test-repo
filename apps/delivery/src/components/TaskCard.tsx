@@ -79,9 +79,9 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
         {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className="task-member-row">
           <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
             {member.is_accessory ? '付属品' : '同じ商品'}：{member.title}
-            <span className="muted">{jpDate(member.purchased_at)}</span>
           </button>
-          <span className="muted task-member-tracking">追跡番号 <CopyableText label="追跡番号" value={member.tracking_no || '—'} /></span>
+          <CopyableText label="追跡番号" value={member.tracking_no || '—'} />
+          <span className="muted task-member-date">{jpDate(member.purchased_at)}</span>
         </div>)}
       </div>}
       </div>
