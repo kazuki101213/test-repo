@@ -85,7 +85,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
       <div className="toolbar">
         <input
-          type="search" placeholder="SKU / 商品名 / ASIN / 型番" value={query}
+          type="search" placeholder="SKU / 商品名 / ASIN / 型番 / 商品ID" value={query}
           aria-label="在庫を検索" onChange={(e) => { setQuery(e.target.value); }} style={{ minWidth: 240 }}
         />
         <select aria-label="状態" value={status} onChange={(e) => { setStatus(e.target.value); }}>
@@ -122,7 +122,7 @@ export default function Inventory({ me }: { me: Staff }) {
       {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
       {me.role === 'admin' && <AmazonOrderHistory />}
       <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite">
-        <span>{loading ? '読み込み中…' : `${count.toLocaleString()}商品（通番号の重複を除く）・全件表示`} {unsoldOnly ? '（未販売のみ）' : '（販売済みを含む）'}</span>
+        <span>{loading ? '読み込み中…' : `${count.toLocaleString()}商品`}{unsoldOnly && '（未販売のみ）'}</span>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -136,7 +136,7 @@ export default function Inventory({ me }: { me: Staff }) {
               <tr aria-rowindex={1}>
                 <th>作業状態</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />型番</th>
                 <th>仕入担当者<br />納品担当者</th><th>Amazonの写真</th><th>仕入先<br />商品ID/追跡番号</th>
-                <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th>
+                <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th><th>販売実績</th>
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
                 <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
                 <th>販売金額<br />振込金額</th><th>利益額<br />利益率</th>
@@ -155,7 +155,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
                   <td>{stacked(<><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</>, 'status')}</td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
-                    {i.lot_seq !== items[index - 1]?.lot_seq && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{i.lot_seq}</button><span> / </span></>}
+                    {(i.is_accessory || i.lot_seq !== items[index - 1]?.lot_seq) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{i.lot_seq}</button><span> / </span></>}
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
@@ -174,6 +174,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   </div></td>
                   <td>{stacked(jpDate(i.purchased_at), 'purchased_at', yen(i.cost_amount), 'cost_amount')}</td>
                   <td>{stacked(i.sales_channel ?? '—', 'sales_channel', i.condition ?? '—', 'condition')}</td>
+                  <td>{i.product_has_sold_before ? '販売実績あり' : '—'}</td>
                   <td>{stacked(jpDate(i.packed_on), 'packed_on', jpDate(i.shipped_on), 'shipped_on')}</td>
                   <td>{stacked(yen(i.planned_price), 'planned_price', yen(i.planned_payout), 'planned_payout')}</td>
                   <td>{stacked(yen(i.expected_profit), 'planned_payout', expectedRate, 'planned_price')}</td>

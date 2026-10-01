@@ -158,22 +158,21 @@ textarea { min-height: 80px; resize: vertical; }
 .task-card { display:grid; grid-template-columns:22px minmax(0,1fr); align-items:start; gap:12px; }
 .task-card[data-expanded="true"] { border-color:var(--accent); }
 .task-card > input { grid-column:1; width:22px; height:22px; margin-top:4px; accent-color:var(--accent); }
-.task-open { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.task-open { display: grid; gap: 3px; line-height: 1.4; }
 .task-card-overview { display: grid; grid-template-columns: minmax(0,1fr) 84px; gap: 10px; align-items: start; }
 .task-card-info { min-width: 0; display: grid; gap: 2px; }
 .task-card-info > span { display: block; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-card-info .title { margin: 0; }
+.task-photo-action { display: grid; justify-items: stretch; gap: 4px; }
+.task-card-photo-button { display: block; width: 84px; padding: 0; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.task-card-photo-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .task-card-photo { display: block; width: 84px; height: 84px; border-radius: 8px; object-fit: contain; background: var(--surface-2); }
 .task-card-no-photo { display: grid; place-items: center; color: var(--muted); font-size: 11px; }
-.task-open .sku, .task-open .title, .task-open .progress { margin: 0; }
-.task-open .muted, .task-open .sku, .task-open .title, .task-members .btn, .task-members .muted,
+.task-photo-action .progress { width: 100%; margin: 0; }
+.task-members .btn, .task-members .muted,
 .product-info > div { font-size: 14px; }
 .product-info .product-name { font-weight: 600; }
 .product-asin { font-weight: 600; }
-.task-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .task-content { grid-column:2; min-width:0; }
-.task-content .task-open { width: 100%; }
 .copyable-text { cursor:pointer; border-radius:3px; }
 .copyable-text:hover { text-decoration:underline; text-decoration-style:dotted; }
 .copyable-text:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
@@ -181,9 +180,10 @@ textarea { min-height: 80px; resize: vertical; }
 .inline-detail-header { justify-content:space-between; }
 .task-detail-inline > .card { border:0; border-top:1px solid var(--border); border-radius:0; background:transparent; padding:14px 0 0; }
 .task-members { display: grid; gap: 6px; margin-top: 10px; }
-.task-member-row { display:flex; align-items:stretch; gap:6px; min-width:0; }
-.task-member-open { flex:1; min-width:0; text-align: left; font-size: 13px; padding: 8px 10px; }
+.task-member-row { display:grid; gap:4px; min-width:0; }
+.task-member-open { width:100%; min-width:0; text-align: left; font-size: 13px; padding: 8px 10px; }
 .task-members .muted { display: block; margin-top: 4px; }
+.task-member-tracking { padding-left:10px; }
 .staff-scope { margin:8px 0; }
 .task-filters .btn { font-size: 16px; padding: 12px 22px; min-height: 46px; }
 .export-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
