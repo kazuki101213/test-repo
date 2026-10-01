@@ -44,10 +44,28 @@ export default function TaskList({ staff }: { staff: Staff }) {
   }
 
   useEffect(() => {
-    fetchMyTasks()
-      .then(setTasks)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+    let active = true;
+    const refresh = async (initial = false) => {
+      try {
+        const rows = await fetchMyTasks();
+        if (active) { setTasks(rows); setError(null); }
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (active && initial) setLoading(false);
+      }
+    };
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    void refresh(true);
+    const timer = window.setInterval(refreshWhenVisible, 30_000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, []);
   useEffect(() => {
     if (staff.role === 'admin') void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(e instanceof Error ? e.message : String(e)));

@@ -30,12 +30,12 @@ export default function Inventory({ me }: { me: Staff }) {
   const [visibleCount, setVisibleCount] = useState(80);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (quiet = false) => {
     const current = ++request.current;
     controller.current?.abort();
     const active = new AbortController();
     controller.current = active;
-    setLoading(true);
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       if (purchasedFrom && purchasedTo && purchasedFrom > purchasedTo) throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
@@ -52,6 +52,17 @@ export default function Inventory({ me }: { me: Staff }) {
   }, [status, delivererId, query, unsoldOnly, purchasedFrom, purchasedTo]);
 
   useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
+  useEffect(() => {
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void load(true); };
+    const timer = window.setInterval(refreshWhenVisible, 30_000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [load]);
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
   useEffect(() => { setVisibleCount(80); }, [items]);
   useEffect(() => {
