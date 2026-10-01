@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
 import type { InventoryItem } from '../api';
@@ -74,6 +74,8 @@ export default function Inventory({ me }: { me: Staff }) {
     observer.observe(el);
     return () => observer.disconnect();
   }, [items.length, visibleCount]);
+  const trackingColumnWidth = items.reduce((width, item) => Math.max(width, (item.tracking_no?.length ?? 0) * 10 + 32), 360);
+  const inventoryTableWidth = Math.max(2400, 2040 + trackingColumnWidth);
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
@@ -129,7 +131,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
       {!loading && items.length > 0 && (
         <div className="scroll">
-          <table className="inventory-table" aria-rowcount={items.length + 1}>
+          <table className="inventory-table" aria-rowcount={items.length + 1} style={{ minWidth: inventoryTableWidth, '--tracking-column-width': `${trackingColumnWidth}px` } as CSSProperties}>
             <thead>
               <tr aria-rowindex={1}>
                 <th>作業状態</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />型番</th>
@@ -147,6 +149,8 @@ export default function Inventory({ me }: { me: Staff }) {
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
                 const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
+                const modelOrAccessoryName = i.is_accessory ? i.title : i.model_no || i.title || '—';
+                const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
                 return (
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
                   <td>{stacked(<><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</>, 'status')}</td>
@@ -156,7 +160,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>
-                    <button type="button" className="inventory-cell-edit" onClick={() => edit('model_no')}>{i.model_no ?? '—'}</button>
+                    <button type="button" className="inventory-cell-edit" onClick={() => edit(modelOrAccessoryField)} title={i.is_accessory ? i.title : 'クリックして編集'}>{modelOrAccessoryName}</button>
                   </div></td>
                   <td>{stacked(i.purchaser_name ?? '—', 'purchaser_id', i.deliverer_name ?? '—', 'deliverer_id')}</td>
                   <td>{i.amazon_image_url ? <a className="inventory-photo" href={i.amazon_image_url} target="_blank" rel="noreferrer"><img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /></a> : <span className="inventory-photo-empty">—</span>}</td>
