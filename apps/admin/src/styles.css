@@ -144,6 +144,9 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-table tr[data-lot] > td { height: 64px; max-height: 64px; overflow: hidden; vertical-align: middle; }
 .inventory-cell-edit, .inventory-comment { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .inventory-cell-stack { min-width: 0; }
+.inventory-cell-stack .inventory-marketplace-name,
+.inventory-cell-stack .inventory-marketplace-item-id,
+.inventory-cell-stack .inventory-tracking-number { display: block; }
 .inventory-cell-stack .inventory-cell-edit { white-space: nowrap; text-overflow: ellipsis; }
 .inventory-identity-line { display: flex; align-items: center; gap: 3px; }
 .inventory-identity-line .inventory-cell-edit { width: auto; }
