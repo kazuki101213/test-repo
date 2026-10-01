@@ -155,7 +155,7 @@ export default function Inventory({ me }: { me: Staff }) {
                       const url = purchaseItemUrl(i.marketplace, i.marketplace_item_id, i.marketplace_url);
                       return url ? <a className="inventory-marketplace-item-id" href={url} target="_blank" rel="noopener noreferrer">{i.marketplace_item_id}</a> : <span className="inventory-marketplace-item-id">{i.marketplace_item_id}</span>;
                     })() : <span className="inventory-marketplace-item-id">—</span>}
-                    <span className="inventory-tracking-number">追跡番号 {i.tracking_no || '—'}</span>
+                    <span className="inventory-tracking-number">{i.tracking_no || '—'}</span>
                   </div></td>
                   <td>{stacked(jpDate(i.purchased_at), 'purchased_at', yen(i.cost_amount), 'cost_amount')}</td>
                   <td>{stacked(i.sales_channel ?? '—', 'sales_channel', i.condition ?? '—', 'condition')}</td>
