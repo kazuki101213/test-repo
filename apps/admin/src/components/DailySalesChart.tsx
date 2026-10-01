@@ -6,7 +6,7 @@ import type { ProductGroup } from '../sales';
 
 export default function DailySalesChart() {
   const [today, setToday] = useState(() => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10));
-  const [groups, setGroups] = useState<Map<number, ProductGroup>>(new Map());
+  const [groups, setGroups] = useState<Map<string, ProductGroup>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<number | null>(null);

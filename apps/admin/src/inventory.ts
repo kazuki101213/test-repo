@@ -10,8 +10,13 @@ export async function readAllRows<T extends { id: string }>(
   }
 }
 
-export function productCount(rows: ReadonlyArray<{ lot_seq: number }>): number {
-  return new Set(rows.map(row => row.lot_seq)).size;
+export function productSerial(sku: string | null | undefined, lotSeq?: number): string {
+  const match = sku?.match(/^([0-9]+[a-z]*)[-_]/i);
+  return match?.[1]?.toUpperCase() ?? String(lotSeq ?? '');
+}
+
+export function productCount(rows: ReadonlyArray<{ lot_seq: number; sku?: string | null }>): number {
+  return new Set(rows.map(row => productSerial(row.sku, row.lot_seq))).size;
 }
 
 export const inventoryRowHeight = 64;

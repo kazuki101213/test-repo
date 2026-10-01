@@ -1,20 +1,21 @@
 export type SaleRow = {
-  id: string; lot_seq: number; is_accessory: boolean; cost_amount: number;
+  id: string; lot_seq: number; sku: string; is_accessory: boolean; cost_amount: number;
   sold_on: string | null; sold_price: number | null; payout_amount: number | null;
 };
 export type ProductGroup = {
-  lot: number; ids: string[]; cost: number; sale: SaleRow | null;
+  lot: string; ids: string[]; cost: number; sale: SaleRow | null;
   conflict: boolean; saleDates: string[];
 };
 
-// Purchase rows remain separate. A physical product is identified by its lot number.
-export function groupProducts(rows: SaleRow[]): Map<number, ProductGroup> {
-  const members = new Map<number, SaleRow[]>();
+// Supplier purchase rows stay separate. Each SKU serial, including a/aa suffixes, is a product.
+export function groupProducts(rows: SaleRow[]): Map<string, ProductGroup> {
+  const members = new Map<string, SaleRow[]>();
   for (const row of rows) {
-    const group = members.get(row.lot_seq) ?? [];
-    group.push(row); members.set(row.lot_seq, group);
+    const serial = row.sku.match(/^([0-9]+[a-z]*)[-_]/i)?.[1]?.toUpperCase() ?? String(row.lot_seq);
+    const group = members.get(serial) ?? [];
+    group.push(row); members.set(serial, group);
   }
-  const groups = new Map<number, ProductGroup>();
+  const groups = new Map<string, ProductGroup>();
   for (const [lot, group] of members) {
     // Zero-value accessory rows record cost, not a second sale.
     const sales = group.filter(r => r.sold_on && !(r.is_accessory && (r.sold_price ?? 0) === 0 && (r.payout_amount ?? 0) === 0));
@@ -33,7 +34,7 @@ export function dailySales(groups: Iterable<ProductGroup>, month: string) {
   const days = Array.from({ length: new Date(Date.UTC(year, m, 0)).getUTCDate() }, (_, i) => ({
     date: `${month}-${String(i + 1).padStart(2, '0')}`, amount: 0, count: 0,
   }));
-  const conflicts: number[] = [];
+  const conflicts: string[] = [];
   for (const group of groups) {
     if (group.conflict && group.saleDates.some(date => date.startsWith(month + '-'))) { conflicts.push(group.lot); continue; }
     if (!group.sale?.sold_on?.startsWith(month + '-')) continue;
@@ -59,7 +60,7 @@ export function dailySalesRange(groups: Iterable<ProductGroup>, startDate: strin
     date: new Date(start + i * 86400000).toISOString().slice(0, 10), amount: 0, count: 0,
   }));
   const byDate = new Map(days.map(day => [day.date, day]));
-  const conflicts: number[] = [];
+  const conflicts: string[] = [];
   for (const group of groups) {
     if (group.conflict && group.saleDates.some(date => byDate.has(date))) { conflicts.push(group.lot); continue; }
     const day = group.sale?.sold_on ? byDate.get(group.sale.sold_on) : undefined;

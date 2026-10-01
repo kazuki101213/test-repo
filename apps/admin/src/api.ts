@@ -125,7 +125,7 @@ export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
   });
 }
 
-export type MonthlyDetailItem = Pick<ItemView, 'id' | 'lot_seq' | 'is_accessory' | 'title' | 'marketplace' | 'purchased_at' | 'sold_on' | 'cost_amount' | 'sold_price' | 'payout_amount' | 'refund_amount' | 'profit'> & { shipping_cost: number; other_cost: number };
+export type MonthlyDetailItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'is_accessory' | 'title' | 'marketplace' | 'purchased_at' | 'sold_on' | 'cost_amount' | 'sold_price' | 'payout_amount' | 'refund_amount' | 'profit'> & { shipping_cost: number; other_cost: number };
 export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale' | 'expense' | 'profit') {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('対象月が不正です。');
   const year = Number(month.slice(0, 4)), monthNumber = Number(month.slice(5));
@@ -134,7 +134,7 @@ export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale
   const items = kind === 'expense' ? Promise.resolve([] as MonthlyDetailItem[]) : readAllRows<MonthlyDetailItem>(async (start, end) => {
     const dateColumn = kind === 'purchase' ? 'purchased_at' : 'sold_on';
     const { data, error } = await getSupabase().from('items')
-      .select('id,lot_seq,is_accessory,title,marketplace,purchased_at,sold_on,cost_amount,sold_price,payout_amount,refund_amount,profit,shipping_cost,other_cost')
+      .select('id,lot_seq,sku,is_accessory,title,marketplace,purchased_at,sold_on,cost_amount,sold_price,payout_amount,refund_amount,profit,shipping_cost,other_cost')
       .gte(dateColumn, from).lte(dateColumn, to).order('lot_seq', { ascending: false }).order('id').range(start, end);
     if (error) throw new Error(error.message);
     return (data ?? []) as MonthlyDetailItem[];
@@ -180,7 +180,7 @@ export async function fetchSaleRows(): Promise<SaleRow[]> {
   const rows: SaleRow[] = [];
   for (let offset = 0; ; offset += 500) {
     const { data, error } = await getSupabase().from('items')
-      .select('id,lot_seq,is_accessory,cost_amount,sold_on,sold_price,payout_amount')
+      .select('id,lot_seq,sku,is_accessory,cost_amount,sold_on,sold_price,payout_amount')
       .order('id').range(offset, offset + 499);
     if (error) throw error;
     rows.push(...(data ?? []) as SaleRow[]);
@@ -191,7 +191,7 @@ export async function fetchSaleRows(): Promise<SaleRow[]> {
 export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal): Promise<{ items: InventoryItem[]; count: number }> {
   const items = await readAllRows<InventoryItem>(async (from, to) => {
     let q = getSupabase().from('v_inventory_display').select('*')
-      .order('lot_seq', { ascending: false }).order('is_accessory')
+      .order('lot_seq', { ascending: false }).order('sku').order('is_accessory')
       .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
       .range(from, to);
 

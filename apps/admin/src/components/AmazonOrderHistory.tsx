@@ -20,13 +20,11 @@ type AppOnly = { lot_seq: number; example_sku: string; app_sold_on: string; app_
 type ReturnWorkRow = { lot_seq: number; sku: string; status: string; amazon_returned_on: string | null; returned_on: string | null };
 
 const lotNumber = (sku: string | null) => {
-  const match = sku?.match(/^(\d+)(?:aa|a)?[-_]/i);
-  return match ? Number(match[1]) : null;
+  const match = sku?.match(/^([0-9]+[a-z]*)[-_]/i);
+  return match?.[1]?.toUpperCase() ?? null;
 };
-const isReturnWorkSku = (sku: string) => /^\d+aa?[-_]/i.test(sku);
-
 function resaleGroups(rows: Row[]) {
-  const byLot = new Map<number, Row[]>();
+  const byLot = new Map<string, Row[]>();
   for (const row of rows) {
     if (!['Shipped', 'Delivered', 'Shipped - Delivered to Buyer'].includes(row.order_status)) continue;
     const lot = lotNumber(row.canonical_sku ?? row.sku);
@@ -36,9 +34,9 @@ function resaleGroups(rows: Row[]) {
     byLot.set(lot, group);
   }
   return [...byLot.entries()]
-    .filter(([, group]) => new Set(group.map(row => row.order_id)).size > 1 || group.some(row => row.sku && isReturnWorkSku(row.sku)))
+    .filter(([, group]) => new Set(group.map(row => row.order_id)).size > 1)
     .map(([lot, group]) => ({ lot, orders: group.sort((a, b) => a.ordered_at.localeCompare(b.ordered_at)) }))
-    .sort((a, b) => b.lot - a.lot);
+    .sort((a, b) => b.lot.localeCompare(a.lot, undefined, { numeric: true }));
 }
 
 async function readHistory(): Promise<Row[]> {
@@ -74,7 +72,7 @@ export default function AmazonOrderHistory() {
       ]);
       if (reports.error) throw reports.error;
       if (unmatched.error) throw unmatched.error;
-      const lots = resaleGroups(history).map(group => group.lot);
+      const lots = resaleGroups(history).map(group => Number.parseInt(group.lot, 10));
       const itemRows: ReturnWorkRow[] = [];
       for (let start = 0; start < lots.length; start += 100) {
         const { data, error: workError } = await getSupabase().from('items')
@@ -95,14 +93,16 @@ export default function AmazonOrderHistory() {
 
   const eligible = rows.filter(row => ['Shipped', 'Delivered', 'Shipped - Delivered to Buyer'].includes(row.order_status));
   const resale = useMemo(() => {
-    const actualLots = new Set(lotItems.map(item => item.lot_seq));
+    const actualLots = new Set(lotItems.map(item => lotNumber(item.sku)));
     return resaleGroups(rows).filter(group => actualLots.has(group.lot));
   }, [rows, lotItems]);
-  const unmatchedBaseSales = appOnly.filter(row => !isReturnWorkSku(row.example_sku));
-  const unmatchedWorkSales = appOnly.length - unmatchedBaseSales.length;
+  const unmatchedBaseSales = appOnly;
   const returnsByLot = useMemo(() => {
-    const result = new Map<number, ReturnWorkRow[]>();
-    for (const row of lotItems) if (isReturnWorkSku(row.sku)) result.set(row.lot_seq, [...(result.get(row.lot_seq) ?? []), row]);
+    const result = new Map<string, ReturnWorkRow[]>();
+    for (const row of lotItems) if (row.amazon_returned_on || row.returned_on) {
+      const serial = lotNumber(row.sku);
+      if (serial) result.set(serial, [...(result.get(serial) ?? []), row]);
+    }
     return result;
   }, [lotItems]);
   const counts = useMemo(() => {
@@ -147,22 +147,22 @@ export default function AmazonOrderHistory() {
       <td>{row.app_sold_on ?? '—'}</td><td className="num">{row.app_sold_price === null ? '—' : yen(row.app_sold_price)}</td>
       <td>{row.reconciliation_status}</td>
     </tr>)}</tbody></table></div>
-    <details style={{ marginTop: 14 }}><summary>同一通番号の複数注文・a/aa付き注文（{resale.length}通番号）</summary>
-      <p className="sub">Amazon注文を通番号でまとめ、日付順に表示します。a・aa付きの在庫行は返品後の作業記録として併記します。複数注文のすべてが返品による再販売とは限りません。</p>
+    <details style={{ marginTop: 14 }}><summary>同じ商品番号の複数注文（{resale.length}商品）</summary>
+      <p className="sub">SKUの末尾a・aaを含む商品番号ごとに分け、Amazon注文を日付順に表示します。</p>
       {resale.map(({ lot, orders }) => {
         const work = returnsByLot.get(lot) ?? [];
         const orderIds = [...new Set(orders.map(row => row.order_id))];
-        return <details key={lot} style={{ marginTop: 10 }}><summary>{lot}：Amazon注文 {new Set(orders.map(row => row.order_id)).size}件／返品作業行 {work.length}件</summary>
-          {work.length > 0 && <p className="sub">返品作業行：{work.map(row => `${row.sku}（${row.amazon_returned_on ?? row.returned_on ?? '返品日未登録'}）`).join('、')}</p>}
+        return <details key={lot} style={{ marginTop: 10 }}><summary>{lot}：Amazon注文 {new Set(orders.map(row => row.order_id)).size}件／返品記録 {work.length}件</summary>
+          {work.length > 0 && <p className="sub">返品記録：{work.map(row => `${row.sku}（${row.amazon_returned_on ?? row.returned_on}）`).join('、')}</p>}
           <div className="scroll"><table><thead><tr><th>注文順</th><th>Amazon注文日</th><th>注文番号</th><th>Amazon SKU</th><th>価格</th><th>SKU一致行の販売日</th></tr></thead><tbody>{orders.map(row => <tr key={row.order_item_id}>
-            <td>{orderIds.indexOf(row.order_id) + 1}</td><td>{row.order_on}</td><td>{row.order_id}</td><td className="sku">{row.sku ?? '—'}{row.sku && isReturnWorkSku(row.sku) ? '（a/aa付き）' : ''}</td>
+            <td>{orderIds.indexOf(row.order_id) + 1}</td><td>{row.order_on}</td><td>{row.order_id}</td><td className="sku">{row.sku ?? '—'}</td>
             <td className="num">{row.item_price === null ? '—' : yen(row.item_price)}</td><td>{row.app_sold_on ?? '—'}</td>
           </tr>)}</tbody></table></div>
         </details>;
       })}
     </details>
-    <details style={{ marginTop: 14 }}><summary>アプリに販売記録があり、Amazon注文を見つけられない元の商品（{unmatchedBaseSales.length}件）</summary>
-      <p className="sub">FBA・自己発送の本体を通番号で照合した確認候補です。a・aa付きの作業行に残る販売記録 {unmatchedWorkSales}件は、この件数から除いています。</p>
+    <details style={{ marginTop: 14 }}><summary>アプリに販売記録があり、Amazon注文を見つけられない商品（{unmatchedBaseSales.length}件）</summary>
+      <p className="sub">FBA・自己発送の本体を、a・aaを含むSKU商品番号ごとに照合した確認候補です。</p>
       <div className="scroll" style={{ maxHeight: 360 }}><table><thead><tr><th>通番号</th><th>SKU</th><th>アプリ販売日</th><th>アプリ価格</th><th>販売経路</th></tr></thead><tbody>{unmatchedBaseSales.map(row => <tr key={row.lot_seq}>
         <td>{row.lot_seq}</td><td className="sku">{row.example_sku}</td><td>{row.app_sold_on}</td><td className="num">{yen(row.app_sold_price)}</td><td>{row.sales_channels}</td>
       </tr>)}</tbody></table></div>

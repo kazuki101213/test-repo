@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchWorkloadDetail, type WorkloadItem, type WorkloadMetric } from '../api';
+import { productSerial } from '../inventory';
 
 const workDays = (row: WorkloadItem) => row.arrived_on && row.shipped_on
   ? Math.round((Date.parse(row.shipped_on + 'T00:00:00Z') - Date.parse(row.arrived_on + 'T00:00:00Z')) / 86400000) : null;
@@ -31,7 +32,7 @@ export default function WorkloadDetail({ delivererId, name, metric, onClose }: {
       {rows.length === 0 ? <p>該当する商品はありません。</p> : <div className="scroll"><table>
         <thead><tr><th>通番号</th><th>商品・仕入先</th><th>状況</th><th>仕入日</th><th>入荷日</th><th>出荷日</th><th className="num">作業日数</th></tr></thead>
         <tbody>{rows.map((row, index) => <tr key={row.id}>
-          <td>{rows[index - 1]?.lot_seq !== row.lot_seq ? row.lot_seq : ''}</td>
+          <td>{productSerial(rows[index - 1]?.sku,rows[index - 1]?.lot_seq) !== productSerial(row.sku,row.lot_seq) ? productSerial(row.sku,row.lot_seq) : ''}</td>
           <td className="detail-description">{row.title}<div className="expense-hint">{row.marketplace} · {row.sku}</div></td>
           <td>{row.status}</td><td>{row.purchased_at || '—'}</td><td>{row.arrived_on || '—'}</td><td>{row.shipped_on || '—'}</td><td className="num">{workDays(row) ?? '—'}</td>
         </tr>)}</tbody>
