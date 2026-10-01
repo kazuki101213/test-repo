@@ -247,8 +247,8 @@ export type InventoryEdit = Pick<ItemView,
   'title' | 'asin' | 'tracking_no' | 'purchased_at' | 'cost_amount' |
   'planned_price' | 'planned_payout' | 'packed_on' | 'shipped_on' | 'status' |
   'memo' | 'purchaser_id' | 'deliverer_id' | 'marketplace' | 'condition' |
-  'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount'
-> & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount'>;
+  'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount' | 'refund_amount'
+> & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount' | 'marketplace_item_id'>;
 
 export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit): Promise<void> {
   const title = fields.title.trim();
@@ -258,6 +258,7 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
       (fields.planned_payout !== null && (!Number.isSafeInteger(fields.planned_payout) || fields.planned_payout < 0)) ||
       (fields.sold_price !== null && (!Number.isSafeInteger(fields.sold_price) || fields.sold_price < 0)) ||
       (fields.payout_amount !== null && (!Number.isSafeInteger(fields.payout_amount) || fields.payout_amount < 0)) ||
+      !Number.isSafeInteger(fields.refund_amount) || fields.refund_amount < 0 ||
       !Number.isSafeInteger(fields.amazon_refund_amount) || fields.amazon_refund_amount < 0 ||
       !Number.isSafeInteger(fields.non_amazon_refund_amount) || fields.non_amazon_refund_amount < 0) {
     throw new Error('金額は0円以上の整数で入力してください。');
@@ -319,11 +320,11 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
     return;
   }
   if (field === 'title' && (!text || text.length > 500)) throw new Error('商品名を入力してください。');
-  const numbers = new Set<InventoryField>(['cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
+  const numbers = new Set<InventoryField>(['cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
   if (numbers.has(field) && text && (!Number.isSafeInteger(Number(text)) || Number(text) < 0)) throw new Error('金額は0円以上の整数で入力してください。');
   if (field === 'cost_amount' && !text) throw new Error('仕入金額を入力してください。');
   const requiredText = new Set<InventoryField>(['title', 'status', 'marketplace']);
-  const next = numbers.has(field) ? (text ? Number(text) : field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
+  const next = numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
   const { data, error } = await getSupabase().from('items').update({ [field]: next }).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
