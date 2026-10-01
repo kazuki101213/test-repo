@@ -64,7 +64,6 @@ export default function PhotoReviewTasks() {
   }
 
   return <>
-      {reviews.length === 0 && !error && <li className="sub">写真確認待ちはありません。</li>}
       {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>
         <span>{items[review.item_id]?.sku || 'SKU確認中'}<small>{items[review.item_id]?.title || ''} ／ 写真 {review.exported_photo_count}枚</small></span>
         <strong>写真確認</strong><span>確認 ›</span>
