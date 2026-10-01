@@ -66,21 +66,22 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
           <CopyableText label="商品ID" value={task.marketplace_item_id || '—'} />
           <CopyableText label="追跡番号" value={task.tracking_no || '—'} />
         </div>
-        {amazonImageUrl ? <img className="task-card-photo" src={amazonImageUrl} alt={`${task.title}のAmazon商品画像`} loading="lazy" /> : <div className="task-card-photo task-card-no-photo" aria-label="Amazon商品画像なし">写真なし</div>}
-      </div>
-      <button type="button" className="task-open" aria-expanded={!!expandedId} onClick={onOpen}>
-        {expandedId ? '作業詳細を閉じる' : '作業詳細を開く'}
-        <div className="progress" aria-label={`作業 ${done}/${flags.length}`}>
-          {flags.map((f, i) => <span key={i} data-done={f} />)}
+        <div className="task-photo-action">
+          <button type="button" className="task-card-photo-button" aria-label={expandedId ? '作業詳細を閉じる' : '写真をクリックして作業詳細を開く'} aria-expanded={!!expandedId} onClick={() => expandedId ? onClose() : onOpen()}>
+            {amazonImageUrl ? <img className="task-card-photo" src={amazonImageUrl} alt={`${task.title}のAmazon商品画像`} loading="lazy" /> : <span className="task-card-photo task-card-no-photo" aria-label="Amazon商品画像なし">写真なし</span>}
+          </button>
+          <div className="progress" aria-label={`作業 ${done}/${flags.length}`}>
+            {flags.map((f, i) => <span key={i} data-done={f} />)}
+          </div>
         </div>
-      </button>
+      </div>
       {members.length > 1 && <div className="task-members">
         {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className="task-member-row">
           <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
             {member.is_accessory ? '付属品' : '同じ商品'}：{member.title}
             <span className="muted">{jpDate(member.purchased_at)}</span>
           </button>
-          <span className="muted">追跡番号 <CopyableText label="追跡番号" value={member.tracking_no || '—'} /></span>
+          <span className="muted task-member-tracking">追跡番号 <CopyableText label="追跡番号" value={member.tracking_no || '—'} /></span>
         </div>)}
       </div>}
       </div>
