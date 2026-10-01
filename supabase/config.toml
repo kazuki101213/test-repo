@@ -39,3 +39,6 @@ verify_jwt = false
 
 [functions.delivery-photo-drive]
 verify_jwt = false
+
+[functions.delivery-photo-delete]
+verify_jwt = false

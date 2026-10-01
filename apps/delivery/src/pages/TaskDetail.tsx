@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
-  addPhotosToDrive, fetchComments, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
+  addPhotosToDrive, deletePhoto, fetchComments, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
   setDeliveryProgress, setWorkProgress, uploadPhoto,
 } from '../api';
-import type { PhotoReviewState } from '../api';
+import type { ItemPhoto, PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
 
 function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
@@ -27,7 +27,7 @@ export default function TaskDetail({
 }: { itemId: string; staff: Staff; onClose: () => void; onChanged: (task: DeliveryTask) => void }) {
   const [task, setTask] = useState<DeliveryTask | null>(null);
   const [comments, setComments] = useState<ItemComment[]>([]);
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<ItemPhoto[]>([]);
   const [photoReview, setPhotoReview] = useState<PhotoReviewState | null>(null);
   const [reviewEnforced, setReviewEnforced] = useState(false);
   const [driveBusy, setDriveBusy] = useState(false);
@@ -35,6 +35,7 @@ export default function TaskDetail({
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState<WorkStep | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -112,6 +113,17 @@ export default function TaskDetail({
     finally { setDriveBusy(false); }
   }
 
+  async function removePhoto(photo: ItemPhoto) {
+    if (!window.confirm('この写真をアプリとGoogleドライブから削除します。よろしいですか？')) return;
+    setDeletingPhotoId(photo.id); setError(null); setDriveMessage('');
+    try {
+      await deletePhoto(photo.id);
+      setDriveMessage('写真を削除しました。残りの写真は「Googleドライブに追加」から確認へ再提出してください。');
+      await reload();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setDeletingPhotoId(null); }
+  }
+
   async function send() {
     if (!task || !draft.trim()) return;
     setError(null);
@@ -143,16 +155,21 @@ export default function TaskDetail({
       <div className="card row">
         <span className="muted">写真 {photos.length}枚</span>
         <label className="btn photo-upload">{uploading ? '追加中…' : '写真を追加'}
-          <input type="file" aria-label="商品写真を追加" accept="image/*" multiple disabled={uploading || pending !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+          <input type="file" aria-label="商品写真を追加" accept="image/*" multiple disabled={uploading || pending !== null || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>
-        <button type="button" className="btn" disabled={driveBusy || uploading || photos.length === 0}
+        <button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
           onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブに追加中…' : 'Googleドライブに追加'}</button>
       </div>
       {driveMessage && <p className="ok" role="status">{driveMessage}</p>}
       <div className="product-photos">
-        {photos.length > 0 && <div className="photos">{photos.map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={index}>
-          <img src={url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
-        </a>)}</div>}
+        {photos.length > 0 && <div className="photos">{photos.map((photo, index) => <div className="uploaded-photo" key={photo.id}>
+          <a href={photo.url} target="_blank" rel="noreferrer">
+            <img src={photo.url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
+          </a>
+          <button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={deletingPhotoId !== null || uploading || driveBusy} onClick={() => void removePhoto(photo)}>
+            {deletingPhotoId === photo.id ? '削除中…' : '写真を削除'}
+          </button>
+        </div>)}</div>}
       </div>
       {photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
         写真確認：{photoReview.approved_at ? '完了' : '確認待ち'}
