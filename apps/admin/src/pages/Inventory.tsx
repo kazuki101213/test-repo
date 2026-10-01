@@ -9,6 +9,7 @@ import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { purchaseItemUrl } from '../purchaseUrl';
+import { productSerial } from '../inventory';
 
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -145,6 +146,9 @@ export default function Inventory({ me }: { me: Staff }) {
             </thead>
             <tbody>
               {items.slice(0, visibleCount).map((i, index) => {
+                const serial = productSerial(i.sku, i.lot_seq);
+                const previousSerial = items[index - 1] ? productSerial(items[index - 1].sku, items[index - 1].lot_seq) : null;
+                const nextSerial = items[index + 1] ? productSerial(items[index + 1].sku, items[index + 1].lot_seq) : null;
                 const edit = (field: InventoryField) => setEditFor({ item: i, field });
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
@@ -155,10 +159,10 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryName = i.is_accessory ? i.title : i.model_no || i.title || '—';
                 const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
                 return (
-                <tr key={i.id} aria-rowindex={index + 2} data-lot={i.lot_seq} data-group-end={i.lot_seq !== items[index + 1]?.lot_seq}>
+                <tr key={i.id} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
                   <td>{stacked(<><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</>, 'status')}</td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
-                    {(i.is_accessory || i.lot_seq !== items[index - 1]?.lot_seq) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{i.lot_seq}</button><span> / </span></>}
+                    {(i.is_accessory || serial !== previousSerial) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span></>}
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
