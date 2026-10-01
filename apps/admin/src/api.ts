@@ -159,7 +159,6 @@ export type InventoryItem = ItemView & {
   latest_comment: string | null;
   product_profit: number | null;
   marketplace_item_id: string | null;
-  product_has_sold_before: boolean;
 };
 
 type PurchaseReference = Pick<ItemView, 'id' | 'sku' | 'marketplace' | 'marketplace_url'> & {
@@ -207,13 +206,6 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     return (data ?? []) as InventoryItem[];
   });
   const references = new Map((await fetchPurchaseReferences()).map(row => [row.id, row]));
-  const asins = [...new Set(items.map(item => item.asin).filter((asin): asin is string => Boolean(asin)))];
-  const soldBeforeByAsin = new Map<string, boolean>();
-  for (let offset = 0; offset < asins.length; offset += 500) {
-    const { data, error } = await getSupabase().from('products').select('asin,has_sold_before').in('asin', asins.slice(offset, offset + 500));
-    if (error) throw error;
-    for (const product of data ?? []) soldBeforeByAsin.set(product.asin, product.has_sold_before);
-  }
   const needle = filter.query?.trim().toLocaleLowerCase();
   const filteredItems = needle ? items.filter(item => {
     const reference = references.get(item.id);
@@ -224,7 +216,6 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     items: filteredItems.map(item => ({
       ...item,
       marketplace_item_id: references.get(item.id)?.marketplace_item_id ?? null,
-      product_has_sold_before: soldBeforeByAsin.get(item.asin ?? '') ?? false,
     })),
     count: productCount(filteredItems),
   };
