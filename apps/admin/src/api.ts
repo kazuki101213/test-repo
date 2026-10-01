@@ -159,6 +159,7 @@ export type InventoryItem = ItemView & {
   latest_comment: string | null;
   product_profit: number | null;
   marketplace_item_id: string | null;
+  product_has_sold_before: boolean;
 };
 
 type PurchaseReference = Pick<ItemView, 'id' | 'sku' | 'marketplace' | 'marketplace_url'> & {
@@ -200,20 +201,32 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     if (filter.unsoldOnly) q = q.eq('sale_row_count', 0).neq('status', '返品処理').neq('status', '廃棄');
     if (filter.purchasedFrom) q = q.gte('purchased_at', filter.purchasedFrom);
     if (filter.purchasedTo) q = q.lte('purchased_at', filter.purchasedTo);
-    if (filter.query) {
-      const term = `%${filter.query.replace(/[(),.%_*"\\]/g, ' ')}%`;
-      q = q.or(`sku.ilike.${term},title.ilike.${term},asin.ilike.${term},model_no.ilike.${term}`);
-    }
-
     if (signal) q = q.abortSignal(signal);
     const { data, error } = await q;
     if (error) throw error;
     return (data ?? []) as InventoryItem[];
   });
   const references = new Map((await fetchPurchaseReferences()).map(row => [row.id, row]));
+  const asins = [...new Set(items.map(item => item.asin).filter((asin): asin is string => Boolean(asin)))];
+  const soldBeforeByAsin = new Map<string, boolean>();
+  for (let offset = 0; offset < asins.length; offset += 500) {
+    const { data, error } = await getSupabase().from('products').select('asin,has_sold_before').in('asin', asins.slice(offset, offset + 500));
+    if (error) throw error;
+    for (const product of data ?? []) soldBeforeByAsin.set(product.asin, product.has_sold_before);
+  }
+  const needle = filter.query?.trim().toLocaleLowerCase();
+  const filteredItems = needle ? items.filter(item => {
+    const reference = references.get(item.id);
+    return [item.sku, item.title, item.asin, item.model_no, reference?.marketplace_item_id]
+      .some(value => value?.toLocaleLowerCase().includes(needle));
+  }) : items;
   return {
-    items: items.map(item => ({ ...item, marketplace_item_id: references.get(item.id)?.marketplace_item_id ?? null })),
-    count: productCount(items),
+    items: filteredItems.map(item => ({
+      ...item,
+      marketplace_item_id: references.get(item.id)?.marketplace_item_id ?? null,
+      product_has_sold_before: soldBeforeByAsin.get(item.asin) ?? false,
+    })),
+    count: productCount(filteredItems),
   };
 }
 

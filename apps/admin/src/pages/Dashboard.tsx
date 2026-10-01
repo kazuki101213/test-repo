@@ -40,6 +40,7 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   }, [expenseRevision]);
 
   const current = months.find(m => m.month?.startsWith(japanMonth()));
+  const visibleMonths = months.filter(m => m.month?.slice(0, 7) <= japanMonth());
   const visibleWorkload = workload.filter(w => !hiddenWorkloadNames.has(w.deliverer_name));
 
   return (
@@ -118,7 +119,7 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
               </tr>
             </thead>
             <tbody>
-              {months.map((m) => (
+              {visibleMonths.map((m) => (
                 <tr key={m.month}>
                   <td>{m.month?.slice(0, 7)}</td>
                   {(['仕入数', '仕入金額', '販売数', '売上', '振込金額', '粗利益', '経費', '純利益', '平均利益単価'] as const).map(metric => (
