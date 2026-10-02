@@ -48,7 +48,7 @@ export default function Inventory({ me }: { me: Staff }) {
     } catch (e) {
       if (current !== request.current) return;
       setItems([]); setCount(0);
-      setError(e instanceof Error ? e.message : String(e));
+      setError(e instanceof Error ? e.message : e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e));
     } finally {
       if (current === request.current) setLoading(false);
     }
