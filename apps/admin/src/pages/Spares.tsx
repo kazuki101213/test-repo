@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { MARKETPLACES, fetchSpareAccessories, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
-import { createSpareAccessory, fetchStaff, updateSpareAccessory } from '../api';
+import { createSpareAccessory, findInventoryForSpare, fetchStaff, updateSpareAccessory } from '../api';
 import type { SpareAccessoryField, SpareAccessoryInput } from '../api';
 
 const emptyForm = (owner: Staff | null): SpareAccessoryInput => ({
@@ -19,6 +19,7 @@ export default function Spares({ me }: { me: Staff }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState<SpareAccessoryInput>(() => emptyForm(me.role === 'purchaser' ? me : null));
   const [saving, setSaving] = useState(false);
+  const [autofillBusy, setAutofillBusy] = useState(false);
   const [editFor, setEditFor] = useState<{ row: SpareAccessory; field: SpareAccessoryField } | null>(null);
 
   const reload = useCallback(async () => {
@@ -35,6 +36,30 @@ export default function Spares({ me }: { me: Staff }) {
   function changeOwner(id: string) {
     const owner = staff.find(row => row.id === id);
     setForm(current => ({ ...current, owner_staff_id: owner?.id ?? null, owner_name: owner?.name ?? (id ? current.owner_name : '') }));
+  }
+
+  async function autofillFromUsageSerial(serial: string) {
+    const match = serial.trim().match(/^\d+[a-z]*$/i);
+    if (!match) return;
+    setAutofillBusy(true);
+    try {
+      const item = await findInventoryForSpare(match[0]);
+      if (!item) return;
+      setForm(current => ({
+        ...current,
+        source_sku: item.sku,
+        owner_staff_id: item.purchaser_id ?? current.owner_staff_id,
+        owner_name: item.purchaser_name ?? current.owner_name,
+        purchased_at: item.purchased_at,
+        title: item.title,
+        cost_amount: item.cost_amount,
+        marketplace: item.marketplace,
+        marketplace_item_id: item.marketplace_item_id,
+        tracking_no: item.tracking_no,
+      }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally { setAutofillBusy(false); }
   }
 
   async function add(event: FormEvent) {
@@ -68,10 +93,11 @@ export default function Spares({ me }: { me: Staff }) {
         <label className="field"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
         <label className="field"><span>商品ID</span><input value={form.marketplace_item_id ?? ''} onChange={event => setForm(current => ({ ...current, marketplace_item_id: event.target.value || null }))} /></label>
         <label className="field"><span>追跡番号</span><input value={form.tracking_no ?? ''} onChange={event => setForm(current => ({ ...current, tracking_no: event.target.value || null }))} /></label>
-        <label className="field"><span>利用記録</span><input value={form.usage_note ?? ''} onChange={event => setForm(current => ({ ...current, usage_note: event.target.value || null }))} /></label>
+        <label className="field"><span>利用記録（通番号を入力すると商品情報を反映）</span><input value={form.usage_note ?? ''} onChange={event => setForm(current => ({ ...current, usage_note: event.target.value || null }))} onBlur={event => void autofillFromUsageSerial(event.target.value)} /></label>
+        {autofillBusy && <p className="muted">通番号の商品情報を読み込み中…</p>}
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="toolbar"><button className="btn primary" disabled={saving}>{saving ? '登録中…' : '登録する'}</button><button type="button" className="btn" disabled={saving} onClick={() => setAdding(false)}>閉じる</button></div>
+      <div className="toolbar"><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '登録する'}</button><button type="button" className="btn" disabled={saving || autofillBusy} onClick={() => setAdding(false)}>閉じる</button></div>
     </form>}
     <label className="field"><span>検索</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="品名・担当者・商品ID" /></label>
     {error && !adding && <p className="error">{error}</p>}

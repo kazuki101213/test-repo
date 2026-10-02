@@ -12,7 +12,7 @@ export function candidates(transaction: Obj, orderValue: unknown): { sales: Sale
   if (transaction.transaction_type !== 'Shipment') {
     skip('—', '販売以外の取引（返金・調整等）のため、在庫の販売欄は変更しません。'); return { sales, results };
   }
-  if (!['RELEASED', 'DEFERRED_RELEASED'].includes(String(transaction.status))) {
+  if (transaction.status !== 'RELEASED') {
     skip('—', '金額が保留中、または支払対象か確認できません。'); return { sales, results };
   }
   const order = obj(orderValue), date = order.createdTime;

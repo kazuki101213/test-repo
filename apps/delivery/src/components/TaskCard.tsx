@@ -61,7 +61,7 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
           <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
           <span className="muted">販売先 {task.sales_channel || '—'}</span>
           <CopyableText label="SKU" value={task.sku} />
-          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}型番 <CopyableText label="型番" value={task.title} /></span>
+          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label="型番" value={task.model_no || task.title} /></span>
           <CopyableText label="ASIN" value={task.asin || '—'} />
           <CopyableText label="商品ID" value={task.marketplace_item_id || '—'} />
           <CopyableText label="追跡番号" value={task.tracking_no || '—'} />

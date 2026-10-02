@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
-import type { InventoryItem } from '../api';
-import { fetchItems, fetchStaff, updateInventoryField } from '../api';
+import type { InventoryEdit, InventoryItem } from '../api';
+import { fetchInventoryItem, fetchItems, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
 import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
@@ -26,6 +26,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [loading, setLoading] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
+  const [fullEditFor, setFullEditFor] = useState<InventoryItem | null>(null);
   const [expandedComment, setExpandedComment] = useState<InventoryItem | null>(null);
   const [visibleCount, setVisibleCount] = useState(80);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -90,7 +91,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
       <div className="toolbar">
         <input
-          type="search" placeholder="SKU / 商品名 / ASIN / 型番 / 商品ID" value={query}
+          type="search" placeholder="SKU / 商品名 / ASIN / 型番 / 商品ID / 追跡番号" value={query}
           aria-label="在庫を検索" onChange={(e) => { setQuery(e.target.value); }} style={{ minWidth: 240 }}
         />
         <select aria-label="状態" value={status} onChange={(e) => { setStatus(e.target.value); }}>
@@ -139,7 +140,7 @@ export default function Inventory({ me }: { me: Staff }) {
         <div className="inventory-top-scroll" aria-label="在庫一覧を左右にスクロール" ref={inventoryTopScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTableScrollRef.current)}>
           <div style={{ width: inventoryTableWidth, height: 1 }} />
         </div>
-        <div className="scroll" ref={inventoryTableScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTopScrollRef.current)}>
+        <div className="scroll inventory-bottom-scroll" ref={inventoryTableScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTopScrollRef.current)}>
           <table className="inventory-table" aria-rowcount={items.length + 1} style={{ minWidth: inventoryTableWidth, '--tracking-column-width': `${trackingColumnWidth}px` } as CSSProperties}>
             <thead>
               <tr aria-rowindex={1}>
@@ -170,7 +171,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
                 return (
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
-                  <td>{stacked(<><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</>, 'status')}</td>
+                  <td><button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(i)}><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</button></td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
                     {(i.is_accessory || serial !== previousSerial) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span></>}
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
@@ -194,7 +195,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
                   <td>{stacked(yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
                   <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
-                  <td><button type="button" className="inventory-cell-edit" onClick={() => edit('refund_amount')} title="在庫の払い戻しをクリックして編集">{yen(i.refund_amount)}</button></td>
+                  <td><button type="button" className="inventory-cell-edit" onClick={() => edit('inventory_refund_amount')} title="在庫の払い戻しをクリックして編集">{yen(i.inventory_refund_amount)}</button></td>
                   <td>{stacked(yen(i.amazon_refund_amount), 'amazon_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
                 </tr>
@@ -211,9 +212,87 @@ export default function Inventory({ me }: { me: Staff }) {
       </aside>}
 
       {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
+      {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}
       {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} のコメント</h3><p>{expandedComment.latest_comment}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
     </div>
   );
+}
+
+const fullEditFields: (keyof InventoryEdit)[] = [
+  'title','asin','tracking_no','purchased_at','cost_amount','planned_price','planned_payout',
+  'packed_on','shipped_on','status','memo','purchaser_id','deliverer_id','marketplace',
+  'condition','sales_channel','sold_on','sold_price','payout_amount','refund_amount','inventory_refund_amount',
+  'amazon_refund_amount','non_amazon_refund_amount','marketplace_item_id',
+];
+
+function InventoryFullEditDialog({ item, staff, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
+  const [identity, setIdentity] = useState({ sku: item.sku, lot_seq: item.lot_seq, model_no: item.model_no, product_no: item.product_no });
+  const [values, setValues] = useState<InventoryEdit>(() => ({
+    title: item.title, asin: item.asin, tracking_no: item.tracking_no, purchased_at: item.purchased_at,
+    cost_amount: item.cost_amount, planned_price: item.planned_price, planned_payout: item.planned_payout,
+    packed_on: item.packed_on, shipped_on: item.shipped_on, status: item.status, memo: item.memo,
+    purchaser_id: item.purchaser_id, deliverer_id: item.deliverer_id, marketplace: item.marketplace,
+    condition: item.condition, sales_channel: item.sales_channel, sold_on: item.sold_on,
+    sold_price: item.sold_price, payout_amount: item.payout_amount, refund_amount: item.refund_amount,
+    amazon_refund_amount: item.amazon_refund_amount, non_amazon_refund_amount: item.non_amazon_refund_amount,
+    inventory_refund_amount: item.inventory_refund_amount,
+    marketplace_item_id: item.marketplace_item_id,
+  }));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const dateFields = new Set<keyof InventoryEdit>(['purchased_at','packed_on','shipped_on','sold_on']);
+  const numberFields = new Set<keyof InventoryEdit>(['cost_amount','planned_price','planned_payout','sold_price','payout_amount','refund_amount','inventory_refund_amount','amazon_refund_amount','non_amazon_refund_amount']);
+  function optionsFor(field: keyof InventoryEdit) {
+    if (field === 'status') return STATUSES.map(value => ({ value, label: value }));
+    if (field === 'marketplace') return MARKETPLACES.map(value => ({ value, label: value }));
+    if (field === 'sales_channel') return SALES_CHANNELS.map(value => ({ value, label: value }));
+    if (field === 'condition') return CONDITIONS.map(value => ({ value, label: value }));
+    if (field === 'purchaser_id') return staff.filter(person => person.role !== 'deliverer').map(person => ({ value: person.id, label: person.name }));
+    if (field === 'deliverer_id') return staff.filter(person => person.role === 'deliverer').map(person => ({ value: person.id, label: person.name }));
+    return null;
+  }
+  function set(field: keyof InventoryEdit, text: string) {
+    const value = text === '' ? null : numberFields.has(field) ? Number(text) : text;
+    setValues(current => ({ ...current, [field]: value }) as InventoryEdit);
+  }
+  async function save() {
+    setBusy(true); setError('');
+    try {
+      let current = item;
+      if (identity.lot_seq !== item.lot_seq) {
+        await updateInventoryField(current, 'lot_seq', String(identity.lot_seq));
+        current = await fetchInventoryItem(item.id);
+      }
+      if (identity.sku !== item.sku) {
+        await updateInventoryField(current, 'sku', identity.sku);
+        current = await fetchInventoryItem(item.id);
+      }
+      await updateInventoryItem(current, values);
+      if (identity.product_no !== item.product_no) await updateInventoryField(current, 'product_no', String(identity.product_no ?? ''));
+      if (identity.model_no !== item.model_no) await updateInventoryField(current, 'model_no', String(identity.model_no ?? ''));
+      onSaved();
+    }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setBusy(false); }
+  }
+  return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報を編集">
+    <div className="card inventory-full-edit-panel"><h3>商品情報を編集</h3><p className="sku">{item.sku}</p>
+      <div className="grid cols2">
+        <label className="field"><span>通番号</span><input type="number" min={1} step={1} value={identity.lot_seq} onChange={event => setIdentity(current => ({ ...current, lot_seq: Number(event.target.value) }))} /></label>
+        <label className="field"><span>SKU</span><input value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
+        <label className="field"><span>品番</span><input type="number" min={1} step={1} value={identity.product_no ?? ''} onChange={event => setIdentity(current => ({ ...current, product_no: event.target.value ? Number(event.target.value) : null }))} /></label>
+        <label className="field"><span>型番</span><input value={identity.model_no ?? ''} onChange={event => setIdentity(current => ({ ...current, model_no: event.target.value || null }))} /></label>
+        {fullEditFields.map(field => {
+        const options = optionsFor(field), current = values[field] ?? '';
+        return <label className="field" key={field}><span>{fieldLabels[field]}</span>
+          {options ? <select value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+            : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
+            : <input type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) ? 0 : undefined} step={numberFields.has(field) ? 1 : undefined} value={String(current)} onChange={event => set(field, event.target.value)} />}
+        </label>;
+      })}</div>
+      {error && <div className="error" role="alert">{error}</div>}
+      <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
+    </div>
+  </div>;
 }
 
 const fieldLabels: Record<InventoryField, string> = {
@@ -224,7 +303,7 @@ const fieldLabels: Record<InventoryField, string> = {
   condition: '商品状態', sales_channel: '販売先', sold_on: '販売日',
   sold_price: '販売金額', payout_amount: '振込金額', amazon_refund_amount: 'Amazon返金金額',
   non_amazon_refund_amount: 'Amazon以外からの返金', product_no: '品番', model_no: '型番',
-  lot_seq: '通番号', sku: 'SKU', marketplace_item_id: '商品ID', refund_amount: '在庫の払い戻し',
+  lot_seq: '通番号', sku: 'SKU', marketplace_item_id: '商品ID', refund_amount: '返金合計', inventory_refund_amount: '在庫の払い戻し',
 };
 
 function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
@@ -233,7 +312,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
-  const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
+  const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'inventory_refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
   const options = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
     : field === 'marketplace' ? MARKETPLACES.map(v => ({ value: v, label: v }))
     : field === 'sales_channel' ? SALES_CHANNELS.map(v => ({ value: v, label: v }))

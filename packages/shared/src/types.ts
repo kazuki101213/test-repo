@@ -146,6 +146,7 @@ export interface DeliveryTask {
   status: ItemStatus;
   work_stream: WorkStream | null;
   title: string;
+  model_no: string | null;
   asin: string | null;
   condition: ItemCondition | null;
   purchased_at: string | null;

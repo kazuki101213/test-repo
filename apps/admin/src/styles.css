@@ -163,6 +163,8 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-comment { display: grid; grid-template-rows: repeat(2, 18px); width: 10em; max-width: 100%; line-height: 18px; white-space: nowrap; text-overflow: clip; }
 .inventory-comment span { display: block; overflow: hidden; text-overflow: clip; }
 .inventory-comment-panel { width: min(440px, 100vw); margin: auto; overflow-wrap: anywhere; }
+.inventory-full-edit-panel { width: min(1000px, 96vw); max-height: 94vh; overflow: auto; margin: auto; }
+.inventory-bottom-scroll { overflow-x: hidden; }
 .inventory-table .btn { padding: 5px 10px; }
 .inventory-table .virtual-spacer > td { padding: 0; border: 0; }
 .inventory-table .virtual-spacer:hover { background: transparent; }
