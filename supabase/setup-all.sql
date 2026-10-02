@@ -3947,6 +3947,7 @@ create index if not exists items_product_serial_financial_idx
   on app.items (app.product_serial(sku, lot_seq))
   include (refund_amount, inventory_refund_amount, shipping_cost, other_cost);
 
+
 -- ▼▼▼ 20261002190000_materialize_inventory_product_groups.sql ▼▼▼
 
 -- Compute product rollups once per request and join each item through the
@@ -3962,4 +3963,5 @@ from app.v_items i
 join groups g on g.serial_key=app.product_serial(i.sku,i.lot_seq);
 
 grant select on app.v_inventory_items to authenticated;
+
 
