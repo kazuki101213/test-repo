@@ -31,7 +31,8 @@ export async function createSpareAccessory(input: SpareAccessoryInput): Promise<
 export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no'> & { marketplace_item_id: string | null }) | null> {
   const match = serial.trim().match(/^([0-9]+[a-z]*)$/i);
   if (!match) return null;
-  const key = match[1].toUpperCase();
+  const key = match[1]?.toUpperCase();
+  if (!key) return null;
   const lot = Number(key.match(/^\d+/)?.[0]);
   if (!Number.isSafeInteger(lot)) return null;
   const { data, error } = await getSupabase().from('v_items')

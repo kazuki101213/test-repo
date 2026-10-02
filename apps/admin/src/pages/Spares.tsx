@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { MARKETPLACES, fetchSpareAccessories, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
-import { createSpareAccessory, fetchInventoryForSpare, fetchStaff, updateSpareAccessory } from '../api';
+import { createSpareAccessory, findInventoryForSpare, fetchStaff, updateSpareAccessory } from '../api';
 import type { SpareAccessoryField, SpareAccessoryInput } from '../api';
 
 const emptyForm = (owner: Staff | null): SpareAccessoryInput => ({
@@ -43,7 +43,7 @@ export default function Spares({ me }: { me: Staff }) {
     if (!match) return;
     setAutofillBusy(true);
     try {
-      const item = await fetchInventoryForSpare(match[0]);
+      const item = await findInventoryForSpare(match[0]);
       if (!item) return;
       setForm(current => ({
         ...current,
