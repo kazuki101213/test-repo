@@ -46,6 +46,32 @@ export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemV
   return { ...row, marketplace_item_id: reference.marketplace_item_id } as Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no'> & { marketplace_item_id: string | null };
 }
 
+export type AmazonReturnSource = Pick<ItemInsert,
+  'purchaser_id' | 'deliverer_id' | 'work_stream' | 'purchased_at' | 'title' | 'cost_amount' |
+  'product_id' | 'asin' | 'condition' | 'planned_price' | 'planned_payout' | 'sales_channel'
+> & { original_sku: string; sku: string; model_no: string | null };
+
+export async function findInventoryForAmazonReturn(lotSeq: number): Promise<AmazonReturnSource | null> {
+  if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return null;
+  const { data, error } = await getSupabase().from('v_inventory_display')
+    .select('sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,cost_amount,product_id,asin,model_no,condition,planned_price,planned_payout,sales_channel')
+    .eq('lot_seq', lotSeq).eq('is_accessory', false);
+  if (error) throw error;
+  const rows = (data ?? []) as Array<AmazonReturnSource & { lot_seq: number; is_accessory: boolean }>;
+  if (!rows.length) return null;
+  const rootSku = new RegExp(`^${lotSeq}-`, 'i');
+  const source = rows.find(row => rootSku.test(row.sku)) ?? rows[0];
+  const nextSuffixLength = Math.max(0, ...rows.map(row => {
+    const match = row.sku.match(/^\d+([a-z]*)-/i);
+    return match?.[1].length ?? 0;
+  })) + 1;
+  return {
+    ...source,
+    original_sku: source.sku,
+    sku: source.sku.replace(/^\d+[a-z]*(?=-)/i, `${lotSeq}${'a'.repeat(nextSuffixLength)}`),
+  };
+}
+
 export async function updateSpareAccessory(id: string, field: SpareAccessoryField, value: string | number | null): Promise<void> {
   const { data, error } = await getSupabase().from('spare_accessories').update({ [field]: value }).eq('id', id).select('id').maybeSingle();
   if (error) throw error;

@@ -7,7 +7,7 @@ import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
   SpareAccessory,
 } from '@bussan/shared';
-import { createItem, fetchCards, fetchProducts, fetchStaff, nextLotSeq } from '../api';
+import { createItem, fetchCards, fetchInventoryForAmazonReturn, fetchProducts, fetchStaff, nextLotSeq } from '../api';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -40,6 +40,8 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [asin, setAsin] = useState('');
   const [cost, setCost] = useState<number | ''>('');
   const [marketplace, setMarketplace] = useState<Marketplace>('メルカリ');
+  const [returnSku, setReturnSku] = useState<string | null>(null);
+  const [returnLookup, setReturnLookup] = useState('');
   const [marketplaceItemId, setMarketplaceItemId] = useState('');
   const [urlOverride, setUrlOverride] = useState<string | null>(null);
   const generatedReference = buildPurchaseUrl(marketplace, marketplaceItemId);
@@ -104,6 +106,45 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
     const spareOwner = staff.find(row => row.id === selectedSpare.owner_staff_id && row.role !== 'deliverer' && purchaserNames.includes(row.name));
     if (spareOwner) setPurchaserId(spareOwner.id);
   }, [selectedSpare, staff]);
+  useEffect(() => {
+    if (marketplace !== 'Amazon返品' || lotSeq === '') {
+      setReturnSku(null);
+      setReturnLookup('');
+      return;
+    }
+    let active = true;
+    setReturnLookup('読み込み中…');
+    void fetchInventoryForAmazonReturn(Number(lotSeq)).then(source => {
+      if (!active) return;
+      if (!source) {
+        setReturnSku(null);
+        setReturnLookup(`通番号 ${lotSeq} の本体が見つかりません。通番号を確認してください。`);
+        return;
+      }
+      setReturnSku(source.sku);
+      setPurchaserId(current => source.purchaser_id ?? current);
+      setDelivererId(current => source.deliverer_id ?? current);
+      setWorkStream(source.work_stream ?? '');
+      setPurchasedAt(source.purchased_at ?? today());
+      setTitle(source.title);
+      setCost(source.cost_amount);
+      setProductId(source.product_id ?? '');
+      setProductSearch(source.model_no || source.title);
+      setAsin(source.asin ?? '');
+      setCondition(source.condition ?? '');
+      setPlannedPrice(source.planned_price ?? '');
+      setPlannedPayout(source.planned_payout ?? '');
+      setSalesChannel(source.sales_channel ?? 'FBA');
+      setMarketplaceItemId('');
+      setTrackingNo('');
+      setCardId('');
+      setUrlOverride(null);
+      setReturnLookup(`元商品 ${source.original_sku} の情報を反映しました。新しい返品SKU: ${source.sku}`);
+    }).catch(cause => {
+      if (active) setReturnLookup(cause instanceof Error ? cause.message : String(cause));
+    });
+    return () => { active = false; };
+  }, [marketplace, lotSeq]);
   const matchingProducts = products;
 
   const purchaser = staff.find((s) => s.id === purchaserId);
@@ -133,6 +174,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
     setDone(null);
     try {
       if (!purchaser || purchaser.role === 'deliverer' || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
+      if (marketplace === 'Amazon返品' && !returnSku) throw new Error('Amazon返品は、元商品の通番号を入力して情報を読み込んでください。');
       if (marketplaceUrl.trim()) {
         let url: URL;
         try { url = new URL(marketplaceUrl.trim()); }
@@ -140,6 +182,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('仕入先URLの形式を確認してください。');
       }
       const payload: ItemInsert = {
+        ...(marketplace === 'Amazon返品' && returnSku ? { sku: returnSku } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
         is_accessory: workStream === '付属品',
         purchaser_id: purchaserId,
@@ -172,6 +215,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       setDone(`登録しました: ${created.sku}`);
       // 続けて同じ商品の仕入れを登録できるよう、通番号と担当者は残す
       setTitle(''); setAsin(''); setProductSearch(''); setCost(''); setMarketplaceItemId(''); setTrackingNo(''); setUrlOverride(null);
+      if (marketplace === 'Amazon返品') { setLotSeq(''); setReturnSku(null); setReturnLookup(''); }
       setProductId(''); setNote(''); setTemplatesOpen(false);
       onSaved?.();
     } catch (e2) {
@@ -279,9 +323,10 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                   {WORK_STREAMS.map((w) => <option key={w} value={w}>{workStreamLabels[w]}</option>)}
                 </select>
               </label>
-              <label className="field"><span>通番号</span>
+              <label className="field"><span>{marketplace === 'Amazon返品' ? '元商品の通番号' : '通番号'}</span>
                 <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
               </label>
+              {marketplace === 'Amazon返品' && <p className="sub" role="status" style={{ gridColumn: '1 / -1', margin: 0 }}>{returnLookup || '元商品の通番号を入力すると、商品情報を読み込みます。'}</p>}
               <label className="field"><span>使用する予備付属品</span>
                 <select value={spareId} size={6} onChange={e => setSpareId(e.target.value)}>
                   <option value="">使用しない</option>
