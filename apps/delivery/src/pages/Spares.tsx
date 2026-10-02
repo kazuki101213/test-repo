@@ -30,7 +30,7 @@ export default function Spares({ staff }: { staff: Staff }) {
     return () => { active = false; };
   }, [staff.id, staff.role, delivererId]);
 
-  const shown = rows.filter(row => [row.title, row.source_sku, row.marketplace_item_id, row.tracking_no, row.owner_name]
+  const shown = rows.filter(row => !row.used_for_item_id && [row.title, row.source_sku, row.marketplace_item_id, row.tracking_no, row.owner_name]
     .some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
   return <section className="card">
     <h2>予備一覧</h2>
