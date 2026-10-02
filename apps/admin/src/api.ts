@@ -294,15 +294,16 @@ export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
 }
 
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
-  if (input.is_accessory) {
-    if (!input.lot_seq) throw new Error('付属品には本体と同じ通番号を入力してください。');
+  const normalizedInput = input.marketplace === 'Amazon返品' ? { ...input, is_accessory: false } : input;
+  if (normalizedInput.is_accessory) {
+    if (!normalizedInput.lot_seq) throw new Error('付属品には本体と同じ通番号を入力してください。');
     const { data: parent, error: parentError } = await getSupabase()
-      .from('items').select('id').eq('lot_seq', input.lot_seq).eq('is_accessory', false).limit(1);
+      .from('items').select('id').eq('lot_seq', normalizedInput.lot_seq).eq('is_accessory', false).limit(1);
     if (parentError) throw parentError;
     if (!parent?.length) throw new Error('この通番号の本体が見つかりません。本体を先に登録してください。');
   }
   const { data, error } = await getSupabase()
-    .from('items').insert(input).select('id, sku').single();
+    .from('items').insert(normalizedInput).select('id, sku').single();
   if (error) throw error;
   return data as { id: string; sku: string };
 }

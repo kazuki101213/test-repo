@@ -185,7 +185,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         ...(marketplace === 'Amazon返品' && returnSku ? { sku: returnSku } : {}),
         ...(marketplace === 'Amazon返品' ? { status: 'Amazon返品' as const } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
-        is_accessory: workStream === '付属品',
+        is_accessory: marketplace !== 'Amazon返品' && workStream === '付属品',
         purchaser_id: purchaserId,
         deliverer_id: delivererId || null,
         work_stream: workStream || null,
