@@ -45,10 +45,10 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 .grid { display: grid; gap: 12px; }
 .grid.kpi { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 .invoice-tasks { grid-column: span 2; min-width: 0; }
-.tracking-tasks { min-width: 0; border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }
-.tracking-tasks .toolbar { gap: 8px; margin-bottom: 10px; }
-.tracking-tasks .toolbar span { color: var(--muted); font-size: 12px; }
-.tracking-tasks small { display: block; color: var(--muted); margin-top: 3px; }
+.tracking-task-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.tracking-task-content { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tracking-task-content small { color: var(--muted); overflow-wrap: anywhere; }
+.tracking-task-row .btn { flex: 0 0 auto; }
 .invoice-tasks .toolbar { gap: 8px; margin-bottom: 10px; }
 .invoice-tasks .toolbar h3 { margin: 0; }
 .invoice-tasks .toolbar span { color: var(--muted); font-size: 12px; }

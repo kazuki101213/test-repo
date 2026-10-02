@@ -17,18 +17,23 @@ type TrackingTask = {
 
 export default function TrackingTasks() {
   const [rows, setRows] = useState<TrackingTask[]>([]);
-  const [showDone, setShowDone] = useState(false);
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
     const { data, error: queryError } = await getSupabase().from('marketplace_tracking_tasks')
       .select('id,marketplace,account_label,marketplace_item_id,sku,app_tracking_no,site_tracking_no,confirmation_status,details,state,created_at')
-      .eq('state', showDone ? '確認済み' : '未確認').order('created_at', { ascending: false }).limit(200);
+      .eq('state', '未確認').order('created_at', { ascending: false }).limit(200);
     if (queryError) throw queryError;
     setRows((data ?? []) as TrackingTask[]);
-  }, [showDone]);
+  }, []);
 
-  useEffect(() => { void refresh().catch(e => setError(e instanceof Error ? e.message : String(e))); }, [refresh]);
+  useEffect(() => {
+    let active = true;
+    const load = () => void refresh().catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); });
+    load();
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') load(); }, 30000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [refresh]);
 
   async function markChecked(id: string) {
     setError('');
@@ -38,23 +43,16 @@ export default function TrackingTasks() {
     await refresh();
   }
 
-  return <div className="tracking-tasks" aria-label="タスク一覧">
-    <div className="toolbar"><span>追跡番号の確認待ち {rows.length}件</span>
-      <select aria-label="追跡番号タスクの状態" value={showDone ? 'done' : 'open'} onChange={e => setShowDone(e.target.value === 'done')}>
-        <option value="open">未確認</option><option value="done">確認済み</option>
-      </select>
-      <button className="btn" type="button" onClick={() => void refresh().catch(e => setError(String(e)))}>更新</button>
-    </div>
-    {error && <p className="error">{error}</p>}
-    {rows.length === 0 ? <p className="empty">追跡番号に関する対応はありません。</p> : <div className="scroll">
-      <table><thead><tr><th>サイト・アカウント</th><th>サイトの商品ID</th><th>在庫SKU</th><th>アプリ側追跡番号</th><th>サイト側追跡番号</th><th>確認状況</th><th>操作</th></tr></thead>
-        <tbody>{rows.map(row => <tr key={row.id}>
-          <td>{row.marketplace}<small>{row.account_label}</small></td><td>{row.marketplace_item_id}</td><td>{row.sku ?? '—'}</td>
-          <td>{row.app_tracking_no ?? '—'}</td><td>{row.site_tracking_no ?? '—'}</td>
-          <td>{row.confirmation_status}{row.details && <small>{row.details}</small>}</td>
-          <td>{!showDone && <button className="btn" type="button" onClick={() => void markChecked(row.id)}>確認済みにする</button>}</td>
-        </tr>)}</tbody>
-      </table>
-    </div>}
-  </div>;
+  return <>
+    {rows.map(row => <li key={row.id} className="tracking-task-row">
+      <div className="tracking-task-content">
+        <strong>{row.marketplace}・{row.account_label}　{row.confirmation_status}</strong>
+        <small>サイト商品ID：{row.marketplace_item_id ?? '—'} ／ 在庫SKU：{row.sku ?? '—'}</small>
+        <small>アプリ側：{row.app_tracking_no ?? '—'} ／ サイト側：{row.site_tracking_no ?? '—'}</small>
+        {row.details && <small>{row.details}</small>}
+      </div>
+      <button className="btn" type="button" onClick={() => void markChecked(row.id)}>確認済みにする</button>
+    </li>)}
+    {error && <li className="error" role="alert">タスクを読み込めませんでした：{error}<button className="btn" type="button" onClick={() => void refresh().catch(e => setError(String(e)))}>再読み込み</button></li>}
+  </>;
 }
