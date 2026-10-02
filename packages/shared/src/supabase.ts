@@ -78,8 +78,14 @@ export async function loadSession(): Promise<Session | null> {
   return { user: auth.user, staff: staff as Staff };
 }
 
-export async function signIn(email: string, password: string): Promise<void> {
-  const { error } = await getSupabase().auth.signInWithPassword({ email, password });
+export async function signIn(email: string): Promise<void> {
+  const { error } = await getSupabase().auth.signInWithOtp({
+    email: email.trim(),
+    options: {
+      shouldCreateUser: false,
+      emailRedirectTo: location.origin,
+    },
+  });
   if (error) throw error;
 }
 
