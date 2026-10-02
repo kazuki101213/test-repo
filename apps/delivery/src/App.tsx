@@ -33,7 +33,7 @@ export default function App() {
   if (!session) {
     return (
       <>
-        <Login onDone={() => void refresh()} />
+        <Login />
         {error && <div className="app"><div className="error">{error}</div></div>}
       </>
     );
