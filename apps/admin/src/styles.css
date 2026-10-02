@@ -45,9 +45,8 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 .grid { display: grid; gap: 12px; }
 .grid.kpi { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 .invoice-tasks { grid-column: span 2; min-width: 0; }
-.tracking-tasks { grid-column: 1 / -1; min-width: 0; }
+.tracking-tasks { min-width: 0; border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }
 .tracking-tasks .toolbar { gap: 8px; margin-bottom: 10px; }
-.tracking-tasks .toolbar h3 { margin: 0; }
 .tracking-tasks .toolbar span { color: var(--muted); font-size: 12px; }
 .tracking-tasks small { display: block; color: var(--muted); margin-top: 3px; }
 .invoice-tasks .toolbar { gap: 8px; margin-bottom: 10px; }

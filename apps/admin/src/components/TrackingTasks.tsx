@@ -38,15 +38,15 @@ export default function TrackingTasks() {
     await refresh();
   }
 
-  return <section className="card tracking-tasks" aria-label="追跡番号確認タスク">
-    <div className="toolbar"><h3>タスク</h3><span>{showDone ? '確認済み' : '未確認'} {rows.length}件</span>
+  return <div className="tracking-tasks" aria-label="タスク一覧">
+    <div className="toolbar"><span>追跡番号の確認待ち {rows.length}件</span>
       <select aria-label="追跡番号タスクの状態" value={showDone ? 'done' : 'open'} onChange={e => setShowDone(e.target.value === 'done')}>
         <option value="open">未確認</option><option value="done">確認済み</option>
       </select>
       <button className="btn" type="button" onClick={() => void refresh().catch(e => setError(String(e)))}>更新</button>
     </div>
     {error && <p className="error">{error}</p>}
-    {rows.length === 0 ? <p className="empty">追跡番号の確認タスクはありません。</p> : <div className="scroll">
+    {rows.length === 0 ? <p className="empty">追跡番号に関する対応はありません。</p> : <div className="scroll">
       <table><thead><tr><th>サイト・アカウント</th><th>サイトの商品ID</th><th>在庫SKU</th><th>アプリ側追跡番号</th><th>サイト側追跡番号</th><th>確認状況</th><th>操作</th></tr></thead>
         <tbody>{rows.map(row => <tr key={row.id}>
           <td>{row.marketplace}<small>{row.account_label}</small></td><td>{row.marketplace_item_id}</td><td>{row.sku ?? '—'}</td>
@@ -56,5 +56,5 @@ export default function TrackingTasks() {
         </tr>)}</tbody>
       </table>
     </div>}
-  </section>;
+  </div>;
 }
