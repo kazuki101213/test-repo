@@ -171,7 +171,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
                 return (
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
-                  <td><button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(i)}><span className="dot" style={{ background: STATUS_COLORS[i.status] }} />{i.status}</button></td>
+                  <td><button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(i)}><span className="dot" style={{ background: STATUS_COLORS[i.status === 'Amazon返品' ? '作業中' : i.status] }} />{i.status === 'Amazon返品' ? '作業中' : i.status}</button></td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
                     {(i.is_accessory || serial !== previousSerial) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span></>}
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
