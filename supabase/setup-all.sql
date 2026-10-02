@@ -3553,6 +3553,24 @@ create trigger items_keep_accessory_sale_amounts_empty
 before insert or update of is_accessory, sold_price, payout_amount on app.items
 for each row execute function app.keep_accessory_sale_amounts_empty();
 
+-- Accessory sale dates are informational; they must not mark an accessory as
+-- sold because accessories intentionally keep sold_price empty.
+create or replace function app.items_mark_sold()
+returns trigger language plpgsql as $$
+begin
+  if new.sold_on is not null
+     and not new.is_accessory
+     and new.status <> '返品処理'
+     and new.amazon_returned_on is null then
+    new.status := '販売済';
+  end if;
+  if new.returned_on is not null then
+    new.status := '返品処理';
+  end if;
+  return new;
+end;
+$$;
+
 create or replace function app.sync_accessory_sale_date()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
