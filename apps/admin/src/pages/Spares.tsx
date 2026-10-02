@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { MARKETPLACES, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
+import { MARKETPLACES, fetchSpareAccessories, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
 import { createSpareAccessory, fetchStaff, updateSpareAccessory } from '../api';
 import type { SpareAccessoryField, SpareAccessoryInput } from '../api';
@@ -29,7 +29,7 @@ export default function Spares({ me }: { me: Staff }) {
   }, []);
   useEffect(() => { void reload(); fetchStaff().then(setStaff).catch(() => undefined); }, [reload]);
 
-  const filtered = rows.filter(row => [row.title, row.source_sku, row.owner_name, row.marketplace, row.marketplace_item_id, row.tracking_no, row.usage_note]
+  const filtered = rows.filter(row => !row.used_for_item_id && [row.title, row.source_sku, row.owner_name, row.marketplace, row.marketplace_item_id, row.tracking_no, row.usage_note]
     .some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
 
   function changeOwner(id: string) {
@@ -76,9 +76,8 @@ export default function Spares({ me }: { me: Staff }) {
     <label className="field"><span>検索</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="品名・担当者・商品ID" /></label>
     {error && !adding && <p className="error">{error}</p>}
     {loading ? <p>読み込み中…</p> : <div className="scroll"><table><thead><tr>
-      <th>状態</th><th>保管担当</th><th>品名</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>SKU</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>
+      <th>保管担当</th><th>品名</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>SKU</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>
     </tr></thead><tbody>{filtered.map(row => <tr key={row.id}>
-      <td>{spareState(row)}</td>
       <td><EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{row.owner_name || '未設定'}</EditableSpare></td>
       <td><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></td>
       <td><EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare></td>

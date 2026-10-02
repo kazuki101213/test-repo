@@ -25,7 +25,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [products, setProducts] = useState<Product[]>([]);
   const [spares, setSpares] = useState<SpareAccessory[]>([]);
   const [spareId, setSpareId] = useState('');
-  const availableSpares = spares.filter(row => !row.used_for_item_id && !row.usage_note);
+  const availableSpares = spares.filter(row => !row.used_for_item_id);
   const selectedSpare = availableSpares.find(row => row.id === spareId);
 
   const [purchaserId, setPurchaserId] = useState(me.id);
