@@ -7,7 +7,7 @@ import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
   SpareAccessory,
 } from '@bussan/shared';
-import { createItem, fetchCards, fetchInventoryForAmazonReturn, fetchProducts, fetchStaff, nextLotSeq } from '../api';
+import { createItem, fetchCards, findInventoryForAmazonReturn, fetchProducts, fetchStaff, nextLotSeq } from '../api';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -114,7 +114,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
     }
     let active = true;
     setReturnLookup('読み込み中…');
-    void fetchInventoryForAmazonReturn(Number(lotSeq)).then(source => {
+    void findInventoryForAmazonReturn(Number(lotSeq)).then(source => {
       if (!active) return;
       if (!source) {
         setReturnSku(null);

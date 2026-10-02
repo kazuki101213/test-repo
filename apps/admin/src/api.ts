@@ -61,9 +61,10 @@ export async function findInventoryForAmazonReturn(lotSeq: number): Promise<Amaz
   if (!rows.length) return null;
   const rootSku = new RegExp(`^${lotSeq}-`, 'i');
   const source = rows.find(row => rootSku.test(row.sku)) ?? rows[0];
+  if (!source) return null;
   const nextSuffixLength = Math.max(0, ...rows.map(row => {
     const match = row.sku.match(/^\d+([a-z]*)-/i);
-    return match?.[1].length ?? 0;
+    return match?.[1]?.length ?? 0;
   })) + 1;
   return {
     ...source,
