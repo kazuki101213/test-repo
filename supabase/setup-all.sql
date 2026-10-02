@@ -3938,3 +3938,30 @@ $$;
 revoke all on function app.guard_single_product_sale() from public,anon,authenticated;
 
 
+-- ▼▼▼ 20261002180000_inventory_product_serial_lookup_index.sql ▼▼▼
+
+-- Speed up the per-product rollups used by the inventory display view.
+-- Without this expression index, each displayed item scans all inventory rows
+-- to find its product siblings, which makes the page time out as data grows.
+create index if not exists items_product_serial_financial_idx
+  on app.items (app.product_serial(sku, lot_seq))
+  include (refund_amount, inventory_refund_amount, shipping_cost, other_cost);
+
+
+-- ▼▼▼ 20261002190000_materialize_inventory_product_groups.sql ▼▼▼
+
+-- Compute product rollups once per request and join each item through the
+-- product-serial index. PostgreSQL otherwise expands both views and may choose
+-- a nested-loop join that compares every inventory row with every product group.
+create or replace view app.v_inventory_items with (security_invoker = true) as
+with groups as materialized (
+  select * from app.v_product_groups
+)
+select i.*,g.product_row_count,g.product_cost,g.sale_row_count,g.product_sale_conflict,
+  g.product_sold_on,g.product_sold_price,g.product_payout_amount
+from app.v_items i
+join groups g on g.serial_key=app.product_serial(i.sku,i.lot_seq);
+
+grant select on app.v_inventory_items to authenticated;
+
+
