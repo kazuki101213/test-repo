@@ -1,6 +1,6 @@
 import { getSupabase } from '@bussan/shared';
 import type { SaleRow } from './sales';
-import { productCount, readAllRows } from './inventory';
+import { productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import type {
   DelivererWorkload, ItemInsert, ItemView, LedgerRow,
@@ -316,7 +316,7 @@ export async function recordSale(itemId: string, sale: {
 }
 
 export type InventoryEdit = Pick<ItemView,
-  'title' | 'asin' | 'tracking_no' | 'purchased_at' | 'cost_amount' |
+  'title' | 'asin' | 'tracking_no' | 'purchased_at' | 'cost_amount' | 'is_accessory' |
   'planned_price' | 'planned_payout' | 'packed_on' | 'shipped_on' | 'status' |
   'memo' | 'purchaser_id' | 'deliverer_id' | 'marketplace' | 'condition' |
   'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount' | 'refund_amount'
@@ -338,6 +338,14 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
   }
   if (fields.status === '販売済' && (!fields.sold_on || fields.sold_price === null)) throw new Error('販売済にする場合は販売日・価格を入力してください。');
   if (!!fields.sold_on !== (fields.sold_price !== null)) throw new Error('販売日と販売金額は両方入力してください。');
+  if (fields.is_accessory && !item.is_accessory) {
+    const { data: possibleParents, error: parentError } = await getSupabase().from('items')
+      .select('id,sku,lot_seq').eq('lot_seq', item.lot_seq).eq('is_accessory', false);
+    if (parentError) throw parentError;
+    if (!(possibleParents ?? []).some(parent => parent.id !== item.id && productSerial(parent.sku, parent.lot_seq) === productSerial(item.sku, item.lot_seq))) {
+      throw new Error('付属品にするには、同じ商品番号の本体を先に登録してください。');
+    }
+  }
   const { data, error } = await getSupabase().from('items').update({ ...fields, title })
     .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
@@ -387,6 +395,22 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
     return;
   }
   if (field === 'product_no') return updateProductNumber(item, text ? Number(text) : null);
+  if (field === 'is_accessory') {
+    const isAccessory = text === 'true';
+    if (isAccessory && !item.is_accessory) {
+      const { data: possibleParents, error: parentError } = await getSupabase().from('items')
+        .select('id,sku,lot_seq').eq('lot_seq', item.lot_seq).eq('is_accessory', false);
+      if (parentError) throw parentError;
+      if (!(possibleParents ?? []).some(parent => parent.id !== item.id && productSerial(parent.sku, parent.lot_seq) === productSerial(item.sku, item.lot_seq))) {
+        throw new Error('付属品にするには、同じ商品番号の本体を先に登録してください。');
+      }
+    }
+    const { data, error } = await getSupabase().from('items').update({ is_accessory: isAccessory })
+      .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
+    return;
+  }
   if (field === 'asin' && item.product_id) {
     const { error } = await getSupabase().from('products').update({ asin: text || null }).eq('id', item.product_id);
     if (error) throw error;
