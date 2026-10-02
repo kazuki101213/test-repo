@@ -29,6 +29,8 @@ export default function Inventory({ me }: { me: Staff }) {
   const [expandedComment, setExpandedComment] = useState<InventoryItem | null>(null);
   const [visibleCount, setVisibleCount] = useState(80);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const inventoryTopScrollRef = useRef<HTMLDivElement>(null);
+  const inventoryTableScrollRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async (quiet = false) => {
     const current = ++request.current;
@@ -74,8 +76,11 @@ export default function Inventory({ me }: { me: Staff }) {
     observer.observe(el);
     return () => observer.disconnect();
   }, [items.length, visibleCount]);
-  const trackingColumnWidth = items.reduce((width, item) => Math.max(width, (item.tracking_no?.length ?? 0) * 10 + 32), 360);
+  const trackingColumnWidth = items.reduce((width, item) => Math.max(width, Math.min(232, (Array.from(item.tracking_no ?? '').length) * 10 + 32)), 140);
   const inventoryTableWidth = Math.max(2550, 2190 + trackingColumnWidth);
+  const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
+    if (source && target && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
+  };
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
@@ -130,7 +135,11 @@ export default function Inventory({ me }: { me: Staff }) {
       {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
       {!loading && items.length > 0 && (
-        <div className="scroll">
+        <>
+        <div className="inventory-top-scroll" aria-label="在庫一覧を左右にスクロール" ref={inventoryTopScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTableScrollRef.current)}>
+          <div style={{ width: inventoryTableWidth, height: 1 }} />
+        </div>
+        <div className="scroll" ref={inventoryTableScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTopScrollRef.current)}>
           <table className="inventory-table" aria-rowcount={items.length + 1} style={{ minWidth: inventoryTableWidth, '--tracking-column-width': `${trackingColumnWidth}px` } as CSSProperties}>
             <thead>
               <tr aria-rowindex={1}>
@@ -175,7 +184,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit inventory-marketplace-name" onClick={() => edit('marketplace')} title="仕入先を編集">{i.marketplace}</button>
                     <button type="button" className="inventory-cell-edit inventory-marketplace-item-id" onClick={() => edit('marketplace_item_id')} title="商品IDをクリックして編集">{i.marketplace_item_id || '—'}</button>
-                    <button type="button" className="inventory-cell-edit inventory-tracking-number" onClick={() => edit('tracking_no')} title="追跡番号をクリックして編集">{i.tracking_no || '—'}</button>
+                    <button type="button" className="inventory-cell-edit inventory-tracking-number" onClick={() => edit('tracking_no')} title="追跡番号をクリックして編集">{Array.from(i.tracking_no ?? '').slice(0, 20).join('') || '—'}</button>
                   </div></td>
                   <td>{stacked(jpDate(i.purchased_at), 'purchased_at', yen(i.cost_amount), 'cost_amount')}</td>
                   <td>{stacked(i.sales_channel ?? '—', 'sales_channel', i.condition ?? '—', 'condition')}</td>
@@ -193,6 +202,7 @@ export default function Inventory({ me }: { me: Staff }) {
             </tbody>
           </table>
         </div>
+        </>
       )}
       {visibleCount < items.length && <div ref={loadMoreRef} className="toolbar"><button className="btn" onClick={() => setVisibleCount(current => Math.min(current + 80, items.length))}>さらに表示</button></div>}
       </section>
