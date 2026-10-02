@@ -5,7 +5,7 @@ type TrackingTask = {
   id: string;
   marketplace: string;
   account_label: string;
-  marketplace_item_id: string;
+  marketplace_item_id: string | null;
   sku: string | null;
   app_tracking_no: string | null;
   site_tracking_no: string | null;
