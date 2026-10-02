@@ -7,6 +7,7 @@ import { japanMonth } from '../sales';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
 import WorkloadDetail from '../components/WorkloadDetail';
 import InvoiceTasks from '../components/InvoiceTasks';
+import TrackingTasks from '../components/TrackingTasks';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
 
@@ -51,7 +52,7 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
       {error && <div className="error">{error}</div>}
 
       <div className="grid kpi">
-        {isAdmin && <InvoiceTasks onApproved={() => setExpenseRevision(n => n + 1)} />}
+        {isAdmin && <><InvoiceTasks onApproved={() => setExpenseRevision(n => n + 1)} /><TrackingTasks /></>}
         <div className="card sales-summary-card">
           <div className="kpi-label">今月の販売</div>
           <div className="sales-kpi-line"><span>今月の売上</span><strong>{yen(current?.売上)} / {current?.販売数 ?? 0} 点</strong></div>
