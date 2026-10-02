@@ -126,6 +126,8 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .inventory-workspace.with-purchase { grid-template-columns: minmax(320px, 1fr) minmax(340px, 420px); }
 .inventory-list { min-width: 0; }
+.inventory-top-scroll { height: 18px; margin: 0 0 4px; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.inventory-top-scroll > div { pointer-events: none; }
 @media (min-width: 861px) {
   .inventory-workspace { min-height: calc(100dvh - 84px); }
   .inventory-list { display: flex; flex-direction: column; min-height: 0; }
