@@ -211,7 +211,7 @@ export async function fetchSaleRows(): Promise<SaleRow[]> {
 export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal): Promise<{ items: InventoryItem[]; count: number }> {
   const items = await readAllRows<InventoryItem>(async (from, to) => {
     let q = getSupabase().from('v_inventory_display').select('*')
-      .order('lot_seq', { ascending: false }).order('sku').order('is_accessory')
+      .order('lot_seq', { ascending: false }).order('is_accessory').order('sku')
       .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
       .range(from, to);
 
