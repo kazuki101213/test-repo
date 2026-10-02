@@ -194,7 +194,26 @@ export async function handler(req: Request): Promise<Response> {
         .eq('account_key', accountKey).eq('marketplace_id', marketplace).eq('transaction_id', body.transactionId).maybeSingle();
       if (readError) throw new SafeError(503, '照合する履歴を読み込めません。');
       if (!transaction) throw new SafeError(404, '先にAmazonの販売情報を取得してください。');
-      if (transaction.transaction_type !== 'Shipment' || !['RELEASED', 'DEFERRED_RELEASED'].includes(transaction.status)) {
+      const normalizedType = String(transaction.transaction_type ?? '').toLowerCase();
+      const isInventoryReimbursement = ['inventory reimbursement', 'inventoryreimbursement', 'fba inventory reimbursement', 'fbainventoryreimbursement', 'fba_inventory_reimbursement'].includes(normalizedType);
+      if (isInventoryReimbursement || normalizedType === 'refund') {
+        if (!['RELEASED', 'DEFERRED_RELEASED'].includes(String(transaction.status))) {
+          return respond(200, { results: [{ sku: '—', status: 'review', reason: '金額が確定していない取引のため反映しません。' }] });
+        }
+        const writer = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false } });
+        const skus = [...new Set(list(transaction.item_breakdowns).map(obj).map(item => item.sku).filter((sku): sku is string => typeof sku === 'string' && sku.length > 0))];
+        if (!skus.length) return respond(200, { results: [{ sku: '—', status: 'review', reason: '取引にSKU別の金額情報がありません。' }] });
+        const results = [];
+        for (const sku of skus) {
+          const { data: result, error } = await writer.rpc('apply_amazon_refund', {
+            p_account: accountKey, p_transaction: transaction.transaction_id, p_sku: sku, p_actor: actorId,
+          });
+          if (error) throw new SafeError(503, 'Amazonの返金情報を在庫へ反映できませんでした。再照合できます。');
+          results.push({ sku, ...result });
+        }
+        return respond(200, { results });
+      }
+      if (transaction.transaction_type !== 'Shipment' || transaction.status !== 'RELEASED') {
         return respond(200, { results: candidates(transaction, null).results });
       }
       if (typeof transaction.order_id !== 'string' || !/^\d{3}-\d{7}-\d{7}$/.test(transaction.order_id)) {

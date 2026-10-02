@@ -83,7 +83,7 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
       <button className="btn" disabled={busy} onClick={() => void run(false)}>保存済み履歴から再照合</button>
       {busy && <button className="btn" onClick={() => { stop.current = true; }}>現在の処理後に停止</button>}
     </div>
-    <p className="sub">振込額は商品別の控除後金額です。銀行への着金確認ではありません。保留・返金・複数個販売は自動記入しません。Amazonへの更新は行いません。</p>
+    <p className="sub">振込額は商品別の控除後金額です。銀行への着金確認ではありません。返金・在庫の払い戻しはSKUと取引種類に応じて反映します。支払い未実行の取引と複数個販売は自動記入しません。Amazonへの更新は行いません。</p>
     {notice && <p role="status">{notice}</p>}
     {error && <div className="error" role="alert">{error}</div>}
     {results.length > 0 && <div className="scroll"><table><thead><tr><th>SKU</th><th>照合結果</th></tr></thead><tbody>{results.map((r, i) => <tr key={i}><td className="sku">{r.sku}</td><td>{r.reason}</td></tr>)}</tbody></table></div>}

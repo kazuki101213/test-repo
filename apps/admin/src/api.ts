@@ -28,6 +28,23 @@ export async function createSpareAccessory(input: SpareAccessoryInput): Promise<
   if (error) throw error;
 }
 
+export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no'> & { marketplace_item_id: string | null }) | null> {
+  const match = serial.trim().match(/^([0-9]+[a-z]*)$/i);
+  if (!match) return null;
+  const key = match[1].toUpperCase();
+  const lot = Number(key.match(/^\d+/)?.[0]);
+  if (!Number.isSafeInteger(lot)) return null;
+  const { data, error } = await getSupabase().from('v_items')
+    .select('id,sku,title,purchaser_id,purchaser_name,purchased_at,cost_amount,marketplace,tracking_no,lot_seq,is_accessory')
+    .eq('lot_seq', lot).eq('is_accessory', false).limit(100);
+  if (error) throw error;
+  const row = (data ?? []).find(item => item.sku.toUpperCase().startsWith(`${key}-`) || item.sku.toUpperCase().startsWith(`${key}_`));
+  if (!row) return null;
+  const { data: reference, error: refError } = await getSupabase().from('items').select('marketplace_item_id').eq('id', row.id).single();
+  if (refError) throw refError;
+  return { ...row, marketplace_item_id: reference.marketplace_item_id } as Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no'> & { marketplace_item_id: string | null };
+}
+
 export async function updateSpareAccessory(id: string, field: SpareAccessoryField, value: string | number | null): Promise<void> {
   const { data, error } = await getSupabase().from('spare_accessories').update({ [field]: value }).eq('id', id).select('id').maybeSingle();
   if (error) throw error;
@@ -176,6 +193,7 @@ export type InventoryItem = ItemView & {
   product_sold_price: number | null; product_payout_amount: number | null;
   product_id: string | null; product_no: number | null; amazon_image_url: string | null;
   amazon_refund_amount: number; non_amazon_refund_amount: number;
+  inventory_refund_amount: number;
   latest_comment: string | null;
   product_profit: number | null;
   marketplace_item_id: string | null;
@@ -229,7 +247,7 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
   const needle = filter.query?.trim().toLocaleLowerCase();
   const filteredItems = needle ? items.filter(item => {
     const reference = references.get(item.id);
-    return [item.sku, item.title, item.asin, item.model_no, reference?.marketplace_item_id]
+    return [item.sku, item.title, item.asin, item.model_no, item.tracking_no, reference?.marketplace_item_id]
       .some(value => value?.toLocaleLowerCase().includes(needle));
   }) : items;
   return {
@@ -239,6 +257,12 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     })),
     count: productCount(filteredItems),
   };
+}
+
+export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
+  const { data, error } = await getSupabase().from('v_inventory_display').select('*').eq('id', id).single();
+  if (error) throw error;
+  return data as InventoryItem;
 }
 
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
@@ -268,7 +292,7 @@ export type InventoryEdit = Pick<ItemView,
   'planned_price' | 'planned_payout' | 'packed_on' | 'shipped_on' | 'status' |
   'memo' | 'purchaser_id' | 'deliverer_id' | 'marketplace' | 'condition' |
   'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount' | 'refund_amount'
-> & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount' | 'marketplace_item_id'>;
+> & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount' | 'inventory_refund_amount' | 'marketplace_item_id'>;
 
 export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit): Promise<void> {
   const title = fields.title.trim();
@@ -280,7 +304,8 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
       (fields.payout_amount !== null && (!Number.isSafeInteger(fields.payout_amount) || fields.payout_amount < 0)) ||
       !Number.isSafeInteger(fields.refund_amount) || fields.refund_amount < 0 ||
       !Number.isSafeInteger(fields.amazon_refund_amount) || fields.amazon_refund_amount < 0 ||
-      !Number.isSafeInteger(fields.non_amazon_refund_amount) || fields.non_amazon_refund_amount < 0) {
+      !Number.isSafeInteger(fields.non_amazon_refund_amount) || fields.non_amazon_refund_amount < 0 ||
+      !Number.isSafeInteger(fields.inventory_refund_amount) || fields.inventory_refund_amount < 0) {
     throw new Error('金額は0円以上の整数で入力してください。');
   }
   if (fields.status === '販売済' && (!fields.sold_on || fields.sold_price === null)) throw new Error('販売済にする場合は販売日・価格を入力してください。');
@@ -289,6 +314,10 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
     .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
+  if (item.product_id && fields.asin !== item.asin) {
+    const { error: productError } = await getSupabase().from('products').update({ asin: fields.asin }).eq('id', item.product_id);
+    if (productError) throw productError;
+  }
 }
 
 export type ExpenseField = 'incurred_on' | 'category' | 'name' | 'amount';
@@ -330,6 +359,11 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
     return;
   }
   if (field === 'product_no') return updateProductNumber(item, text ? Number(text) : null);
+  if (field === 'asin' && item.product_id) {
+    const { error } = await getSupabase().from('products').update({ asin: text || null }).eq('id', item.product_id);
+    if (error) throw error;
+    return;
+  }
   if (field === 'model_no') {
     if (!item.product_id) throw new Error('商品リストに紐付いていないため型番を編集できません。');
     let query = getSupabase().from('products').update({ model_no: text || null }).eq('id', item.product_id);
@@ -340,11 +374,11 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
     return;
   }
   if (field === 'title' && (!text || text.length > 500)) throw new Error('商品名を入力してください。');
-  const numbers = new Set<InventoryField>(['cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
+  const numbers = new Set<InventoryField>(['cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'inventory_refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
   if (numbers.has(field) && text && (!Number.isSafeInteger(Number(text)) || Number(text) < 0)) throw new Error('金額は0円以上の整数で入力してください。');
   if (field === 'cost_amount' && !text) throw new Error('仕入金額を入力してください。');
   const requiredText = new Set<InventoryField>(['title', 'status', 'marketplace']);
-  const next = numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
+  const next = numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
   const { data, error } = await getSupabase().from('items').update({ [field]: next }).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');

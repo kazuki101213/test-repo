@@ -90,7 +90,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
-      if (q && !members.some(member => [serialNumber(member), String(member.lot_seq ?? ''), member.sku, member.title].some(value => normalizeSearch(value).includes(q)))) return false;
+      if (q && !members.some(member => [serialNumber(member), String(member.lot_seq ?? ''), member.sku, member.model_no, member.title, member.asin, member.marketplace_item_id, member.tracking_no].filter((value): value is string => typeof value === 'string').some(value => normalizeSearch(value).includes(q)))) return false;
       const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;
@@ -104,7 +104,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     <>
       {staff.role === 'admin' && <label className="field"><span>納品担当者の在庫一覧</span><select value={delivererId} onChange={e => { setDelivererId(e.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">すべての担当者</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{deliverer.name}</option>)}</select></label>}
       <input
-        type="search" placeholder="通番号 / SKU / 商品名で検索" aria-label="通番号・SKU・商品名を部分一致で検索"
+        type="search" placeholder="SKU / 型番 / ASIN / 商品ID / 追跡番号で検索" aria-label="SKU・型番・ASIN・商品ID・追跡番号を部分一致で検索"
         value={query} onChange={(e) => setQuery(e.target.value)}
         style={{ marginTop: 12 }}
       />

@@ -107,6 +107,9 @@ const clean = (v) => {
 
 /** '(テ)株式会社コエル' → { name: '株式会社コエル', stream: 'テレビ' } */
 const STREAM_PREFIX = { 'テ': 'テレビ', 'ブ': 'ブルーレイ', '付': '付属品' };
+// These are standalone inventory items, despite blank planned prices and the
+// legacy "(付)" delivery assignment on 2390. Do not import them as attached parts.
+const INVENTORY_STREAM_OVERRIDES = new Map([['2389', 'その他'], ['2390', 'ブルーレイ']]);
 function splitStaffName(raw) {
   const s = String(raw ?? '').trim();
   const m = /^[（(]([^）)]+)[）)]\s*(.+)$/.exec(s);
@@ -272,14 +275,16 @@ function mapLedger(csvPath, accessories, warn) {
     const refundAmount = refunds.reduce((s, [, v]) => s + v, 0);
 
     const plannedPrice = num(r['販売予定価格']);
+    const lotSeq = Number(String(r['通番号'] || m[1]).replace(/\D/g, '')) || null;
+    const workStream = INVENTORY_STREAM_OVERRIDES.get(String(lotSeq)) ?? deliv.stream;
 
     const row = {
       sku,
-      lot_seq: Number(String(r['通番号'] || m[1]).replace(/\D/g, '')) || null,
-      is_accessory: !plannedPrice,
+      lot_seq: lotSeq,
+      is_accessory: workStream === '付属品',
       purchaser_code: purchaserCode,
       deliverer_code: delivererCode,
-      work_stream: deliv.stream,
+      work_stream: workStream,
       purchased_at: purchasedAt,
       title: clean(r['商品名']) ?? '（商品名なし）',
       cost_amount: num(r['仕入金額']) ?? 0,

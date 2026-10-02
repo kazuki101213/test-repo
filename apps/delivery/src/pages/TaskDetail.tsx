@@ -37,6 +37,7 @@ export default function TaskDetail({
   const [uploading, setUploading] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const isDeliveryMaster = staff.role === 'admin' && staff.name === '長部一輝';
 
   const reload = useCallback(async () => {
     try {
@@ -185,7 +186,7 @@ export default function TaskDetail({
               <div className="step" key={s.key} data-done={done}>
               <button
                 className="step-toggle"
-                aria-pressed={done} disabled={pending !== null || uploading || (reviewEnforced && (s.key === 'packed' || s.key === 'shipped') && !photoReview?.approved_at && !done)} onClick={() => void toggle(s.key)}
+                aria-pressed={done} disabled={pending !== null || uploading || (!isDeliveryMaster && reviewEnforced && (s.key === 'packed' || s.key === 'shipped') && !photoReview?.approved_at && !done)} onClick={() => void toggle(s.key)}
               >
                 <span className="check">{done ? '✓' : ''}</span>
                 <span>
@@ -194,14 +195,14 @@ export default function TaskDetail({
               </button>
               {(s.key === 'packed' || s.key === 'shipped') &&
                 <input className="step-date" aria-label={s.key === 'packed' ? '梱包の日付' : '出荷の日付'}
-                  type="date" value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading || (reviewEnforced && !photoReview?.approved_at && !done)}
+                  type="date" value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading || (!isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && !done)}
                   onChange={e => void setStepDate(s.key as 'packed' | 'shipped', e.target.value)} />}
               </div>
             );
           })}
         </div>
       </div>
-      {reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}
+      {!isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}
 
       <DescriptionEditor key={task.id} task={task} onSaved={reload} />
 
