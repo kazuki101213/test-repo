@@ -171,7 +171,10 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
                 return (
                 <tr key={i.id} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
-                  <td><button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(i)}><span className="dot" style={{ background: STATUS_COLORS[i.status === 'Amazon返品' ? '作業中' : i.status] }} />{i.status === 'Amazon返品' ? '作業中' : i.status}</button></td>
+                  <td><div className="inventory-cell-stack">
+                    <button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(i)}><span className="dot" style={{ background: STATUS_COLORS[i.status === 'Amazon返品' ? '作業中' : i.status] }} />{i.status === 'Amazon返品' ? '作業中' : i.status}</button>
+                    <button type="button" className="inventory-cell-edit" title="本体・付属品の登録区分を変更" onClick={() => edit('is_accessory')}>{i.is_accessory ? '付属品' : '本体'}</button>
+                  </div></td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
                     {(i.is_accessory || serial !== previousSerial) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span></>}
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
@@ -219,7 +222,7 @@ export default function Inventory({ me }: { me: Staff }) {
 }
 
 const fullEditFields: (keyof InventoryEdit)[] = [
-  'title','asin','tracking_no','purchased_at','cost_amount','planned_price','planned_payout',
+  'is_accessory','title','asin','tracking_no','purchased_at','cost_amount','planned_price','planned_payout',
   'packed_on','shipped_on','status','memo','purchaser_id','deliverer_id','marketplace',
   'condition','sales_channel','sold_on','sold_price','payout_amount','refund_amount','inventory_refund_amount',
   'amazon_refund_amount','non_amazon_refund_amount','marketplace_item_id',
@@ -228,7 +231,7 @@ const fullEditFields: (keyof InventoryEdit)[] = [
 function InventoryFullEditDialog({ item, staff, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
   const [identity, setIdentity] = useState({ sku: item.sku, lot_seq: item.lot_seq, model_no: item.model_no, product_no: item.product_no });
   const [values, setValues] = useState<InventoryEdit>(() => ({
-    title: item.title, asin: item.asin, tracking_no: item.tracking_no, purchased_at: item.purchased_at,
+    is_accessory: item.is_accessory, title: item.title, asin: item.asin, tracking_no: item.tracking_no, purchased_at: item.purchased_at,
     cost_amount: item.cost_amount, planned_price: item.planned_price, planned_payout: item.planned_payout,
     packed_on: item.packed_on, shipped_on: item.shipped_on, status: item.status, memo: item.memo,
     purchaser_id: item.purchaser_id, deliverer_id: item.deliverer_id, marketplace: item.marketplace,
@@ -243,6 +246,7 @@ function InventoryFullEditDialog({ item, staff, onClose, onSaved }: { item: Inve
   const dateFields = new Set<keyof InventoryEdit>(['purchased_at','packed_on','shipped_on','sold_on']);
   const numberFields = new Set<keyof InventoryEdit>(['cost_amount','planned_price','planned_payout','sold_price','payout_amount','refund_amount','inventory_refund_amount','amazon_refund_amount','non_amazon_refund_amount']);
   function optionsFor(field: keyof InventoryEdit) {
+    if (field === 'is_accessory') return [{ value: 'false', label: '本体' }, { value: 'true', label: '付属品' }];
     if (field === 'status') return STATUSES.map(value => ({ value, label: value }));
     if (field === 'marketplace') return MARKETPLACES.map(value => ({ value, label: value }));
     if (field === 'sales_channel') return SALES_CHANNELS.map(value => ({ value, label: value }));
@@ -252,7 +256,7 @@ function InventoryFullEditDialog({ item, staff, onClose, onSaved }: { item: Inve
     return null;
   }
   function set(field: keyof InventoryEdit, text: string) {
-    const value = text === '' ? null : numberFields.has(field) ? Number(text) : text;
+    const value = field === 'is_accessory' ? text === 'true' : text === '' ? null : numberFields.has(field) ? Number(text) : text;
     setValues(current => ({ ...current, [field]: value }) as InventoryEdit);
   }
   async function save() {
@@ -296,6 +300,7 @@ function InventoryFullEditDialog({ item, staff, onClose, onSaved }: { item: Inve
 }
 
 const fieldLabels: Record<InventoryField, string> = {
+  is_accessory: '登録区分',
   title: '商品名', asin: 'ASIN', tracking_no: '追跡番号', purchased_at: '仕入日',
   cost_amount: '仕入金額', planned_price: '販売予定金額', planned_payout: '振込予定金額',
   packed_on: '梱包日', shipped_on: '出荷日', status: '作業状態', memo: 'メモ',
@@ -314,6 +319,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
   const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
   const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'inventory_refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
   const options = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
+    : field === 'is_accessory' ? [{ value: 'false', label: '本体' }, { value: 'true', label: '付属品' }]
     : field === 'marketplace' ? MARKETPLACES.map(v => ({ value: v, label: v }))
     : field === 'sales_channel' ? SALES_CHANNELS.map(v => ({ value: v, label: v }))
     : field === 'condition' ? CONDITIONS.map(v => ({ value: v, label: v }))
@@ -332,6 +338,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
           : field === 'memo' ? <textarea value={value} onChange={e => setValue(e.target.value)} />
             : <input autoFocus type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={field === 'lot_seq' || field === 'product_no' ? '1' : numberFields.has(field) ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
       </label>
+      {field === 'is_accessory' && value === 'true' && !item.is_accessory && <p className="muted">付属品に変更すると、販売金額と振込金額は自動で空欄になります。</p>}
       {error && <div className="error" role="alert">{error}</div>}
       <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
     </div>
