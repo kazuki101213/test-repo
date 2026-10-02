@@ -79,14 +79,19 @@ export async function loadSession(): Promise<Session | null> {
 }
 
 export async function signIn(email: string): Promise<void> {
-  const { error } = await getSupabase().auth.signInWithOtp({
-    email: email.trim(),
-    options: {
-      shouldCreateUser: false,
-      emailRedirectTo: location.origin,
-    },
+  const sb = getSupabase();
+  const { data, error } = await sb.functions.invoke<{
+    session?: { access_token: string; refresh_token: string };
+  }>('email-only-login', {
+    body: { email: email.trim() },
   });
   if (error) throw error;
+  if (!data?.session?.access_token || !data.session.refresh_token) {
+    throw new Error('ログインセッションを作成できませんでした。');
+  }
+
+  const { error: sessionError } = await sb.auth.setSession(data.session);
+  if (sessionError) throw sessionError;
 }
 
 export async function signOut(): Promise<void> {

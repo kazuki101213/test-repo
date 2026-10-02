@@ -42,3 +42,7 @@ verify_jwt = false
 
 [functions.delivery-photo-delete]
 verify_jwt = false
+
+# Email-only login deliberately creates an authenticated session for the selected staff email.
+[functions.email-only-login]
+verify_jwt = false

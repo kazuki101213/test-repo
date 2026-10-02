@@ -5,18 +5,16 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState('');
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    setNotice('');
     try {
       await signIn(email);
-      setNotice('ログイン用リンクをメールで送信しました。メールを開いてログインしてください。');
+      window.location.reload();
     } catch {
-      setError('ログイン用メールを送信できませんでした。メールアドレスを確認して、もう一度お試しください。');
+      setError('ログインできませんでした。登録済みの担当者メールアドレスを確認してください。');
     } finally {
       setBusy(false);
     }
@@ -32,10 +30,10 @@ export default function Login() {
           onChange={(e) => setEmail(e.target.value)} required
         />
         <button className="btn primary" style={{ width: '100%' }} disabled={busy}>
-          {busy ? '送信中…' : 'ログイン用リンクを送信'}
+          {busy ? 'ログイン中…' : 'ログイン'}
         </button>
+        <p className="muted">入力したメールアドレスの担当者としてログインします。</p>
       </form>
-      {notice && <p role="status">{notice}</p>}
       {error && <div className="error">{error}</div>}
     </div>
   );
