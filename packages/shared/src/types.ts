@@ -61,6 +61,7 @@ export interface ItemInsert {
   sku?: string;
   lot_seq?: number;
   is_accessory?: boolean;
+  status?: ItemStatus;
   /** 仕入れを伴わない行（Amazon返品の再登録など）では空になる */
   purchaser_id?: string | null;
   deliverer_id?: string | null;

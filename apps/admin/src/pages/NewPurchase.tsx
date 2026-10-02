@@ -183,6 +183,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       }
       const payload: ItemInsert = {
         ...(marketplace === 'Amazon返品' && returnSku ? { sku: returnSku } : {}),
+        ...(marketplace === 'Amazon返品' ? { status: 'Amazon返品' as const } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
         is_accessory: workStream === '付属品',
         purchaser_id: purchaserId,

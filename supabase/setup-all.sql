@@ -3522,6 +3522,38 @@ end $$;
 
 -- Mirror a main item's sale date onto its attached accessories while keeping
 -- accessory sale amounts empty to avoid double-counting revenue.
+-- Install the accessory-safe status trigger before backfilling dates, otherwise
+-- old accessory rows are marked sold and violate the sale-price constraint.
+create or replace function app.items_mark_sold()
+returns trigger language plpgsql as $$
+begin
+  if new.sold_on is not null
+     and not new.is_accessory
+     and new.status <> '返品処理'
+     and new.amazon_returned_on is null then
+    new.status := '販売済';
+  end if;
+  if new.returned_on is not null then
+    new.status := '返品処理';
+  end if;
+  return new;
+end;
+$$;
+
+-- Attached accessories carry the parent's sale date but never its revenue.
+-- Permit a sold status with no sale amount for those informational rows.
+alter table app.items drop constraint if exists items_sold_requires_date;
+alter table app.items add constraint items_sold_requires_date check (
+  status <> '販売済' or (sold_on is not null and (sold_price is not null or is_accessory))
+);
+
+-- Show the return source under supplier; retain the special status internally
+-- because delivery and reconciliation workflows use it as a processing marker.
+update app.items
+set marketplace = 'Amazon返品'
+where (status = 'Amazon返品' or amazon_returned_on is not null)
+  and marketplace is distinct from 'Amazon返品';
+
 update app.items accessory
 set sold_on = parent.sold_on, sold_price = null, payout_amount = null
 from app.items parent
@@ -3552,24 +3584,6 @@ drop trigger if exists items_keep_accessory_sale_amounts_empty on app.items;
 create trigger items_keep_accessory_sale_amounts_empty
 before insert or update of is_accessory, sold_price, payout_amount on app.items
 for each row execute function app.keep_accessory_sale_amounts_empty();
-
--- Accessory sale dates are informational; they must not mark an accessory as
--- sold because accessories intentionally keep sold_price empty.
-create or replace function app.items_mark_sold()
-returns trigger language plpgsql as $$
-begin
-  if new.sold_on is not null
-     and not new.is_accessory
-     and new.status <> '返品処理'
-     and new.amazon_returned_on is null then
-    new.status := '販売済';
-  end if;
-  if new.returned_on is not null then
-    new.status := '返品処理';
-  end if;
-  return new;
-end;
-$$;
 
 create or replace function app.sync_accessory_sale_date()
 returns trigger language plpgsql security definer set search_path = '' as $$
@@ -3664,7 +3678,8 @@ begin
   perform pg_advisory_xact_lock(hashtextextended(serial_key,179049));
   if exists(select 1 from app.items i where app.product_serial(i.sku,i.lot_seq)=serial_key and i.id<>new.id
       and i.sold_on is not null and not (i.is_accessory and coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0)
-      and i.amazon_returned_on is null and i.returned_on is null and i.status not in ('Amazon返品','返品処理','廃棄')) then
+      and i.amazon_returned_on is null and i.returned_on is null
+      and i.marketplace is distinct from 'Amazon返品' and i.status not in ('Amazon返品','返品処理','廃棄')) then
     raise exception '同じ商品番号の商品に販売記録があります。返品処理済みの履歴は保持し、重複販売を防止します。';
   end if;
   return new;
@@ -3883,5 +3898,43 @@ set is_accessory=false, work_stream='ブルーレイ'::app.work_stream, updated_
 where sku='2390-AALL-20260929-2500' and is_accessory;
 
 notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261002170000_fix_return_sale_guard.sql ▼▼▼
+
+-- Keep returned items eligible for a new sale without weakening duplicate-sale
+-- protection for items whose supplier is NULL.
+create or replace function app.guard_single_product_sale()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+declare serial_key text;
+begin
+  if TG_OP='UPDATE' and new.sold_on is not distinct from old.sold_on
+    and new.sold_price is not distinct from old.sold_price
+    and new.payout_amount is not distinct from old.payout_amount then
+    return new;
+  end if;
+  if new.sold_on is null
+     or (new.is_accessory and coalesce(new.sold_price,0)=0 and coalesce(new.payout_amount,0)=0) then
+    return new;
+  end if;
+  serial_key:=app.product_serial(new.sku,new.lot_seq);
+  perform pg_advisory_xact_lock(hashtextextended(serial_key,179049));
+  if exists (
+    select 1 from app.items i
+    where app.product_serial(i.sku,i.lot_seq)=serial_key
+      and i.id<>new.id
+      and i.sold_on is not null
+      and not (i.is_accessory and coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0)
+      and i.amazon_returned_on is null
+      and i.returned_on is null
+      and i.marketplace is distinct from 'Amazon返品'
+      and i.status not in ('Amazon返品','返品処理','廃棄')
+  ) then
+    raise exception '同じ商品番号の商品に販売記録があります。返品処理済みの履歴は保持し、重複販売を防止します。';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function app.guard_single_product_sale() from public,anon,authenticated;
 
 
