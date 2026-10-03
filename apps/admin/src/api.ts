@@ -282,8 +282,16 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     return [item.sku, item.title, item.asin, item.model_no, item.tracking_no, reference?.marketplace_item_id]
       .some(value => value?.toLocaleLowerCase().includes(needle));
   }) : items;
+  const groupedItems = [...filteredItems].sort((a, b) =>
+    b.lot_seq - a.lot_seq ||
+    productSerial(a.sku, a.lot_seq).localeCompare(productSerial(b.sku, b.lot_seq), 'en') ||
+    Number(a.is_accessory) - Number(b.is_accessory) ||
+    (b.purchased_at ?? '').localeCompare(a.purchased_at ?? '') ||
+    a.sku.localeCompare(b.sku) ||
+    a.id.localeCompare(b.id),
+  );
   return {
-    items: filteredItems.map(item => ({
+    items: groupedItems.map(item => ({
       ...item,
       marketplace_item_id: references.get(item.id)?.marketplace_item_id ?? null,
     })),
