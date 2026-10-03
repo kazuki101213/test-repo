@@ -17,14 +17,18 @@ export default function GrossProfitSummary({ staff }: { staff: Staff }) {
   useEffect(() => {
     if (staff.role !== 'admin') return;
     let active = true;
-    void getSupabase().from('staff').select('id,name,role').eq('is_active', true).in('role', ['admin', 'purchaser']).order('name')
-      .then(({ data, error }) => {
+    void (async () => {
+      try {
+        const { data, error } = await getSupabase().from('staff').select('id,name,role').eq('is_active', true).in('role', ['admin', 'purchaser']).order('name');
         if (error) throw error;
         if (!active) return;
         const rows = (data ?? []) as Person[];
         setPeople(rows);
         setPurchaserId(current => current || rows[0]?.id || '');
-      }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); });
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    })();
     return () => { active = false; };
   }, [staff.role]);
 

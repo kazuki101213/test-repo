@@ -4147,125 +4147,7 @@ create policy item_comments_select on app.item_comments
   );
 
 
--- ▼▼▼ 20261002210000_preaggregate_inventory_financials.sql ▼▼▼
-
--- The per-row financial rollup in v_inventory_display forces a full RLS-filtered
--- items scan for every item. Aggregate once per statement and join by product key.
-create or replace view app.v_inventory_display with (security_invoker = true) as
-with totals as materialized (
-  select app.product_serial(i.sku, i.lot_seq) as serial_key,
-    sum(i.refund_amount) as refunds,
-    sum(i.inventory_refund_amount) as inventory_refunds,
-    sum(i.shipping_cost) as shipping,
-    sum(i.other_cost) as other_cost
-  from app.items i
-  group by app.product_serial(i.sku, i.lot_seq)
-)
-select inventory.*, raw.product_id, product.product_no, product.image_url as amazon_image_url,
-  raw.amazon_refund_amount, raw.non_amazon_refund_amount, latest.body as latest_comment,
-  case when not inventory.product_sale_conflict and inventory.product_sold_on is not null
-      and inventory.product_payout_amount is not null
-    then inventory.product_payout_amount + totals.refunds + totals.inventory_refunds
-      - inventory.product_cost - totals.shipping - totals.other_cost end as product_profit,
-  raw.inventory_refund_amount
-from app.v_inventory_items inventory
-join app.items raw on raw.id=inventory.id
-left join app.products product on product.id=raw.product_id
-left join totals on totals.serial_key=app.product_serial(raw.sku,raw.lot_seq)
-left join lateral (
-  select body from app.item_comments
-  where item_id=inventory.id
-  order by created_at desc,id desc
-  limit 1
-) latest on true;
-
-grant select on app.v_inventory_display to authenticated;
-
-
--- ▼▼▼ 20261003010000_spare_remote_transfer_and_metadata.sql ▼▼▼
-
-alter table app.spare_accessories
-  add column if not exists manufacturer text,
-  add column if not exists model_no text,
-  add column if not exists asin text;
-
-create or replace function app.move_inventory_accessory_to_spares(
-  p_item_id uuid,
-  p_spare_input jsonb
-) returns uuid
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_item app.items%rowtype;
-  v_spare_id uuid;
-  v_owner_id uuid;
-  v_owner_name text;
-  v_registered_lot integer;
-begin
-  if auth.uid() is null or app.current_role() not in ('admin','purchaser') then
-    raise exception '予備一覧へ登録する権限がありません' using errcode='42501';
-  end if;
-  if p_spare_input is null or jsonb_typeof(p_spare_input) <> 'object' then
-    raise exception 'リモコン情報が不正です' using errcode='22023';
-  end if;
-
-  select * into v_item from app.items where id=p_item_id for update;
-  if not found then raise exception '在庫一覧のリモコン行が見つかりません' using errcode='P0002'; end if;
-  if not v_item.is_accessory or v_item.title not ilike '%リモコン%' then
-    raise exception '対象は付属品登録されたリモコン行ではありません' using errcode='22023';
-  end if;
-  if app.current_role() = 'purchaser' and v_item.purchaser_id is distinct from app.current_staff_id() then
-    raise exception '担当外のリモコン行は移動できません' using errcode='42501';
-  end if;
-  if coalesce(p_spare_input->>'usage_note','') !~ '^[0-9]+[a-z]*$' then
-    raise exception '利用記録に通番号を入力してください' using errcode='22023';
-  end if;
-  v_registered_lot := substring(p_spare_input->>'usage_note' from '^([0-9]+)')::integer;
-  if v_registered_lot is distinct from v_item.lot_seq then
-    raise exception '入力した通番号と在庫行の通番号が一致しません' using errcode='22023';
-  end if;
-
-  v_owner_id := coalesce(nullif(p_spare_input->>'owner_staff_id','')::uuid, v_item.purchaser_id, app.current_staff_id());
-  if app.current_role() = 'purchaser' and v_owner_id is distinct from app.current_staff_id() then
-    raise exception '自分の予備としてのみ登録できます' using errcode='42501';
-  end if;
-  select name into v_owner_name from app.staff where id=v_owner_id;
-  v_owner_name := coalesce(nullif(btrim(p_spare_input->>'owner_name'),''),v_owner_name);
-  if nullif(btrim(p_spare_input->>'title'),'') is null then
-    raise exception '品名を入力してください' using errcode='22023';
-  end if;
-  if coalesce(nullif(p_spare_input->>'cost_amount','')::bigint,v_item.cost_amount) < 0 then
-    raise exception '仕入金額は0円以上で入力してください' using errcode='22023';
-  end if;
-
-  insert into app.spare_accessories (
-    source_sku,owner_staff_id,owner_name,purchased_at,title,manufacturer,model_no,asin,
-    cost_amount,marketplace,marketplace_item_id,tracking_no,usage_note
-  ) values (
-    coalesce(nullif(p_spare_input->>'source_sku',''),v_item.sku),
-    v_owner_id,v_owner_name,
-    coalesce(nullif(p_spare_input->>'purchased_at','')::date,v_item.purchased_at),
-    btrim(p_spare_input->>'title'),
-    nullif(btrim(p_spare_input->>'manufacturer'),''),
-    nullif(btrim(p_spare_input->>'model_no'),''),
-    nullif(btrim(p_spare_input->>'asin'),''),
-    coalesce(nullif(p_spare_input->>'cost_amount','')::bigint,v_item.cost_amount),
-    nullif(p_spare_input->>'marketplace',''),
-    nullif(p_spare_input->>'marketplace_item_id',''),
-    nullif(p_spare_input->>'tracking_no',''),
-    p_spare_input->>'usage_note'
-  ) returning id into v_spare_id;
-
-  delete from app.items where id=v_item.id;
-  return v_spare_id;
-end;
-$$;
-
-revoke all on function app.move_inventory_accessory_to_spares(uuid,jsonb) from public,anon;
-grant execute on function app.move_inventory_accessory_to_spares(uuid,jsonb) to authenticated;
-
+-- ▼▼▼ 20261002201234_delivery_pdf_return_profit_and_auction_workdays.sql ▼▼▼
 
 alter type app.marketplace add value if not exists '動作品Amazon返品';
 
@@ -4496,4 +4378,125 @@ end $$;
 revoke all on function app.fill_delivery_invoice() from public,anon,authenticated;
 
 notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261002210000_preaggregate_inventory_financials.sql ▼▼▼
+
+-- The per-row financial rollup in v_inventory_display forces a full RLS-filtered
+-- items scan for every item. Aggregate once per statement and join by product key.
+create or replace view app.v_inventory_display with (security_invoker = true) as
+with totals as materialized (
+  select app.product_serial(i.sku, i.lot_seq) as serial_key,
+    sum(i.refund_amount) as refunds,
+    sum(i.inventory_refund_amount) as inventory_refunds,
+    sum(i.shipping_cost) as shipping,
+    sum(i.other_cost) as other_cost
+  from app.items i
+  group by app.product_serial(i.sku, i.lot_seq)
+)
+select inventory.*, raw.product_id, product.product_no, product.image_url as amazon_image_url,
+  raw.amazon_refund_amount, raw.non_amazon_refund_amount, latest.body as latest_comment,
+  case when not inventory.product_sale_conflict and inventory.product_sold_on is not null
+      and inventory.product_payout_amount is not null
+    then inventory.product_payout_amount + totals.refunds + totals.inventory_refunds
+      - inventory.product_cost - totals.shipping - totals.other_cost end as product_profit,
+  raw.inventory_refund_amount
+from app.v_inventory_items inventory
+join app.items raw on raw.id=inventory.id
+left join app.products product on product.id=raw.product_id
+left join totals on totals.serial_key=app.product_serial(raw.sku,raw.lot_seq)
+left join lateral (
+  select body from app.item_comments
+  where item_id=inventory.id
+  order by created_at desc,id desc
+  limit 1
+) latest on true;
+
+grant select on app.v_inventory_display to authenticated;
+
+
+-- ▼▼▼ 20261003010000_spare_remote_transfer_and_metadata.sql ▼▼▼
+
+alter table app.spare_accessories
+  add column if not exists manufacturer text,
+  add column if not exists model_no text,
+  add column if not exists asin text;
+
+create or replace function app.move_inventory_accessory_to_spares(
+  p_item_id uuid,
+  p_spare_input jsonb
+) returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_item app.items%rowtype;
+  v_spare_id uuid;
+  v_owner_id uuid;
+  v_owner_name text;
+  v_registered_lot integer;
+begin
+  if auth.uid() is null or app.current_role() not in ('admin','purchaser') then
+    raise exception '予備一覧へ登録する権限がありません' using errcode='42501';
+  end if;
+  if p_spare_input is null or jsonb_typeof(p_spare_input) <> 'object' then
+    raise exception 'リモコン情報が不正です' using errcode='22023';
+  end if;
+
+  select * into v_item from app.items where id=p_item_id for update;
+  if not found then raise exception '在庫一覧のリモコン行が見つかりません' using errcode='P0002'; end if;
+  if not v_item.is_accessory or v_item.title not ilike '%リモコン%' then
+    raise exception '対象は付属品登録されたリモコン行ではありません' using errcode='22023';
+  end if;
+  if app.current_role() = 'purchaser' and v_item.purchaser_id is distinct from app.current_staff_id() then
+    raise exception '担当外のリモコン行は移動できません' using errcode='42501';
+  end if;
+  if coalesce(p_spare_input->>'usage_note','') !~ '^[0-9]+[a-z]*$' then
+    raise exception '利用記録に通番号を入力してください' using errcode='22023';
+  end if;
+  v_registered_lot := substring(p_spare_input->>'usage_note' from '^([0-9]+)')::integer;
+  if v_registered_lot is distinct from v_item.lot_seq then
+    raise exception '入力した通番号と在庫行の通番号が一致しません' using errcode='22023';
+  end if;
+
+  v_owner_id := coalesce(nullif(p_spare_input->>'owner_staff_id','')::uuid, v_item.purchaser_id, app.current_staff_id());
+  if app.current_role() = 'purchaser' and v_owner_id is distinct from app.current_staff_id() then
+    raise exception '自分の予備としてのみ登録できます' using errcode='42501';
+  end if;
+  select name into v_owner_name from app.staff where id=v_owner_id;
+  v_owner_name := coalesce(nullif(btrim(p_spare_input->>'owner_name'),''),v_owner_name);
+  if nullif(btrim(p_spare_input->>'title'),'') is null then
+    raise exception '品名を入力してください' using errcode='22023';
+  end if;
+  if coalesce(nullif(p_spare_input->>'cost_amount','')::bigint,v_item.cost_amount) < 0 then
+    raise exception '仕入金額は0円以上で入力してください' using errcode='22023';
+  end if;
+
+  insert into app.spare_accessories (
+    source_sku,owner_staff_id,owner_name,purchased_at,title,manufacturer,model_no,asin,
+    cost_amount,marketplace,marketplace_item_id,tracking_no,usage_note
+  ) values (
+    coalesce(nullif(p_spare_input->>'source_sku',''),v_item.sku),
+    v_owner_id,v_owner_name,
+    coalesce(nullif(p_spare_input->>'purchased_at','')::date,v_item.purchased_at),
+    btrim(p_spare_input->>'title'),
+    nullif(btrim(p_spare_input->>'manufacturer'),''),
+    nullif(btrim(p_spare_input->>'model_no'),''),
+    nullif(btrim(p_spare_input->>'asin'),''),
+    coalesce(nullif(p_spare_input->>'cost_amount','')::bigint,v_item.cost_amount),
+    nullif(p_spare_input->>'marketplace',''),
+    nullif(p_spare_input->>'marketplace_item_id',''),
+    nullif(p_spare_input->>'tracking_no',''),
+    p_spare_input->>'usage_note'
+  ) returning id into v_spare_id;
+
+  delete from app.items where id=v_item.id;
+  return v_spare_id;
+end;
+$$;
+
+revoke all on function app.move_inventory_accessory_to_spares(uuid,jsonb) from public,anon;
+grant execute on function app.move_inventory_accessory_to_spares(uuid,jsonb) to authenticated;
+
 
