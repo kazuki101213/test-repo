@@ -75,7 +75,7 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
   }
   return <details className="card amazon-sales">
     <summary>Amazon情報更新</summary>
-    <p className="sub" style={{ marginTop: 12 }}>SKU、または同じ通番号の本体行と照合し、注文日・販売価格・商品別の手数料控除後金額を1商品につき1回だけ記入します。仕入先ごとの行は残します。既存の販売記録と異なるものは確認対象になります。</p>
+    <p className="sub" style={{ marginTop: 12 }}>Amazon SP-APIのFinances取引履歴を、設定済みのAmazon認証情報で取得してSupabaseに保存し、SKUで照合します。販売は注文履歴と突き合わせて日付・価格・振込額を反映し、「返金」はAmazon返金金額へ反映します。同一SKUの返金が複数ある場合、計上日時の古い順に通番号、通番号a、通番号aaへ割り当てます。既存額と異なる、または対応行が不足する場合は自動上書きせず確認対象にします。</p>
     <div className="toolbar">
       <label className="field"><span>Amazon計上期間・開始日</span><input type="date" value={start} disabled={busy} onChange={e => setStart(e.target.value)} /></label>
       <label className="field"><span>終了日</span><input type="date" value={end} disabled={busy} onChange={e => setEnd(e.target.value)} /></label>
