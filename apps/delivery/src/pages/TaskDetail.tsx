@@ -194,12 +194,6 @@ export default function TaskDetail({
       {/* ── 作業チェック ─────────────────────────── */}
       <div className="card">
         <strong>作業チェック</strong>
-        {task.malfunction_reported && <p className="ok" role="status">動作不良を管理アプリへ報告済み{task.malfunction_resolved_at ? '（対応済み）' : '（対応待ち）'}</p>}
-        {!task.malfunction_reported && <div className="malfunction-report">
-          <label><input type="checkbox" checked={malfunctionChecked} onChange={e => setMalfunctionChecked(e.target.checked)} disabled={malfunctionBusy} /> 動作不良</label>
-          {malfunctionChecked && <><textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
-            <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '管理アプリに報告'}</button></>}
-        </div>}
         <div className="steps">
           {WORK_STEPS.map((step) => {
             const s = isWorkingAmazonReturn && step.key === 'listing' ? { ...step, label: '商品登録' } : step;
@@ -222,6 +216,26 @@ export default function TaskDetail({
               </div>
             );
           })}
+          <div className="malfunction-step-wrap">
+            <div className="step" data-done={task.malfunction_reported || malfunctionChecked}>
+              <button type="button" className="step-toggle" aria-pressed={task.malfunction_reported || malfunctionChecked}
+                disabled={malfunctionBusy || task.malfunction_reported}
+                onClick={() => setMalfunctionChecked(checked => !checked)}>
+                <span className="check">{task.malfunction_reported || malfunctionChecked ? '✓' : ''}</span>
+                <span><span className="label">動作不良</span><br />
+                  <span className="hint">{task.malfunction_reported
+                    ? `仕入担当者（${task.purchaser_name || '未設定'}）へ報告済み`
+                    : '不具合がある場合に選択して、仕入担当者へ報告します'}</span>
+                </span>
+              </button>
+            </div>
+            {task.malfunction_reported
+              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '仕入担当者への報告は対応済みです。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
+              : malfunctionChecked && <div className="malfunction-report">
+                <textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
+                <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '仕入担当者に報告'}</button>
+              </div>}
+          </div>
         </div>
       </div>
       {!isWorkingAmazonReturn && !isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}

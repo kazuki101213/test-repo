@@ -203,3 +203,10 @@ export async function fetchDeliveryStaff(): Promise<{ id: string; name: string }
   if (error) throw error;
   return data ?? [];
 }
+
+export async function fetchSpareOwners(): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await getSupabase().from('staff').select('id,name')
+    .in('role', ['admin', 'purchaser', 'deliverer']).eq('is_active', true).order('name');
+  if (error) throw error;
+  return data ?? [];
+}
