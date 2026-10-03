@@ -90,6 +90,10 @@ button, input, select, textarea { font: inherit; }
 .step .hint { color: var(--muted); font-size: 12px; }
 .step-date { width:145px; flex:none; min-width:0; padding:7px 4px; font-size:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); }
 @media(max-width:450px) { .step-date { width:132px; } }
+.malfunction-step-wrap { display:grid; gap:8px; }
+.malfunction-status { margin:0 12px; white-space:pre-wrap; }
+.malfunction-report { display:grid; gap:8px; padding:0 12px; }
+.malfunction-report .btn { justify-self:start; }
 
 .progress { display: flex; gap: 4px; margin-top: 10px; }
 .progress span { flex: 1; height: 4px; border-radius: 2px; background: var(--border); }

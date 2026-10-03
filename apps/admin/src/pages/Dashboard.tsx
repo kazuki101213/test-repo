@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { DelivererWorkload, MonthlySummary, StockSummary } from '@bussan/shared';
+import type { Staff } from '@bussan/shared';
 import { fetchMonthly, fetchStockSummary, fetchWorkload, type WorkloadMetric } from '../api';
 import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
 import WorkloadDetail from '../components/WorkloadDetail';
 import InvoiceTasks from '../components/InvoiceTasks';
+import MalfunctionTasks from '../components/MalfunctionTasks';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
 
@@ -21,7 +23,8 @@ function Kpi({ label, value, tone, detail, count }: { label: string; value: stri
   );
 }
 
-export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
+export default function Dashboard({ staff }: { staff: Staff }) {
+  const isAdmin = staff.role === 'admin';
   const [expenseRevision, setExpenseRevision] = useState(0);
   const [stock, setStock] = useState<StockSummary | null>(null);
   const [months, setMonths] = useState<MonthlySummary[]>([]);
@@ -75,6 +78,12 @@ export default function Dashboard({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
         </div>
       </div>
+
+      {staff.role === 'purchaser' && <section className="card" style={{ marginTop: 16 }} aria-label="仕入担当者への報告">
+        <h3>仕入担当者への報告</h3>
+        <p className="muted">納品担当者から届いた動作不良の報告です。</p>
+        <ul className="invoice-task-rows"><MalfunctionTasks staff={staff} /></ul>
+      </section>}
 
       <div className="dashboard-charts">
         <DailySalesChart />
