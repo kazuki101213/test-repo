@@ -1,14 +1,24 @@
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Staff } from '@bussan/shared';
-import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday } from '../invoices';
+import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday, monthlyGrossProfit } from '../invoices';
 import PackedSummary from '../components/PackedSummary';
+import GrossProfitSummary from '../components/GrossProfitSummary';
 import InvoiceSheet from '../components/InvoiceSheet';
 import InvoiceReceipts from '../components/InvoiceReceipts';
 import type { Invoice, InvoiceDetails, InvoiceLine, InvoiceProfile, InvoiceSnapshot } from '../invoices';
 import '../invoice.css';
 
 const errorText = (e: unknown) => e instanceof Error ? e.message : (e as { message?: string })?.message ?? '読み込みに失敗しました。';
+const defaultAuctionDays = (month: string) => {
+  const [year, monthNumber] = month.split('-').map(Number);
+  if (!year || !monthNumber) return [] as string[];
+  const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return Array.from({ length: days }, (_, index) => index + 1)
+    .filter(day => [1, 3, 5].includes(new Date(Date.UTC(year, monthNumber - 1, day)).getUTCDay()))
+    .map(day => `${month}-${String(day).padStart(2, '0')}`);
+};
+const auctionWorkdayLine = (date: string): InvoiceLine => ({ date, description: 'ヤフオク入札作業日', quantity: 1, unit_price: 4500 });
 
 function ProfileEditor({ profile, onSave, onCancel }: { profile: InvoiceProfile; onSave: (p: InvoiceProfile) => void; onCancel: () => void }) {
   const [draft, setDraft] = useState(profile);
@@ -43,6 +53,10 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [snapshot, setSnapshot] = useState<InvoiceSnapshot | null>(null);
   const [extras, setExtras] = useState<InvoiceLine[]>([]);
+  const [workdays, setWorkdays] = useState<string[]>([]);
+  const [newWorkday, setNewWorkday] = useState('');
+  const [grossProfit, setGrossProfit] = useState<number | null>(null);
+  const [grossProfitLoading, setGrossProfitLoading] = useState(false);
   const [issued, setIssued] = useState(japanToday());
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
@@ -57,6 +71,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [receiptCount, setReceiptCount] = useState(0);
   const profile = profiles.find(p => p.staff_id === staffId);
+  const isIshikawa = profile?.details.issuer_name === '石川秀樹';
 
   useEffect(() => {
     onNavigationChange(busy || receiptBusy ? 'busy' : dirty || settings ? 'dirty' : null);
@@ -76,7 +91,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
 
   useEffect(() => {
     let cancelled = false;
-    setSnapshot(null); setInvoice(null); setExtras([]); setNote(''); setDirty(false); setSettings(false); setMessage('');
+    setSnapshot(null); setInvoice(null); setExtras([]); setWorkdays([]); setNewWorkday(''); setGrossProfit(null); setNote(''); setDirty(false); setSettings(false); setMessage('');
     if (profileLoading) return;
     if (!profile || !month) { setLoading(false); return; }
     setLoading(true); setError('');
@@ -84,10 +99,25 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       const saved = await findInvoice(staffId, month);
       const preview = saved?.snapshot ?? await prepareInvoice(staffId, month);
       if (cancelled) return;
-      setInvoice(saved); setSnapshot(preview); setExtras(saved?.extras ?? []); setNote(saved?.note ?? ''); setIssued(saved?.issued_on ?? japanToday());
+      const savedExtras = saved?.extras ?? [];
+      const savedWorkdays = savedExtras.filter(line => line.description === 'ヤフオク入札作業日').map(line => line.date).filter((date): date is string => !!date);
+      setInvoice(saved); setSnapshot(preview);
+      setExtras(savedExtras.filter(line => line.description !== 'ヤフオク入札作業日' && line.description !== '粗利益連動調整'));
+      setWorkdays(profile.details.issuer_name === '石川秀樹' ? (saved ? savedWorkdays : defaultAuctionDays(month)) : []);
+      setNote(saved?.note ?? ''); setIssued(saved?.issued_on ?? japanToday());
     })().catch(e => { if (!cancelled) setError(errorText(e)); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [staffId, month, profileLoading, profile, reload]);
+
+  useEffect(() => {
+    if (!isIshikawa || !month) { setGrossProfit(null); return; }
+    let cancelled = false;
+    setGrossProfitLoading(true);
+    void monthlyGrossProfit(staffId, month).then(value => { if (!cancelled) setGrossProfit(value.total); })
+      .catch(e => { if (!cancelled) setError(errorText(e)); })
+      .finally(() => { if (!cancelled) setGrossProfitLoading(false); });
+    return () => { cancelled = true; };
+  }, [staffId, month, isIshikawa, reload]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -98,6 +128,15 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
 
   const leave = () => !dirty || window.confirm('保存していない変更を破棄しますか？');
   const changeExtra = (index: number, patch: Partial<InvoiceLine>) => { setExtras(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row)); setDirty(true); setMessage(''); };
+  const addWorkday = () => {
+    if (!newWorkday || !newWorkday.startsWith(`${month}-`) || workdays.includes(newWorkday)) return;
+    setWorkdays(rows => [...rows, newWorkday].sort()); setNewWorkday(''); setDirty(true); setMessage('');
+  };
+  const editableExtras: InvoiceLine[] = [...extras, ...workdays.map(auctionWorkdayLine)];
+  const auctionBasePay = workdays.length * 4500;
+  const auctionProfitPay = Math.floor(Math.max(grossProfit ?? 0, 0) * 0.1);
+  const auctionAdjustment = Math.max(0, auctionProfitPay - auctionBasePay);
+  const previewExtras: InvoiceLine[] = [...editableExtras, ...(auctionAdjustment > 0 ? [{ date: null, description: '粗利益連動調整', quantity: 1, unit_price: auctionAdjustment }] : [])];
   async function printDocument(mode: 'invoice' | 'receipts') {
     flushSync(() => setPrintMode(mode));
     await document.fonts.ready;
@@ -110,8 +149,13 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   async function save(mode: 'invoice' | 'receipts' | 'both') {
     setBusy(true); setError(''); setMessage('');
     try {
-      const saved = await submitDocuments(staffId, month, issued, extras, note, invoice, mode !== 'receipts', mode !== 'invoice');
-      if (saved) { setInvoice(saved); setSnapshot(saved.snapshot); setExtras(saved.extras); setDirty(false); }
+      const saved = await submitDocuments(staffId, month, issued, editableExtras, note, invoice, mode !== 'receipts', mode !== 'invoice');
+      if (saved) {
+        setInvoice(saved); setSnapshot(saved.snapshot);
+        setExtras(saved.extras.filter(line => line.description !== 'ヤフオク入札作業日' && line.description !== '粗利益連動調整'));
+        setWorkdays(saved.extras.filter(line => line.description === 'ヤフオク入札作業日').map(line => line.date).filter((date): date is string => !!date));
+        setDirty(false);
+      }
       setMessage(mode === 'both' ? '請求書と領収書をまとめて送信しました。' : mode === 'receipts' ? '領収書を送信しました。' : '請求書を送信しました。');
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
@@ -139,7 +183,14 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
       <form className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save((e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'both' ? 'both' : 'invoice'); }}>
         <h3>請求書</h3>
-        <div className="row"><label>請求日<input type="date" required value={issued} disabled={busy} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label><span className="muted">{invoice ? '承認待ち' : '未提出'}・納品 {snapshot.lines.length}点</span></div>
+        <div className="row"><label>請求日<input type="date" required value={issued} disabled={busy} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label><span className="muted">{invoice ? '承認待ち' : '未提出'}・通常作業 {snapshot.lines.filter(line => line.description !== '動作品Amazon返品対応').reduce((n, line) => n + line.quantity, 0)}点・動作品Amazon返品 {snapshot.lines.filter(line => line.description === '動作品Amazon返品対応').reduce((n, line) => n + line.quantity, 0)}点</span></div>
+        {isIshikawa && <section className="invoice-auction-workdays">
+          <h3>ヤフオク入札作業日</h3><p className="muted">対象月の月・水・金を初期設定しています。作業した日を個別に追加・削除できます。</p>
+          <div className="row"><input aria-label="作業日を追加" type="date" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.includes(newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
+          {workdays.map(date => <div className="row" key={date}><span>{date}　¥4,500</span><button type="button" className="btn ghost" disabled={busy} onClick={() => { setWorkdays(rows => rows.filter(row => row !== date)); setDirty(true); }}>削除</button></div>)}
+          <p>作業日分：¥{auctionBasePay.toLocaleString('ja-JP')}　粗利益の10%：{grossProfitLoading ? '計算中…' : `¥${auctionProfitPay.toLocaleString('ja-JP')}`}</p>
+          {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
+        </section>}
         <h3>送料・資材費・手当など</h3>
         {extras.map((line, i) => <div className="invoice-extra" key={i}>
           <label>日付<input type="date" value={line.date ?? ''} disabled={busy} onChange={e => changeExtra(i, { date: e.target.value || null })} /></label>
@@ -152,8 +203,8 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         <button type="button" className="btn ghost" disabled={busy || extras.length >= 100} onClick={() => { setExtras(rows => [...rows, { date: null, description: '', quantity: 1, unit_price: 0 }]); setDirty(true); }}>明細を追加</button>
         <label className="invoice-note-input">備考<textarea maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>
         <div className="row">
-          <button className="btn" value="invoice" disabled={busy || receiptBusy || (!snapshot.lines.length && !extras.length)}>請求書送信</button>
-          <button className="btn" value="both" disabled={busy || receiptBusy || !receiptCount || (!snapshot.lines.length && !extras.length)}>請求書・領収書をまとめて送信</button>
+          <button className="btn" value="invoice" disabled={busy || receiptBusy || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length)}>請求書送信</button>
+          <button className="btn" value="both" disabled={busy || receiptBusy || (isIshikawa && grossProfitLoading) || !receiptCount || (!snapshot.lines.length && !editableExtras.length)}>請求書・領収書をまとめて送信</button>
         </div>
       </form>}
       </div>
@@ -162,9 +213,10 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       {!invoice?.approved_at && <div className="receipt-submit no-print"><button type="button" className="btn" disabled={busy || receiptBusy || !receiptCount} onClick={() => void save('receipts')}>領収書送信</button></div>}
       </div>
       </div>
-      <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={extras} note={note} /></div>
+      <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={previewExtras} note={note} /></div>
     </>}
     </div>
+    <div className="no-print"><GrossProfitSummary staff={staff} /></div>
     <div className="card no-print"><PackedSummary staffId={staff.id} /></div>
   </section>;
 }

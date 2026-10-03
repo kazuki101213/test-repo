@@ -5,7 +5,7 @@ import TaskDetail from '../pages/TaskDetail';
 
 const STEP_FLAGS = (t: DeliveryTask) => [
   t.inspected && t.cleaned,
-  t.product_registered && t.photo_uploaded,
+  t.product_registered && (t.marketplace === '動作品Amazon返品' || t.photo_uploaded),
   t.packed_on !== null,
   t.shipped_on !== null,
 ];
@@ -61,9 +61,9 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
           <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
           <span className="muted">販売先 {task.sales_channel || '—'}</span>
           <CopyableText label="SKU" value={task.sku} />
-          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label="型番" value={task.model_no || task.title} /></span>
+          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label={task.marketplace === '動作品Amazon返品' ? 'FNSKU' : '型番'} value={task.model_no || task.title} /></span>
           <CopyableText label="ASIN" value={task.asin || '—'} />
-          <CopyableText label="商品ID" value={task.marketplace_item_id || '—'} />
+          <CopyableText label={task.marketplace === '動作品Amazon返品' ? 'EAN' : '商品ID'} value={task.marketplace_item_id || '—'} />
           <CopyableText label="追跡番号" value={task.tracking_no || '—'} />
         </div>
         <div className="task-photo-action">

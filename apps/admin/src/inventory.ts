@@ -12,7 +12,11 @@ export async function readAllRows<T extends { id: string }>(
 
 export function productSerial(sku: string | null | undefined, lotSeq?: number): string {
   const match = sku?.match(/^([0-9]+[a-z]*)[-_]/i);
-  return match?.[1]?.toUpperCase() ?? String(lotSeq ?? '');
+  return match?.[1]?.toLowerCase() ?? String(lotSeq ?? '');
+}
+
+export function normalizeSkuReturnSuffix(sku: string): string {
+  return sku.replace(/^(\d+)([a-z]*)(?=[-_])/i, (_match, serial: string, suffix: string) => `${serial}${suffix.toLowerCase()}`);
 }
 
 export function productCount(rows: ReadonlyArray<{ lot_seq: number; sku?: string | null }>): number {

@@ -3,7 +3,7 @@ import type { ItemStatus, Marketplace, SalesChannel, ItemCondition, WorkStep, Wo
 export const MARKETPLACES: Marketplace[] = [
   'メルカリ', 'ヤフオク', 'ヤフフリ', 'PayPayフリマ', 'ラクマ', 'ジモティー',
   'オフモール', '2ndストリート', 'トレジャーファクトリー', '楽天', '店舗',
-  'Amazon返品', 'Amazon', 'Yahoo！ショッピング', 'その他',
+  'Amazon返品', '動作品Amazon返品', 'Amazon', 'Yahoo！ショッピング', 'その他',
 ];
 
 export const SALES_CHANNELS: SalesChannel[] = [

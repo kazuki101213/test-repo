@@ -73,6 +73,7 @@ h2 { font-size: 18px; margin: 0 0 4px; }
 .review-receipts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; max-height:65vh; overflow:auto; }
 .review-receipts img { width:100%; height:280px; object-fit:contain; background:white; }
 .review-receipts span { display:block; overflow-wrap:anywhere; font-size:12px; }
+.review-receipts .receipt-pdf-link { width:100%; height:280px; }
 .packed-summary { margin:16px 0; }
 .packed-summary td { white-space:normal; }
 @media(max-width:800px) { .document-review-columns { grid-template-columns:1fr; } }

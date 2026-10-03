@@ -1,6 +1,6 @@
 import { getSupabase } from '@bussan/shared';
 import type { SaleRow } from './sales';
-import { productCount, productSerial, readAllRows } from './inventory';
+import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import type {
   DelivererWorkload, ItemInsert, ItemView, LedgerRow,
@@ -15,11 +15,11 @@ export async function fetchStaff(): Promise<Staff[]> {
 }
 
 export type SpareAccessoryInput = Pick<SpareAccessory,
-  'source_sku' | 'owner_staff_id' | 'owner_name' | 'purchased_at' | 'title' | 'cost_amount' |
+  'source_sku' | 'owner_staff_id' | 'owner_name' | 'purchased_at' | 'title' | 'manufacturer' | 'model_no' | 'asin' | 'cost_amount' |
   'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note'
 >;
 export type SpareAccessoryField = keyof Pick<SpareAccessory,
-  'source_sku' | 'owner_name' | 'purchased_at' | 'title' | 'cost_amount' |
+  'source_sku' | 'owner_name' | 'purchased_at' | 'title' | 'manufacturer' | 'model_no' | 'asin' | 'cost_amount' |
   'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note'
 >;
 
@@ -28,7 +28,7 @@ export async function createSpareAccessory(input: SpareAccessoryInput): Promise<
   if (error) throw error;
 }
 
-export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no'> & { marketplace_item_id: string | null }) | null> {
+export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'> & { marketplace_item_id: string | null }) | null> {
   const match = serial.trim().match(/^([0-9]+[a-z]*)$/i);
   if (!match) return null;
   const key = match[1]?.toUpperCase();
@@ -36,25 +36,25 @@ export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemV
   const lot = Number(key.match(/^\d+/)?.[0]);
   if (!Number.isSafeInteger(lot)) return null;
   const { data, error } = await getSupabase().from('v_items')
-    .select('id,sku,title,purchaser_id,purchaser_name,purchased_at,cost_amount,marketplace,tracking_no,lot_seq,is_accessory')
+    .select('id,sku,title,purchaser_id,purchaser_name,purchased_at,cost_amount,marketplace,tracking_no,asin,model_no,maker,lot_seq,is_accessory')
     .eq('lot_seq', lot).eq('is_accessory', false).limit(100);
   if (error) throw error;
   const row = (data ?? []).find(item => item.sku.toUpperCase().startsWith(`${key}-`) || item.sku.toUpperCase().startsWith(`${key}_`));
   if (!row) return null;
   const { data: reference, error: refError } = await getSupabase().from('items').select('marketplace_item_id').eq('id', row.id).single();
   if (refError) throw refError;
-  return { ...row, marketplace_item_id: reference.marketplace_item_id } as Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no'> & { marketplace_item_id: string | null };
+  return { ...row, marketplace_item_id: reference.marketplace_item_id } as Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'> & { marketplace_item_id: string | null };
 }
 
 export type AmazonReturnSource = Pick<ItemInsert,
   'purchaser_id' | 'deliverer_id' | 'work_stream' | 'purchased_at' | 'title' | 'cost_amount' |
-  'product_id' | 'asin' | 'condition' | 'planned_price' | 'planned_payout' | 'sales_channel'
+  'product_id' | 'asin' | 'condition' | 'planned_price' | 'planned_payout' | 'sales_channel' | 'marketplace_item_id'
 > & { original_sku: string; sku: string; model_no: string | null };
 
 export async function findInventoryForAmazonReturn(lotSeq: number): Promise<AmazonReturnSource | null> {
   if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return null;
   const { data, error } = await getSupabase().from('v_inventory_display')
-    .select('sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,cost_amount,product_id,asin,model_no,condition,planned_price,planned_payout,sales_channel')
+    .select('sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,cost_amount,product_id,asin,model_no,condition,planned_price,planned_payout,sales_channel,marketplace_item_id')
     .eq('lot_seq', lotSeq).eq('is_accessory', false);
   if (error) throw error;
   const rows = (data ?? []) as Array<AmazonReturnSource & { lot_seq: number; is_accessory: boolean }>;
@@ -294,15 +294,16 @@ export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
 }
 
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
-  if (input.is_accessory) {
-    if (!input.lot_seq) throw new Error('付属品には本体と同じ通番号を入力してください。');
+  const normalizedInput = input.marketplace === 'Amazon返品' ? { ...input, is_accessory: false } : input;
+  if (normalizedInput.is_accessory) {
+    if (!normalizedInput.lot_seq) throw new Error('付属品には本体と同じ通番号を入力してください。');
     const { data: parent, error: parentError } = await getSupabase()
-      .from('items').select('id').eq('lot_seq', input.lot_seq).eq('is_accessory', false).limit(1);
+      .from('items').select('id').eq('lot_seq', normalizedInput.lot_seq).eq('is_accessory', false).limit(1);
     if (parentError) throw parentError;
     if (!parent?.length) throw new Error('この通番号の本体が見つかりません。本体を先に登録してください。');
   }
   const { data, error } = await getSupabase()
-    .from('items').insert(input).select('id, sku').single();
+    .from('items').insert(normalizedInput).select('id, sku').single();
   if (error) throw error;
   return data as { id: string; sku: string };
 }
@@ -369,6 +370,42 @@ export async function updateExpenseField(row: ExpenseInput, field: ExpenseField,
   if (!data) throw new Error('明細が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
 
+export async function moveInventoryAccessoryToSpares(itemId: string, input: SpareAccessoryInput): Promise<void> {
+  const { error } = await getSupabase().rpc('move_inventory_accessory_to_spares', {
+    p_item_id: itemId,
+    p_spare_input: input,
+  });
+  if (error) throw error;
+}
+
+export async function findInventoryAccessoryForSpare(serial: string): Promise<(Pick<ItemView,
+  'id' | 'sku' | 'lot_seq' | 'is_accessory' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'
+> & { marketplace_item_id: string | null }) | null> {
+  const match = serial.trim().match(/^(\d+)[a-z]*$/i);
+  if (!match) return null;
+  const lotSeq = Number(match[1]);
+  if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return null;
+  const { data, error } = await getSupabase().from('v_items')
+    .select('id,sku,lot_seq,is_accessory,title,purchaser_id,purchaser_name,purchased_at,cost_amount,marketplace,tracking_no,asin,model_no,maker')
+    .eq('lot_seq', lotSeq).eq('is_accessory', true);
+  if (error) throw error;
+  const remotes = (data ?? []).filter(row => row.title.toLocaleLowerCase().includes('リモコン'));
+  if (remotes.length > 1) throw new Error(`通番号 ${lotSeq} にリモコン行が複数あります。対象を1件に特定できないため、在庫一覧を確認してください。`);
+  const item = remotes[0];
+  if (!item) return null;
+  const { data: reference, error: refError } = await getSupabase().from('items').select('marketplace_item_id').eq('id', item.id).single();
+  if (refError) throw refError;
+  return { ...item, marketplace_item_id: reference.marketplace_item_id };
+}
+
+export async function deleteInventoryItem(item: InventoryItem): Promise<void> {
+  const { data, error } = await getSupabase().from('items').delete()
+    .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
+  if (error?.code === '23503') throw new Error('関連データがあるため削除できません。販売履歴や付属品との紐付きを確認してください。');
+  if (error) throw error;
+  if (!data) throw new Error('他の画面で変更されたか、削除権限がありません。在庫一覧を再読み込みしてください。');
+}
+
 export async function updateProductNumber(item: InventoryItem, productNo: number | null): Promise<void> {
   if (!item.product_id) throw new Error('商品リストに紐付いていないため、品番を編集できません。');
   if (productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
@@ -389,7 +426,7 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
       p_item_id: item.id,
       p_expected_updated_at: item.updated_at,
       p_field: field,
-      p_value: text,
+      p_value: field === 'sku' ? normalizeSkuReturnSuffix(text) : text,
     });
     if (error) throw error;
     return;
@@ -437,13 +474,13 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
 }
 
 export type ProductField = 'asin' | 'model_no' | 'product_no' | 'maker' | 'genre' | 'turnover' |
-  'list_price' | 'payout_estimate' | 'target_cost' | 'monthly_purchase_cap' | 'has_sold_before';
+  'list_price' | 'payout_estimate' | 'target_cost' | 'has_sold_before';
 
 export async function updateProductField(product: Product, field: ProductField, value: string): Promise<void> {
   const next = field === 'asin' ? value.trim().toUpperCase() : value.trim();
   if (field === 'asin' && !/^[A-Z0-9]{10}$/.test(next)) throw new Error('ASINは英数字10文字で入力してください。');
   if (field === 'turnover' && next && !['高', '中', '低'].includes(next)) throw new Error('回転は高・中・低から選んでください。');
-  const numeric = ['product_no', 'list_price', 'payout_estimate', 'target_cost', 'monthly_purchase_cap'].includes(field);
+  const numeric = ['product_no', 'list_price', 'payout_estimate', 'target_cost'].includes(field);
   if (numeric && next && (!Number.isSafeInteger(Number(next)) || Number(next) < (field === 'product_no' ? 1 : 0))) throw new Error('0以上の整数を入力してください（品番は1以上）。');
   const parsed = field === 'has_sold_before' ? next === 'true' : numeric ? next ? Number(next) : null : field === 'asin' ? next : next || null;
   const update = { [field]: parsed };
@@ -468,7 +505,7 @@ export async function fetchProducts(query?: string): Promise<Product[]> {
     let q = getSupabase().from('products').select('*').eq('is_active', true).order('product_no').order('id').range(from, to);
     if (query) {
       const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;
-      q = q.or(`asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term}`);
+      q = q.or(`asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term},genre.ilike.${term}`);
     }
     const { data, error } = await q;
     if (error) throw error;
