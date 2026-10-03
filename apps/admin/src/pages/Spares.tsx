@@ -133,7 +133,7 @@ export default function Spares({ me }: { me: Staff }) {
     <label className="field"><span>検索</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="品名・担当者・商品ID" /></label>
     {error && !adding && <p className="error">{error}</p>}
     {loading ? <p>読み込み中…</p> : <div className="scroll"><table><thead><tr>
-      <th>保管担当</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>SKU</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>
+      <th>保管担当</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>
     </tr></thead><tbody>{filtered.map(row => <tr key={row.id}>
       <td><EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{row.owner_name || '未設定'}</EditableSpare></td>
       <td><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></td>
@@ -141,7 +141,6 @@ export default function Spares({ me }: { me: Staff }) {
       <td><EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="cost_amount" onEdit={setEditFor}>{yen(row.cost_amount)}</EditableSpare></td>
       <td><EditableSpare row={row} field="marketplace" onEdit={setEditFor}>{row.marketplace || '—'}</EditableSpare></td>
-      <td><EditableSpare row={row} field="source_sku" onEdit={setEditFor}>{row.source_sku || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || (row.used_for_item_id ? '商品へ割当済み' : '—')}</EditableSpare></td>
