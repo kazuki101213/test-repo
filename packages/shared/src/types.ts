@@ -173,6 +173,10 @@ export interface DeliveryTask {
   reference_image_url: string | null;
   photo_count: number;
   last_comment_at: string | null;
+  malfunction_reported: boolean;
+  malfunction_comment: string | null;
+  malfunction_reported_at: string | null;
+  malfunction_resolved_at: string | null;
 }
 
 export interface ItemComment {

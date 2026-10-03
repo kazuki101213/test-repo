@@ -265,7 +265,8 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
       .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
       .range(from, to);
 
-    if (filter.status) q = q.eq('status', filter.status);
+    if (filter.status?.startsWith('marketplace:')) q = q.eq('marketplace', filter.status.slice('marketplace:'.length));
+    else if (filter.status) q = q.eq('status', filter.status);
     if (filter.delivererId) q = q.eq('deliverer_id', filter.delivererId);
     if (filter.unsoldOnly) q = q.eq('sale_row_count', 0).neq('status', '返品処理').neq('status', '廃棄');
     if (filter.purchasedFrom) q = q.gte('purchased_at', filter.purchasedFrom);

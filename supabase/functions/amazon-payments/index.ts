@@ -194,10 +194,11 @@ export async function handler(req: Request): Promise<Response> {
         .eq('account_key', accountKey).eq('marketplace_id', marketplace).eq('transaction_id', body.transactionId).maybeSingle();
       if (readError) throw new SafeError(503, '照合する履歴を読み込めません。');
       if (!transaction) throw new SafeError(404, '先にAmazonの販売情報を取得してください。');
-      const normalizedType = String(transaction.transaction_type ?? '').toLowerCase();
-      const isInventoryReimbursement = ['inventory reimbursement', 'inventoryreimbursement', 'fba inventory reimbursement', 'fbainventoryreimbursement', 'fba_inventory_reimbursement'].includes(normalizedType);
-      if (isInventoryReimbursement || normalizedType === 'refund') {
-        if (!['RELEASED', 'DEFERRED_RELEASED'].includes(String(transaction.status))) {
+      const normalizedType = String(transaction.transaction_type ?? '').trim().toLowerCase();
+      const isInventoryReimbursement = ['inventory reimbursement', 'inventoryreimbursement', 'fba inventory reimbursement', 'fbainventoryreimbursement', 'fba_inventory_reimbursement', '在庫の払い戻し', '在庫払い戻し'].includes(normalizedType);
+      const isRefund = normalizedType === 'refund' || normalizedType === '返金';
+      if (isInventoryReimbursement || isRefund) {
+        if (!['RELEASED', '支払い実行済み'].includes(String(transaction.status))) {
           return respond(200, { results: [{ sku: '—', status: 'review', reason: '金額が確定していない取引のため反映しません。' }] });
         }
         const writer = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false } });

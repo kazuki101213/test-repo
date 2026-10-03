@@ -3,7 +3,7 @@ import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
   addPhotosToDrive, deletePhoto, fetchComments, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
-  setDeliveryProgress, setWorkProgress, uploadPhoto,
+  reportItemMalfunction, setDeliveryProgress, setWorkProgress, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
@@ -37,6 +37,9 @@ export default function TaskDetail({
   const [uploading, setUploading] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [malfunctionChecked, setMalfunctionChecked] = useState(false);
+  const [malfunctionComment, setMalfunctionComment] = useState('');
+  const [malfunctionBusy, setMalfunctionBusy] = useState(false);
   const isDeliveryMaster = staff.role === 'admin' && staff.name === '長部一輝';
 
   const reload = useCallback(async () => {
@@ -144,6 +147,17 @@ export default function TaskDetail({
       </section>
     );
   }
+
+  async function reportMalfunction() {
+    if (!task || !malfunctionComment.trim()) return;
+    setMalfunctionBusy(true); setError(null);
+    try {
+      await reportItemMalfunction(task.id, malfunctionComment.trim());
+      setMalfunctionChecked(false); setMalfunctionComment('');
+      await reload();
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setMalfunctionBusy(false); }
+  }
   const isWorkingAmazonReturn = task.marketplace === '動作品Amazon返品';
 
   return (
@@ -180,6 +194,12 @@ export default function TaskDetail({
       {/* ── 作業チェック ─────────────────────────── */}
       <div className="card">
         <strong>作業チェック</strong>
+        {task.malfunction_reported && <p className="ok" role="status">動作不良を管理アプリへ報告済み{task.malfunction_resolved_at ? '（対応済み）' : '（対応待ち）'}</p>}
+        {!task.malfunction_reported && <div className="malfunction-report">
+          <label><input type="checkbox" checked={malfunctionChecked} onChange={e => setMalfunctionChecked(e.target.checked)} disabled={malfunctionBusy} /> 動作不良</label>
+          {malfunctionChecked && <><textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
+            <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '管理アプリに報告'}</button></>}
+        </div>}
         <div className="steps">
           {WORK_STEPS.map((step) => {
             const s = isWorkingAmazonReturn && step.key === 'listing' ? { ...step, label: '商品登録' } : step;

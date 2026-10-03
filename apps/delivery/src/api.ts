@@ -73,6 +73,13 @@ export async function setDeliveryProgress(itemId: string, step: 'inspection_clea
   if (error) throw error;
 }
 
+export async function reportItemMalfunction(itemId: string, comment: string) {
+  const { error } = await getSupabase().rpc('report_item_malfunction', {
+    p_item_id: itemId, p_comment: comment,
+  });
+  if (error) throw error;
+}
+
 export async function updateDeliveryFields(itemId: string, fields: {
   accessories?: string;
   condition?: ItemCondition;

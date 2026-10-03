@@ -4500,3 +4500,148 @@ revoke all on function app.move_inventory_accessory_to_spares(uuid,jsonb) from p
 grant execute on function app.move_inventory_accessory_to_spares(uuid,jsonb) to authenticated;
 
 
+-- ▼▼▼ 20261003020000_amazon_refund_locale_and_sku_sequence.sql ▼▼▼
+
+create or replace function app.apply_amazon_refund(p_account text,p_transaction text,p_sku text,p_actor uuid)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare
+ txn app.amazon_payment_transactions%rowtype;
+ kind text;
+ amount_value bigint;
+ target app.items%rowtype;
+ prior app.amazon_refund_matches%rowtype;
+ delta bigint;
+ root_serial text;
+ matching_refunds integer;
+begin
+ if not exists(select 1 from app.profiles p join app.staff s on s.id=p.staff_id where p.user_id=p_actor and s.role='admin' and s.is_active) then raise exception 'Administrator required'; end if;
+ select * into txn from app.amazon_payment_transactions where account_key=p_account and marketplace_id='A1VC38T7YXB528' and transaction_id=p_transaction;
+ if not found or txn.status not in ('RELEASED','支払い実行済み') then return jsonb_build_object('status','review','reason','支払い実行済みのAmazon取引が見つかりません。'); end if;
+ kind:=case when lower(coalesce(txn.transaction_type,'')) in ('inventory reimbursement','inventoryreimbursement','fba inventory reimbursement','fbainventoryreimbursement','fba_inventory_reimbursement','在庫の払い戻し','在庫払い戻し') then 'inventory'
+            when lower(coalesce(txn.transaction_type,'')) in ('refund','返金') then 'amazon_refund' else null end;
+ if kind is null then return jsonb_build_object('status','review','reason','対象外の取引種類です。'); end if;
+ if (select count(*) from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku)<>1 then return jsonb_build_object('status','review','reason','SKUを取引内で一意に特定できません。'); end if;
+ select abs((e->>'amount')::numeric)::bigint into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
+ if amount_value is null then return jsonb_build_object('status','review','reason','SKU別の返金額が円の整数として確認できません。'); end if;
+
+ root_serial:=(regexp_match(p_sku,'^([0-9]+)'))[1];
+ if root_serial is null then return jsonb_build_object('status','review','reason','Amazon SKUから通番号を読み取れません。'); end if;
+ select count(*) into matching_refunds
+ from app.amazon_payment_transactions t
+ where t.account_key=p_account and t.marketplace_id=txn.marketplace_id
+   and lower(coalesce(t.transaction_type,'')) in ('refund','返金')
+   and t.status in ('RELEASED','支払い実行済み')
+   and (t.posted_at,t.transaction_id)<=(txn.posted_at,txn.transaction_id)
+   and exists (
+     select 1 from jsonb_array_elements(t.item_breakdowns) e
+     where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$'
+   );
+
+ if matching_refunds>1 then
+   -- Identical Amazon SKU refunds are assigned oldest first: base serial, then a, aa, etc.
+   select * into target from app.items i
+   where not i.is_accessory and (regexp_match(i.sku,'^([0-9]+)'))[1]=root_serial
+   order by length(coalesce((regexp_match(app.product_serial(i.sku,i.lot_seq),'^[0-9]+([a-z]*)$'))[1],'')),
+            app.product_serial(i.sku,i.lot_seq),i.sku
+   offset matching_refunds-1 limit 1;
+   if not found then return jsonb_build_object('status','review','reason','同じSKUの返品回数に対応する本体行がありません。SKU順の在庫を確認してください。'); end if;
+ else
+   select * into target from app.items where lower(sku)=lower(p_sku) and not is_accessory;
+   if not found then
+     select count(*) into matching_refunds from app.items i
+      where not i.is_accessory and (regexp_match(i.sku,'^([0-9]+)'))[1]=root_serial;
+     if matching_refunds<>1 then return jsonb_build_object('status','review','reason','対応する在庫行を一意に特定できません。'); end if;
+     select * into target from app.items i where not i.is_accessory and (regexp_match(i.sku,'^([0-9]+)'))[1]=root_serial;
+   end if;
+ end if;
+
+ select * into prior from app.amazon_refund_matches where account_key=p_account and marketplace_id=txn.marketplace_id and transaction_id=p_transaction and sku=p_sku;
+ if prior.amount is not null and prior.item_id<>target.id then
+   return jsonb_build_object('status','review','reason','以前の反映先と今回のSKU順割当が異なるため、自動で移し替えません。管理者の確認が必要です。');
+ end if;
+ delta:=amount_value-coalesce(prior.amount,0);
+ if delta<>0 then
+   if kind='inventory' then update app.items set inventory_refund_amount=greatest(inventory_refund_amount+delta,0) where id=target.id;
+   else update app.items set amazon_refund_amount=greatest(amazon_refund_amount+delta,0) where id=target.id;
+   end if;
+ end if;
+ insert into app.amazon_refund_matches(account_key,marketplace_id,transaction_id,sku,item_id,refund_kind,amount,applied_by)
+ values(p_account,txn.marketplace_id,p_transaction,p_sku,target.id,kind,amount_value,p_actor)
+ on conflict(account_key,marketplace_id,transaction_id,sku) do update set item_id=excluded.item_id,refund_kind=excluded.refund_kind,amount=excluded.amount,applied_by=excluded.applied_by,applied_at=now();
+ return jsonb_build_object('status',case when prior.amount is null then 'applied' when delta=0 then 'unchanged' else 'applied' end,
+   'reason',case when kind='inventory' then '在庫の払い戻しを反映しました。' else 'Amazon返金金額を反映しました。' end,
+   'amount',amount_value,'sku',p_sku,'item_id',target.id);
+end $$;
+revoke all on function app.apply_amazon_refund(text,text,text,uuid) from public,anon,authenticated;
+grant execute on function app.apply_amazon_refund(text,text,text,uuid) to service_role;
+
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261003030000_item_malfunction_tasks.sql ▼▼▼
+
+alter table app.items
+  add column if not exists malfunction_reported boolean not null default false,
+  add column if not exists malfunction_comment text,
+  add column if not exists malfunction_reported_at timestamptz,
+  add column if not exists malfunction_reported_by uuid references app.staff(id) on delete set null,
+  add column if not exists malfunction_resolved_at timestamptz,
+  add column if not exists malfunction_resolved_by uuid references app.staff(id) on delete set null;
+
+alter table app.items drop constraint if exists items_malfunction_comment_check;
+alter table app.items add constraint items_malfunction_comment_check check (
+  malfunction_comment is null or length(malfunction_comment)<=2000
+);
+create index if not exists items_malfunction_tasks_idx
+  on app.items(malfunction_reported_at desc) where malfunction_reported and malfunction_resolved_at is null;
+
+create or replace function app.report_item_malfunction(p_item_id uuid,p_comment text)
+returns void language plpgsql security definer set search_path='' as $$
+declare staff_id uuid:=app.current_staff_id();
+begin
+ if auth.uid() is null or staff_id is null then raise exception 'ログインが必要です' using errcode='42501'; end if;
+ if length(btrim(coalesce(p_comment,'')))=0 or length(p_comment)>2000 then raise exception '動作不良の内容を2000文字以内で入力してください' using errcode='22023'; end if;
+ perform app.assert_can_work_on(p_item_id);
+ update app.items set malfunction_reported=true,malfunction_comment=btrim(p_comment),
+   malfunction_reported_at=clock_timestamp(),malfunction_reported_by=staff_id,
+   malfunction_resolved_at=null,malfunction_resolved_by=null
+ where id=p_item_id;
+ if not found then raise exception '商品が見つかりません' using errcode='P0002'; end if;
+end $$;
+revoke all on function app.report_item_malfunction(uuid,text) from public,anon,authenticated;
+grant execute on function app.report_item_malfunction(uuid,text) to authenticated;
+
+create or replace function app.resolve_item_malfunction(p_item_id uuid)
+returns void language plpgsql security definer set search_path='' as $$
+begin
+ if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+ update app.items set malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=app.current_staff_id()
+ where id=p_item_id and malfunction_reported and malfunction_resolved_at is null;
+ if not found then raise exception '未対応の動作不良タスクが見つかりません' using errcode='P0002'; end if;
+end $$;
+revoke all on function app.resolve_item_malfunction(uuid) from public,anon,authenticated;
+grant execute on function app.resolve_item_malfunction(uuid) to authenticated;
+
+create or replace view app.v_delivery_tasks with (security_invoker = true) as
+select
+  i.id,i.sku,i.lot_seq,i.is_accessory,i.status,i.work_stream,i.title,
+  i.asin,i.condition,i.purchased_at,i.marketplace,i.tracking_no,i.accessories,i.description,
+  i.sales_channel,i.planned_price,i.deliverer_id,buyer.name as purchaser_name,i.arrived_on,
+  (i.product_registered_at is not null) as product_registered,
+  (i.inspected_at is not null) as inspected,(i.photo_uploaded_at is not null) as photo_uploaded,
+  i.packed_on,i.shipped_on,i.amazon_returned_on,p.image_url as reference_image_url,
+  (select count(*) from app.item_photos ph where ph.item_id=i.id) as photo_count,
+  (select max(cm.created_at) from app.item_comments cm where cm.item_id=i.id) as last_comment_at,
+  (i.cleaned_at is not null) as cleaned,i.description_template,i.manufacture_year,
+  i.marketplace_item_id,
+  case when i.marketplace::text='動作品Amazon返品' then i.title else p.model_no end as model_no,
+  i.malfunction_reported,i.malfunction_comment,i.malfunction_reported_at,i.malfunction_resolved_at
+from app.items i
+left join app.products p on p.id=i.product_id
+left join app.staff buyer on buyer.id=i.purchaser_id
+where i.status in ('仕入済','入荷済','作業中','Amazon返品','出荷済','出品中','販売済');
+grant select on app.v_delivery_tasks to authenticated;
+
+notify pgrst,'reload schema';
+
+
