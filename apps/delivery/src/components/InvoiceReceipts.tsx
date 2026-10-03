@@ -11,10 +11,8 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [pageChoice, setPageChoice] = useState<0 | 1 | 2>(0);
-  const camera = useRef<HTMLInputElement>(null);
   const invoiceFiles = useRef<HTMLInputElement>(null);
   const receiptFiles = useRef<HTMLInputElement>(null);
-  const photoFiles = useRef<HTMLInputElement>(null);
   useEffect(() => { onBusyChange(busy || loading); return () => onBusyChange(false); }, [busy, loading, onBusyChange]);
   useEffect(() => { onCountChange(rows.filter(row => row.document_type !== 'invoice').length); }, [rows, onCountChange]);
   useEffect(() => {
@@ -24,12 +22,19 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
       .catch(e => { if (active) setError(e.message ?? String(e)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; releaseReceiptImages(loaded); };
   }, [staffId, month, revision]);
-  async function upload(selected: FileList | null, documentType: InvoiceDocumentType) {
+  async function upload(selected: FileList | null, documentType: InvoiceDocumentType | 'receipt_upload') {
     if (!selected?.length) return;
     setBusy(true); setError('');
-    try { for (const file of Array.from(selected)) await uploadInvoiceReceipt(staffId, month, file, documentType); }
+    try {
+      for (const file of Array.from(selected)) {
+        const type = documentType === 'receipt_upload'
+          ? file.type === 'application/pdf' || file.name.toLocaleLowerCase().endsWith('.pdf') ? 'receipt' : 'receipt_photo'
+          : documentType;
+        await uploadInvoiceReceipt(staffId, month, file, type);
+      }
+    }
     catch (e) { setError((e as Error).message ?? String(e)); }
-    finally { setBusy(false); setRevision(n => n + 1); for (const input of [camera.current, invoiceFiles.current, receiptFiles.current, photoFiles.current]) if (input) input.value = ''; }
+    finally { setBusy(false); setRevision(n => n + 1); for (const input of [invoiceFiles.current, receiptFiles.current]) if (input) input.value = ''; }
   }
   async function remove(id: string) {
     setBusy(true); setError('');
@@ -46,15 +51,9 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
     <div className="receipt-editor no-print"><h3>領収書</h3>
       {!approved && <div className="row">
         <input ref={invoiceFiles} type="file" accept={accept} multiple hidden onChange={e => void upload(e.target.files, 'invoice')} />
-        <input ref={receiptFiles} type="file" accept={accept} multiple hidden onChange={e => void upload(e.target.files, 'receipt')} />
-        <input ref={photoFiles} type="file" accept={accept} multiple hidden onChange={e => void upload(e.target.files, 'receipt_photo')} />
-        <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={e => void upload(e.target.files, 'receipt_photo')} />
+        <input ref={receiptFiles} type="file" accept={accept} multiple hidden onChange={e => void upload(e.target.files, 'receipt_upload')} />
         <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => invoiceFiles.current?.click()}>請求書をアップロード（画像・PDF）</button>
         <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => receiptFiles.current?.click()}>領収書をアップロード（画像・PDF）</button>
-        <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => photoFiles.current?.click()}>領収書の写真をアップロード（画像・PDF）</button>
-        <button type="button" className="btn ghost receipt-camera-btn" aria-label="カメラで領収書を撮影" title="カメラで領収書を撮影" disabled={busy || loading} onClick={() => camera.current?.click()}>
-          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7.5h3l1.8-2.5h8.4L18 7.5h3v11H3z" /><circle cx="12" cy="13" r="3.5" /></svg>
-        </button>
       </div>}
       {busy && <p role="status">領収書を保存しています…</p>}
       {loading && <p role="status">領収書を読み込み中…</p>}
