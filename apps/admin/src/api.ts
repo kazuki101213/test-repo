@@ -54,20 +54,24 @@ export type AmazonReturnSource = Pick<ItemInsert,
 export async function findInventoryForAmazonReturn(lotSeq: number): Promise<AmazonReturnSource | null> {
   if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return null;
   const { data, error } = await getSupabase().from('v_inventory_display')
-    .select('sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,cost_amount,product_id,asin,model_no,condition,planned_price,planned_payout,sales_channel,marketplace_item_id')
+    .select('id,sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,cost_amount,product_id,asin,model_no,condition,planned_price,planned_payout,sales_channel')
     .eq('lot_seq', lotSeq).eq('is_accessory', false);
   if (error) throw error;
-  const rows = (data ?? []) as Array<AmazonReturnSource & { lot_seq: number; is_accessory: boolean }>;
+  const rows = (data ?? []) as Array<AmazonReturnSource & { id: string; lot_seq: number; is_accessory: boolean }>;
   if (!rows.length) return null;
   const rootSku = new RegExp(`^${lotSeq}-`, 'i');
   const source = rows.find(row => rootSku.test(row.sku)) ?? rows[0];
   if (!source) return null;
+  const { data: reference, error: referenceError } = await getSupabase()
+    .from('items').select('marketplace_item_id').eq('id', source.id).maybeSingle();
+  if (referenceError) throw referenceError;
   const nextSuffixLength = Math.max(0, ...rows.map(row => {
     const match = row.sku.match(/^\d+([a-z]*)-/i);
     return match?.[1]?.length ?? 0;
   })) + 1;
   return {
     ...source,
+    marketplace_item_id: reference?.marketplace_item_id ?? null,
     original_sku: source.sku,
     sku: source.sku.replace(/^\d+[a-z]*(?=-)/i, `${lotSeq}${'a'.repeat(nextSuffixLength)}`),
   };
