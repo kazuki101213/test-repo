@@ -97,6 +97,7 @@ export default function Inventory({ me }: { me: Staff }) {
         <select aria-label="状態" value={status} onChange={(e) => { setStatus(e.target.value); }}>
           <option value="">すべての状態</option>
           {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          <option value="marketplace:動作品Amazon返品">動作品Amazon返品</option>
         </select>
         <select aria-label="納品担当者" value={delivererId} onChange={(e) => { setDelivererId(e.target.value); }}>
           <option value="">すべての納品担当者</option>
