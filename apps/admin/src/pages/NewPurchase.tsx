@@ -46,6 +46,8 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [urlOverride, setUrlOverride] = useState<string | null>(null);
   const generatedReference = buildPurchaseUrl(marketplace, marketplaceItemId);
   const marketplaceUrl = urlOverride ?? generatedReference?.url ?? '';
+  const isAmazonReturn = marketplace === 'Amazon返品';
+  const isWorkingAmazonReturn = marketplace === '動作品Amazon返品';
   const [cardId, setCardId] = useState('');
   const [condition, setCondition] = useState<ItemCondition | ''>('非常に良い');
   const [salesChannel, setSalesChannel] = useState<SalesChannel>('FBA');
@@ -107,7 +109,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
     if (spareOwner) setPurchaserId(spareOwner.id);
   }, [selectedSpare, staff]);
   useEffect(() => {
-    if (marketplace !== 'Amazon返品' || lotSeq === '') {
+    if ((!isAmazonReturn && !isWorkingAmazonReturn) || lotSeq === '') {
       setReturnSku(null);
       setReturnLookup('');
       return;
@@ -121,30 +123,33 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         setReturnLookup(`通番号 ${lotSeq} の本体が見つかりません。通番号を確認してください。`);
         return;
       }
-      setReturnSku(source.sku);
+      const specialSku = source.sku.replace(/^\d+[a-z]*(?=-)/i, `${lotSeq}b`);
+      setReturnSku(isWorkingAmazonReturn ? specialSku : source.sku);
       setPurchaserId(current => source.purchaser_id ?? current);
       setDelivererId(current => source.deliverer_id ?? current);
       setWorkStream(source.work_stream ?? '');
       setPurchasedAt(source.purchased_at ?? today());
       setTitle(source.title);
       setCost(source.cost_amount);
-      setProductId(source.product_id ?? '');
-      setProductSearch(source.model_no || source.title);
+      setProductId(isWorkingAmazonReturn ? '' : source.product_id ?? '');
+      setProductSearch(isWorkingAmazonReturn ? '' : source.model_no || source.title);
       setAsin(source.asin ?? '');
       setCondition(source.condition ?? '');
       setPlannedPrice(source.planned_price ?? '');
       setPlannedPayout(source.planned_payout ?? '');
       setSalesChannel(source.sales_channel ?? 'FBA');
-      setMarketplaceItemId('');
+      setMarketplaceItemId(isWorkingAmazonReturn ? source.marketplace_item_id ?? '' : '');
       setTrackingNo('');
       setCardId('');
       setUrlOverride(null);
-      setReturnLookup(`元商品 ${source.original_sku} の情報を反映しました。新しい返品SKU: ${source.sku}`);
+      setReturnLookup(isWorkingAmazonReturn
+        ? `元商品 ${source.original_sku} の情報を反映しました。新しいSKU: ${specialSku}（通番号の直後にb）`
+        : `元商品 ${source.original_sku} の情報を反映しました。新しい返品SKU: ${source.sku}`);
     }).catch(cause => {
       if (active) setReturnLookup(cause instanceof Error ? cause.message : String(cause));
     });
     return () => { active = false; };
-  }, [marketplace, lotSeq]);
+  }, [marketplace, lotSeq, isAmazonReturn, isWorkingAmazonReturn]);
   const matchingProducts = products;
 
   const purchaser = staff.find((s) => s.id === purchaserId);
@@ -174,7 +179,8 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
     setDone(null);
     try {
       if (!purchaser || purchaser.role === 'deliverer' || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
-      if (marketplace === 'Amazon返品' && !returnSku) throw new Error('Amazon返品は、元商品の通番号を入力して情報を読み込んでください。');
+      if ((isAmazonReturn || isWorkingAmazonReturn) && !returnSku) throw new Error('返品商品は、元商品の通番号を入力して情報を読み込んでください。');
+      if (isWorkingAmazonReturn && (!asin.trim() || !title.trim() || !marketplaceItemId.trim())) throw new Error('動作品Amazon返品は、ASIN・FNSKU（型番欄）・EAN（商品ID欄）を入力してください。');
       if (marketplaceUrl.trim()) {
         let url: URL;
         try { url = new URL(marketplaceUrl.trim()); }
@@ -182,10 +188,10 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('仕入先URLの形式を確認してください。');
       }
       const payload: ItemInsert = {
-        ...(marketplace === 'Amazon返品' && returnSku ? { sku: returnSku } : {}),
-        ...(marketplace === 'Amazon返品' ? { status: 'Amazon返品' as const } : {}),
+        ...((isAmazonReturn || isWorkingAmazonReturn) && returnSku ? { sku: returnSku } : {}),
+        ...(isAmazonReturn ? { status: 'Amazon返品' as const } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
-        is_accessory: marketplace !== 'Amazon返品' && workStream === '付属品',
+        is_accessory: !isAmazonReturn && !isWorkingAmazonReturn && workStream === '付属品',
         purchaser_id: purchaserId,
         deliverer_id: delivererId || null,
         work_stream: workStream || null,
@@ -197,7 +203,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         marketplace_url: marketplaceUrl.trim() || null,
         tracking_no: trackingNo.trim() || null,
         card_id: cardId || null,
-        product_id: productId || null,
+        product_id: isWorkingAmazonReturn ? null : productId || null,
         asin: asin.trim() || null,
         condition: condition || null,
         planned_price: plannedPrice === '' ? null : Number(plannedPrice),
@@ -216,7 +222,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
       setDone(`登録しました: ${created.sku}`);
       // 続けて同じ商品の仕入れを登録できるよう、通番号と担当者は残す
       setTitle(''); setAsin(''); setProductSearch(''); setCost(''); setMarketplaceItemId(''); setTrackingNo(''); setUrlOverride(null);
-      if (marketplace === 'Amazon返品') { setLotSeq(''); setReturnSku(null); setReturnLookup(''); }
+      if (isAmazonReturn || isWorkingAmazonReturn) { setLotSeq(''); setReturnSku(null); setReturnLookup(''); }
       setProductId(''); setNote(''); setTemplatesOpen(false);
       onSaved?.();
     } catch (e2) {
@@ -266,10 +272,10 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
             </div>
             {marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           <div>
-            <label className="field"><span>商品リスト検索</span>
+            {!isWorkingAmazonReturn && <label className="field"><span>商品リスト検索</span>
               <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
-            </label>
-            {matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
+            </label>}
+            {!isWorkingAmazonReturn && matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
               {matchingProducts.slice(0, 20).map(p => <button type="button" role="option" aria-selected={productId === p.id} key={p.id} onClick={() => { setProductId(p.id); setProductSearch(`${p.model_no ?? ''} / ${p.asin ?? ''}`); }}>
                 {p.model_no ?? '型番なし'} / {p.asin ?? 'ASINなし'} / 目標 {p.target_cost ? yen(p.target_cost) : '—'}
               </button>)}
@@ -324,10 +330,10 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                   {WORK_STREAMS.map((w) => <option key={w} value={w}>{workStreamLabels[w]}</option>)}
                 </select>
               </label>
-              <label className="field"><span>{marketplace === 'Amazon返品' ? '元商品の通番号' : '通番号'}</span>
+              <label className="field"><span>{isAmazonReturn || isWorkingAmazonReturn ? '元商品の通番号' : '通番号'}</span>
                 <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
               </label>
-              {marketplace === 'Amazon返品' && <p className="sub" role="status" style={{ gridColumn: '1 / -1', margin: 0 }}>{returnLookup || '元商品の通番号を入力すると、商品情報を読み込みます。'}</p>}
+              {(isAmazonReturn || isWorkingAmazonReturn) && <p className="sub" role="status" style={{ gridColumn: '1 / -1', margin: 0 }}>{returnLookup || '元商品の通番号を入力すると、商品情報を読み込みます。'}</p>}
               <label className="field"><span>使用する予備付属品</span>
                 <select value={spareId} size={6} onChange={e => setSpareId(e.target.value)}>
                   <option value="">使用しない</option>

@@ -15,7 +15,7 @@ function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
     case 'registered': return task.product_registered;
     case 'inspected':  return task.inspected;
     case 'cleaned':    return task.cleaned;
-    case 'listing':    return task.product_registered && task.photo_uploaded;
+    case 'listing':    return task.product_registered && (task.marketplace === '動作品Amazon返品' || task.photo_uploaded);
     case 'photo':      return task.photo_uploaded;
     case 'packed':     return task.packed_on !== null;
     case 'shipped':    return task.shipped_on !== null;
@@ -144,6 +144,7 @@ export default function TaskDetail({
       </section>
     );
   }
+  const isWorkingAmazonReturn = task.marketplace === '動作品Amazon返品';
 
   return (
     <section className="task-detail-inline" aria-label={`${task.sku}の詳細`}>
@@ -153,16 +154,16 @@ export default function TaskDetail({
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
-      <div className="card row">
+      {!isWorkingAmazonReturn && <div className="card row">
         <span className="muted">写真 {photos.length}枚</span>
         <label className="btn photo-upload">{uploading ? '追加中…' : '写真を追加'}
           <input type="file" aria-label="商品写真を追加" accept="image/*" multiple disabled={uploading || pending !== null || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>
         <button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
           onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブに追加中…' : 'Googleドライブに追加'}</button>
-      </div>
+      </div>}
       {driveMessage && <p className="ok" role="status">{driveMessage}</p>}
-      <div className="product-photos">
+      {!isWorkingAmazonReturn && <div className="product-photos">
         {photos.length > 0 && <div className="photos">{photos.map((photo, index) => <div className="uploaded-photo" key={photo.id}>
           <a href={photo.url} target="_blank" rel="noreferrer">
             <img src={photo.url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
@@ -171,8 +172,8 @@ export default function TaskDetail({
             {deletingPhotoId === photo.id ? '削除中…' : '削除'}
           </button>
         </div>)}</div>}
-      </div>
-      {photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
+      </div>}
+      {!isWorkingAmazonReturn && photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
         写真確認：{photoReview.approved_at ? '完了' : '確認待ち'}
       </p>}
 
@@ -180,7 +181,8 @@ export default function TaskDetail({
       <div className="card">
         <strong>作業チェック</strong>
         <div className="steps">
-          {WORK_STEPS.map((s) => {
+          {WORK_STEPS.map((step) => {
+            const s = isWorkingAmazonReturn && step.key === 'listing' ? { ...step, label: '商品登録' } : step;
             const done = isStepDone(task, s.key);
             return (
               <div className="step" key={s.key} data-done={done}>
@@ -202,7 +204,7 @@ export default function TaskDetail({
           })}
         </div>
       </div>
-      {!isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}
+      {!isWorkingAmazonReturn && !isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}
 
       <DescriptionEditor key={task.id} task={task} onSaved={reload} />
 

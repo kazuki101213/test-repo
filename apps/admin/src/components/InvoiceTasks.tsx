@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getSupabase, yen, loadReceiptImages, releaseReceiptImages } from '@bussan/shared';
+import { getSupabase, yen, loadInvoiceReceipts, releaseReceiptImages } from '@bussan/shared';
 import type { InvoiceReceipt } from '@bussan/shared';
 import PackedSummary from './PackedSummary';
 import PhotoReviewTasks from './PhotoReviewTasks';
@@ -41,16 +41,16 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
  const dialog=useRef<HTMLDialogElement>(null);
  const [date,setDate]=useState(()=>monthEnd(task.month));
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');
- const [images,setImages]=useState<InvoiceReceipt[]>([]);const [imagesLoading,setImagesLoading]=useState(!!task.receipts);const [imageError,setImageError]=useState('');
+ const [images,setImages]=useState<InvoiceReceipt[]>([]);const [imagesLoading,setImagesLoading]=useState(true);const [imageError,setImageError]=useState('');
  const invoice=task.invoice;const p=invoice?.snapshot.profile;const approved=approval(invoice);
  const lines=invoice?[...invoice.snapshot.lines,...invoice.snapshot.extras]:[];
  useEffect(()=>{const el=dialog.current;el?.showModal();return()=>el?.close();},[]);
  useEffect(()=>{
-  let active=true;let loaded:InvoiceReceipt[]=[];setImagesLoading(!!task.receipts);
-  if(task.receipts)void loadReceiptImages(task.receipts.files).then(rows=>{loaded=rows;if(active)setImages(rows);else releaseReceiptImages(rows);})
+  let active=true;let loaded:InvoiceReceipt[]=[];setImagesLoading(true);setImageError('');
+  void loadInvoiceReceipts(task.staff_id,task.month.slice(0,7)).then(rows=>{loaded=rows;if(active)setImages(rows);else releaseReceiptImages(rows);})
    .catch(e=>{if(active)setImageError(messageOf(e));}).finally(()=>{if(active)setImagesLoading(false);});
   return()=>{active=false;releaseReceiptImages(loaded);};
- },[task.receipts]);
+ },[task.staff_id,task.month]);
  async function approve(){
   if(!invoice)return;setBusy(true);setError('');
   try{
@@ -66,8 +66,8 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
  {invoice.note&&<p style={{whiteSpace:'pre-wrap'}}>{invoice.note}</p>}
  {p&&<details><summary>請求者・振込先</summary><p style={{whiteSpace:'pre-line'}}>{p.issuer_name}<br/>{p.postal} {p.address}<br/>{p.phone} / {p.email}<br/>{p.bank}（{p.bank_code}） {p.branch}（{p.branch_code}）<br/>{p.account_type} {p.account_number}<br/>{p.holder}<br/>{p.holder_kana}</p></details>}
  </>:<p>請求書はまだ送信されていません。</p>}</section>
- <section><h3>領収書</h3>{imagesLoading&&<p>読み込み中…</p>}{imageError&&<p className="error">{imageError}</p>}{!task.receipts&&<p>領収書はまだ送信されていません。</p>}
- <div className="review-receipts">{images.map((image,i)=><a key={image.id} href={image.url} target="_blank" rel="noreferrer" title="拡大して表示"><img src={image.url} alt={'領収書 '+(i+1)}/><span>{i+1}. {image.original_name}</span></a>)}</div></section></div>
+ <section><h3>請求書・領収書の添付</h3>{imagesLoading&&<p>読み込み中…</p>}{imageError&&<p className="error">{imageError}</p>}{!imagesLoading&&!images.length&&<p>添付ファイルはありません。</p>}
+ <div className="review-receipts">{images.map((image,i)=><a key={image.id} href={image.url} target="_blank" rel="noreferrer" title="クリックして開く">{image.mime_type.startsWith('image/')?<img src={image.url} alt={image.original_name}/>:<span className="receipt-pdf-link">PDFを開く</span>}<span>{image.document_type==='invoice'?'請求書':image.document_type==='receipt'?'領収書':'領収書の写真'}：{image.original_name}</span></a>)}</div></section></div>
  <PackedSummary staffId={task.staff_id} initialMonth={task.month.slice(0,7)} billedCount={invoice?.snapshot.lines.reduce((n,l)=>n+l.quantity,0)}/>
  {error&&<div className="error" role="alert">{error}</div>}
  {invoice&&!approved&&<form onSubmit={e=>{e.preventDefault();void approve();}}><div className="toolbar"><label className="field"><span>経費の計上日</span><input type="date" required value={date} disabled={busy} onChange={e=>setDate(e.target.value)}/></label><button className="btn primary" disabled={busy||imagesLoading||!!imageError||invoice.total<=0}>{busy?'承認中…':'承認して外注費に追加'}</button></div></form>}

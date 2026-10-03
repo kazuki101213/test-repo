@@ -19,6 +19,8 @@ export interface Invoice {
   note: string; snapshot: InvoiceSnapshot; total: number; version: number; updated_at: string;
   approved_at?: string;
 }
+export interface MonthlyGrossProfitRow { sku: string; sold_on: string; purchaser_name: string | null; gross_profit: number }
+export interface MonthlyGrossProfit { rows: MonthlyGrossProfitRow[]; total: number }
 
 export async function invoiceProfiles(): Promise<InvoiceProfile[]> {
   const { data, error } = await getSupabase().from('delivery_invoice_profiles').select('staff_id,details,unit_price,enabled').order('staff_id');
@@ -37,6 +39,11 @@ export async function prepareInvoice(staff: string, month: string): Promise<Invo
   const { data, error } = await getSupabase().rpc('prepare_delivery_invoice', { p_staff: staff, p_month: month + '-01' });
   if (error) throw error;
   return data as InvoiceSnapshot;
+}
+export async function monthlyGrossProfit(purchaserId: string | null, month: string): Promise<MonthlyGrossProfit> {
+  const { data, error } = await getSupabase().rpc('monthly_gross_profit_by_purchaser', { p_purchaser_id: purchaserId, p_month: month + '-01' });
+  if (error) throw error;
+  return data as MonthlyGrossProfit;
 }
 export async function saveInvoice(staff: string, month: string, issued: string, extras: InvoiceLine[], note: string, previous: Invoice | null): Promise<Invoice> {
   const fields = { issued_on: issued, extras, note };

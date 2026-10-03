@@ -8,6 +8,9 @@ export interface SpareAccessory {
   owner_name: string | null;
   purchased_at: string | null;
   title: string;
+  manufacturer: string | null;
+  model_no: string | null;
+  asin: string | null;
   cost_amount: number;
   marketplace: string | null;
   marketplace_item_id: string | null;

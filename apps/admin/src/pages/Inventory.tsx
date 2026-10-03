@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
-import { fetchInventoryItem, fetchItems, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
+import { deleteInventoryItem, fetchInventoryItem, fetchItems, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
 import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
@@ -215,7 +215,7 @@ export default function Inventory({ me }: { me: Staff }) {
       </aside>}
 
       {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
-      {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}
+      {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} canDelete={me.role === 'admin'} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}
       {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} のコメント</h3><p>{expandedComment.latest_comment}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
     </div>
   );
@@ -228,7 +228,7 @@ const fullEditFields: (keyof InventoryEdit)[] = [
   'amazon_refund_amount','non_amazon_refund_amount','marketplace_item_id',
 ];
 
-function InventoryFullEditDialog({ item, staff, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
+function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onClose: () => void; onSaved: () => void }) {
   const [identity, setIdentity] = useState({ sku: item.sku, lot_seq: item.lot_seq, model_no: item.model_no, product_no: item.product_no });
   const [values, setValues] = useState<InventoryEdit>(() => ({
     is_accessory: item.is_accessory, title: item.title, asin: item.asin, tracking_no: item.tracking_no, purchased_at: item.purchased_at,
@@ -278,6 +278,13 @@ function InventoryFullEditDialog({ item, staff, onClose, onSaved }: { item: Inve
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setBusy(false); }
   }
+  async function remove() {
+    const confirmed = window.confirm(`「${item.sku}」を在庫一覧から削除しますか？削除した商品情報は元に戻せません。`);
+    if (!confirmed) return;
+    setBusy(true); setError('');
+    try { await deleteInventoryItem(item); onSaved(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : '削除できませんでした。'); setBusy(false); }
+  }
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報を編集">
     <div className="card inventory-full-edit-panel"><h3>商品情報を編集</h3><p className="sku">{item.sku}</p>
       <div className="grid cols2">
@@ -294,7 +301,7 @@ function InventoryFullEditDialog({ item, staff, onClose, onSaved }: { item: Inve
         </label>;
       })}</div>
       {error && <div className="error" role="alert">{error}</div>}
-      <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
+      <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button>{canDelete && <button className="btn" disabled={busy} onClick={() => void remove()} style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>削除</button>}<button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
     </div>
   </div>;
 }
