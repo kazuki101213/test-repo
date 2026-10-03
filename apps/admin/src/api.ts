@@ -518,7 +518,7 @@ export async function fetchProducts(query?: string): Promise<Product[]> {
     let q = getSupabase().from('products').select('*').eq('is_active', true).order('product_no').order('id').range(from, to);
     if (query) {
       const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;
-      q = q.or(`asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term},genre.ilike.${term}`);
+      q = q.or(`product_no_search.ilike.${term},asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term},genre.ilike.${term}`);
     }
     const { data, error } = await q;
     if (error) throw error;

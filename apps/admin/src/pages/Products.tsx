@@ -40,7 +40,7 @@ export default function Products() {
 
   const fieldLabels: Record<ProductField, string> = {
     product_no: '品番', asin: 'ASIN', model_no: '型番', maker: 'メーカー', genre: 'ジャンル',
-    turnover: '回転', list_price: '販売価格', payout_estimate: '振込額', target_cost: '仕入れ目標',
+    turnover: '回転', list_price: '販売金額', payout_estimate: '振込金額', target_cost: '仕入れ目標金額',
     has_sold_before: '実績',
   };
   const startEdit = (product: Product, field: ProductField) => setEditing({ product, field, value: String(product[field] ?? '') });
@@ -49,11 +49,11 @@ export default function Products() {
   return (
     <>
       <h2>商品リスト</h2>
-      <p className="sub">総合管理表の「商品リスト」。仕入れ目標を下回る値段で買えるかの判断に使います。</p>
+      <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
       <div className="toolbar">
         <input
-          type="search" placeholder="ASIN / 型番 / メーカー / ジャンル" value={query}
+          type="search" placeholder="品番 / ASIN / 型番 / メーカー / ジャンル" value={query}
           onChange={(e) => setQuery(e.target.value)} style={{ minWidth: 260 }}
         />
         <span className="sub" style={{ margin: 0 }}>{rows.length} 件</span>
@@ -69,13 +69,13 @@ export default function Products() {
       {error && <div className="error">{error}</div>}
 
       <div className="scroll">
-        <table>
+        <table className="products-table">
           <thead>
             <tr>
               <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th>
               <th>ジャンル</th><th>回転</th>
-              <th className="num">販売価格</th><th className="num">振込額</th>
-              <th className="num">仕入れ目標</th><th>実績</th>
+              <th className="num">販売金額</th><th className="num">振込金額</th>
+              <th className="num">仕入れ目標金額</th><th>実績</th>
             </tr>
           </thead>
           <tbody>
