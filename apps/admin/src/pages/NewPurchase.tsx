@@ -19,6 +19,18 @@ const handoffTemplates = [
   '付属品は揃っていますか。',
 ];
 
+function errorMessage(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  if (cause && typeof cause === 'object') {
+    const value = cause as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [value.message, value.details, value.hint]
+      .filter((part): part is string => typeof part === 'string' && part.length > 0);
+    if (parts.length) return parts.join(' ');
+    if (typeof value.code === 'string') return `データ参照エラー (${value.code})`;
+  }
+  return String(cause);
+}
+
 export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () => void }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
@@ -146,7 +158,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         ? `元商品 ${source.original_sku} の情報を反映しました。新しいSKU: ${specialSku}（通番号の直後にb）`
         : `元商品 ${source.original_sku} の情報を反映しました。新しい返品SKU: ${source.sku}`);
     }).catch(cause => {
-      if (active) setReturnLookup(cause instanceof Error ? cause.message : String(cause));
+      if (active) setReturnLookup(`元商品の情報を読み込めませんでした: ${errorMessage(cause)}`);
     });
     return () => { active = false; };
   }, [marketplace, lotSeq, isAmazonReturn, isWorkingAmazonReturn]);
@@ -272,14 +284,22 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
             </div>
             {marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           <div>
-            {!isWorkingAmazonReturn && <label className="field"><span>商品リスト検索</span>
-              <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
-            </label>}
-            {!isWorkingAmazonReturn && matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
+            <div style={{ display: 'grid', gridTemplateColumns: isWorkingAmazonReturn ? '1fr' : '1fr 1fr', gap: 12, alignItems: 'start' }}>
+              {!isWorkingAmazonReturn && <div><label className="field"><span>商品リスト検索</span>
+                <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
+              </label>
+              {matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
               {matchingProducts.slice(0, 20).map(p => <button type="button" role="option" aria-selected={productId === p.id} key={p.id} onClick={() => { setProductId(p.id); setProductSearch(`${p.model_no ?? ''} / ${p.asin ?? ''}`); }}>
                 {p.model_no ?? '型番なし'} / {p.asin ?? 'ASINなし'} / 目標 {p.target_cost ? yen(p.target_cost) : '—'}
               </button>)}
-            </div>}
+              </div>}</div>}
+              <div>
+                <label className="field"><span>{isAmazonReturn || isWorkingAmazonReturn ? '元商品の通番号' : '通番号'}</span>
+                  <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
+                </label>
+                {(isAmazonReturn || isWorkingAmazonReturn) && <p className="sub" role="status" style={{ margin: '6px 0 0' }}>{returnLookup || '元商品の通番号を入力すると、商品情報を読み込みます。'}</p>}
+              </div>
+            </div>
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 8 }}>
               <label className="field"><span>型番</span>
                 <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
@@ -330,10 +350,6 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
                   {WORK_STREAMS.map((w) => <option key={w} value={w}>{workStreamLabels[w]}</option>)}
                 </select>
               </label>
-              <label className="field"><span>{isAmazonReturn || isWorkingAmazonReturn ? '元商品の通番号' : '通番号'}</span>
-                <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
-              </label>
-              {(isAmazonReturn || isWorkingAmazonReturn) && <p className="sub" role="status" style={{ gridColumn: '1 / -1', margin: 0 }}>{returnLookup || '元商品の通番号を入力すると、商品情報を読み込みます。'}</p>}
               <label className="field"><span>使用する予備付属品</span>
                 <select value={spareId} size={6} onChange={e => setSpareId(e.target.value)}>
                   <option value="">使用しない</option>
