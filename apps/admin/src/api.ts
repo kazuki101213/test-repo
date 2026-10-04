@@ -306,6 +306,18 @@ export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
   return data as InventoryItem;
 }
 
+/** Resolve by the complete serial: 123, 123a and 123aa are separate products. */
+export async function fetchInventoryMainItem(item: InventoryItem): Promise<InventoryItem> {
+  if (!item.is_accessory) return item;
+  const { data, error } = await getSupabase().from('v_inventory_display').select('*')
+    .eq('lot_seq', item.lot_seq).eq('is_accessory', false);
+  if (error) throw error;
+  const parents = ((data ?? []) as InventoryItem[]).filter(parent =>
+    productSerial(parent.sku, parent.lot_seq) === productSerial(item.sku, item.lot_seq));
+  if (parents.length !== 1) throw new Error('対応する本体を1件に特定できません。本体の通番号とSKUを確認してください。');
+  return parents[0]!;
+}
+
 export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
   const normalizedInput = input.marketplace === 'Amazon返品' ? { ...input, is_accessory: false } : input;
   if (normalizedInput.is_accessory) {
@@ -350,8 +362,8 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
       !Number.isSafeInteger(fields.inventory_refund_amount) || fields.inventory_refund_amount < 0) {
     throw new Error('金額は0円以上の整数で入力してください。');
   }
-  if (fields.status === '販売済' && (!fields.sold_on || fields.sold_price === null)) throw new Error('販売済にする場合は販売日・価格を入力してください。');
-  if (!!fields.sold_on !== (fields.sold_price !== null)) throw new Error('販売日と販売金額は両方入力してください。');
+  if (!fields.is_accessory && fields.status === '販売済' && (!fields.sold_on || fields.sold_price === null)) throw new Error('販売済にする場合は販売日・価格を入力してください。');
+  if (!fields.is_accessory && !!fields.sold_on !== (fields.sold_price !== null)) throw new Error('販売日と販売金額は両方入力してください。');
   if (fields.is_accessory && !item.is_accessory) {
     const { data: possibleParents, error: parentError } = await getSupabase().from('items')
       .select('id,sku,lot_seq').eq('lot_seq', item.lot_seq).eq('is_accessory', false);

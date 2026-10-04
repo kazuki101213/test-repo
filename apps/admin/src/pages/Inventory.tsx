@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
-import { deleteInventoryItem, fetchInventoryItem, fetchItems, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
+import { deleteInventoryItem, fetchInventoryItem, fetchInventoryMainItem, fetchItems, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
 import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
-import { productSerial } from '../inventory';
+import { productSerial, sharedInventoryFields } from '../inventory';
 
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -82,6 +82,19 @@ export default function Inventory({ me }: { me: Staff }) {
   const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
     if (source && target && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
   };
+
+  async function editField(item: InventoryItem, field: InventoryField) {
+    try {
+      const source = item.is_accessory && sharedInventoryFields.has(field)
+        ? await fetchInventoryMainItem(item) : item;
+      setEditFor({ item: source, field });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  }
+
+  async function editMain(item: InventoryItem) {
+    try { setFullEditFor(await fetchInventoryMainItem(item)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  }
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
@@ -157,11 +170,7 @@ export default function Inventory({ me }: { me: Staff }) {
             <tbody>
               {items.slice(0, visibleCount).map((i, index) => {
                 const serial = productSerial(i.sku, i.lot_seq);
-                const previous = items[index - 1];
-                const next = items[index + 1];
-                const previousSerial = previous ? productSerial(previous.sku, previous.lot_seq) : null;
-                const nextSerial = next ? productSerial(next.sku, next.lot_seq) : null;
-                const edit = (field: InventoryField) => setEditFor({ item: i, field });
+                const edit = (field: InventoryField) => { void editField(i, field); };
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
                 const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
@@ -171,13 +180,13 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryName = i.is_accessory ? i.title : i.model_no || i.title || '—';
                 const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
                 return (
-                <tr key={i.id} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
+                <tr key={i.id} aria-rowindex={index + 2} data-lot={serial}>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(i)}><span className="dot" style={{ background: STATUS_COLORS[i.status === 'Amazon返品' ? '作業中' : i.status] }} />{i.status === 'Amazon返品' ? '作業中' : i.status}</button>
                     <button type="button" className="inventory-cell-edit" title="本体・付属品の登録区分を変更" onClick={() => edit('is_accessory')}>{i.is_accessory ? '付属品' : '本体'}</button>
                   </div></td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
-                    {(i.is_accessory || serial !== previousSerial) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span></>}
+                    <button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span>
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
@@ -216,7 +225,7 @@ export default function Inventory({ me }: { me: Staff }) {
       </aside>}
 
       {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
-      {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} canDelete={me.role === 'admin'} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}
+      {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} canDelete={me.role === 'admin'} onEditMain={() => void editMain(fullEditFor)} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}
       {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} のコメント</h3><p>{expandedComment.latest_comment}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
     </div>
   );
@@ -229,7 +238,7 @@ const fullEditFields: (keyof InventoryEdit)[] = [
   'amazon_refund_amount','non_amazon_refund_amount','marketplace_item_id',
 ];
 
-function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onClose: () => void; onSaved: () => void }) {
+function InventoryFullEditDialog({ item, staff, canDelete, onEditMain, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onEditMain: () => void; onClose: () => void; onSaved: () => void }) {
   const [identity, setIdentity] = useState({ sku: item.sku, lot_seq: item.lot_seq, model_no: item.model_no, product_no: item.product_no });
   const [values, setValues] = useState<InventoryEdit>(() => ({
     is_accessory: item.is_accessory, title: item.title, asin: item.asin, tracking_no: item.tracking_no, purchased_at: item.purchased_at,
@@ -288,6 +297,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
   }
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報を編集">
     <div className="card inventory-full-edit-panel"><h3>商品情報を編集</h3><p className="sku">{item.sku}</p>
+      {item.is_accessory && <p>販売情報・作業状態は本体と共通です。<button type="button" className="btn" onClick={onEditMain}>本体の販売・作業情報を編集</button></p>}
       <div className="grid cols2">
         <label className="field"><span>通番号</span><input type="number" min={1} step={1} value={identity.lot_seq} onChange={event => setIdentity(current => ({ ...current, lot_seq: Number(event.target.value) }))} /></label>
         <label className="field"><span>SKU</span><input value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
@@ -295,10 +305,11 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         <label className="field"><span>型番</span><input value={identity.model_no ?? ''} onChange={event => setIdentity(current => ({ ...current, model_no: event.target.value || null }))} /></label>
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
+        const shared = values.is_accessory && sharedInventoryFields.has(field);
         return <label className="field" key={field}><span>{fieldLabels[field]}</span>
-          {options ? <select value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-            : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
-            : <input type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) ? 0 : undefined} step={numberFields.has(field) ? 1 : undefined} value={String(current)} onChange={event => set(field, event.target.value)} />}
+          {options ? <select disabled={shared} value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+            : field === 'memo' ? <textarea disabled={shared} value={String(current)} onChange={event => set(field, event.target.value)} />
+            : <input disabled={shared} type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) ? 0 : undefined} step={numberFields.has(field) ? 1 : undefined} value={String(current)} onChange={event => set(field, event.target.value)} />}
         </label>;
       })}</div>
       {error && <div className="error" role="alert">{error}</div>}

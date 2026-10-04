@@ -23,6 +23,12 @@ export function productCount(rows: ReadonlyArray<{ lot_seq: number; sku?: string
   return new Set(rows.map(row => productSerial(row.sku, row.lot_seq))).size;
 }
 
+/** Accessories display these values from their main product, without recording revenue twice. */
+export const sharedInventoryFields = new Set<string>([
+  'status', 'condition', 'sales_channel', 'planned_price', 'planned_payout',
+  'packed_on', 'shipped_on', 'sold_on', 'sold_price', 'payout_amount',
+]);
+
 export const inventoryRowHeight = 64;
 export const inventoryHeaderHeight = 40;
 export function inventoryWindow(total: number, scrollTop: number, height: number) {
