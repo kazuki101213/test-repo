@@ -113,26 +113,63 @@ export async function postComment(itemId: string, authorId: string, body: string
   if (error) throw error;
 }
 
-export async function uploadPhoto(sku: string, itemId: string, staffId: string, file: File) {
+async function preparePhotoForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) throw new Error('画像ファイルを選択してください。');
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    throw new Error('この写真形式を読み込めません。端末のカメラ設定をJPEGにするか、写真をJPEG形式で保存してから追加してください。');
+  }
+  try {
+    const maxEdge = 1920;
+    const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('写真を変換できません。ページを再読み込みしてもう一度お試しください。');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const toJpeg = (quality: number) => new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('写真をJPEG形式へ変換できませんでした。')), 'image/jpeg', quality);
+    });
+    let blob = await toJpeg(0.84);
+    if (blob.size > 5 * 1024 * 1024) blob = await toJpeg(0.68);
+    if (blob.size > 8 * 1024 * 1024) throw new Error('写真の容量を小さくできませんでした。端末で写真を小さくしてから追加してください。');
+    const baseName = file.name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60) || 'photo';
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg', lastModified: file.lastModified });
+  } finally {
+    bitmap.close();
+  }
+}
+
+export async function uploadPhoto(sku: string, itemId: string, staffId: string, originalFile: File) {
   const sb = getSupabase();
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const path = `${sku}/${crypto.randomUUID()}.${ext}`;
+  const file = await preparePhotoForUpload(originalFile);
+  const path = `${sku}/${crypto.randomUUID()}.jpg`;
 
   const { error: upErr } = await sb.storage.from(PHOTO_BUCKET).upload(path, file, {
     cacheControl: '3600',
+    contentType: 'image/jpeg',
     upsert: false,
   });
   if (upErr) throw upErr;
 
-  const { error } = await sb.from('item_photos').insert({
-    item_id: itemId,
-    storage_path: path,
-    uploaded_by: staffId,
-  });
-  if (error) throw error;
+  try {
+    const { error } = await sb.from('item_photos').insert({
+      item_id: itemId,
+      storage_path: path,
+      uploaded_by: staffId,
+    });
+    if (error) throw error;
+  } catch (error) {
+    await sb.storage.from(PHOTO_BUCKET).remove([path]).catch(() => undefined);
+    throw error;
+  }
   return path;
 }
-
 export interface ItemPhoto {
   id: string;
   url: string;

@@ -91,21 +91,25 @@ export default function TaskDetail({
     if (!files || !task) return;
     setUploading(true);
     setError(null);
+    let uploadedCount = 0;
     try {
       for (const file of Array.from(files)) {
         await uploadPhoto(task.sku, task.id, staff.id, file);
+        uploadedCount++;
       }
       setDriveMessage('新しい写真があります。Googleドライブに追加してください。');
-      // 写真が 1 枚でも入ったら「写真登録」を自動で済みにする
       if (!task.photo_uploaded) await setWorkProgress(task.id, 'photo', true);
-      await reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(/Failed to fetch|NetworkError|Load failed/i.test(message)
+        ? '写真をSupabaseへ送信できませんでした。通信状態を確認し、安定したWi‑Fiまたはモバイル通信で再度お試しください。'
+        : message);
     } finally {
+      // Reflect successfully saved photos even if a later progress update failed.
+      if (uploadedCount > 0) await reload();
       setUploading(false);
     }
   }
-
   async function addToDrive() {
     if (!task) return;
     setDriveBusy(true); setError(null); setDriveMessage('');
