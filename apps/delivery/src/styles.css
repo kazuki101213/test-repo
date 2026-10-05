@@ -158,6 +158,14 @@ textarea { min-height: 80px; resize: vertical; }
 .accessory-options label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .accessory-options input { width: 18px; height: 18px; }
 .description-editor .description-text { min-height: 300px; line-height: 1.7; }
+.marketplace-listing-fields { display:grid; gap:12px; }
+.marketplace-listing-fields label { display:grid; gap:6px; }
+.marketplace-listing-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.copy-icon-button { width:32px; height:32px; flex:none; display:grid; place-items:center; padding:6px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); cursor:pointer; }
+.copy-icon-button svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.copy-icon-button:disabled { opacity:.5; cursor:not-allowed; }
+.marketplace-title-text { min-height:58px; line-height:1.5; }
+.marketplace-body-text { min-height:300px; line-height:1.7; }
 .task-card { display:grid; grid-template-columns:22px minmax(0,1fr); align-items:start; gap:12px; }
 .task-card[data-expanded="true"] { border-color:var(--accent); }
 .task-card > input { grid-column:1; width:22px; height:22px; margin-top:4px; accent-color:var(--accent); }
@@ -184,14 +192,15 @@ textarea { min-height: 80px; resize: vertical; }
 .task-detail-inline > .card { border:0; border-top:1px solid var(--border); border-radius:0; background:transparent; padding:14px 0 0; }
 .task-members { display: grid; gap: 6px; margin-top: 10px; }
 .task-member-row { display:grid; gap:4px; min-width:0; }
-.task-member-accessory { padding:6px 0; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+.task-member-accessory { padding:0; border:0; border-radius:0; background:transparent; }
 .task-member-accessory > .badge { width:fit-content; font-size:16px; }
 .task-member-accessory > *:not(.badge) { font-size:14px; }
 .task-member-accessory > .copyable-text, .task-member-accessory .task-member-date { padding-left:0; }
 .task-member-open { width:auto; min-width:0; text-align:left; font:inherit; color:inherit; cursor:pointer; padding:0; border:0; border-radius:0; background:transparent; }
 .task-members .muted { display: block; margin-top: 4px; }
-.task-member-row:not(.task-member-accessory) > .copyable-text,
-.task-member-row:not(.task-member-accessory) > .task-member-date { padding-left:10px; }
+.task-member-row > .copyable-text, .task-member-date { padding-left:10px; }
+.task-member-row.task-member-accessory > .copyable-text,
+.task-member-row.task-member-accessory > .task-member-date { padding-left:0; }
 .staff-scope { margin:8px 0; }
 .task-filters { flex-wrap: nowrap; gap: 4px; overflow: hidden; padding-bottom: 0; }
 .task-filters .btn { flex: 1 1 auto; min-width: 0; font-size: clamp(8px, 2.8vw, 13px); padding: 7px clamp(3px, 1vw, 9px); min-height: 36px; }
@@ -215,3 +224,4 @@ textarea { min-height: 80px; resize: vertical; }
 .marketplace-message-composer textarea { min-height: 76px; resize: vertical; }
 .spare-row-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .spare-delete { flex: 0 0 auto; }
+
