@@ -114,8 +114,8 @@ export async function fetchWorkload(): Promise<DelivererWorkload[]> {
 }
 
 export interface ItemFilter {
-  status?: string;
-  delivererId?: string;
+  statuses?: string[];
+  delivererIds?: string[];
   query?: string;
   unsoldOnly?: boolean;
   purchasedFrom?: string;
@@ -259,16 +259,25 @@ export async function fetchSaleRows(): Promise<SaleRow[]> {
 }
 
 export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal): Promise<{ items: InventoryItem[]; count: number }> {
+  const selectedStatuses = filter.statuses;
+  const hasStatusFilter = selectedStatuses !== undefined;
+  const unsoldOnly = selectedStatuses?.includes('__unsold__') ?? filter.unsoldOnly ?? false;
+  const statusValues = selectedStatuses?.filter(value => value !== '__unsold__' && !value.startsWith('marketplace:')) ?? [];
+  const marketplaces = selectedStatuses?.filter(value => value.startsWith('marketplace:')).map(value => value.slice('marketplace:'.length)) ?? [];
+  if ((hasStatusFilter && statusValues.length === 0 && marketplaces.length === 0) || filter.delivererIds?.length === 0) return { items: [], count: 0 };
   const items = await readAllRows<InventoryItem>(async (from, to) => {
     let q = getSupabase().from('v_inventory_display').select('*')
       .order('lot_seq', { ascending: false }).order('is_accessory').order('sku')
       .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
       .range(from, to);
 
-    if (filter.status?.startsWith('marketplace:')) q = q.eq('marketplace', filter.status.slice('marketplace:'.length));
-    else if (filter.status) q = q.eq('status', filter.status);
-    if (filter.delivererId) q = q.eq('deliverer_id', filter.delivererId);
-    if (filter.unsoldOnly) q = q.eq('sale_row_count', 0).neq('status', '返品処理').neq('status', '廃棄');
+    if (hasStatusFilter) {
+      if (statusValues.length && marketplaces.length) q = q.or(`status.in.(${statusValues.join(',')}),marketplace.in.(${marketplaces.join(',')})`);
+      else if (statusValues.length) q = q.in('status', statusValues);
+      else q = q.in('marketplace', marketplaces);
+    }
+    if (filter.delivererIds?.length) q = q.in('deliverer_id', filter.delivererIds);
+    if (unsoldOnly) q = q.eq('sale_row_count', 0).neq('status', '返品処理').neq('status', '廃棄');
     if (filter.purchasedFrom) q = q.gte('purchased_at', filter.purchasedFrom);
     if (filter.purchasedTo) q = q.lte('purchased_at', filter.purchasedTo);
     if (signal) q = q.abortSignal(signal);
