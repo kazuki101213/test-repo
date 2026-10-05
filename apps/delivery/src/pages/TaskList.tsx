@@ -21,6 +21,14 @@ function serialNumber(task: DeliveryTask): string {
   return prefix?.toLocaleUpperCase() ?? `item:${task.id}`;
 }
 
+function baseSerialNumber(task: DeliveryTask): string {
+  return task.sku.match(/^(\d+)[a-z]*-/i)?.[1] ?? String(task.lot_seq);
+}
+
+function hasSerialSuffix(task: DeliveryTask): boolean {
+  return /^\d+[a-z]+-/i.test(task.sku);
+}
+
 export default function TaskList({ staff }: { staff: Staff }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
@@ -81,6 +89,14 @@ export default function TaskList({ staff }: { staff: Staff }) {
 
   const shown = useMemo(() => {
     const q = normalizeSearch(query);
+    const originalIds = new Map<string, string>();
+    for (const task of tasks) {
+      if (!hasSerialSuffix(task)) continue;
+      const original = tasks.find(candidate => !candidate.is_accessory && !hasSerialSuffix(candidate)
+        && baseSerialNumber(candidate) === baseSerialNumber(task) && candidate.marketplace_item_id);
+      const productId = original?.marketplace_item_id || task.marketplace_item_id;
+      if (productId) originalIds.set(task.id, productId);
+    }
     const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
     for (const task of tasks) {
       if (staff.role === 'admin' && delivererId && task.deliverer_id !== delivererId) continue;
@@ -89,11 +105,11 @@ export default function TaskList({ staff }: { staff: Staff }) {
       if (members) members.push(task);
       else groups.set(key, [task]);
     }
-    return [...groups.values()].map(members => ({
+    const rows = [...groups.values()].map(members => ({
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
-      if (q && !members.some(member => [serialNumber(member), String(member.lot_seq ?? ''), member.sku, member.model_no, member.title, member.asin, member.marketplace_item_id, member.tracking_no].filter((value): value is string => typeof value === 'string').some(value => normalizeSearch(value).includes(q)))) return false;
+      if (q && !members.some(member => [serialNumber(member), String(member.lot_seq ?? ''), member.sku, member.model_no, member.title, member.asin, member.marketplace_item_id, originalIds.get(member.id), member.tracking_no].filter((value): value is string => typeof value === 'string').some(value => normalizeSearch(value).includes(q)))) return false;
       const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;
@@ -104,7 +120,9 @@ export default function TaskList({ staff }: { staff: Staff }) {
         case 'all':     return true;
       }
     });
+    return { rows, originalIds };
   }, [tasks, filter, query, staff.role, delivererId]);
+  const shownRows = shown.rows;
 
   return (
     <>
@@ -127,15 +145,15 @@ export default function TaskList({ staff }: { staff: Staff }) {
       </div>
       <div className="export-actions">
         <button className="btn" disabled={exporting || selected.size === 0} onClick={() => void exportAmazon()}>{exporting ? '出力中…' : `Amazon出品ファイル（${selected.size}件）`}</button>
-        <button className="btn" disabled={exporting || shown.length === 0} onClick={() => setSelected(current => new Set([...current, ...shown.map(group => group.task.id)]))}>表示中を選択</button>
+        <button className="btn" disabled={exporting || shownRows.length === 0} onClick={() => setSelected(current => new Set([...current, ...shownRows.map(group => group.task.id)]))}>表示中を選択</button>
         <button className="btn" disabled={exporting || selected.size === 0} onClick={() => setSelected(new Set())}>選択解除</button>
       </div>
 
       {error && <div className="error">{error}</div>}
       {loading && <div className="empty">読み込み中…</div>}
-      {!loading && shown.length === 0 && <div className="empty">該当する商品はありません。</div>}
+      {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shown.map(({ task: t, members }) => <TaskCard key={t.id} task={t} amazonImageUrl={t.reference_image_url} members={members} staff={staff} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;

@@ -55,7 +55,7 @@ export default function Spares({ staff }: { staff: Staff }) {
     {loading ? <p>読み込み中…</p> : shown.length === 0 ? <p className="empty">予備はありません。</p> :
       <div className="spare-list">{shown.map(row => <div className="spare-row" key={row.id}>
         <div className="spare-row-heading"><div><strong>{row.title}</strong> <span className="badge">{spareState(row)}</span></div>
-          {(staff.role === 'admin' || row.owner_staff_id === staff.id) && !row.source_sheet_row && <button type="button" className="btn danger spare-delete" disabled={deletingId !== null} onClick={() => void remove(row)}>{deletingId === row.id ? '削除中…' : '削除'}</button>}
+          {(staff.role === 'admin' || row.owner_staff_id === staff.id) && <button type="button" className="btn danger spare-delete" disabled={deletingId !== null} onClick={() => void remove(row)}>{deletingId === row.id ? '削除中…' : '削除'}</button>}
         </div>
         <div>保管担当：{row.owner_name || '未設定'}</div>
         <div>購入日：{row.purchased_at || '—'}　仕入金額：{yen(row.cost_amount)}</div>

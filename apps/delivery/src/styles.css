@@ -184,8 +184,11 @@ textarea { min-height: 80px; resize: vertical; }
 .task-detail-inline > .card { border:0; border-top:1px solid var(--border); border-radius:0; background:transparent; padding:14px 0 0; }
 .task-members { display: grid; gap: 6px; margin-top: 10px; }
 .task-member-row { display:grid; gap:4px; min-width:0; }
-.task-member-accessory { padding:10px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); }
-.task-member-open { width:100%; min-width:0; text-align: left; font-size: 13px; padding: 8px 10px; }
+.task-member-accessory { padding:0; border:0; border-radius:0; background:transparent; }
+.task-member-accessory > .badge { width:fit-content; font-size:16px; }
+.task-member-accessory > *:not(.badge) { font-size:14px; }
+.task-member-accessory > .copyable-text, .task-member-accessory .task-member-date { padding-left:0; }
+.task-member-open { width:auto; min-width:0; text-align:left; font:inherit; color:inherit; cursor:pointer; padding:0; border:0; border-radius:0; background:transparent; }
 .task-members .muted { display: block; margin-top: 4px; }
 .task-member-row > .copyable-text, .task-member-date { padding-left:10px; }
 .staff-scope { margin:8px 0; }
@@ -199,7 +202,7 @@ textarea { min-height: 80px; resize: vertical; }
 .spare-row { padding: 12px; border: 1px solid var(--border); border-radius: 10px; line-height: 1.6; overflow-wrap: anywhere; }
 
 .task-item-id-line { display:flex !important; align-items:center; gap:8px; min-width:0; overflow:visible !important; }
-.task-item-page-link { flex:none; border:0; padding:0; background:transparent; color:var(--accent); font-size:13px; line-height:18px; text-decoration:underline; cursor:pointer; }
+.task-item-page-link { flex:none; border:0; padding:0; background:transparent; color:var(--accent); font-size:14px; line-height:18px; text-decoration:underline; cursor:pointer; }
 .task-item-page-link:disabled { color:var(--muted); text-decoration:none; cursor:not-allowed; }
 .marketplace-conversation-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .marketplace-message-list { display: grid; gap: 8px; max-height: 360px; overflow: auto; margin-top: 12px; }
