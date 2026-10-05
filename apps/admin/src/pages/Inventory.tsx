@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
+import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen } from '@bussan/shared';
 import type { PurchaseDraft, Staff } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchItems, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
