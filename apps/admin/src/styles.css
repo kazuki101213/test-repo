@@ -140,7 +140,7 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 @media (min-width: 861px) {
   .inventory-workspace { min-height: calc(100dvh - 84px); }
   .inventory-list { display: flex; flex-direction: column; min-height: 0; }
-  .inventory-list > .scroll { flex: none; height: auto; max-height: none; overflow-y: visible; }
+  .inventory-list > .scroll { flex: 0 1 auto; height: auto; max-height: calc(100dvh - 300px); min-height: 240px; overflow-y: auto; }
 }
 .inventory-table tr[data-group-end='false'] > td { border-bottom: 0; }
 .inventory-table thead tr { height: 40px; }
