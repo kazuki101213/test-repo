@@ -11,7 +11,7 @@ function initialTarget(task: DeliveryTask): DescriptionTarget {
 
 function splitMarketplaceListing(value: string): { title: string; body: string } {
   const match = value.match(/^商品名（(?:メルカリ|ヤフオク)）\r?\n([\s\S]*?)\r?\n\r?\n説明文\r?\n([\s\S]*)$/);
-  return match ? { title: match[1], body: match[2] } : { title: '', body: value };
+  return match ? { title: match[1] ?? '', body: match[2] ?? '' } : { title: '', body: value };
 }
 
 function joinMarketplaceListing(target: DescriptionTarget, title: string, body: string): string {
