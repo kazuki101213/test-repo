@@ -6,7 +6,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function getSettings(){const {settings}=await STORE.get('settings');return settings||settingsDefault();}
 async function log(kind,text,extra={}){const {events=[]}=await STORE.get('events');events.unshift({at:new Date().toISOString(),kind,text,...extra});await STORE.set({events:events.slice(0,200)});await chrome.action.setBadgeText({text:kind==='error'?'!':''});}
 async function schedule(){const s=await getSettings();for(const [kind,hour] of [['tracking',s.trackingHour],['receipt',s.receiptHour]])await chrome.alarms.create('fm:'+kind,{when:nextTime(hour)});await chrome.alarms.create('fm:pulse',{periodInMinutes:1});}
-async function initialize(){await STORE.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});if(!(await STORE.get('settings')).settings)await STORE.set({settings:settingsDefault()});await schedule();}
+async function initialize(){await STORE.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});if(!(await STORE.get('settings')).settings)await STORE.set({settings:settingsDefault()});await schedule();const version=chrome.runtime.getManifest().version;const s=await getSettings();if(s.mode==='diagnostic'&&s.accounts.some(a=>a.enabled)&&(await STORE.get('lastDiagnosticVersion')).lastDiagnosticVersion!==version){await STORE.set({lastDiagnosticVersion:version});await diagnosticReport();}}
 async function saveSettings(s){validateSettings(s);const {job}=await STORE.get('job');if(job)throw new Error('巡回中は設定を変更できません。先に停止してください');
   if(s.mode==='full'&&!s.migrationConfirmed)throw new Error('既存Codex処理の停止と評価画面の検証後に切り替えてください');
   if(s.mode!=='diagnostic')for(const a of s.accounts.filter(a=>a.enabled)){const r=s.recipes[a.site];if(!r?.verified)throw new Error(a.label+'の実画面検証が未完了です');if(s.mode==='full'&&!r.receiptVerified)throw new Error(a.label+'の評価画面検証が未完了です');}
@@ -14,7 +14,7 @@ async function saveSettings(s){validateSettings(s);const {job}=await STORE.get('
 async function content(tabId,type,args={}){
   const account=args.account;
   if(account?.identity?.pageUrl&&type!=='identity'){
-    assertSiteUrl(account.site,account.identity.pageUrl);if(!['rakuma','mercari','flea'].includes(account.site))throw new Error('アカウント確認ページが不正です');
+    assertSiteUrl(account.site,account.identity.pageUrl);if(!['rakuma','mercari','flea','auctions'].includes(account.site))throw new Error('アカウント確認ページが不正です');
     if(!['list','detail','preflight','submit','success','messageDetail','sendMessage'].includes(type))throw new Error('アカウント確認の処理種別が不正です');
     const target=await chrome.tabs.get(tabId);assertSiteUrl(account.site,target.url);
     const checkTab=await chrome.tabs.create({url:account.identity.pageUrl,active:false});
@@ -41,14 +41,17 @@ async function navigate(job,account,url){assertSiteUrl(account.site,url);if(job.
 function taskArgs(account,status,kind,details,itemId=null){const label={tracking:'追跡番号照合',receipt:'受け取り評価'}[kind]||kind;return {p_marketplace:SITES[account.site].db[0],p_account_label:account.label,p_marketplace_item_id:itemId,p_site_tracking_no:null,p_confirmation_status:status,p_details:`処理種別=${label}; 拡張機能; ${details}`};}
 async function task(account,status,kind,details,itemId=null){const args=taskArgs(account,status,kind,details,itemId);try{await rpc('reconcile_marketplace_tracking',args);}catch(e){const {outbox=[]}=await STORE.get('outbox');const key=account.id+':'+status+':'+(itemId||'');const filtered=outbox.filter(x=>x.key!==key);filtered.push({key,args});await STORE.set({outbox:filtered.slice(-200)});await log('error','ダッシュボードへ未送信: '+e.message,{account:account.label,status,itemId});}}
 async function flushOutbox(){const {outbox=[]}=await STORE.get('outbox');if(!outbox.length)return;try{await rpc('reconcile_marketplace_tracking',outbox[0].args);await STORE.set({outbox:outbox.slice(1)});}catch{}}
-async function start(kind,manual=false){if(!['tracking','receipt','messages','purchases'].includes(kind))throw new Error('処理種別が不正です');const {job}=await STORE.get('job');if(job)throw new Error('別の巡回を実行中です');const s=await getSettings();const accounts=s.accounts.filter(a=>a.enabled);if(!accounts.length)throw new Error('このChromeプロファイルのアカウントを登録してください');
+function prepareAccount(a){const copy=structuredClone(a);if(copy.site==='auctions'&&copy.listUrl==='https://auctions.yahoo.co.jp/my/won'&&copy.identity)copy.identity.pageUrl=copy.listUrl;return copy;}
+async function diagnosticReport(){if((await getSettings()).mode==='diagnostic')await chrome.tabs.create({url:chrome.runtime.getURL('report.html'),active:false}).catch(()=>{});}
+async function capturePage(job,a,stage){if(job.settings.mode!=='diagnostic')return;try{const d=await content(job.tabId,'diagnostic');const {pages=[]}=await STORE.get('pages');pages.push({at:new Date().toISOString(),account:a.label,stage,...d});await STORE.set({pages:pages.slice(-60)});}catch{}}
+async function start(kind,manual=false){if(!['tracking','receipt','messages','purchases'].includes(kind))throw new Error('処理種別が不正です');const {job}=await STORE.get('job');if(job)throw new Error('別の巡回を実行中です');const s=await getSettings();const accounts=s.accounts.filter(a=>a.enabled).map(prepareAccount);if(!accounts.length)throw new Error('このChromeプロファイルのアカウントを登録してください');
   if(kind==='receipt'&&s.mode!=='full')throw new Error('受け取り評価は実画面検証と切り替え後に有効になります');
   // 診断モードにはSupabaseの読み取り照合も含むが、登録・評価送信は行わない。
   if(await rpc('is_admin')!==true)throw new Error('管理アプリとの連携を確認してください');
   const outbox=kind==='messages'?await rpc('extension_marketplace_message_queue',{p_marketplaces:[...new Set(accounts.flatMap(a=>SITES[a.site].db))]}):[];
   await STORE.set({job:{id:crypto.randomUUID(),kind,manual,day:jstDay(),accountIndex:0,stage:'list',pageUrl:accounts[0].listUrl,seenPages:[],urls:[],index:0,tabId:null,counts:{checked:0,updated:0,rated:0,imported:0,skipped:0,errors:0},settings:s,accounts,outbox}});
   await log('info',kind==='tracking'?'追跡番号の巡回を開始':kind==='messages'?'取引メッセージの同期を開始':kind==='purchases'?'購入履歴の取り込みを開始':'受け取り評価の巡回を開始');return {started:true};}
-async function finish(job){if(job.tabId)await chrome.tabs.remove(job.tabId).catch(()=>{});const {lastRun={}}=await STORE.get('lastRun');lastRun[job.kind]={day:job.day,at:new Date().toISOString(),counts:job.counts};await STORE.set({lastRun,job:null});await log('info','巡回終了',job.counts);}
+async function finish(job){if(job.tabId)await chrome.tabs.remove(job.tabId).catch(()=>{});const {lastRun={}}=await STORE.get('lastRun');lastRun[job.kind]={day:job.day,at:new Date().toISOString(),counts:job.counts};await STORE.set({lastRun,job:null});await log('info','巡回終了',job.counts);await diagnosticReport();}
 async function nextAccount(job){if(job.tabId)await chrome.tabs.remove(job.tabId).catch(()=>{});job.tabId=null;job.accountIndex++;job.urls=[];job.index=0;job.seenPages=[];job.stage='list';job.pageUrl=job.accounts[job.accountIndex]?.listUrl;if(job.accountIndex>=job.accounts.length){if(job.kind==='messages')for(const entry of job.outbox||[])await rpc('extension_finish_marketplace_message',{p_id:entry.id,p_status:'failed',p_note:'このChromeプロファイルの購入一覧に該当する取引が見つかりません'}).catch(()=>{});return finish(job);}await STORE.set({job});}
 function receiptArgs(a,itemId,action,token=null,details=null){return {p_action:action,p_marketplace:SITES[a.site].db[0],p_item_id:itemId,p_account_label:a.label,p_token:token,p_details:details};}
 async function recoverSend(job,a){
@@ -58,13 +61,13 @@ async function recoverSend(job,a){
 }
 async function step(){if(busy)return;busy=true;try{
   let {job}=await STORE.get('job');if(!job){await flushOutbox();return;}
-  const a=job.accounts[job.accountIndex],r=job.settings.recipes[a.site]||{};
+  const a=prepareAccount(job.accounts[job.accountIndex]),r=job.settings.recipes[a.site]||{};
   if(job.stage==='sending'){await recoverSend(job,a);return;}
   try{
     if(job.stage==='list'){
       if(job.seenPages.includes(job.pageUrl)||job.seenPages.length>=20)throw new Error('取引一覧のページ数または巡回重複を確認してください');
       const listRecipe=['messages','purchases'].includes(job.kind)?{...r,includeCompleted:true}:r;
-      await navigate(job,a,job.pageUrl);const data=await content(job.tabId,'list',{account:a,recipe:listRecipe});if(data.auth)throw new Error(data.auth);
+      await navigate(job,a,job.pageUrl);await capturePage(job,a,'list');const data=await content(job.tabId,'list',{account:a,recipe:listRecipe});if(data.auth)throw new Error(data.auth);
       if(job.kind==='purchases'){
         const result=await rpc('extension_sync_purchase_drafts',{p_marketplace:SITES[a.site].db[0],p_account_label:a.label,p_purchases:data.purchases||[]});
         const added=Number(result?.inserted)||0;job.counts.imported+=added;job.counts.checked+=(data.purchases||[]).length;
@@ -73,7 +76,9 @@ async function step(){if(busy)return;busy=true;try{
         if(data.nextUrl)job.pageUrl=data.nextUrl;else {await nextAccount(job);return;}
         await STORE.set({job});return;
       }
+      if(job.settings.mode==='diagnostic'&&!data.links.length)await log('info','取引リンク0件。未完了取引がないとは未確認です',{account:a.label});
       job.seenPages.push(job.pageUrl);job.urls=[...new Set([...job.urls,...data.links])];if(job.urls.length>500)throw new Error('取引数が上限を超えました');
+      if(job.settings.mode==='diagnostic'){job.urls=job.urls.slice(0,3);if(job.seenPages.length>=3)data.nextUrl=null;}
       if(data.nextUrl)job.pageUrl=data.nextUrl;else job.stage='detail';await STORE.set({job});return;
     }
     if(job.index>=job.urls.length){await nextAccount(job);return;}
@@ -104,7 +109,7 @@ async function step(){if(busy)return;busy=true;try{
       }
       job.counts.checked++;job.index++;await STORE.set({job});return;
     }
-    await navigate(job,a,job.urls[job.index]);const tx=await content(job.tabId,'detail',{account:a,recipe:r});if(tx.auth)throw new Error(tx.auth);job.counts.checked++;
+    await navigate(job,a,job.urls[job.index]);await capturePage(job,a,'detail');const tx=await content(job.tabId,'detail',{account:a,recipe:r});if(tx.auth)throw new Error(tx.auth);job.counts.checked++;
     if(tx.role!=='buyer'||tx.state!=='pending'){job.counts.skipped++;if(tx.role==='unknown'||tx.state==='unknown'){await log('error','購入者・取引状態を判定できません',{account:a.label,itemId:tx.itemId});if(job.settings.mode!=='diagnostic')await task(a,'画面確認待ち',job.kind,'購入者側の未完了取引か判断できません',tx.itemId);}job.index++;await STORE.set({job});return;}
     const match=await rpc('marketplace_extension_probe',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});
     if(job.kind==='tracking'){
@@ -179,7 +184,7 @@ async function uiMessage(m){
     if(!a.identity?.selector||!a.identity.text||a.identity.pageUrl!==new URL(tab.url).origin+new URL(tab.url).pathname)throw new Error('アカウント確認情報を取得できません');
     validateSettings(s);
     const data=await content(tab.id,'list',{account:a,recipe:s.recipes[site]||{}});if(data.auth)throw new Error(data.auth);
-    a.listUrl=a.identity.pageUrl;a.enabled=true;validateSettings(s);await STORE.set({settings:s});await log('info','アカウントと購入一覧を自動登録しました',{account:a.label});return {registered:true,label:a.label,name:a.identity.text};
+    a.listUrl=a.identity.pageUrl;a.enabled=true;validateSettings(s);await STORE.set({settings:s});await log('info','アカウントと購入一覧を自動登録しました',{account:a.label});await diagnosticReport();return {registered:true,label:a.label,name:a.identity.text};
   }
   if(m.type==='registerRakuma'){
     if((await STORE.get('job')).job)throw new Error('先に巡回を停止してください');
@@ -195,7 +200,7 @@ async function uiMessage(m){
       if(new URL(active.url).pathname!=='/buy'){purchase=await chrome.tabs.create({url:'https://fril.jp/buy',active:false});created.push(purchase.id);await loaded(purchase.id,'rakuma');}
       const list=await content(purchase.id,'list',{account:a,recipe:s.recipes.rakuma||{}});if(list.auth)throw new Error(list.auth);
       a.listUrl='https://fril.jp/buy';a.enabled=true;validateSettings(s);await STORE.set({settings:s});
-      await log('info','ラクマのアカウントと購入一覧を自動登録しました',{account:a.label});return {registered:true,label:a.label,name:a.identity.text};
+      await log('info','ラクマのアカウントと購入一覧を自動登録しました',{account:a.label});await diagnosticReport();return {registered:true,label:a.label,name:a.identity.text};
     }finally{for(const id of created)await chrome.tabs.remove(id).catch(()=>{});}
   }
   if(['diagnostic','pick','bind'].includes(m.type)){
@@ -205,17 +210,17 @@ async function uiMessage(m){
       if(new URL(tab.url).origin!=='https://fril.jp'||new URL(tab.url).pathname!=='/mypage'||!/^.{1,100}さんのマイページ$/.test(result.identity.text))throw new Error('ラクマではマイページの「自分の名前さんのマイページ」を選んでください');
       result.identity.pageUrl='https://fril.jp/mypage';
     }
-    a.identity=result.identity;await STORE.set({settings:s});await log('info','アカウント名を紐付けました',{account:a.label});return {registered:true};}
+    a.identity=result.identity;await STORE.set({settings:s});await log('info','アカウント名を紐付けました',{account:a.label});await diagnosticReport();return {registered:true};}
     const s=await getSettings(),a=s.accounts.find(x=>x.id===m.id);if(!a||siteFor(tab.url)!==a.site||!a.identity)throw new Error('先にログイン中アカウント名を紐付けてください');
-    const list=await content(tab.id,'list',{account:a,recipe:s.recipes[a.site]||{}});if(list.auth)throw new Error(list.auth);a.listUrl=tab.url;a.enabled=true;validateSettings(s);await STORE.set({settings:s});await log('info','購入一覧を登録しました',{account:a.label});return {registered:true};
+    const list=await content(tab.id,'list',{account:a,recipe:s.recipes[a.site]||{}});if(list.auth)throw new Error(list.auth);a.listUrl=tab.url;a.enabled=true;validateSettings(s);await STORE.set({settings:s});await log('info','購入一覧を登録しました',{account:a.label});await diagnosticReport();return {registered:true};
   }
-  if(m.type==='export'){const {settings,events=[],lastRun,outbox=[]}=await STORE.get(['settings','events','lastRun','outbox']);return {version:chrome.runtime.getManifest().version,settings,events,lastRun,unsentTaskCount:outbox.length};}
+  if(m.type==='export'){const {settings,events=[],lastRun,outbox=[],pages=[],job,session,diagnosticInstance}=await STORE.get(['settings','events','lastRun','outbox','pages','job','session','diagnosticInstance']);const profileId=diagnosticInstance||crypto.randomUUID();if(!diagnosticInstance)await STORE.set({diagnosticInstance:profileId});return {version:chrome.runtime.getManifest().version,exportedAt:new Date().toISOString(),profileId,connected:!!session,settings,events,lastRun,pages,job:job?{kind:job.kind,stage:job.stage,accountIndex:job.accountIndex,index:job.index,counts:job.counts}:null,sampling:{listPagesPerAccount:3,transactionsPerAccount:3},unsentTaskCount:outbox.length};}
   throw new Error('未知の操作です');
 }
 chrome.runtime.onMessage.addListener((m,sender,respond)=>{
   // サイトのcontent scriptから認証・設定・登録操作を要求できない。
   if(sender.id!==chrome.runtime.id||!sender.url?.startsWith(chrome.runtime.getURL('')))return false;
-  uiMessage(m).then(value=>respond({ok:true,value}),async e=>{if(['pick','bind','diagnostic','registerRakuma','registerSite'].includes(m.type))await log('error','登録・画面確認: '+e.message,{operation:m.type}).catch(()=>{});respond({ok:false,error:e.message});});return true;
+  uiMessage(m).then(value=>respond({ok:true,value}),async e=>{if(['start','pick','bind','diagnostic','registerRakuma','registerSite'].includes(m.type))await log('error','登録・画面確認: '+e.message,{operation:m.type}).catch(()=>{});if(m.type==='start')await diagnosticReport();respond({ok:false,error:e.message});});return true;
 });
 chrome.runtime.onInstalled.addListener(()=>void initialize());
 chrome.runtime.onStartup.addListener(()=>void initialize().then(due).then(step).catch(e=>log('error',e.message)));

@@ -3,7 +3,7 @@ export const PUBLIC_KEY = 'sb_publishable_OU4Hc6ayg0m8Xe8bhV7Ofw_SKjj7bTx';
 export const SITES = {
   mercari: {name:'メルカリ', db:['メルカリ'], hosts:['jp.mercari.com'], home:'https://jp.mercari.com/mypage'},
   auctions: {name:'ヤフオク', db:['ヤフオク'], hosts:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp'], home:'https://auctions.yahoo.co.jp/my'},
-  flea: {name:'Yahoo!フリマ', db:['ヤフフリ','PayPayフリマ'], hosts:['paypayfleamarket.yahoo.co.jp'], home:'https://paypayfleamarket.yahoo.co.jp/'},
+  flea: {name:'Yahoo!フリマ', db:['ヤフフリ','PayPayフリマ'], hosts:['paypayfleamarket.yahoo.co.jp','paypayfleamarket-sec.yahoo.co.jp'], home:'https://paypayfleamarket.yahoo.co.jp/'},
   rakuma: {name:'ラクマ', db:['ラクマ'], hosts:['fril.jp','www.fril.jp','item.fril.jp'], home:'https://fril.jp/'}
 };
 export const SLOTS = [
@@ -56,8 +56,9 @@ export function validateSettings(s) {
     if(Object.hasOwn(a,'_identityConfirmed'))throw new Error('一時的なアカウント確認結果は保存できません');
 if(a.identity?.pageUrl){
       assertSiteUrl(a.site,a.identity.pageUrl);const page=new URL(a.identity.pageUrl);
-      if(page.search||page.hash||!['mercari','flea','rakuma'].includes(a.site))throw new Error('アカウント確認ページが不正です');
+      if(page.search||page.hash||!['mercari','flea','rakuma','auctions'].includes(a.site))throw new Error('アカウント確認ページが不正です');
       if(a.site==='rakuma'&&(a.identity.pageUrl!=='https://fril.jp/mypage'||!/^.{1,100}さんのマイページ$/.test(a.identity.text||'')))throw new Error('ラクマのアカウント確認ページが不正です');
+      if(a.site==='auctions'&&a.identity.pageUrl!=='https://auctions.yahoo.co.jp/my/won')throw new Error('ヤフオクの落札分で確認してください');
       if(a.site==='mercari'&&page.pathname!=='/mypage/purchases')throw new Error('メルカリの購入一覧で登録してください');
       if(a.site==='flea'&&!/^\/(?:my|mypage)(?:\/|$)/.test(page.pathname))throw new Error('Yahoo!フリマの購入一覧で登録してください');
     }
