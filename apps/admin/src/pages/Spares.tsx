@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { MARKETPLACES, fetchSpareAccessories, yen } from '@bussan/shared';
+import { MARKETPLACES, deleteSpareAccessory, fetchSpareAccessories, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
 import { createSpareAccessory, findInventoryAccessoryForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory } from '../api';
 import type { SpareAccessoryField, SpareAccessoryInput } from '../api';
@@ -25,6 +25,7 @@ export default function Spares({ me }: { me: Staff }) {
   const [referenceFound, setReferenceFound] = useState(false);
   const [referenceMessage, setReferenceMessage] = useState('');
   const [editFor, setEditFor] = useState<{ row: SpareAccessory; field: SpareAccessoryField } | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setError('');
@@ -99,6 +100,16 @@ export default function Spares({ me }: { me: Staff }) {
     finally { setSaving(false); }
   }
 
+  async function remove(row: SpareAccessory) {
+    if (!window.confirm(`「${row.title}」${row.source_sku ? `（${row.source_sku}）` : ''}を予備一覧から削除します。この操作は取り消せません。削除しますか？`)) return;
+    setDeletingId(row.id); setError('');
+    try {
+      await deleteSpareAccessory(row.id);
+      setRows(current => current.filter(item => item.id !== row.id));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setDeletingId(null); }
+  }
+
   return <section className="card">
     <div className="toolbar"><h2 style={{ margin: 0 }}>予備一覧</h2><span style={{ flex: 1 }} />
       <button className="btn primary" aria-expanded={adding} onClick={() => { setAdding(open => !open); setError(''); }}>予備を追加</button>
@@ -133,7 +144,7 @@ export default function Spares({ me }: { me: Staff }) {
     <label className="field"><span>検索</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="品名・担当者・商品ID" /></label>
     {error && !adding && <p className="error">{error}</p>}
     {loading ? <p>読み込み中…</p> : <div className="scroll"><table><thead><tr>
-      <th>保管担当</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>
+      <th>保管担当</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th>操作</th>}
     </tr></thead><tbody>{filtered.map(row => <tr key={row.id}>
       <td><EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{row.owner_name || '未設定'}</EditableSpare></td>
       <td><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></td>
@@ -144,6 +155,7 @@ export default function Spares({ me }: { me: Staff }) {
       <td><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || (row.used_for_item_id ? '商品へ割当済み' : '—')}</EditableSpare></td>
+      {me.role === 'admin' && <td><button type="button" className="btn danger spare-row-delete" disabled={deletingId !== null} onClick={() => void remove(row)}>{deletingId === row.id ? '削除中…' : '削除'}</button></td>}
     </tr>)}</tbody></table></div>}
     {editFor && <SpareFieldDialog row={editFor.row} field={editFor.field} onClose={() => setEditFor(null)} onSaved={async () => { setEditFor(null); await reload(); }} />}
   </section>;
@@ -185,3 +197,4 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
     </div>
   </div>;
 }
+
