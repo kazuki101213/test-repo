@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
+import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen } from '@bussan/shared';
 import type { PurchaseDraft, Staff } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchItems, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
@@ -196,8 +196,8 @@ export default function Inventory({ me }: { me: Staff }) {
           <table className="inventory-table" aria-rowcount={items.length + 1} style={{ minWidth: inventoryTableWidth, '--tracking-column-width': `${trackingColumnWidth}px` } as CSSProperties}>
             <thead>
               <tr aria-rowindex={1}>
-                <th>作業状態</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />型番</th>
-                <th>仕入担当者<br />納品担当者</th><th>Amazonの写真</th><th>仕入先<br />商品ID/追跡番号</th>
+                <th>Amazonの写真</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />型番</th>
+                <th>仕入担当者<br />納品担当者</th><th>仕入先<br />商品ID/追跡番号</th>
                 <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th>
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
                 <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
@@ -225,20 +225,19 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
                 return (
                 <tr key={i.id} className={rowTone} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
-                  <td><div className="inventory-cell-stack">
-                    <button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(sharedSaleItem)}><span className="dot" style={{ background: STATUS_COLORS[i.status === 'Amazon返品' ? '作業中' : i.status] }} />{i.status === 'Amazon返品' ? '作業中' : i.status}</button>
-                    <button type="button" className="inventory-cell-edit" title="本体・付属品の登録区分を変更" onClick={() => edit('is_accessory')}>{i.is_accessory ? '付属品' : '本体'}</button>
-                  </div></td>
+                  <td><button type="button" className="inventory-photo" onClick={() => setFullEditFor(sharedSaleItem)} title="クリックして商品情報を編集" aria-label={`${i.sku}の商品情報を編集`}>
+                    {i.amazon_image_url ? <img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /> : <span className="inventory-photo-empty">—</span>}
+                  </button></td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
                     {(i.is_accessory || serial !== previousSerial) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span></>}
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
+                    <button type="button" className="inventory-cell-edit inventory-item-type" title="本体・付属品の登録区分を変更" onClick={() => edit('is_accessory')}>{i.is_accessory ? '付属品' : '本体'}</button>
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>
                     <button type="button" className="inventory-cell-edit" onClick={() => edit(modelOrAccessoryField)} title={i.is_accessory ? i.title : 'クリックして編集'}>{modelOrAccessoryName}</button>
                   </div></td>
                   <td>{stacked(i.purchaser_name ?? '—', 'purchaser_id', i.deliverer_name ?? '—', 'deliverer_id')}</td>
-                  <td>{i.amazon_image_url ? <a className="inventory-photo" href={i.amazon_image_url} target="_blank" rel="noreferrer"><img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /></a> : <span className="inventory-photo-empty">—</span>}</td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit inventory-marketplace-name" onClick={() => edit('marketplace')} title="仕入先を編集">{i.marketplace}</button>
                     <button type="button" className="inventory-cell-edit inventory-marketplace-item-id" onClick={() => edit('marketplace_item_id')} title="商品IDをクリックして編集">{i.marketplace_item_id || '—'}</button>
@@ -406,3 +405,4 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
     </div>
   </div>;
 }
+
