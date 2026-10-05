@@ -4,12 +4,15 @@ import { fetchAmazonFeed, fetchDeliveryStaff, fetchMyTasks } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 
-type Filter = 'all' | 'arrived' | 'shipped';
+type Filter = 'all' | 'arrived' | 'shipped' | 'return-processing' | 'amazon-return' | 'working-amazon-return';
 const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'arrived', label: '作業中' },
   { key: 'shipped', label: '出荷済' },
+  { key: 'return-processing', label: '返品処理' },
+  { key: 'amazon-return', label: 'Amazon返品' },
+  { key: 'working-amazon-return', label: '動作品Amazon返品' },
   { key: 'all',     label: 'すべて' },
 ];
 
@@ -95,6 +98,9 @@ export default function TaskList({ staff }: { staff: Staff }) {
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;
         case 'shipped': return t.shipped_on !== null;
+        case 'return-processing': return members.some(member => member.status === '返品処理');
+        case 'amazon-return': return members.some(member => member.status === 'Amazon返品');
+        case 'working-amazon-return': return members.some(member => member.marketplace === '動作品Amazon返品');
         case 'all':     return true;
       }
     });
