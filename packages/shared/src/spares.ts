@@ -33,6 +33,14 @@ export async function fetchSpareAccessories(ownerStaffId?: string): Promise<Spar
   }
 }
 
+export async function deleteSpareAccessory(id: string): Promise<void> {
+  const { data, error } = await getSupabase().from('spare_accessories').delete()
+    .eq('id', id).is('used_for_item_id', null).is('source_sheet_row', null)
+    .select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('この予備は削除できません。使用・割当済み、または元データから登録された可能性があります。');
+}
+
 export function spareState(spare: SpareAccessory): string {
   if (spare.used_for_item_id) return '使用済';
   if (spare.usage_note) return '使用記録あり';

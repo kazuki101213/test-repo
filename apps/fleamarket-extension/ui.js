@@ -1,0 +1,3 @@
+export async function send(type,extra={}){const r=await chrome.runtime.sendMessage({type,...extra});if(!r?.ok)throw new Error(r?.error||'拡張機能との接続を確認してください');return r.value;}
+export function download(name,data){const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
+export function action(id,fn){document.getElementById(id).addEventListener('click',async()=>{const button=document.getElementById(id),message=document.getElementById('message');button.disabled=true;message.textContent='処理中…';try{message.textContent=await fn()||'完了しました';}catch(e){message.textContent=e.message;}finally{button.disabled=false;}});}

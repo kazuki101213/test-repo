@@ -1,14 +1,41 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, STATUS_COLORS, jpDate, yen } from '@bussan/shared';
-import type { Staff } from '@bussan/shared';
+import type { PurchaseDraft, Staff } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
-import { deleteInventoryItem, fetchInventoryItem, fetchItems, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
+import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchItems, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
 import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { productSerial } from '../inventory';
+
+function elapsedJstDays(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const date = value.slice(0, 10);
+  const start = Date.parse(`${date}T00:00:00+09:00`);
+  if (!Number.isFinite(start)) return null;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
+  return Math.floor((Date.parse(`${today}T00:00:00+09:00`) - start) / 86400000);
+}
+
+function inventoryRowTone(item: InventoryItem): string {
+  if (item.status === 'Amazon返品') return 'inventory-row-amazon-return';
+  if (item.status === '返品処理') return 'inventory-row-return-processing';
+  if (item.status === '販売済') return 'inventory-row-sold';
+  if (item.status === '作業中') {
+    const days = elapsedJstDays(item.purchased_at);
+    return days !== null && days >= 7 ? 'inventory-row-working-overdue' : '';
+  }
+  if (item.status === '出品中') {
+    const days = elapsedJstDays(item.purchased_at);
+    if (days === null || days < 0) return '';
+    if (days >= 30) return 'inventory-row-listed-30';
+    if (days >= 15) return 'inventory-row-listed-15';
+    return 'inventory-row-listed';
+  }
+  return '';
+}
 
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -25,6 +52,9 @@ export default function Inventory({ me }: { me: Staff }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseDrafts, setPurchaseDrafts] = useState<PurchaseDraft[]>([]);
+  const [selectedPurchaseDraft, setSelectedPurchaseDraft] = useState<PurchaseDraft | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
   const [fullEditFor, setFullEditFor] = useState<InventoryItem | null>(null);
   const [expandedComment, setExpandedComment] = useState<InventoryItem | null>(null);
@@ -67,6 +97,12 @@ export default function Inventory({ me }: { me: Staff }) {
     };
   }, [load]);
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
+  const loadPurchaseDrafts = useCallback(() => {
+    fetchPurchaseDrafts().then(rows => { setPurchaseDrafts(rows); setDraftError(null); }).catch(error => {
+      setDraftError(error instanceof Error ? error.message : String(error));
+    });
+  }, []);
+  useEffect(() => { loadPurchaseDrafts(); }, [loadPurchaseDrafts]);
   useEffect(() => { setVisibleCount(80); }, [items]);
   useEffect(() => {
     const el = loadMoreRef.current;
@@ -87,6 +123,21 @@ export default function Inventory({ me }: { me: Staff }) {
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
       <section className="inventory-list" aria-label="在庫一覧">
       <h2>在庫一覧</h2>
+
+      <details className="card purchase-draft-panel">
+        <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
+        <div className="toolbar" style={{ marginTop: 12 }}>
+          <button type="button" className="btn" onClick={loadPurchaseDrafts}>リストを更新</button>
+          <span className="sub">拡張機能の「購入履歴を同期」で追加した下書きです。在庫へ反映する前に金額・担当者を確認してください。</span>
+        </div>
+        {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
+        {purchaseDrafts.length > 0 ? <div className="scroll"><table><thead><tr><th>購入日</th><th>商品</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>アカウント</th><th>操作</th></tr></thead><tbody>
+          {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a href={draft.marketplace_url} target="_blank" rel="noreferrer">{draft.title}</a></td><td>{draft.marketplace}</td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.account_label}</td><td className="toolbar">
+            <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); }}>在庫一覧へ反映</button>
+            <button type="button" className="btn" onClick={async () => { if (!window.confirm('この購入履歴を仕入れリストから除外しますか？')) return; try { await dismissPurchaseDraft(draft.id); loadPurchaseDrafts(); } catch (error) { setDraftError(error instanceof Error ? error.message : String(error)); } }}>除外</button>
+          </td></tr>)}
+        </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
+      </details>
 
 
       <div className="toolbar">
@@ -161,9 +212,11 @@ export default function Inventory({ me }: { me: Staff }) {
                 const next = items[index + 1];
                 const previousSerial = previous ? productSerial(previous.sku, previous.lot_seq) : null;
                 const nextSerial = next ? productSerial(next.sku, next.lot_seq) : null;
-                const edit = (field: InventoryField) => setEditFor({ item: i, field });
+                const sharedSaleItem = i.is_accessory && !i.product_sale_conflict ? { ...i, sold_on: i.product_sold_on, sold_price: i.product_sold_price, payout_amount: i.product_payout_amount } : i;
+                const edit = (field: InventoryField) => setEditFor({ item: ['sold_on','sold_price','payout_amount','sales_channel'].includes(field) ? sharedSaleItem : i, field });
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
+                const rowTone = inventoryRowTone(i);
                 const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
                 const soldDays = i.product_sold_on && i.purchased_at
                   ? Math.round((Date.parse(`${i.product_sold_on}T00:00:00Z`) - Date.parse(`${i.purchased_at}T00:00:00Z`)) / 86400000)
@@ -171,9 +224,9 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryName = i.is_accessory ? i.title : i.model_no || i.title || '—';
                 const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
                 return (
-                <tr key={i.id} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
+                <tr key={i.id} className={rowTone} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
                   <td><div className="inventory-cell-stack">
-                    <button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(i)}><span className="dot" style={{ background: STATUS_COLORS[i.status === 'Amazon返品' ? '作業中' : i.status] }} />{i.status === 'Amazon返品' ? '作業中' : i.status}</button>
+                    <button type="button" className="inventory-cell-edit" title="クリックして商品情報を編集" onClick={() => setFullEditFor(sharedSaleItem)}><span className="dot" style={{ background: STATUS_COLORS[i.status === 'Amazon返品' ? '作業中' : i.status] }} />{i.status === 'Amazon返品' ? '作業中' : i.status}</button>
                     <button type="button" className="inventory-cell-edit" title="本体・付属品の登録区分を変更" onClick={() => edit('is_accessory')}>{i.is_accessory ? '付属品' : '本体'}</button>
                   </div></td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
@@ -212,7 +265,8 @@ export default function Inventory({ me }: { me: Staff }) {
       {visibleCount < items.length && <div ref={loadMoreRef} className="toolbar"><button className="btn" onClick={() => setVisibleCount(current => Math.min(current + 80, items.length))}>さらに表示</button></div>}
       </section>
       {purchaseOpen && <aside id="inventory-purchase-panel" className="purchase-panel" aria-label="在庫登録">
-        <NewPurchase me={me} onSaved={() => void load()} />
+        {selectedPurchaseDraft && <div className="sub">仕入れリストから登録中: {selectedPurchaseDraft.title}</div>}
+        <NewPurchase me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
       </aside>}
 
       {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}

@@ -10,11 +10,19 @@ export function accessoryOptions(product: string) {
 }
 
 export function buildDescription(input: {
-  product: string; condition: string; accessories: string; year: string;
+  product: string; condition: string; accessories: string; year: string; title?: string; target?: 'amazon' | 'flea';
   inspected: boolean; cleaned: boolean; salesChannel: string | null;
 }): string {
-  const { product, condition, accessories, year, inspected, cleaned, salesChannel } = input;
+  const { product, condition, accessories, year, title, target = 'amazon', inspected, cleaned, salesChannel } = input;
   if (!product || !condition || !accessories.trim() || !sourceTemplates[product]) return '';
+  if (target === 'flea') {
+    const lines = [title?.trim() || product, '', '【商品状態】', '・コンディション：' + condition];
+    if (/^\d{4}$/.test(year)) lines.push('・製造年：' + year + '年');
+    if (inspected) lines.push('・動作確認済みです。');
+    if (cleaned) lines.push('・清掃済みです。');
+    lines.push('', '【付属品】', accessories.trim(), '', '中古品のため、状態は写真とあわせてご確認ください。');
+    return lines.join('\n');
+  }
   const source = sourceTemplates[product][condition];
   let text = source ?? sourceTemplates[product]['非常に良い'];
   if (!text) return '';
