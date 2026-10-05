@@ -70,7 +70,7 @@ function mercariDescription(product: string, sku: string) {
   return `${intro[product]}\n\nAI生成による検索用\n${searchTerms[product]}　【${sku}】`;
 }
 
-function yahooAuctionDescription(product: string, condition: string) {
+function yahooAuctionDescription(product: string, condition: string, sku: string) {
   const damaged = condition === '傷や汚れあり' || condition === '全体的に状態が悪い';
   const recorder = [
     '知人宅で地上波の録画とブルーレイ、DVDの再生で使用してました。',
@@ -111,7 +111,7 @@ function yahooAuctionDescription(product: string, condition: string) {
     'AI生成による検索用',
     'テレビ　モニター　TV　21インチ　24インチ　27インチ　32インチ　フルHD　WQHD　4K　IPS　144Hz　165Hz　電源ケーブル　2ピンケーブル　3ピンケーブル　HDMIケーブル　同軸ケーブル　アンテナケーブル　ブルーレイレコーダー　ブルーレイプレーヤー　ブルーレイ・ディスク　BD　SONY　ソニー Panasonic　パナソニック　DIGA　ディーガ　SHARP　シャープ　AQUOS　アクオス　TOSHIBA　東芝　とうしば　REGZA　レグザ　B-casカード　mini B-casカード　リモコン　同時録画',
   ];
-  return (product === 'ブルーレイレコーダー' ? recorder : product === '小物' ? small : monitor).join('\n');
+  return `${(product === 'ブルーレイレコーダー' ? recorder : product === '小物' ? small : monitor).join('\n')}\n【${sku}】`;
 }
 
 export function buildDescription(input: {
@@ -123,7 +123,7 @@ export function buildDescription(input: {
   if (target !== 'amazon') {
     const itemNumber = input.itemNumber || '';
     const title = listingTitle({ target, product, itemNumber, modelNo: input.modelNo || '', manufacturer: input.manufacturer || '' });
-    const body = target === 'mercari' ? mercariDescription(product, input.sku || '') : yahooAuctionDescription(product, condition);
+    const body = target === 'mercari' ? mercariDescription(product, input.sku || '') : yahooAuctionDescription(product, condition, input.sku || '');
     return `商品名（${target === 'mercari' ? 'メルカリ' : 'ヤフオク'}）\n${title}\n\n説明文\n${body}`;
   }
   if (!accessories.trim()) return '';
@@ -153,3 +153,4 @@ export function buildDescription(input: {
   if (salesChannel !== 'FBA') text = text.replace(/《配送》[^《]*/, '《配送》●配送方法は出品ページをご確認ください。');
   return text.replace(/[　\t]+/g, ' ').replace(/\s*《/g, '\n\n《').replace(/\s*●/g, '\n●').trim();
 }
+
