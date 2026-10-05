@@ -20,9 +20,9 @@ function elapsedJstDays(value: string | null | undefined): number | null {
 }
 
 function inventoryRowTone(item: InventoryItem): string {
+  if (item.status === '販売済' || (item.status === 'Amazon返品' && item.product_sold_on)) return 'inventory-row-sold';
   if (item.status === 'Amazon返品') return 'inventory-row-amazon-return';
   if (item.status === '返品処理') return 'inventory-row-return-processing';
-  if (item.status === '販売済') return 'inventory-row-sold';
   if (item.status === '作業中') {
     const days = elapsedJstDays(item.purchased_at);
     return days !== null && days >= 7 ? 'inventory-row-working-overdue' : '';
@@ -208,7 +208,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
                 <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
                 <th>販売金額<br />振込金額</th><th>利益額<br />利益率</th>
-                <th>在庫の払い戻し</th><th>Amazon返金金額<br />Amazon以外からの返金</th><th>納品担当者からのコメント</th>
+                <th>在庫の払い戻し</th><th>Amazon返金金額<br />Amazon以外からの返金</th><th>納品担当者からのコメント</th><th>販売状態</th>
               </tr>
             </thead>
             <tbody>
@@ -260,6 +260,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td><button type="button" className="inventory-cell-edit" onClick={() => edit('inventory_refund_amount')} title="在庫の払い戻しをクリックして編集">{yen(i.inventory_refund_amount)}</button></td>
                   <td>{stacked(yen(i.amazon_refund_amount), 'amazon_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
+                  <td><div className="inventory-cell-stack"><span>{i.status === 'Amazon返品' && i.product_sold_on ? '販売済' : i.status}</span><span className="sub">{i.is_accessory ? '付属品' : '本体'}</span></div></td>
                 </tr>
               ); })}
             </tbody>
