@@ -116,7 +116,8 @@
     identity(a);if(getId(a.site,location.href)!==expected)throw new Error('送信直前に取引画面が変わりました');
     button.click();return {clicked:true,itemId:expected};
   }
-  function list(a,recipe){
+  const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  function listRoot(a,recipe){
     const problem=authProblem();if(problem)return {auth:problem};identity(a);
     let scope;
     if(recipe.listScope)scope=one(recipe.listScope);
@@ -128,6 +129,9 @@
     const text=norm(scope.innerText);
     if(!/購入した商品|購入履歴|購入した取引|落札した商品|落札分/.test(text)) throw new Error('購入者側の取引一覧を確認できません');
     if(recipe.listHeading&&!text.includes(recipe.listHeading)) throw new Error('登録した購入一覧の見出しが見つかりません');
+    return scope;
+  }
+  function collectListRows(a,recipe,scope){
     const links=[];const purchases=[];
     for(const e of scope.querySelectorAll(recipe.transactionLinks||'a[href]')){
       if(!visible(e))continue;let url;try{url=safeUrl(a.site,e.href);}catch{continue;}
@@ -147,13 +151,63 @@
         const dateValue=dateNode?.getAttribute('datetime')||rowText.match(/(?:購入日|落札日|取引日|支払日)[：:\s]*(\d{4}[年./-]\d{1,2}[月./-]\d{1,2}日?)/)?.[1]||'';
         const dateMatch=dateValue.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
         const purchasedAt=dateMatch?`${dateMatch[1]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[3].padStart(2,'0')}`:null;
-        const productUrl=a.site==='auctions'?`https://auctions.yahoo.co.jp/jp/auction/${id}`:url;
-        if(id&&title) purchases.push({marketplace_item_id:id,marketplace_url:productUrl,title,purchased_at:purchasedAt,cost_amount:priceMatch?Number((priceMatch[1]||priceMatch[2]).replace(/,/g,'')):null});
+        const productUrl=a.site==='auctions'?`https://auctions.yahoo.co.jp/jp/auction/${id}`:
+          [...row.querySelectorAll('a[href]')].map(link=>{try{return safeUrl(a.site,link.href);}catch{return null;}})
+            .find(candidate=>candidate&&getId(a.site,candidate)===id&&!/transaction|trade|deal/.test(new URL(candidate).pathname))||url;
+        if(id&&title) purchases.push({marketplace_item_id:id,marketplace_url:productUrl,detail_url:productUrl,title,purchased_at:purchasedAt,cost_amount:priceMatch?Number((priceMatch[1]||priceMatch[2]).replace(/,/g,'')):null});
       }
     }
     const next=[...scope.querySelectorAll('a[href]')].find(e=>visible(e)&&/^(次へ|次のページ|次›|›)$/.test(controlText(e)));
     let nextUrl=null;if(next){try{const u=new URL(safeUrl(a.site,next.href));if(u.origin===location.origin&&u.pathname===location.pathname)nextUrl=u.href;}catch{}}
     return {links:[...new Set(links)],purchases,nextUrl};
+  }
+  function listScroller(scope){
+    const root=document.scrollingElement||document.documentElement;
+    const candidates=[scope,...scope.querySelectorAll('*')].filter(e=>{
+      if(e.clientHeight===0||e.scrollHeight<=e.clientHeight+80)return false;
+      return ['auto','scroll'].includes(getComputedStyle(e).overflowY);
+    });
+    candidates.sort((a,b)=>(b.scrollHeight-b.clientHeight)-(a.scrollHeight-a.clientHeight));
+    return candidates[0]||root;
+  }
+  async function list(a,recipe,scroll=false){
+    const scope=listRoot(a,recipe);if(scope?.auth)return scope;
+    const scroller=listScroller(scope);
+    if(scroll){
+      const beforeTop=scroller.scrollTop,beforeHeight=scroller.scrollHeight;
+      scroller.scrollTop=Math.min(beforeTop+Math.max(240,Math.floor(scroller.clientHeight*0.78)),beforeHeight);
+      await pause(1200);identity(a);
+    }
+    const batch=collectListRows(a,recipe,scope);
+    return {...batch,scrollSteps:scroll?1:0,scrollTop:scroller.scrollTop,
+      hasMore:scroller.scrollTop+scroller.clientHeight<scroller.scrollHeight-5};
+  }
+  function purchaseDetail(a,recipe,fallback={}){
+    const problem=authProblem();if(problem)return {auth:problem};identity(a);
+    const canonical=[...document.querySelectorAll('link[rel="canonical"],meta[property="og:url"]')]
+      .map(e=>e.href||e.content).filter(Boolean).map(value=>{try{return safeUrl(a.site,value);}catch{return null;}}).find(Boolean);
+    const urlId=getId(a.site,location.href),canonicalId=canonical&&getId(a.site,canonical);
+    const linkIds=[...new Set([...document.querySelectorAll('a[href]')].map(e=>{try{return getId(a.site,safeUrl(a.site,e.href));}catch{return null;}}).filter(Boolean))];
+    const itemId=canonicalId||urlId||(linkIds.length===1?linkIds[0]:null);
+    if(!itemId)throw new Error('商品詳細の商品IDを1件に確定できません');
+    const canonicalUrl=canonical&&getId(a.site,canonical)===itemId?canonical:null;
+    const titleNode=[...document.querySelectorAll('h1,[itemprop="name"],meta[property="og:title"]')].find(e=>e.matches('meta')?norm(e.content):visible(e)&&norm(e.innerText));
+    const title=norm(titleNode?.innerText||titleNode?.content||document.title).replace(/\s*[|｜].*$/,'').slice(0,500)||fallback.title||null;
+    const scope=document.querySelector(recipe.scope||'main')||document.body;const text=norm(scope.innerText);
+    const priceLabel=/(購入金額|落札価格|購入価格|支払金額|支払い金額|お支払い金額|取引金額)/;
+    let price=null;
+    for(const label of scope.querySelectorAll('dt,th,label,[class*="label" i],[data-testid*="label" i]')){
+      if(!visible(label)||!priceLabel.test(norm(label.innerText)))continue;
+      const value=label.nextElementSibling||label.parentElement?.querySelector('dd,td,[class*="value" i],[data-testid*="value" i]');
+      const match=norm(value?.innerText||'').match(/(?:¥|￥)\s*([0-9][0-9,]{0,9})|\b([0-9][0-9,]{0,9})\s*円/);
+      if(match){price=Number((match[1]||match[2]).replace(/,/g,''));break;}
+    }
+    if(price===null){const match=text.match(/(?:購入金額|落札価格|購入価格|支払金額|支払い金額|お支払い金額|取引金額)[：:\s]*(?:¥|￥)?\s*([0-9][0-9,]{0,9})\s*円?/);if(match)price=Number(match[1].replace(/,/g,''));}
+    const dateLabel=/(購入日|落札日|取引日|支払日|購入日時|落札日時)/;
+    const dateTime=[...scope.querySelectorAll('time[datetime]')].find(e=>dateLabel.test(norm(e.parentElement?.innerText||e.innerText)))?.getAttribute('datetime')||'';
+    const dateValue=dateTime||text.match(/(?:購入日|落札日|取引日|支払日|購入日時|落札日時)[：:\s]*(\d{4}[年./-]\d{1,2}[月./-]\d{1,2}日?)/)?.[1]||'';
+    const dateMatch=dateValue.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+    return {marketplace_item_id:itemId,marketplace_url:canonicalUrl||fallback.marketplace_url||location.href,title,purchased_at:dateMatch?`${dateMatch[1]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[3].padStart(2,'0')}`:fallback.purchased_at||null,cost_amount:price??fallback.cost_amount??null};
   }
   function recipeField(root,selector){if(!selector)return null;return one(selector,root);}
   function receiptPreflight(a,r,expected){
@@ -256,6 +310,8 @@
       }
       if(m.type==='fm:pick')return pickIdentity();
       if(m.type==='fm:list')return list(m.account,m.recipe||{});
+      if(m.type==='fm:scrollList')return list(m.account,m.recipe||{},true);
+      if(m.type==='fm:purchaseDetail')return purchaseDetail(m.account,m.recipe||{},m.fallback||{});
       if(m.type==='fm:detail')return detail(m.account,m.recipe||{});
       if(m.type==='fm:messageDetail')return conversation(m.account,m.recipe||{});
       if(m.type==='fm:sendMessage')return sendMarketplaceMessage(m.account,m.recipe||{},m.itemId,m.body);
