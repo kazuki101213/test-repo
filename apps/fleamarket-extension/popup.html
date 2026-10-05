@@ -1,5 +1,5 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>フリマ取引サポート</title><link rel="stylesheet" href="style.css"></head><body class="popup">
-<header><small>FLEA MARKET SUPPORT</small><h1>フリマ取引サポート</h1><p id="summary">読み込み中…</p><p>バージョン 0.1.5</p><p id="message" role="status" aria-live="polite"></p></header>
+<header><small>FLEA MARKET SUPPORT</small><h1>フリマ取引サポート</h1><p id="summary">読み込み中…</p><p>バージョン 0.1.6</p><p id="message" role="status" aria-live="polite"></p></header>
 <main>
 <section><h2>初回の連携</h2><p>ログイン済みの管理アプリと、一度だけ連携します。</p><button id="connect">管理アプリと連携</button><button id="options" class="secondary">設定・実行記録</button></section>
 <section><h2>このアカウントを登録</h2><button id="autoRegister">このサイトを自動登録</button><p>メルカリ・Yahoo!フリマは購入一覧、ラクマはマイページか購入一覧を開き、対象アカウントを選んでこのボタンを押してください。名前と購入一覧を確認して登録します。</p><p>対象サイトの購入一覧を開いて操作してください。同じサイトの2つ目は別Chromeプロファイルで登録します。</p><label for="account">対象アカウント</label><select id="account"></select><div class="actions"><button id="pick" class="secondary">① 自分の名前を紐付ける</button><button id="bind" class="secondary">② 現在の購入一覧を登録</button><button id="clearAccount" class="secondary">選択アカウントの登録を削除</button></div><p>①の後、サイト上に表示されたログイン中の自分の名前をクリックします。ラクマはマイページで「自分の名前さんのマイページ」を選び、その後「購入した商品」に移動して②を押します。</p></section>

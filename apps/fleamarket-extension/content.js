@@ -14,17 +14,25 @@
   }
   function identity(a){
     if(a.identity?.pageUrl){
-      safeUrl(a.site,a.identity.pageUrl);if(!['rakuma','mercari','flea'].includes(a.site))throw new Error('アカウント確認ページが不正です');
+      safeUrl(a.site,a.identity.pageUrl);if(!['rakuma','mercari','flea','auctions'].includes(a.site))throw new Error('アカウント確認ページが不正です');
       if(location.href!==a.identity.pageUrl){
-        if(a._identityConfirmed!==true)throw new Error('ラクマのマイページでアカウント確認が必要です');
+        if(a._identityConfirmed!==true)throw new Error('登録したページでアカウント確認が必要です');
         return;
       }
+    }
+    if(a.site==='mercari'&&a.identity?.selector?.includes('header')&&a.identity.selector.endsWith(' > p')){
+      const names=[...document.querySelectorAll('header button p')].filter(e=>visible(e)&&norm(e.innerText)===a.identity.text);
+      if(names.length!==1)throw new Error('ログイン中のアカウント名を1件に確認できません');return;
+    }
+    if(a.site==='auctions'&&location.origin==='https://auctions.yahoo.co.jp'&&location.pathname==='/my/won'){
+      const names=[...document.querySelectorAll('header p > a')].filter(e=>visible(e)&&norm(e.innerText)===a.identity.text);
+      if(names.length!==1)throw new Error('ログイン中のアカウント名を1件に確認できません');return;
     }
     const e=one(a.identity.selector);
     if(norm(e.innerText||e.getAttribute('aria-label'))!==a.identity.text) throw new Error('ログイン中のアカウントが登録内容と一致しません');
   }
   function safeUrl(site,url){
-    const hosts={mercari:['jp.mercari.com'],auctions:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp'],flea:['paypayfleamarket.yahoo.co.jp'],rakuma:['fril.jp','www.fril.jp','item.fril.jp']};
+    const hosts={mercari:['jp.mercari.com'],auctions:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp'],flea:['paypayfleamarket.yahoo.co.jp','paypayfleamarket-sec.yahoo.co.jp'],rakuma:['fril.jp','www.fril.jp','item.fril.jp']};
     const u=new URL(url,location.href);if(u.protocol!=='https:'||!hosts[site]?.includes(u.hostname)) throw new Error('登録サイト以外のURLです');return u.href;
   }
   function getId(site,url){
@@ -207,15 +215,16 @@
     const candidates=[...document.querySelectorAll('header,[role="banner"]')].flatMap(e=>[...e.querySelectorAll(marker)]);
     return [...new Set(candidates)].filter(e=>{const t=norm(e.innerText||e.getAttribute('aria-label'));return visible(e)&&t.length>0&&t.length<=80&&!/^(マイページ|プロフィール|アカウント|メニュー|ログイン|会員登録)$/.test(t)&&!/ログイン|ログアウト|出品|購入|商品検索/.test(t);}).filter((e,i,rows)=>!rows.some(other=>other!==e&&e.contains(other)&&norm(e.innerText)===norm(other.innerText)));
   }
+  function diagnosticUrl(href){try{const site=Object.keys({mercari:1,auctions:1,flea:1,rakuma:1}).find(site=>{try{return !!safeUrl(site,href);}catch{return false;}});if(!site)return null;const u=new URL(href);const result=new URL(u.origin+u.pathname);for(const key of ['aID','aid','auctionID','item_id']){const id=u.searchParams.get(key);if(id&&/^(?:[a-zA-Z]\d+|[a-f0-9]{32})$/.test(id))result.searchParams.set(key,id);}return result.href;}catch{return null;}}
   function diagnostic(){
     const root=document.querySelector('main')||document.body;
     // 診断は構造・操作ラベルのみ。本文、住所、メッセージ、入力値は収集しない。
     let accountHints=[];
     for(const site of ['mercari','flea']){try{accountHints=accountCandidates(site).map(e=>({selector:selectorFor(e),text:norm(e.innerText||e.getAttribute('aria-label'))}));break;}catch{}}
-    return {accountHints,url:location.origin+location.pathname,title:document.title,auth:authProblem(),mainCount:document.querySelectorAll('main').length,
+    return {accountHints,headerNames:[...document.querySelectorAll('header button p,header p > a')].filter(visible).map(e=>({text:norm(e.innerText),selector:selectorFor(e)})).filter(x=>x.text.length<=80).slice(0,10),linkSamples:[...root.querySelectorAll('a[href]')].map(e=>({url:diagnosticUrl(e.href),selector:selectorFor(e)})).filter(x=>x.url).slice(0,40),url:location.origin+location.pathname,title:document.title,auth:authProblem(),mainCount:document.querySelectorAll('main').length,
       headings:[...root.querySelectorAll('h1,h2,h3')].map(e=>({text:norm(e.innerText),selector:selectorFor(e)})).filter(x=>/購入|落札|取引|受取|受け取り|評価|発送/.test(x.text)).slice(0,20),
       controls:[...root.querySelectorAll('button,input[type="submit"],input[type="radio"],input[type="checkbox"],textarea')].filter(visible).map(e=>({tag:e.tagName,type:e.type,required:e.required,selector:selectorFor(e),text:e.tagName==='TEXTAREA'?'':norm(e.labels?.[0]?.innerText||controlText(e))})).slice(0,50),
-      transactionLinks:[...root.querySelectorAll('a[href]')].filter(e=>/transaction|trade|deal|contact\.auctions/.test(e.href)).map(e=>({url:e.href,selector:selectorFor(e)})).slice(0,30)};
+      transactionLinks:[...root.querySelectorAll('a[href]')].filter(e=>/transaction|trade|deal|contact\.auctions/.test(e.href)).map(e=>({url:diagnosticUrl(e.href),selector:selectorFor(e)})).filter(x=>x.url).slice(0,30)};
   }
   chrome.runtime.onMessage.addListener((m,sender,respond)=>{
     if(sender.id!==chrome.runtime.id||!m?.type?.startsWith('fm:'))return false;
@@ -235,7 +244,8 @@
         safeUrl(a.site,location.href);
         if(a.site==='rakuma'){
           if(location.href!=='https://fril.jp/mypage')throw new Error('ラクマのマイページを確認できません');
-        }else if(['mercari','flea'].includes(a.site)){const rows=accountCandidates(a.site);if(rows.length!==1||selectorFor(rows[0])!==a.identity.selector)throw new Error('ログイン中の名前を1件に確認できません');}
+        }else if(a.site==='auctions'){if(location.href!=='https://auctions.yahoo.co.jp/my/won'||!document.querySelector('main')?.innerText.includes('落札分'))throw new Error('ヤフオクの落札分を確認できません');}
+        else if(['mercari','flea'].includes(a.site)){const rows=accountCandidates(a.site);if(rows.length!==1||selectorFor(rows[0])!==a.identity.selector)throw new Error('ログイン中の名前を1件に確認できません');}
         else throw new Error('対象サイトではありません');
         identity({...a,_identityConfirmed:false});return {confirmed:true};
       }
