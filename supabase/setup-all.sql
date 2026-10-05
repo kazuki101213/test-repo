@@ -4711,3 +4711,12 @@ grant execute on function app.product_no_search(app.products) to authenticated;
 notify pgrst,'reload schema';
 
 
+-- ▼▼▼ 20261005065229_allow_deletion_of_unassigned_spares.sql ▼▼▼
+
+drop policy if exists spare_accessories_delete on app.spare_accessories;
+create policy spare_accessories_delete on app.spare_accessories
+  for delete to authenticated
+  using (
+    used_for_item_id is null
+    and (app.is_admin() or owner_staff_id = app.current_staff_id())
+  );
