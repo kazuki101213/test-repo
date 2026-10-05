@@ -145,6 +145,13 @@ async function preparePhotoForUpload(file: File): Promise<File> {
   }
 }
 
+export async function fetchProductMaker(asin: string | null): Promise<string> {
+  if (!asin) return '';
+  const { data, error } = await getSupabase().from('products').select('maker').eq('asin', asin).maybeSingle();
+  if (error) throw error;
+  return typeof data?.maker === 'string' ? data.maker.trim() : '';
+}
+
 export interface MarketplaceMessage {
   id: string;
   author: string | null;

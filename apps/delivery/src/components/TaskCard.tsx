@@ -68,9 +68,10 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
   </span>;
 }
 
-export default function TaskCard({ task, amazonImageUrl, members, staff, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; staff: Staff; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
+export default function TaskCard({ task, amazonImageUrl, members, originalMarketplaceIds, staff, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
+  const productIdFor = (item: DeliveryTask) => originalMarketplaceIds.get(item.id) || item.marketplace_item_id || '—';
 
   return (
     <div className="card task-card" data-expanded={!!expandedId}>
@@ -84,7 +85,7 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
           <CopyableText label="SKU" value={task.sku} />
           <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label={task.marketplace === '動作品Amazon返品' ? 'FNSKU' : '型番'} value={task.model_no || task.title} /></span>
           <CopyableText label="ASIN" value={task.asin || '—'} />
-          <span className="task-item-id-line"><CopyableText label={task.marketplace === '動作品Amazon返品' ? 'EAN' : '商品ID'} value={task.marketplace_item_id || '—'} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
+          <span className="task-item-id-line"><CopyableText label={task.marketplace === '動作品Amazon返品' ? 'EAN' : '商品ID'} value={productIdFor(task)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
           <CopyableText label="追跡番号" value={task.tracking_no || '—'} />
         </div>
         <div className="task-photo-action">
@@ -104,7 +105,7 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
             <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
               品名 {member.title}
             </button>
-            <span className="task-item-id-line"><CopyableText label="商品ID" value={member.marketplace_item_id || '—'} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
+            <span className="task-item-id-line"><CopyableText label="商品ID" value={productIdFor(member)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
             <CopyableText label="追跡番号" value={member.tracking_no || '—'} />
             <span>利用記録 {member.lot_seq}</span>
           </> : <>
