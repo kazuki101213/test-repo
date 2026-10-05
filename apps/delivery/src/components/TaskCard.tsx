@@ -80,11 +80,11 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
         <div className="task-card-info">
           <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
           <span className="muted">販売先 {task.sales_channel || '—'}</span>
-          <CopyableText label="販売金額" value={task.sold_price == null ? '' : String(task.sold_price)} displayValue={yen(task.sold_price)} />
+          <CopyableText label="販売金額" value={task.planned_price == null ? '' : String(task.planned_price)} displayValue={yen(task.planned_price)} />
           <CopyableText label="SKU" value={task.sku} />
           <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label={task.marketplace === '動作品Amazon返品' ? 'FNSKU' : '型番'} value={task.model_no || task.title} /></span>
           <CopyableText label="ASIN" value={task.asin || '—'} />
-          <span className="task-item-id-line"><CopyableText label={task.marketplace === '動作品Amazon返品' ? 'EAN' : '商品ID'} value={task.marketplace_item_id || '—'} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>商品ページ</button></span>
+          <span className="task-item-id-line"><CopyableText label={task.marketplace === '動作品Amazon返品' ? 'EAN' : '商品ID'} value={task.marketplace_item_id || '—'} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
           <CopyableText label="追跡番号" value={task.tracking_no || '—'} />
         </div>
         <div className="task-photo-action">
