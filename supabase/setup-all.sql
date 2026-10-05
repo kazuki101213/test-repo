@@ -4711,6 +4711,636 @@ grant execute on function app.product_no_search(app.products) to authenticated;
 notify pgrst,'reload schema';
 
 
+-- ▼▼▼ 20261004204258_sync_accessory_inventory_and_delivery_links.sql ▼▼▼
+
+-- Keep main and accessory rows separate while synchronizing shared work and sale fields.
+create or replace function app.redirect_accessory_shared_edits()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare parent app.items%rowtype; parent_count integer;
+begin
+  if pg_trigger_depth() > 1 or not old.is_accessory or not new.is_accessory then return new; end if;
+  if not (
+    new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+    or new.shipped_on is distinct from old.shipped_on or new.sales_channel is distinct from old.sales_channel
+    or new.sold_on is distinct from old.sold_on or new.sold_price is distinct from old.sold_price
+    or new.payout_amount is distinct from old.payout_amount
+  ) then return new; end if;
+  select count(*) into parent_count from app.items i
+   where not i.is_accessory and i.lot_seq=new.lot_seq
+     and app.product_serial(i.sku,i.lot_seq)=app.product_serial(new.sku,new.lot_seq);
+  if parent_count <> 1 then raise exception '対応する本体を一意に特定できません。通番号とSKUを確認してください'; end if;
+  select i.* into parent from app.items i
+   where not i.is_accessory and i.lot_seq=new.lot_seq
+     and app.product_serial(i.sku,i.lot_seq)=app.product_serial(new.sku,new.lot_seq)
+   for update;
+  update app.items i set
+    status=case when new.status is distinct from old.status then new.status else parent.status end,
+    packed_on=case when new.packed_on is distinct from old.packed_on then new.packed_on else parent.packed_on end,
+    shipped_on=case when new.shipped_on is distinct from old.shipped_on then new.shipped_on else parent.shipped_on end,
+    sales_channel=case when new.sales_channel is distinct from old.sales_channel then new.sales_channel else parent.sales_channel end,
+    sold_on=case when new.sold_on is distinct from old.sold_on then new.sold_on else parent.sold_on end,
+    sold_price=case when new.sold_price is distinct from old.sold_price then new.sold_price else parent.sold_price end,
+    payout_amount=case when new.payout_amount is distinct from old.payout_amount then new.payout_amount else parent.payout_amount end
+  where i.id=parent.id;
+  select i.* into parent from app.items i where i.id=parent.id;
+  new.status:=parent.status;
+  new.packed_on:=parent.packed_on;
+  new.shipped_on:=parent.shipped_on;
+  new.sales_channel:=parent.sales_channel;
+  new.sold_on:=parent.sold_on;
+  new.sold_price:=null;
+  new.payout_amount:=null;
+  return new;
+end;
+$$;
+revoke all on function app.redirect_accessory_shared_edits() from public,anon,authenticated;
+drop trigger if exists items_redirect_accessory_shared_edits on app.items;
+create trigger items_redirect_accessory_shared_edits
+before update of status,packed_on,shipped_on,sales_channel,sold_on,sold_price,payout_amount on app.items
+for each row execute function app.redirect_accessory_shared_edits();
+
+create or replace function app.sync_accessory_sale_date()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if pg_trigger_depth() > 1 or new.is_accessory then return new; end if;
+  if new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+     or new.shipped_on is distinct from old.shipped_on or new.sales_channel is distinct from old.sales_channel
+     or new.sold_on is distinct from old.sold_on or new.sold_price is distinct from old.sold_price
+     or new.payout_amount is distinct from old.payout_amount then
+    update app.items accessory set status=new.status,packed_on=new.packed_on,shipped_on=new.shipped_on,
+      sales_channel=new.sales_channel,sold_on=new.sold_on,sold_price=null,payout_amount=null
+    where accessory.is_accessory and accessory.lot_seq=new.lot_seq
+      and app.product_serial(accessory.sku,accessory.lot_seq)=app.product_serial(new.sku,new.lot_seq);
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists items_sync_accessory_sale_date on app.items;
+create trigger items_sync_accessory_sale_date
+after update of status,packed_on,shipped_on,sales_channel,sold_on,sold_price,payout_amount on app.items
+for each row execute function app.sync_accessory_sale_date();
+
+create or replace function app.shared_product_sale_values(p_item_id uuid)
+returns table(sales_channel app.sales_channel,sold_price bigint,payout_amount bigint)
+language plpgsql stable security definer set search_path = '' as $$
+declare target app.items%rowtype; source app.items%rowtype;
+begin
+  target:=app.assert_can_work_on(p_item_id);
+  if target.is_accessory then
+    select parent.* into source from app.items parent
+    where not parent.is_accessory and parent.lot_seq=target.lot_seq
+      and app.product_serial(parent.sku,parent.lot_seq)=app.product_serial(target.sku,target.lot_seq)
+    order by parent.created_at,parent.id limit 1;
+    if found then return query select source.sales_channel,source.sold_price,source.payout_amount; return; end if;
+  end if;
+  return query select target.sales_channel,target.sold_price,target.payout_amount;
+end;
+$$;
+revoke all on function app.shared_product_sale_values(uuid) from public,anon;
+grant execute on function app.shared_product_sale_values(uuid) to authenticated;
+-- The delivery app reads the main row's actual price for both rows; accessory amounts stay NULL.
+create or replace view app.v_delivery_tasks with (security_invoker = true) as
+select
+  i.id,i.sku,i.lot_seq,i.is_accessory,i.status,i.work_stream,i.title,
+  i.asin,i.condition,i.purchased_at,i.marketplace,i.tracking_no,i.accessories,i.description,
+  case when i.is_accessory then shared.sales_channel else i.sales_channel end as sales_channel,
+  i.planned_price,i.deliverer_id,buyer.name as purchaser_name,i.arrived_on,
+  (i.product_registered_at is not null) as product_registered,
+  (i.inspected_at is not null) as inspected,(i.photo_uploaded_at is not null) as photo_uploaded,
+  i.packed_on,i.shipped_on,i.amazon_returned_on,
+  coalesce(nullif(btrim(p.image_url),''),nullif(btrim(asin_product.image_url),'')) as reference_image_url,
+  (select count(*) from app.item_photos ph where ph.item_id=i.id) as photo_count,
+  (select max(cm.created_at) from app.item_comments cm where cm.item_id=i.id) as last_comment_at,
+  (i.cleaned_at is not null) as cleaned,i.description_template,i.manufacture_year,
+  i.marketplace_item_id,
+  case when i.marketplace::text='動作品Amazon返品' then i.title else p.model_no end as model_no,
+  i.malfunction_reported,i.malfunction_comment,i.malfunction_reported_at,i.malfunction_resolved_at,
+  case when i.is_accessory then shared.sold_price else i.sold_price end as sold_price,
+  case when i.is_accessory then shared.payout_amount else i.payout_amount end as payout_amount,
+  i.marketplace_url
+from app.items i
+left join app.products p on p.id=i.product_id
+left join app.products asin_product on asin_product.asin=i.asin
+left join app.staff buyer on buyer.id=i.purchaser_id
+left join lateral app.shared_product_sale_values(i.id) shared on true
+where i.status in ('仕入済','入荷済','作業中','Amazon返品','出荷済','出品中','販売済');
+grant select on app.v_delivery_tasks to authenticated;
+
+-- Correct the staff segment from assigned staff records on insert or assignment changes.
+create or replace function app.set_working_return_sku_staff_codes()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare purchaser_code text; deliverer_code text; parts text[];
+begin
+  if new.marketplace::text <> '動作品Amazon返品' or new.sku is null then return new; end if;
+  if tg_op='UPDATE' and new.marketplace is not distinct from old.marketplace
+     and new.purchaser_id is not distinct from old.purchaser_id
+     and new.deliverer_id is not distinct from old.deliverer_id then return new; end if;
+  select s.code into purchaser_code from app.staff s where s.id=new.purchaser_id;
+  select s.code into deliverer_code from app.staff s where s.id=new.deliverer_id;
+  parts:=string_to_array(new.sku,'-');
+  if array_length(parts,1) <> 4 or parts[2] !~ '^[A-Z]{2,4}$' then
+    raise exception '動作品Amazon返品のSKU形式を確認してください';
+  end if;
+  if purchaser_code is null and deliverer_code is null then
+    raise exception 'SKUを作成するには仕入担当者か納品担当者が必要です';
+  end if;
+  new.sku:=parts[1]||'-'||coalesce(purchaser_code,'')||coalesce(deliverer_code,'')||'-'||parts[3]||'-'||parts[4];
+  return new;
+end;
+$$;
+revoke all on function app.set_working_return_sku_staff_codes() from public,anon,authenticated;
+drop trigger if exists items_set_working_return_sku_staff_codes on app.items;
+create trigger items_set_working_return_sku_staff_codes
+before insert or update of marketplace,purchaser_id,deliverer_id on app.items
+for each row execute function app.set_working_return_sku_staff_codes();
+
+-- Repair existing rows from the deliverer assigned on each inventory record.
+update app.items i set sku=split_part(i.sku,'-',1)||'-'||left(split_part(i.sku,'-',2),2)||deliverer.code||'-'||split_part(i.sku,'-',3)||'-'||split_part(i.sku,'-',4)
+from app.staff deliverer
+where i.marketplace::text='動作品Amazon返品'
+  and i.deliverer_id=deliverer.id
+  and substring(split_part(i.sku,'-',2) from 3 for 2) is distinct from deliverer.code;
+
+notify pgrst,'reload schema';
+
+-- ▼▼▼ 20261004204711_backfill_accessory_shared_state.sql ▼▼▼
+
+-- Align historical accessory rows with their unique main item, keeping both rows separate.
+drop trigger if exists items_redirect_accessory_shared_edits on app.items;
+with candidate_pairs as (
+  select accessory.id as accessory_id, parent.id as parent_id
+  from app.items accessory
+  join app.items parent on not parent.is_accessory
+    and parent.lot_seq=accessory.lot_seq
+    and app.product_serial(parent.sku,parent.lot_seq)=app.product_serial(accessory.sku,accessory.lot_seq)
+  where accessory.is_accessory
+), unique_pairs as (
+  select accessory_id,(array_agg(parent_id))[1] as parent_id
+  from candidate_pairs group by accessory_id having count(*)=1
+)
+update app.items accessory set
+  status=parent.status,
+  packed_on=parent.packed_on,
+  shipped_on=parent.shipped_on,
+  sales_channel=parent.sales_channel,
+  sold_on=parent.sold_on,
+  sold_price=null,
+  payout_amount=null
+from unique_pairs pair
+join app.items parent on parent.id=pair.parent_id
+where accessory.id=pair.accessory_id;
+create trigger items_redirect_accessory_shared_edits
+before update of status,packed_on,shipped_on,sales_channel,sold_on,sold_price,payout_amount on app.items
+for each row execute function app.redirect_accessory_shared_edits();
+
+-- Do not guess which main item to display when there are duplicate candidates.
+create or replace function app.shared_product_sale_values(p_item_id uuid)
+returns table(sales_channel app.sales_channel,sold_price bigint,payout_amount bigint)
+language plpgsql stable security definer set search_path = '' as $$
+declare target app.items%rowtype; source app.items%rowtype; parent_count integer;
+begin
+  target:=app.assert_can_work_on(p_item_id);
+  if target.is_accessory then
+    select count(*) into parent_count from app.items parent
+    where not parent.is_accessory and parent.lot_seq=target.lot_seq
+      and app.product_serial(parent.sku,parent.lot_seq)=app.product_serial(target.sku,target.lot_seq);
+    if parent_count=1 then
+      select parent.* into source from app.items parent
+      where not parent.is_accessory and parent.lot_seq=target.lot_seq
+        and app.product_serial(parent.sku,parent.lot_seq)=app.product_serial(target.sku,target.lot_seq);
+      return query select source.sales_channel,source.sold_price,source.payout_amount;
+      return;
+    end if;
+  end if;
+  return query select target.sales_channel,target.sold_price,target.payout_amount;
+end;
+$$;
+revoke all on function app.shared_product_sale_values(uuid) from public,anon;
+grant execute on function app.shared_product_sale_values(uuid) to authenticated;
+notify pgrst,'reload schema';
+
+-- ▼▼▼ 20261004204917_sync_accessory_return_date.sql ▼▼▼
+
+-- Returned date drives the 返品処理 status, so it must follow the main item too.
+drop trigger if exists items_redirect_accessory_shared_edits on app.items;
+create or replace function app.redirect_accessory_shared_edits()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare parent app.items%rowtype; parent_count integer;
+begin
+  if pg_trigger_depth() > 1 or not old.is_accessory or not new.is_accessory then return new; end if;
+  if not (
+    new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+    or new.shipped_on is distinct from old.shipped_on or new.returned_on is distinct from old.returned_on
+    or new.sales_channel is distinct from old.sales_channel or new.sold_on is distinct from old.sold_on
+    or new.sold_price is distinct from old.sold_price or new.payout_amount is distinct from old.payout_amount
+  ) then return new; end if;
+  select count(*) into parent_count from app.items i
+   where not i.is_accessory and i.lot_seq=new.lot_seq
+     and app.product_serial(i.sku,i.lot_seq)=app.product_serial(new.sku,new.lot_seq);
+  if parent_count <> 1 then raise exception '対応する本体を一意に特定できません。通番号とSKUを確認してください'; end if;
+  select i.* into parent from app.items i
+   where not i.is_accessory and i.lot_seq=new.lot_seq
+     and app.product_serial(i.sku,i.lot_seq)=app.product_serial(new.sku,new.lot_seq)
+   for update;
+  update app.items i set
+    status=case when new.status is distinct from old.status then new.status else parent.status end,
+    packed_on=case when new.packed_on is distinct from old.packed_on then new.packed_on else parent.packed_on end,
+    shipped_on=case when new.shipped_on is distinct from old.shipped_on then new.shipped_on else parent.shipped_on end,
+    returned_on=case when new.returned_on is distinct from old.returned_on then new.returned_on else parent.returned_on end,
+    sales_channel=case when new.sales_channel is distinct from old.sales_channel then new.sales_channel else parent.sales_channel end,
+    sold_on=case when new.sold_on is distinct from old.sold_on then new.sold_on else parent.sold_on end,
+    sold_price=case when new.sold_price is distinct from old.sold_price then new.sold_price else parent.sold_price end,
+    payout_amount=case when new.payout_amount is distinct from old.payout_amount then new.payout_amount else parent.payout_amount end
+  where i.id=parent.id;
+  select i.* into parent from app.items i where i.id=parent.id;
+  new.status:=parent.status;
+  new.packed_on:=parent.packed_on;
+  new.shipped_on:=parent.shipped_on;
+  new.returned_on:=parent.returned_on;
+  new.sales_channel:=parent.sales_channel;
+  new.sold_on:=parent.sold_on;
+  new.sold_price:=null;
+  new.payout_amount:=null;
+  return new;
+end;
+$$;
+
+-- Backfill the same fields on uniquely matched historical accessory rows.
+with candidate_pairs as (
+  select accessory.id as accessory_id,parent.id as parent_id
+  from app.items accessory join app.items parent on not parent.is_accessory
+    and parent.lot_seq=accessory.lot_seq
+    and app.product_serial(parent.sku,parent.lot_seq)=app.product_serial(accessory.sku,accessory.lot_seq)
+  where accessory.is_accessory
+), unique_pairs as (
+  select accessory_id,(array_agg(parent_id))[1] as parent_id
+  from candidate_pairs group by accessory_id having count(*)=1
+)
+update app.items accessory set
+  status=parent.status,packed_on=parent.packed_on,shipped_on=parent.shipped_on,
+  returned_on=parent.returned_on,sales_channel=parent.sales_channel,sold_on=parent.sold_on,
+  sold_price=null,payout_amount=null
+from unique_pairs pair join app.items parent on parent.id=pair.parent_id
+where accessory.id=pair.accessory_id;
+create trigger items_redirect_accessory_shared_edits
+before update of status,packed_on,shipped_on,returned_on,sales_channel,sold_on,sold_price,payout_amount on app.items
+for each row execute function app.redirect_accessory_shared_edits();
+
+create or replace function app.sync_accessory_sale_date()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if pg_trigger_depth() > 1 or new.is_accessory then return new; end if;
+  if new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+     or new.shipped_on is distinct from old.shipped_on or new.returned_on is distinct from old.returned_on
+     or new.sales_channel is distinct from old.sales_channel or new.sold_on is distinct from old.sold_on
+     or new.sold_price is distinct from old.sold_price or new.payout_amount is distinct from old.payout_amount then
+    update app.items accessory set status=new.status,packed_on=new.packed_on,shipped_on=new.shipped_on,
+      returned_on=new.returned_on,sales_channel=new.sales_channel,sold_on=new.sold_on,
+      sold_price=null,payout_amount=null
+    where accessory.is_accessory and accessory.lot_seq=new.lot_seq
+      and app.product_serial(accessory.sku,accessory.lot_seq)=app.product_serial(new.sku,new.lot_seq);
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists items_sync_accessory_sale_date on app.items;
+create trigger items_sync_accessory_sale_date
+after update of status,packed_on,shipped_on,returned_on,sales_channel,sold_on,sold_price,payout_amount on app.items
+for each row execute function app.sync_accessory_sale_date();
+notify pgrst,'reload schema';
+
+-- ▼▼▼ 20261005025406_marketplace_purchase_drafts.sql ▼▼▼
+
+create table if not exists app.marketplace_purchase_drafts (
+  id uuid primary key default gen_random_uuid(),
+  marketplace text not null,
+  marketplace_item_id text not null,
+  marketplace_url text not null,
+  account_label text not null,
+  title text not null,
+  purchased_at date,
+  cost_amount bigint,
+  state text not null default 'draft' check (state in ('draft','registered','dismissed')),
+  registered_item_id uuid references app.items(id) on delete set null,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (marketplace, marketplace_item_id)
+);
+
+alter table app.items add column if not exists source_purchase_draft_id uuid
+  references app.marketplace_purchase_drafts(id) on delete set null;
+create unique index if not exists items_source_purchase_draft_unique
+  on app.items(source_purchase_draft_id) where source_purchase_draft_id is not null;
+
+alter table app.marketplace_purchase_drafts enable row level security;
+revoke all on app.marketplace_purchase_drafts from anon, authenticated;
+grant select, update on app.marketplace_purchase_drafts to authenticated;
+drop policy if exists marketplace_purchase_drafts_admin_read on app.marketplace_purchase_drafts;
+create policy marketplace_purchase_drafts_admin_read on app.marketplace_purchase_drafts
+  for select to authenticated using (app.is_admin());
+drop policy if exists marketplace_purchase_drafts_admin_update on app.marketplace_purchase_drafts;
+create policy marketplace_purchase_drafts_admin_update on app.marketplace_purchase_drafts
+  for update to authenticated using (app.is_admin()) with check (app.is_admin());
+
+create or replace function app.extension_sync_purchase_drafts(
+  p_marketplace text, p_account_label text, p_purchases jsonb
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  row_data jsonb;
+  inserted_count integer := 0;
+  refreshed_count integer := 0;
+  v_id text;
+  v_title text;
+  v_url text;
+  v_price bigint;
+  v_date date;
+  was_inserted boolean;
+  v_existing_item uuid;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  if nullif(btrim(p_account_label),'') is null or length(p_account_label)>120 then raise exception 'アカウント名が不正です'; end if;
+  if jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then raise exception '購入履歴の形式または件数が不正です'; end if;
+  for row_data in select value from jsonb_array_elements(p_purchases) loop
+    v_id := nullif(btrim(row_data->>'marketplace_item_id'),'');
+    v_title := nullif(btrim(row_data->>'title'),'');
+    v_url := nullif(btrim(row_data->>'marketplace_url'),'');
+    if v_id is null or v_title is null or v_url is null or length(v_id)>200 or length(v_title)>500 or length(v_url)>2000 then continue; end if;
+    if (p_marketplace='メルカリ' and v_url !~ '^https://jp\.mercari\.com/')
+      or (p_marketplace='ヤフオク' and v_url !~ '^https://(auctions|contact\.auctions|buy\.auctions)\.yahoo\.co\.jp/')
+      or (p_marketplace in ('ヤフフリ','PayPayフリマ') and v_url !~ '^https://paypayfleamarket\.yahoo\.co\.jp/')
+      or (p_marketplace='ラクマ' and v_url !~ '^https://(www\.)?fril\.jp/') then continue; end if;
+    v_existing_item := null;
+    select i.id into v_existing_item from app.items i
+      where i.marketplace_item_id=v_id
+        and (i.marketplace=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and i.marketplace in ('ヤフフリ','PayPayフリマ')))
+      order by i.created_at desc limit 1;
+    if v_existing_item is not null then
+      insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,state,registered_item_id)
+        values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,
+          case when coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then (row_data->>'purchased_at')::date else null end,
+          case when coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then (row_data->>'cost_amount')::bigint else null end,
+          'registered',v_existing_item)
+        on conflict(marketplace,marketplace_item_id) do nothing;
+      continue;
+    end if;
+    v_price := null;
+    if coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then v_price := (row_data->>'cost_amount')::bigint; end if;
+    v_date := null;
+    if coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then v_date := (row_data->>'purchased_at')::date; end if;
+    insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount)
+      values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,v_date,v_price)
+      on conflict(marketplace,marketplace_item_id) do update set
+        marketplace_url=excluded.marketplace_url,
+        account_label=excluded.account_label,
+        title=excluded.title,
+        purchased_at=coalesce(excluded.purchased_at,app.marketplace_purchase_drafts.purchased_at),
+        cost_amount=coalesce(excluded.cost_amount,app.marketplace_purchase_drafts.cost_amount),
+        last_seen_at=now()
+      where app.marketplace_purchase_drafts.state='draft'
+      returning (xmax=0) into was_inserted;
+    if found then
+      if was_inserted then inserted_count := inserted_count+1;
+      else refreshed_count := refreshed_count+1; end if;
+    end if;
+  end loop;
+  return jsonb_build_object('inserted',inserted_count,'refreshed',refreshed_count);
+end $$;
+revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb) from public, anon;
+grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb) to authenticated;
+
+create or replace function app.mark_purchase_draft_registered()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.source_purchase_draft_id is not null then
+    update app.marketplace_purchase_drafts set state='registered',registered_item_id=new.id
+      where id=new.source_purchase_draft_id and state='draft';
+    if not found then raise exception '仕入れリストが既に反映済みか、削除されています'; end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists items_mark_purchase_draft_registered on app.items;
+create trigger items_mark_purchase_draft_registered after insert on app.items
+  for each row execute function app.mark_purchase_draft_registered();
+
+comment on table app.marketplace_purchase_drafts is 'Chrome拡張機能で同期したフリマ購入履歴の下書き。仕入れリスト画面で確認してから在庫へ反映する。';
+
+
+-- ▼▼▼ 20261005031305_marketplace_transaction_messages.sql ▼▼▼
+
+create table if not exists app.marketplace_messages (
+  id uuid primary key default gen_random_uuid(),
+  marketplace text not null,
+  marketplace_item_id text not null,
+  item_id uuid references app.items(id) on delete cascade,
+  external_id text not null,
+  author text,
+  author_role text not null default 'unknown' check (author_role in ('self','other','unknown')),
+  body text not null check (length(body) between 1 and 10000),
+  sent_at timestamptz,
+  synced_at timestamptz not null default now(),
+  unique (marketplace, marketplace_item_id, external_id)
+);
+create index if not exists marketplace_messages_thread_idx
+  on app.marketplace_messages(item_id, sent_at, id);
+alter table app.marketplace_messages enable row level security;
+revoke all on app.marketplace_messages from anon, authenticated;
+grant select, insert, update on app.marketplace_messages to authenticated;
+drop policy if exists marketplace_messages_read on app.marketplace_messages;
+create policy marketplace_messages_read on app.marketplace_messages for select to authenticated
+using (exists(select 1 from app.items i where i.id=item_id and
+  (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
+drop policy if exists marketplace_messages_admin_write on app.marketplace_messages;
+create policy marketplace_messages_admin_write on app.marketplace_messages for all to authenticated
+using (app.is_admin()) with check (app.is_admin());
+
+create table if not exists app.marketplace_message_outbox (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references app.items(id) on delete cascade,
+  marketplace text not null,
+  marketplace_item_id text not null,
+  body text not null check (length(body) between 1 and 2000),
+  requested_by uuid not null references auth.users(id),
+  status text not null default 'queued' check (status in ('queued','sending','sent','failed','uncertain')),
+  requested_at timestamptz not null default now(),
+  claimed_at timestamptz,
+  claimed_by text,
+  sent_at timestamptz,
+  result_note text
+);
+create index if not exists marketplace_message_outbox_queue_idx
+  on app.marketplace_message_outbox(status, requested_at);
+alter table app.marketplace_message_outbox enable row level security;
+revoke all on app.marketplace_message_outbox from anon, authenticated;
+grant select, insert, update on app.marketplace_message_outbox to authenticated;
+drop policy if exists marketplace_message_outbox_read on app.marketplace_message_outbox;
+create policy marketplace_message_outbox_read on app.marketplace_message_outbox for select to authenticated
+using (requested_by=auth.uid() or app.is_admin() or app.current_role()='purchaser');
+drop policy if exists marketplace_message_outbox_insert on app.marketplace_message_outbox;
+create policy marketplace_message_outbox_insert on app.marketplace_message_outbox for insert to authenticated
+with check (requested_by=auth.uid() and exists(select 1 from app.items i where i.id=item_id and
+  (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
+drop policy if exists marketplace_message_outbox_admin_update on app.marketplace_message_outbox;
+create policy marketplace_message_outbox_admin_update on app.marketplace_message_outbox for update to authenticated
+using (app.is_admin()) with check (app.is_admin());
+
+create or replace function app.read_marketplace_messages(p_item_id uuid)
+returns jsonb
+language plpgsql stable security invoker set search_path = ''
+as $$
+declare v_item app.items%rowtype;
+begin
+  if auth.uid() is null then raise exception 'ログインが必要です' using errcode='42501'; end if;
+  select * into v_item from app.items where id=p_item_id;
+  if not found or not (app.is_admin() or app.current_role()='purchaser' or v_item.deliverer_id=app.current_staff_id()) then
+    raise exception 'この商品の取引メッセージを閲覧する権限がありません' using errcode='42501';
+  end if;
+  return jsonb_build_object(
+    'messages', coalesce((select jsonb_agg(jsonb_build_object('id',m.id,'author',m.author,'author_role',m.author_role,'body',m.body,'sent_at',m.sent_at) order by m.sent_at nulls first,m.id)
+      from app.marketplace_messages m where m.item_id=p_item_id),'[]'::jsonb),
+    'outbox', coalesce((select jsonb_agg(jsonb_build_object('id',o.id,'body',o.body,'status',o.status,'requested_at',o.requested_at,'sent_at',o.sent_at,'result_note',o.result_note) order by o.requested_at desc)
+      from app.marketplace_message_outbox o where o.item_id=p_item_id and o.requested_by=auth.uid()),'[]'::jsonb)
+  );
+end; $$;
+
+create or replace function app.queue_marketplace_message(p_item_id uuid,p_body text)
+returns uuid
+language plpgsql security invoker set search_path = ''
+as $$
+declare v_item app.items%rowtype; v_market text; v_outbox_id uuid;
+begin
+  if auth.uid() is null then raise exception 'ログインが必要です' using errcode='42501'; end if;
+  if length(btrim(coalesce(p_body,''))) not between 1 and 2000 then raise exception 'メッセージは1〜2000文字で入力してください'; end if;
+  select * into v_item from app.items where id=p_item_id;
+  if not found or not (app.is_admin() or app.current_role()='purchaser' or v_item.deliverer_id=app.current_staff_id()) then
+    raise exception 'この商品の取引メッセージを送信する権限がありません' using errcode='42501';
+  end if;
+  if nullif(btrim(v_item.marketplace_item_id),'') is null then raise exception '取引IDが登録されていません'; end if;
+  v_market:=v_item.marketplace::text;
+  if v_market not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception 'この仕入先は取引メッセージ連携の対象外です'; end if;
+  if exists(select 1 from app.marketplace_message_outbox where item_id=v_item.id and status in ('queued','sending')) then
+    raise exception 'この商品の前の送信依頼が処理中です。結果を確認してから送信してください';
+  end if;
+  insert into app.marketplace_message_outbox(item_id,marketplace,marketplace_item_id,body,requested_by)
+    values(v_item.id,v_market,v_item.marketplace_item_id,btrim(p_body),auth.uid()) returning id into strict v_outbox_id;
+  return v_outbox_id;
+end; $$;
+
+create or replace function app.extension_marketplace_message_queue(p_marketplaces text[])
+returns jsonb
+language plpgsql security invoker set search_path = ''
+as $$
+begin
+  if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object('id',id,'item_id',item_id,'marketplace',marketplace,'marketplace_item_id',marketplace_item_id,'body',body) order by requested_at)
+    from app.marketplace_message_outbox where status='queued' and requested_at > now()-interval '7 days' and marketplace=any(p_marketplaces)),'[]'::jsonb);
+end; $$;
+
+create or replace function app.extension_claim_marketplace_message(p_id uuid,p_claimant text)
+returns boolean
+language plpgsql security invoker set search_path = ''
+as $$
+declare changed integer;
+begin
+  if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+  update app.marketplace_message_outbox set status='sending',claimed_at=now(),claimed_by=left(coalesce(p_claimant,''),120),result_note=null
+   where id=p_id and (status='queued' or (status='sending' and claimed_at < now()-interval '10 minutes'));
+  get diagnostics changed=row_count;
+  return changed=1;
+end; $$;
+
+create or replace function app.extension_finish_marketplace_message(p_id uuid,p_status text,p_note text default null)
+returns boolean
+language plpgsql security invoker set search_path = ''
+as $$
+declare changed integer;
+begin
+  if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+  if p_status not in ('sent','failed','uncertain') then raise exception '送信結果が不正です'; end if;
+  update app.marketplace_message_outbox set status=p_status,sent_at=case when p_status='sent' then now() else null end,result_note=left(p_note,500)
+   where id=p_id and status='sending';
+  get diagnostics changed=row_count;
+  return changed=1;
+end; $$;
+
+create or replace function app.extension_sync_marketplace_messages(p_marketplace text,p_item_id text,p_account_label text,p_messages jsonb)
+returns integer
+language plpgsql security invoker set search_path = ''
+as $$
+declare linked_id uuid; affected integer; matched integer;
+begin
+  if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') or length(p_item_id)>160 then raise exception '取引を特定できません'; end if;
+  select count(*) into matched from app.items where marketplace_item_id=p_item_id and
+   (marketplace::text=p_marketplace or (p_marketplace='ヤフフリ' and marketplace::text='PayPayフリマ'));
+  if matched>1 then raise exception '同じ取引IDの商品が複数あり、メッセージを結び付けられません'; end if;
+  if matched=1 then select id into linked_id from app.items where marketplace_item_id=p_item_id and
+   (marketplace::text=p_marketplace or (p_marketplace='ヤフフリ' and marketplace::text='PayPayフリマ')); end if;
+  if jsonb_typeof(p_messages)<>'array' or jsonb_array_length(p_messages)>500 then raise exception '取引メッセージの形式が不正です'; end if;
+  insert into app.marketplace_messages(marketplace,marketplace_item_id,item_id,external_id,author,author_role,body,sent_at)
+  select p_marketplace,p_item_id,linked_id,entry->>'external_id',nullif(left(entry->>'author',200),''),
+    case when entry->>'author_role' in ('self','other') then entry->>'author_role' else 'unknown' end,
+    left(entry->>'body',10000),nullif(entry->>'sent_at','')::timestamptz
+  from jsonb_array_elements(p_messages) entry
+  where coalesce(entry->>'external_id','')<>'' and coalesce(entry->>'body','')<>''
+  on conflict(marketplace,marketplace_item_id,external_id) do update set item_id=excluded.item_id,author=excluded.author,author_role=excluded.author_role,body=excluded.body,sent_at=coalesce(excluded.sent_at,app.marketplace_messages.sent_at),synced_at=now();
+  get diagnostics affected=row_count;
+  return affected;
+end; $$;
+
+grant execute on function app.read_marketplace_messages(uuid) to authenticated;
+grant execute on function app.queue_marketplace_message(uuid,text) to authenticated;
+grant execute on function app.extension_marketplace_message_queue(text[]) to authenticated;
+grant execute on function app.extension_claim_marketplace_message(uuid,text) to authenticated;
+grant execute on function app.extension_finish_marketplace_message(uuid,text,text) to authenticated;
+grant execute on function app.extension_sync_marketplace_messages(text,text,text,jsonb) to authenticated;
+
+
+-- ▼▼▼ 20261005031318_allow_spare_deletion.sql ▼▼▼
+
+grant delete on app.spare_accessories to authenticated;
+drop policy if exists spare_accessories_delete on app.spare_accessories;
+create policy spare_accessories_delete on app.spare_accessories
+  for delete to authenticated
+  using (
+    used_for_item_id is null
+    and source_sheet_row is null
+    and (app.is_admin() or owner_staff_id = app.current_staff_id())
+  );
+
+
+-- ▼▼▼ 20261005034232_delivery_inventory_status_filters.sql ▼▼▼
+
+create or replace view app.v_delivery_tasks with (security_invoker = true) as
+select
+  i.id,i.sku,i.lot_seq,i.is_accessory,i.status,i.work_stream,i.title,
+  i.asin,i.condition,i.purchased_at,i.marketplace,i.tracking_no,i.accessories,i.description,
+  case when i.is_accessory then shared.sales_channel else i.sales_channel end as sales_channel,
+  i.planned_price,i.deliverer_id,buyer.name as purchaser_name,i.arrived_on,
+  (i.product_registered_at is not null) as product_registered,
+  (i.inspected_at is not null) as inspected,(i.photo_uploaded_at is not null) as photo_uploaded,
+  i.packed_on,i.shipped_on,i.amazon_returned_on,
+  coalesce(nullif(btrim(p.image_url),''),nullif(btrim(asin_product.image_url),'')) as reference_image_url,
+  (select count(*) from app.item_photos ph where ph.item_id=i.id) as photo_count,
+  (select max(cm.created_at) from app.item_comments cm where cm.item_id=i.id) as last_comment_at,
+  (i.cleaned_at is not null) as cleaned,i.description_template,i.manufacture_year,
+  i.marketplace_item_id,
+  case when i.marketplace::text='動作品Amazon返品' then i.title else p.model_no end as model_no,
+  i.malfunction_reported,i.malfunction_comment,i.malfunction_reported_at,i.malfunction_resolved_at,
+  case when i.is_accessory then shared.sold_price else i.sold_price end as sold_price,
+  case when i.is_accessory then shared.payout_amount else i.payout_amount end as payout_amount,
+  i.marketplace_url
+from app.items i
+left join app.products p on p.id=i.product_id
+left join app.products asin_product on asin_product.asin=i.asin
+left join app.staff buyer on buyer.id=i.purchaser_id
+left join lateral app.shared_product_sale_values(i.id) shared on true
+where i.status in ('仕入済','入荷済','作業中','返品処理','Amazon返品','出荷済','出品中','販売済');
+grant select on app.v_delivery_tasks to authenticated;
+
+
 -- ▼▼▼ 20261005065229_allow_deletion_of_unassigned_spares.sql ▼▼▼
 
 drop policy if exists spare_accessories_delete on app.spare_accessories;
@@ -4720,3 +5350,5 @@ create policy spare_accessories_delete on app.spare_accessories
     used_for_item_id is null
     and (app.is_admin() or owner_staff_id = app.current_staff_id())
   );
+
+
