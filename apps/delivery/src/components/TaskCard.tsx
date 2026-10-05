@@ -78,7 +78,7 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
       <div className="task-content">
       <div className="task-card-overview">
         <div className="task-card-info">
-          <span className="muted">購入日 {jpDate(task.purchased_at)}</span>
+          <span className="muted">仕入日 {jpDate(task.purchased_at)}</span>
           <span className="muted">販売先 {task.sales_channel || '—'}</span>
           <CopyableText label="販売金額" value={task.planned_price == null ? '' : String(task.planned_price)} displayValue={yen(task.planned_price)} />
           <CopyableText label="SKU" value={task.sku} />
@@ -97,12 +97,23 @@ export default function TaskCard({ task, amazonImageUrl, members, staff, expande
         </div>
       </div>
       {members.length > 1 && <div className="task-members">
-        {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className="task-member-row">
-          <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
-            {member.is_accessory ? '付属品' : '同じ商品'}：{member.title}
-          </button>
-          <CopyableText label="追跡番号" value={member.tracking_no || '—'} />
-          <span className="muted task-member-date">{jpDate(member.purchased_at)}</span>
+        {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className={`task-member-row${member.is_accessory ? ' task-member-accessory' : ''}`}>
+          {member.is_accessory ? <>
+            <span className="badge">付属品</span>
+            <span className="muted task-member-date">仕入日 {jpDate(member.purchased_at)}</span>
+            <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
+              品名 {member.title}
+            </button>
+            <span className="task-item-id-line"><CopyableText label="商品ID" value={member.marketplace_item_id || '—'} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
+            <CopyableText label="追跡番号" value={member.tracking_no || '—'} />
+            <span>利用記録 {member.lot_seq}</span>
+          </> : <>
+            <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
+              同じ商品：{member.title}
+            </button>
+            <CopyableText label="追跡番号" value={member.tracking_no || '—'} />
+            <span className="muted task-member-date">仕入日 {jpDate(member.purchased_at)}</span>
+          </>}
         </div>)}
       </div>}
       </div>
