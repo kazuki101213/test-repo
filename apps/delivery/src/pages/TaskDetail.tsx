@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
-  addPhotosToDrive, deletePhoto, fetchComments, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
-  reportItemMalfunction, setDeliveryProgress, setWorkProgress, uploadPhoto,
+  addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
+  queueMarketplaceMessage, reportItemMalfunction, setDeliveryProgress, setWorkProgress, uploadPhoto,
 } from '../api';
-import type { ItemPhoto, PhotoReviewState } from '../api';
+import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
 
 function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
@@ -40,6 +40,10 @@ export default function TaskDetail({
   const [malfunctionChecked, setMalfunctionChecked] = useState(false);
   const [malfunctionComment, setMalfunctionComment] = useState('');
   const [malfunctionBusy, setMalfunctionBusy] = useState(false);
+  const [marketplaceConversation, setMarketplaceConversation] = useState<MarketplaceConversation>({ messages: [], outbox: [] });
+  const [marketplaceDraft, setMarketplaceDraft] = useState('');
+  const [marketplaceSending, setMarketplaceSending] = useState(false);
+  const [marketplaceError, setMarketplaceError] = useState('');
   const isDeliveryMaster = staff.role === 'admin' && staff.name === '長部一輝';
 
   const reload = useCallback(async () => {
@@ -60,6 +64,21 @@ export default function TaskDetail({
   }, [itemId, onChanged]);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  const refreshMarketplaceConversation = useCallback(async () => {
+    try {
+      setMarketplaceConversation(await fetchMarketplaceConversation(itemId));
+      setMarketplaceError('');
+    } catch (cause) {
+      setMarketplaceError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [itemId]);
+
+  useEffect(() => {
+    void refreshMarketplaceConversation();
+    const timer = window.setInterval(() => void refreshMarketplaceConversation(), 8000);
+    return () => window.clearInterval(timer);
+  }, [refreshMarketplaceConversation]);
 
   async function toggle(step: WorkStep) {
     if (!task) return;
@@ -141,6 +160,21 @@ export default function TaskDetail({
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function sendMarketplaceMessage() {
+    if (!task || !marketplaceDraft.trim() || marketplaceSending) return;
+    setMarketplaceSending(true);
+    setMarketplaceError('');
+    try {
+      await queueMarketplaceMessage(task.id, marketplaceDraft.trim());
+      setMarketplaceDraft('');
+      await refreshMarketplaceConversation();
+    } catch (cause) {
+      setMarketplaceError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setMarketplaceSending(false);
     }
   }
 
@@ -265,6 +299,32 @@ export default function TaskDetail({
         <button className="btn primary" style={{ marginTop: 8 }} disabled={!draft.trim()} onClick={() => void send()}>
           送信
         </button>
+      </div>
+
+      <div className="card marketplace-conversation" aria-label="フリマサイト取引メッセージ">
+        <div className="marketplace-conversation-heading"><strong>取引メッセージ</strong><span className="muted">{task.marketplace} · {task.marketplace_item_id || '取引IDなし'}</span></div>
+        {marketplaceError && <p className="error" role="alert">{marketplaceError}</p>}
+        {!task.marketplace_item_id
+          ? <p className="muted">商品IDが登録されていないため、取引メッセージを連携できません。</p>
+          : <>
+            <div className="marketplace-message-list" aria-live="polite">
+              {marketplaceConversation.messages.length === 0 && <p className="muted">メッセージはまだ同期されていません。ログイン済みChromeでフリマ取引サポート拡張機能の「取引メッセージを同期」を実行してください。</p>}
+              {marketplaceConversation.messages.map(message => <article key={message.id} className="marketplace-message" data-author={message.author_role}>
+                <div className="meta">{message.author || (message.author_role === 'self' ? '自分' : '取引相手')}{message.sent_at ? ` · ${new Date(message.sent_at).toLocaleString('ja-JP')}` : ''}</div>
+                <p>{message.body}</p>
+              </article>)}
+              {marketplaceConversation.outbox.map(request => <article key={request.id} className="marketplace-message" data-author="self" data-status={request.status}>
+                <div className="meta">{({ queued: '拡張機能の送信待ち', sending: 'サイトへ送信中', sent: '送信済み', failed: '送信失敗', uncertain: '送信結果を要確認' } as const)[request.status]}{request.sent_at ? ` · ${new Date(request.sent_at).toLocaleString('ja-JP')}` : ''}</div>
+                <p>{request.body}</p>
+                {request.result_note && <small>{request.result_note}</small>}
+              </article>)}
+            </div>
+            <div className="marketplace-message-composer">
+              <textarea aria-label="フリマ取引相手へのメッセージ" value={marketplaceDraft} onChange={event => setMarketplaceDraft(event.target.value)} maxLength={2000} placeholder="取引相手へのメッセージ" />
+              <button type="button" className="btn primary" disabled={!marketplaceDraft.trim() || marketplaceSending} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信依頼中…' : '取引メッセージを送信'}</button>
+              <small className="muted">送信後は、ログイン済みChromeの拡張機能が取引画面へ反映します。</small>
+            </div>
+          </>}
       </div>
 
     </section>

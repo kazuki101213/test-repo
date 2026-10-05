@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchSpareAccessories, spareState, yen } from '@bussan/shared';
+import { deleteSpareAccessory, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
 import { fetchSpareOwners } from '../api';
 
@@ -10,6 +10,7 @@ export default function Spares({ staff }: { staff: Staff }) {
   const [query, setQuery] = useState('');
   const [spareOwners, setSpareOwners] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (staff.role !== 'admin') return;
@@ -35,6 +36,15 @@ export default function Spares({ staff }: { staff: Staff }) {
     && (staff.role !== 'admin' || !delivererId || row.owner_staff_id === delivererId || (!row.owner_staff_id && row.owner_name === selectedOwner?.name))
     && [row.title, row.source_sku, row.marketplace_item_id, row.tracking_no, row.owner_name]
     .some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
+  async function remove(row: SpareAccessory) {
+    if (!window.confirm(`「${row.title}」${row.source_sku ? `（${row.source_sku}）` : ''}を予備一覧から削除します。この操作は取り消せません。削除しますか？`)) return;
+    setDeletingId(row.id); setError('');
+    try {
+      await deleteSpareAccessory(row.id);
+      setRows(current => current.filter(item => item.id !== row.id));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setDeletingId(null); }
+  }
   return <section className="card">
     <h2>予備一覧</h2>
     {staff.role === 'admin'
@@ -44,7 +54,9 @@ export default function Spares({ staff }: { staff: Staff }) {
     {error && <p className="error" role="alert">{error}</p>}
     {loading ? <p>読み込み中…</p> : shown.length === 0 ? <p className="empty">予備はありません。</p> :
       <div className="spare-list">{shown.map(row => <div className="spare-row" key={row.id}>
-        <div><strong>{row.title}</strong> <span className="badge">{spareState(row)}</span></div>
+        <div className="spare-row-heading"><div><strong>{row.title}</strong> <span className="badge">{spareState(row)}</span></div>
+          {(staff.role === 'admin' || row.owner_staff_id === staff.id) && !row.source_sheet_row && <button type="button" className="btn danger spare-delete" disabled={deletingId !== null} onClick={() => void remove(row)}>{deletingId === row.id ? '削除中…' : '削除'}</button>}
+        </div>
         <div>保管担当：{row.owner_name || '未設定'}</div>
         <div>購入日：{row.purchased_at || '—'}　仕入金額：{yen(row.cost_amount)}</div>
         {row.source_sku && <div>SKU：{row.source_sku}</div>}

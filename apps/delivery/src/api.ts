@@ -145,6 +145,38 @@ async function preparePhotoForUpload(file: File): Promise<File> {
   }
 }
 
+export interface MarketplaceMessage {
+  id: string;
+  author: string | null;
+  author_role: 'self' | 'other' | 'unknown';
+  body: string;
+  sent_at: string | null;
+}
+export interface MarketplaceMessageRequest {
+  id: string;
+  body: string;
+  status: 'queued' | 'sending' | 'sent' | 'failed' | 'uncertain';
+  requested_at: string;
+  sent_at: string | null;
+  result_note: string | null;
+}
+export interface MarketplaceConversation {
+  messages: MarketplaceMessage[];
+  outbox: MarketplaceMessageRequest[];
+}
+
+export async function fetchMarketplaceConversation(itemId: string): Promise<MarketplaceConversation> {
+  const { data, error } = await getSupabase().rpc('read_marketplace_messages', { p_item_id: itemId });
+  if (error) throw error;
+  return (data ?? { messages: [], outbox: [] }) as MarketplaceConversation;
+}
+
+export async function queueMarketplaceMessage(itemId: string, body: string): Promise<string> {
+  const { data, error } = await getSupabase().rpc('queue_marketplace_message', { p_item_id: itemId, p_body: body });
+  if (error) throw error;
+  return data as string;
+}
+
 export async function uploadPhoto(sku: string, itemId: string, staffId: string, originalFile: File) {
   const sb = getSupabase();
   const file = await preparePhotoForUpload(originalFile);

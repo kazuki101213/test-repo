@@ -87,6 +87,22 @@ export interface ItemInsert {
   seller_occupation?: string | null;
   seller_age?: number | null;
   memo?: string | null;
+  source_purchase_draft_id?: string | null;
+}
+
+export interface PurchaseDraft {
+  id: string;
+  marketplace: Marketplace;
+  marketplace_item_id: string;
+  marketplace_url: string;
+  account_label: string;
+  title: string;
+  purchased_at: string | null;
+  cost_amount: number | null;
+  state: 'draft' | 'registered' | 'dismissed';
+  registered_item_id: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
 }
 
 /** app.v_items の 1 行 */
@@ -153,6 +169,9 @@ export interface DeliveryTask {
   purchased_at: string | null;
   marketplace: Marketplace;
   marketplace_item_id: string | null;
+  marketplace_url: string | null;
+  sold_price: number | null;
+  payout_amount: number | null;
   tracking_no: string | null;
   accessories: string | null;
   description: string | null;

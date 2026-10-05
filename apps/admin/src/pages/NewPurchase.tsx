@@ -5,7 +5,7 @@ import {
 } from '@bussan/shared';
 import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
-  SpareAccessory,
+  PurchaseDraft, SpareAccessory,
 } from '@bussan/shared';
 import { createItem, fetchCards, findInventoryForAmazonReturn, fetchProducts, fetchStaff, nextLotSeq } from '../api';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
@@ -31,7 +31,7 @@ function errorMessage(cause: unknown): string {
   return String(cause);
 }
 
-export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () => void }) {
+export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved?: () => void; draft?: PurchaseDraft | null }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -72,6 +72,16 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!draft) return;
+    setMarketplace(draft.marketplace);
+    setMarketplaceItemId(draft.marketplace_item_id);
+    setUrlOverride(draft.marketplace_url);
+    setTitle(draft.title);
+    setPurchasedAt(draft.purchased_at || '');
+    setCost(draft.cost_amount ?? '');
+  }, [draft?.id]);
 
   useEffect(() => {
     fetchStaff().then(rows => {
@@ -199,8 +209,18 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         catch { throw new Error('仕入先URLは https:// から始まるURLを入力してください。'); }
         if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('仕入先URLの形式を確認してください。');
       }
+      let assignedReturnSku = returnSku;
+      if (isWorkingAmazonReturn && returnSku) {
+        const assignedDeliverer = staff.find(row => row.id === delivererId && row.role === 'deliverer');
+        if (!assignedDeliverer || !purchaser?.code || !assignedDeliverer.code) throw new Error('動作品Amazon返品は納品担当者を選択してください。');
+        const parts = returnSku.split('-');
+        if (parts.length !== 4) throw new Error('動作品Amazon返品のSKU形式を確認してください。');
+        parts[1] = purchaser.code + assignedDeliverer.code;
+        assignedReturnSku = parts.join('-');
+      }
+
       const payload: ItemInsert = {
-        ...((isAmazonReturn || isWorkingAmazonReturn) && returnSku ? { sku: returnSku } : {}),
+        ...((isAmazonReturn || isWorkingAmazonReturn) && assignedReturnSku ? { sku: assignedReturnSku } : {}),
         ...(isAmazonReturn ? { status: 'Amazon返品' as const } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
         is_accessory: !isAmazonReturn && !isWorkingAmazonReturn && workStream === '付属品',
@@ -222,6 +242,7 @@ export default function NewPurchase({ me, onSaved }: { me: Staff; onSaved?: () =
         planned_payout: plannedPayout === '' ? null : Number(plannedPayout),
         sales_channel: salesChannel,
         memo: note || null,
+        ...(draft ? { source_purchase_draft_id: draft.id } : {}),
       };
 
       const created = await createItem(payload);

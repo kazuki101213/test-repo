@@ -90,7 +90,7 @@ button, input, select, textarea { font: inherit; }
 .step .hint { color: var(--muted); font-size: 12px; }
 .step-date { width:145px; flex:none; min-width:0; padding:7px 4px; font-size:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); }
 @media(max-width:450px) { .step-date { width:132px; } }
-.malfunction-step-wrap { display:grid; gap:8px; }
+.malfunction-step-wrap { display:grid; gap:8px; order:-1; }
 .malfunction-status { margin:0 12px; white-space:pre-wrap; }
 .malfunction-report { display:grid; gap:8px; padding:0 12px; }
 .malfunction-report .btn { justify-self:start; }
@@ -195,3 +195,17 @@ textarea { min-height: 80px; resize: vertical; }
 @media (max-width: 520px) { .product-photos .photos { gap: 4px; } .photos .uploaded-photo { gap: 3px; } }
 .spare-list { display: grid; gap: 8px; margin-top: 14px; }
 .spare-row { padding: 12px; border: 1px solid var(--border); border-radius: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+
+.task-item-id-line { display:flex !important; align-items:center; gap:8px; min-width:0; overflow:visible !important; }
+.task-item-page-link { flex:none; border:0; padding:0; background:transparent; color:var(--accent); font-size:13px; line-height:18px; text-decoration:underline; cursor:pointer; }
+.task-item-page-link:disabled { color:var(--muted); text-decoration:none; cursor:not-allowed; }
+.marketplace-conversation-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.marketplace-message-list { display: grid; gap: 8px; max-height: 360px; overflow: auto; margin-top: 12px; }
+.marketplace-message { border: 1px solid var(--line, #d8d0c2); border-radius: 10px; padding: 10px 12px; background: var(--surface, #fff); white-space: pre-wrap; overflow-wrap: anywhere; }
+.marketplace-message[data-author="self"] { margin-left: 8%; background: color-mix(in srgb, var(--primary, #607a5e) 9%, white); }
+.marketplace-message[data-status="failed"], .marketplace-message[data-status="uncertain"] { border-color: var(--danger, #a33); }
+.marketplace-message p { margin: 5px 0 0; }
+.marketplace-message-composer { display: grid; gap: 8px; margin-top: 12px; }
+.marketplace-message-composer textarea { min-height: 76px; resize: vertical; }
+.spare-row-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.spare-delete { flex: 0 0 auto; }

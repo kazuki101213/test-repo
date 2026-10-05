@@ -4,7 +4,7 @@ import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } fr
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import type {
   DelivererWorkload, ItemInsert, ItemView, LedgerRow,
-  MonthlySummary, Product, SpareAccessory, Staff, StockSummary,
+  MonthlySummary, Product, PurchaseDraft, SpareAccessory, Staff, StockSummary,
 } from '@bussan/shared';
 
 export async function fetchStaff(): Promise<Staff[]> {
@@ -319,6 +319,20 @@ export async function createItem(input: ItemInsert): Promise<{ id: string; sku: 
     .from('items').insert(normalizedInput).select('id, sku').single();
   if (error) throw error;
   return data as { id: string; sku: string };
+}
+
+export async function fetchPurchaseDrafts(): Promise<PurchaseDraft[]> {
+  const { data, error } = await getSupabase().from('marketplace_purchase_drafts')
+    .select('*').eq('state', 'draft').order('first_seen_at', { ascending: false }).limit(500);
+  if (error) throw error;
+  return (data ?? []) as PurchaseDraft[];
+}
+
+export async function dismissPurchaseDraft(id: string): Promise<void> {
+  const { data, error } = await getSupabase().from('marketplace_purchase_drafts').update({ state: 'dismissed' })
+    .eq('id', id).eq('state', 'draft').select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('仕入れリストが既に変更されています。一覧を再読み込みしてください。');
 }
 
 export async function recordSale(itemId: string, sale: {
