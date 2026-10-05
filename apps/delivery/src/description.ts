@@ -54,7 +54,7 @@ function listingTitle(input: { target: DescriptionTarget; product: string; itemN
   return '';
 }
 
-function mercariDescription(product: string, sku: string) {
+function mercariDescription(product: string, skuText: string) {
   const searchTerms: Record<string, string> = {
     'ブルーレイレコーダー': 'ブルーレイレコーダー　ブルーレイプレーヤー　ブルーレイ・ディスク　BD　SONY　ソニー Panasonic　パナソニック　DIGA　ディーガ　SHARP　シャープ　AQUOS　アクオス　TOSHIBA　東芝　とうしば　REGZA　レグザ　B-casカード　mini B-casカード　リモコン　同時録画　電源ケーブル　2ピンケーブル　3ピンケーブル　HDMIケーブル　同軸ケーブル　アンテナケーブル',
     モニター: 'PCモニター　ディスプレイ　液晶モニター　外部モニター　在宅ワーク　テレワーク　デュアルモニター　サブモニター　ゲーミングモニター　テレビ　TV　21インチ　24インチ　27インチ　32インチ　フルHD　WQHD　4K　IPS　144Hz　165Hz　電源ケーブル　2ピンケーブル　3ピンケーブル　HDMIケーブル　同軸ケーブル　アンテナケーブル　DisplayPort　USB-C　高さ調整　縦回転　VESA対応　EIZO　アイ・オー・データ　JAPANNEXT　ソニー　SONY　シャープ　SHARP　デル　Dell　ベンキュー　BenQ　LG　ASUS　Acer　MSI　Samsung　HP　Lenovo　Philips　ViewSonic　AOC　GIGABYTE',
@@ -67,10 +67,10 @@ function mercariDescription(product: string, sku: string) {
     テレビ: '地デジ受信\n初期化\n上記動作は確認済みです。\n\n1枚目に写っているもののみです。\n\n素人ではありますが、ドット抜けがないように見えます。\n\n画面に大きな傷は有りません。\n\n目に見えない細かい傷はある場合がございます。\n\n即購入OK・コメントなしOK。\n\n素人保管のため神経質な方はご遠慮ください。\n\nご覧いただきありがとうございます。',
     小物: '今まで問題なく使用出来ておりました。\n\n中古品であることを理解してご購入ください。\n\n1枚目に写っているもののみです。\n\n目に見えない細かい傷はある場合がございます。\n\n即購入OK・コメントなしOK。\n\n素人保管のため神経質な方はご遠慮ください。\n\nご覧いただきありがとうございます。',
   };
-  return `${intro[product]}\n\nAI生成による検索用\n${searchTerms[product]}　【${sku}】`;
+  return `${intro[product]}\n\nAI生成による検索用\n${searchTerms[product]}${skuText ? `　${skuText}` : ''}`;
 }
 
-function yahooAuctionDescription(product: string, condition: string, sku: string) {
+function yahooAuctionDescription(product: string, condition: string, skuText: string) {
   const damaged = condition === '傷や汚れあり' || condition === '全体的に状態が悪い';
   const recorder = [
     '知人宅で地上波の録画とブルーレイ、DVDの再生で使用してました。',
@@ -111,11 +111,12 @@ function yahooAuctionDescription(product: string, condition: string, sku: string
     'AI生成による検索用',
     'テレビ　モニター　TV　21インチ　24インチ　27インチ　32インチ　フルHD　WQHD　4K　IPS　144Hz　165Hz　電源ケーブル　2ピンケーブル　3ピンケーブル　HDMIケーブル　同軸ケーブル　アンテナケーブル　ブルーレイレコーダー　ブルーレイプレーヤー　ブルーレイ・ディスク　BD　SONY　ソニー Panasonic　パナソニック　DIGA　ディーガ　SHARP　シャープ　AQUOS　アクオス　TOSHIBA　東芝　とうしば　REGZA　レグザ　B-casカード　mini B-casカード　リモコン　同時録画',
   ];
-  return `${(product === 'ブルーレイレコーダー' ? recorder : product === '小物' ? small : monitor).join('\n')}\n【${sku}】`;
+  const text = (product === 'ブルーレイレコーダー' ? recorder : product === '小物' ? small : monitor).join('\n');
+  return skuText ? `${text}\n${skuText}` : text;
 }
 
 export function buildDescription(input: {
-  product: string; condition: string; accessories: string; year: string; sku?: string; itemNumber?: string; modelNo?: string; manufacturer?: string;
+  product: string; condition: string; accessories: string; year: string; sku?: string; listingSkus?: string[]; itemNumber?: string; modelNo?: string; manufacturer?: string;
   target?: DescriptionTarget; inspected: boolean; cleaned: boolean; salesChannel: string | null;
 }): string {
   const { product, condition, accessories, year, target = 'amazon', inspected, cleaned, salesChannel } = input;
@@ -123,7 +124,9 @@ export function buildDescription(input: {
   if (target !== 'amazon') {
     const itemNumber = input.itemNumber || '';
     const title = listingTitle({ target, product, itemNumber, modelNo: input.modelNo || '', manufacturer: input.manufacturer || '' });
-    const body = target === 'mercari' ? mercariDescription(product, input.sku || '') : yahooAuctionDescription(product, condition, input.sku || '');
+    const listingSkus = Array.from(new Set((input.listingSkus?.length ? input.listingSkus : [input.sku || '']).map(value => value.trim()).filter(Boolean)));
+    const skuText = listingSkus.map(value => `【${value}】`).join(' ');
+    const body = target === 'mercari' ? mercariDescription(product, skuText) : yahooAuctionDescription(product, condition, skuText);
     return `商品名（${target === 'mercari' ? 'メルカリ' : 'ヤフオク'}）\n${title}\n\n説明文\n${body}`;
   }
   if (!accessories.trim()) return '';
