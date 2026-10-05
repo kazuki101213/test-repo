@@ -40,10 +40,9 @@ function inventoryRowTone(item: InventoryItem): string {
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [status, setStatus] = useState('');
-  const [delivererId, setDelivererId] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([...STATUSES, 'marketplace:動作品Amazon返品']);
+  const [selectedDelivererIds, setSelectedDelivererIds] = useState<string[] | null>(null);
   const [query, setQuery] = useState('');
-  const [unsoldOnly, setUnsoldOnly] = useState(false);
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
   const [count, setCount] = useState(0);
@@ -72,7 +71,9 @@ export default function Inventory({ me }: { me: Staff }) {
     setError(null);
     try {
       if (purchasedFrom && purchasedTo && purchasedFrom > purchasedTo) throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
-      const result = await fetchItems({ status: status || undefined, delivererId: delivererId || undefined, query: query || undefined, unsoldOnly, purchasedFrom, purchasedTo }, active.signal);
+      const allDelivererIds = staff.filter(person => person.role === 'deliverer').map(person => person.id);
+      const delivererFilter = selectedDelivererIds && selectedDelivererIds.length < allDelivererIds.length ? selectedDelivererIds : undefined;
+      const result = await fetchItems({ statuses: selectedStatuses, delivererIds: delivererFilter, query: query || undefined, purchasedFrom, purchasedTo }, active.signal);
       if (current !== request.current) return;
       setItems(result.items); setCount(result.count);
     } catch (e) {
@@ -82,7 +83,7 @@ export default function Inventory({ me }: { me: Staff }) {
     } finally {
       if (current === request.current) setLoading(false);
     }
-  }, [status, delivererId, query, unsoldOnly, purchasedFrom, purchasedTo]);
+  }, [selectedStatuses, selectedDelivererIds, staff, query, purchasedFrom, purchasedTo]);
 
   useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
   useEffect(() => {
@@ -118,6 +119,9 @@ export default function Inventory({ me }: { me: Staff }) {
   const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
     if (source && target && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
   };
+  const deliverers = staff.filter(person => person.role === 'deliverer');
+  const statusOptions = [...STATUSES.map(value => ({ value, label: value })), { value: 'marketplace:動作品Amazon返品', label: '動作品Amazon返品' }, { value: '__unsold__', label: '未販売のみ' }];
+  const unsoldOnly = selectedStatuses.includes('__unsold__');
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
@@ -145,17 +149,23 @@ export default function Inventory({ me }: { me: Staff }) {
           type="search" placeholder="SKU / 商品名 / ASIN / 型番 / 商品ID / 追跡番号" value={query}
           aria-label="在庫を検索" onChange={(e) => { setQuery(e.target.value); }} style={{ minWidth: 240 }}
         />
-        <select aria-label="状態" value={status} onChange={(e) => { setStatus(e.target.value); }}>
-          <option value="">すべての状態</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          <option value="marketplace:動作品Amazon返品">動作品Amazon返品</option>
-        </select>
-        <select aria-label="納品担当者" value={delivererId} onChange={(e) => { setDelivererId(e.target.value); }}>
-          <option value="">すべての納品担当者</option>
-          {staff.filter((s) => s.role === 'deliverer').map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
+        <details className="inventory-filter-dropdown">
+          <summary>状態（{selectedStatuses.filter(value => value !== '__unsold__').length}/{statusOptions.length - 1}{unsoldOnly ? '・未販売のみ' : ''}）</summary>
+          <div className="inventory-filter-options">{statusOptions.map(option => <label key={option.value}>
+            <input type="checkbox" checked={selectedStatuses.includes(option.value)} onChange={event => setSelectedStatuses(current => event.target.checked ? [...current, option.value] : current.filter(value => value !== option.value))} />
+            {option.label}
+          </label>)}</div>
+        </details>
+        <details className="inventory-filter-dropdown">
+          <summary>納品担当者（{selectedDelivererIds?.length ?? deliverers.length}/{deliverers.length}）</summary>
+          <div className="inventory-filter-options">{deliverers.map(person => <label key={person.id}>
+            <input type="checkbox" checked={selectedDelivererIds === null || selectedDelivererIds.includes(person.id)} onChange={event => setSelectedDelivererIds(current => {
+              const selected = current ?? deliverers.map(row => row.id);
+              return event.target.checked ? [...new Set([...selected, person.id])] : selected.filter(id => id !== person.id);
+            })} />
+            {person.name}
+          </label>)}</div>
+        </details>
         <label className="field"><span>仕入日・開始</span>
           <input type="date" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
         </label>
@@ -163,11 +173,7 @@ export default function Inventory({ me }: { me: Staff }) {
           <input type="date" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
         </label>
         {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
-        <label className="row" style={{ color: 'var(--muted)' }}>
-          <input type="checkbox" checked={unsoldOnly} onChange={(e) => { setUnsoldOnly(e.target.checked); }} />
-          未販売のみ
-        </label>
-        <button className="btn" onClick={() => void load()}>再読込</button>
+         <button className="btn" onClick={() => void load()}>再読込</button>
         <span style={{ flex: 1 }} />
         <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>
           一覧をCSV
@@ -180,7 +186,7 @@ export default function Inventory({ me }: { me: Staff }) {
       {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
       {me.role === 'admin' && <AmazonOrderHistory />}
       <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite">
-        <span>{loading ? '読み込み中…' : `${count.toLocaleString()}商品`}{unsoldOnly && '（未販売のみ）'}</span>
+        <span>{loading ? '読み込み中…' : `${count.toLocaleString()}商品`}</span>
       </div>
 
       {error && <div className="error">{error}</div>}
