@@ -189,6 +189,8 @@ textarea { min-height: 80px; resize: vertical; }
 .task-member-row > .copyable-text, .task-member-date { padding-left:10px; }
 .staff-scope { margin:8px 0; }
 .task-filters .btn { font-size: 16px; padding: 12px 22px; min-height: 46px; }
+.task-filters { flex-wrap: wrap; overflow-x: visible; padding-bottom: 0; }
+.task-filters .btn { flex: 0 0 auto; }
 .export-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .export-actions .btn { font-size: 12px; padding: 7px 9px; min-height: 34px; }
 @media (max-width: 420px) { .product-overview { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; } .description-options { grid-template-columns: minmax(0, 1fr); } }
