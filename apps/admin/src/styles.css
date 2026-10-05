@@ -285,3 +285,9 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .inventory-table tr.inventory-row-listed-30 > td { background-color: #f5dfdd; }
 .inventory-table tr.inventory-row-sold > td { background-color: #e8e8e8; }
 
+
+.inventory-date-range { flex: 0 0 310px; }
+.inventory-date-range > span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.inventory-date-range > div { display: flex; align-items: center; gap: 6px; }
+.inventory-date-range input[type="date"] { min-width: 0; width: 0; flex: 1 1 0; }
+.inventory-amazon-actions { align-items: center; }
