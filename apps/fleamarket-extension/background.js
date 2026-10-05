@@ -145,7 +145,10 @@ async function due(){const s=await getSettings();const {lastRun={},job}=await ST
     const sites=[...new Set(s.accounts.filter(a=>a.enabled).flatMap(a=>SITES[a.site].db))];
     if(sites.length&& (await rpc('extension_marketplace_message_queue',{p_marketplaces:sites})).length){await start('messages');return;}
   }catch(e){await log('error','メッセージ送信依頼の確認: '+e.message);}
-  const purchaseDue=dueTime(3);if(Date.now()>=purchaseDue&&Date.now()-purchaseDue<12*3600000&&lastRun.purchases?.day!==jstDay()){await start('purchases');return;}
+  const purchaseDay=jstDay(),purchaseDue=dueTime(3);if(Date.now()>=purchaseDue&&Date.now()-purchaseDue<12*3600000&&lastRun.purchases?.day!==purchaseDay&&lastRun.purchases?.attemptedDay!==purchaseDay){
+    lastRun.purchases={...(lastRun.purchases||{}),attemptedDay:purchaseDay};await STORE.set({lastRun});
+    try{await start('purchases');return;}catch(e){await log('error','購入履歴の自動同期を開始できません: '+e.message);return;}
+  }
   if(s.mode==='diagnostic')return;
   for(const [kind,hour] of [['tracking',s.trackingHour],['receipt',s.receiptHour]]){if(kind==='receipt'&&s.mode!=='full')continue;const t=dueTime(hour);if(Date.now()>=t&&Date.now()-t<12*3600000&&lastRun[kind]?.day!==jstDay()){await start(kind);break;}}
 }
