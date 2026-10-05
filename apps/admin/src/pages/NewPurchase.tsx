@@ -86,7 +86,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setPlannedPayout(draft.planned_payout ?? '');
     setProductId(draft.product_id ?? '');
     if (draft.product_id) fetchProducts().then(setProducts).catch(() => undefined);
-  }, [draft?.id]);  }, [draft?.id]);
+  }, [draft?.id]);
 
   useEffect(() => {
     fetchStaff().then(rows => {
