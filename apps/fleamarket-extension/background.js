@@ -5,7 +5,7 @@ let busy=false;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function getSettings(){const {settings}=await STORE.get('settings');return settings||settingsDefault();}
 async function log(kind,text,extra={}){const {events=[]}=await STORE.get('events');events.unshift({at:new Date().toISOString(),kind,text,...extra});await STORE.set({events:events.slice(0,200)});await chrome.action.setBadgeText({text:kind==='error'?'!':''});}
-async function schedule(){const s=await getSettings();for(const [kind,hour] of [['tracking',s.trackingHour],['receipt',s.receiptHour]])await chrome.alarms.create('fm:'+kind,{when:nextTime(hour)});await chrome.alarms.create('fm:pulse',{periodInMinutes:1});}
+async function schedule(){const s=await getSettings();for(const [kind,hour] of [['tracking',s.trackingHour],['receipt',s.receiptHour],['purchases',3]])await chrome.alarms.create('fm:'+kind,{when:nextTime(hour)});await chrome.alarms.create('fm:pulse',{periodInMinutes:1});}
 async function initialize(){await STORE.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'});if(!(await STORE.get('settings')).settings)await STORE.set({settings:settingsDefault()});await schedule();const version=chrome.runtime.getManifest().version;const s=await getSettings();if(s.mode==='diagnostic'&&s.accounts.some(a=>a.enabled)&&(await STORE.get('lastDiagnosticVersion')).lastDiagnosticVersion!==version){await STORE.set({lastDiagnosticVersion:version});await diagnosticReport();}}
 async function saveSettings(s){validateSettings(s);const {job}=await STORE.get('job');if(job)throw new Error('巡回中は設定を変更できません。先に停止してください');
   if(s.mode==='full'&&!s.migrationConfirmed)throw new Error('既存Codex処理の停止と評価画面の検証後に切り替えてください');
@@ -73,7 +73,7 @@ async function step(){if(busy)return;busy=true;try{
         const added=Number(result?.inserted)||0;job.counts.imported+=added;job.counts.checked+=(data.purchases||[]).length;
         if(added||data.purchases?.length)await log('info',`購入履歴を確認: 新規 ${added}件 / 検出 ${(data.purchases||[]).length}件`,{account:a.label});
         job.seenPages.push(job.pageUrl);
-        if(data.nextUrl)job.pageUrl=data.nextUrl;else {await nextAccount(job);return;}
+        if(job.manual&&data.nextUrl)job.pageUrl=data.nextUrl;else {await nextAccount(job);return;}
         await STORE.set({job});return;
       }
       if(job.settings.mode==='diagnostic'&&!data.links.length)await log('info','取引リンク0件。未完了取引がないとは未確認です',{account:a.label});
@@ -145,6 +145,7 @@ async function due(){const s=await getSettings();const {lastRun={},job}=await ST
     const sites=[...new Set(s.accounts.filter(a=>a.enabled).flatMap(a=>SITES[a.site].db))];
     if(sites.length&& (await rpc('extension_marketplace_message_queue',{p_marketplaces:sites})).length){await start('messages');return;}
   }catch(e){await log('error','メッセージ送信依頼の確認: '+e.message);}
+  const purchaseDue=dueTime(3);if(Date.now()>=purchaseDue&&Date.now()-purchaseDue<12*3600000&&lastRun.purchases?.day!==jstDay()){await start('purchases');return;}
   if(s.mode==='diagnostic')return;
   for(const [kind,hour] of [['tracking',s.trackingHour],['receipt',s.receiptHour]]){if(kind==='receipt'&&s.mode!=='full')continue;const t=dueTime(hour);if(Date.now()>=t&&Date.now()-t<12*3600000&&lastRun[kind]?.day!==jstDay()){await start(kind);break;}}
 }
