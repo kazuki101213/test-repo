@@ -13,19 +13,6 @@ async function saveSettings(s){validateSettings(s);const {job}=await STORE.get('
   await STORE.set({settings:s});await schedule();return {saved:true};}
 async function content(tabId,type,args={}){
   const account=args.account;
-  if(account?.identity?.pageUrl&&type!=='identity'){
-    assertSiteUrl(account.site,account.identity.pageUrl);if(!['rakuma','mercari','flea','auctions'].includes(account.site))throw new Error('アカウント確認ページが不正です');
-    if(!['list','detail','preflight','submit','success','messageDetail','sendMessage'].includes(type))throw new Error('アカウント確認の処理種別が不正です');
-    const target=await chrome.tabs.get(tabId);assertSiteUrl(account.site,target.url);
-    const checkTab=await chrome.tabs.create({url:account.identity.pageUrl,active:false});
-    try{
-      await loaded(checkTab.id,account.site);
-      const confirmed=await content(checkTab.id,'identity',{account:{...account,_identityConfirmed:false}});
-      if(confirmed.auth)throw new Error(confirmed.auth);
-      if(confirmed.confirmed!==true)throw new Error('ログイン中アカウントを確認できません');
-    }finally{await chrome.tabs.remove(checkTab.id).catch(()=>{});}
-    args={...args,account:{...account,_identityConfirmed:true}};
-  }
   let r;const message={type:'fm:'+type,...args};try{r=await chrome.tabs.sendMessage(tabId,message);}catch(e){
   // 導入前から開いていたページにはcontent scriptが未配置の場合がある。
   if(!/Receiving end does not exist|Could not establish connection/i.test(e.message||''))throw e;
@@ -69,12 +56,51 @@ async function step(){if(busy)return;busy=true;try{
       const listRecipe=['messages','purchases'].includes(job.kind)?{...r,includeCompleted:true}:r;
       await navigate(job,a,job.pageUrl);await capturePage(job,a,'list');const data=await content(job.tabId,'list',{account:a,recipe:listRecipe});if(data.auth)throw new Error(data.auth);
       if(job.kind==='purchases'){
-        const result=await rpc('extension_sync_purchase_drafts',{p_marketplace:SITES[a.site].db[0],p_account_label:a.label,p_purchases:data.purchases||[]});
-        const added=Number(result?.inserted)||0;job.counts.imported+=added;job.counts.checked+=(data.purchases||[]).length;
-        if(added||data.purchases?.length)await log('info',`購入履歴を確認: 新規 ${added}件 / 検出 ${(data.purchases||[]).length}件`,{account:a.label});
+        const seenIds=new Set();let imported=0,checked=0,scrollSteps=0,stalledScrolls=0,previousScrollTop=data.scrollTop??0,stopReason='ページ末尾';let pageData=data;
+        for(let stepIndex=0;;stepIndex++){
+          if(stepIndex>0){pageData=await content(job.tabId,'scrollList',{account:a,recipe:listRecipe});if(pageData.auth)throw new Error(pageData.auth);scrollSteps++;}
+          const fresh=[];
+          for(const purchase of pageData.purchases||[]){
+            if(!purchase.marketplace_item_id||seenIds.has(purchase.marketplace_item_id))continue;
+            seenIds.add(purchase.marketplace_item_id);fresh.push(purchase);
+          }
+          for(const purchase of fresh){
+            checked++;
+            const marketplace=SITES[a.site].db[0];
+            const existing=await rpc('extension_probe_purchase_item',{p_marketplace:marketplace,p_marketplace_item_id:purchase.marketplace_item_id});
+            if(existing?.matched){stopReason='商品IDが在庫と一致';break;}
+            let enriched=purchase;
+            let detailTab=null;
+            try{
+              const detailUrl=purchase.detail_url||purchase.marketplace_url;
+              assertSiteUrl(a.site,detailUrl);
+              detailTab=(await chrome.tabs.create({url:detailUrl,active:false})).id;
+              await loaded(detailTab,a.site);
+              const detail=await content(detailTab,'purchaseDetail',{account:{...a,_identityConfirmed:true},recipe:listRecipe,fallback:purchase});
+              if(detail.auth)throw new Error(detail.auth);
+              enriched=detail;
+            }catch(error){
+              await log('error','購入商品の詳細を読み取れませんでした。購入一覧の情報で下書き登録します: '+error.message,{account:a.label,itemId:purchase.marketplace_item_id});
+            }finally{if(detailTab)await chrome.tabs.remove(detailTab).catch(()=>{});}
+            if(enriched.marketplace_item_id!==purchase.marketplace_item_id){
+              const detailMatch=await rpc('extension_probe_purchase_item',{p_marketplace:marketplace,p_marketplace_item_id:enriched.marketplace_item_id});
+              if(detailMatch?.matched){stopReason='商品IDが在庫と一致';break;}
+            }
+            const result=await rpc('extension_sync_purchase_drafts',{p_marketplace:marketplace,p_account_label:a.label,p_purchases:[enriched],p_stop_on_match:true});
+            imported+=Number(result?.inserted)||0;
+            if(Array.isArray(result?.matched_item_ids)&&result.matched_item_ids.length){stopReason='同期直前に商品IDが在庫と一致';break;}
+          }
+          if(stopReason!=='ページ末尾')break;
+          if(!pageData.hasMore)break;
+          const moved=Number(pageData.scrollTop??0)>previousScrollTop||fresh.length>0;
+          stalledScrolls=moved?0:stalledScrolls+1;previousScrollTop=Number(pageData.scrollTop??previousScrollTop);
+          if(stalledScrolls>=2){stopReason='同じ一覧ページでスクロール進行が止まった';break;}
+        }
+        job.counts.imported+=imported;job.counts.checked+=checked;
+        if(imported||checked)await log('info',`購入履歴を確認: 新規 ${imported}件 / 確認 ${checked}件 / スクロール ${scrollSteps}回 / 停止=${stopReason}`,{account:a.label});
         job.seenPages.push(job.pageUrl);
-        if(job.manual&&data.nextUrl)job.pageUrl=data.nextUrl;else {await nextAccount(job);return;}
-        await STORE.set({job});return;
+        // Start at the top without scrolling. A detail page is opened only for a non-matching ID; the registered listing page is the only page scrolled, and a next listing page is never opened.
+        await nextAccount(job);return;
       }
       if(job.settings.mode==='diagnostic'&&!data.links.length)await log('info','取引リンク0件。未完了取引がないとは未確認です',{account:a.label});
       job.seenPages.push(job.pageUrl);job.urls=[...new Set([...job.urls,...data.links])];if(job.urls.length>500)throw new Error('取引数が上限を超えました');
