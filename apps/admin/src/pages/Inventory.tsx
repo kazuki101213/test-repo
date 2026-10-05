@@ -255,8 +255,8 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(yen(i.planned_price), 'planned_price', yen(i.planned_payout), 'planned_payout')}</td>
                   <td>{stacked(yen(i.expected_profit), 'planned_payout', expectedRate, 'planned_price')}</td>
                   <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
-                  <td>{stacked(yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
-                  <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
+                  <td>{stacked(i.is_accessory ? '—' : yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', i.is_accessory ? '—' : yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
+                  <td>{stacked(i.is_accessory ? '—' : yen(i.product_profit), 'payout_amount', i.is_accessory ? '—' : actualRate, 'sold_price')}</td>
                   <td><button type="button" className="inventory-cell-edit" onClick={() => edit('inventory_refund_amount')} title="在庫の払い戻しをクリックして編集">{yen(i.inventory_refund_amount)}</button></td>
                   <td>{stacked(yen(i.amazon_refund_amount), 'amazon_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
