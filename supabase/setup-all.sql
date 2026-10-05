@@ -5350,3 +5350,5 @@ create policy spare_accessories_delete on app.spare_accessories
     used_for_item_id is null
     and (app.is_admin() or owner_staff_id = app.current_staff_id())
   );
+
+
