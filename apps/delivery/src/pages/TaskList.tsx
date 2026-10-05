@@ -33,7 +33,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
-  const [filter, setFilter] = useState<Filter>('arrived');
+  const [filter, setFilter] = useState<Filter>(() => staff.name === '長部一輝' ? 'all' : 'arrived');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -161,3 +161,4 @@ export default function TaskList({ staff }: { staff: Staff }) {
     </>
   );
 }
+

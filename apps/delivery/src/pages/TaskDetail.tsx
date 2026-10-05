@@ -23,8 +23,8 @@ function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
 }
 
 export default function TaskDetail({
-  itemId, staff, onClose, onChanged,
-}: { itemId: string; staff: Staff; onClose: () => void; onChanged: (task: DeliveryTask) => void }) {
+  itemId, staff, listingSkus, onClose, onChanged,
+}: { itemId: string; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void }) {
   const [task, setTask] = useState<DeliveryTask | null>(null);
   const [comments, setComments] = useState<ItemComment[]>([]);
   const [photos, setPhotos] = useState<ItemPhoto[]>([]);
@@ -278,7 +278,7 @@ export default function TaskDetail({
       </div>
       {!isWorkingAmazonReturn && !isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}
 
-      <DescriptionEditor key={task.id} task={task} onSaved={reload} />
+      <DescriptionEditor key={task.id} task={task} listingSkus={listingSkus} onSaved={reload} />
 
       {/* ── 仕入担当者とのやり取り ───────────────── */}
       <div className="card">
@@ -330,3 +330,4 @@ export default function TaskDetail({
     </section>
   );
 }
+

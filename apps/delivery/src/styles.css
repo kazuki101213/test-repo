@@ -223,5 +223,4 @@ textarea { min-height: 80px; resize: vertical; }
 .marketplace-message-composer { display: grid; gap: 8px; margin-top: 12px; }
 .marketplace-message-composer textarea { min-height: 76px; resize: vertical; }
 .spare-row-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.spare-delete { flex: 0 0 auto; }
 

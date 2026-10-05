@@ -72,6 +72,10 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
   const productIdFor = (item: DeliveryTask) => originalMarketplaceIds.get(item.id) || item.marketplace_item_id || '—';
+  const listingSkus = Array.from(new Set([
+    (members.find(member => !member.is_accessory) ?? task).sku,
+    ...members.filter(member => member.is_accessory).map(member => member.sku),
+  ].filter(Boolean)));
 
   return (
     <div className="card task-card" data-expanded={!!expandedId}>
@@ -118,7 +122,8 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
         </div>)}
       </div>}
       </div>
-      {expandedId && <TaskDetail key={expandedId} itemId={expandedId} staff={staff} onClose={onClose} onChanged={onTaskChange} />}
+      {expandedId && <TaskDetail key={expandedId} itemId={expandedId} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} />}
     </div>
   );
 }
+

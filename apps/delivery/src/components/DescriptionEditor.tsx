@@ -32,7 +32,7 @@ function CopyIconButton({ label, copied, disabled, onClick, className = '' }: {
   </button>;
 }
 
-export default function DescriptionEditor({ task, onSaved }: { task: DeliveryTask; onSaved: () => Promise<void> }) {
+export default function DescriptionEditor({ task, listingSkus, onSaved }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void> }) {
   const [product, setProduct] = useState(task.description_template ?? (task.work_stream === 'テレビ' ? 'テレビ' : task.work_stream === 'ブルーレイ' ? 'ブルーレイレコーダー' : ''));
   const [target, setTarget] = useState<DescriptionTarget>(() => initialTarget(task));
   const [condition, setCondition] = useState(() => conditionForTarget(initialTarget(task), task.condition));
@@ -56,7 +56,7 @@ export default function DescriptionEditor({ task, onSaved }: { task: DeliveryTas
   const serial = task.sku.match(/^(\d+[a-z]*)-/i)?.[1]?.toLowerCase() || String(task.lot_seq);
   const generated = buildDescription({
     product, condition, accessories, year, target, salesChannel: task.sales_channel,
-    inspected: task.inspected, cleaned: task.cleaned, sku: task.sku,
+    inspected: task.inspected, cleaned: task.cleaned, sku: task.sku, listingSkus,
     itemNumber: serial, modelNo: task.model_no || task.title, manufacturer,
   });
   const description = manual ?? generated;
