@@ -12,7 +12,8 @@ const TASK_TEMPLATES = ['Amazon販売', '仕入先確認', ...AUCTION_TEMPLATES]
 type TaskKind = typeof TASK_TEMPLATES[number];
 interface MalfunctionTask {
   id: string; sku: string; lot_seq: number; title: string; marketplace_item_id: string | null;
-  purchaser_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
+  purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
+  products: { model_no: string | null; maker: string | null }[];
 }
 interface TaskComment {
   id: string; item_id: string; author_id: string; body: string; created_at: string;
@@ -111,6 +112,10 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
     const commentId = crypto.randomUUID();
     const paths: string[] = [];
     try {
+      if (kind.endsWith('ヤフオク')) {
+        const { error: auctionError } = await sb.rpc('prepare_yahoo_auction_item', { p_item_id: item.id });
+        if (auctionError) throw auctionError;
+      }
       for (let index = 0; index < photos.length; index++) {
         const file = await prepareImage(photos[index]!);
         const path = item.sku + '/reply/' + commentId + '/' + String(index + 1).padStart(2, '0') + '.jpg';
@@ -146,6 +151,7 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
 
   return <div className="malfunction-conversation">
     <strong>納品担当者とのメッセージ</strong>
+    {comments.length === 0 && <p className="muted malfunction-empty-message">まだメッセージありません。</p>}
     {comments.map(comment => <div className={'comment ' + (comment.author_id === staff.id ? 'mine' : '')} key={comment.id}>
       <div className="meta">{authors.get(comment.author_id) ?? '担当者'} · {new Date(comment.created_at).toLocaleString('ja-JP')}</div>
       <p style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0' }}>{comment.body}</p>
@@ -162,7 +168,7 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
     </label>
     {error && <p className="error" role="alert">メッセージ：{error}</p>}
     <button className="btn primary" disabled={(!draft.trim() && photos.length === 0) || busy} onClick={() => void sendReply()}>
-      {busy ? '送信中…' : '返信を送信'}
+      {busy ? '送信中…' : '送信'}
     </button>
   </div>;
 }
@@ -177,14 +183,14 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
   async function refresh() {
     const sb = getSupabase();
     let query = sb.from('items')
-      .select('id,sku,lot_seq,title,marketplace_item_id,purchaser_id,malfunction_comment,malfunction_reported_at,malfunction_reported_by')
+      .select('id,sku,lot_seq,title,marketplace_item_id,purchaser_id,deliverer_id,malfunction_comment,malfunction_reported_at,malfunction_reported_by,products(model_no,maker)')
       .eq('malfunction_reported', true).is('malfunction_resolved_at', null);
     if (staff.role === 'purchaser') query = query.eq('purchaser_id', staff.id);
     const { data, error: queryError } = await query.order('malfunction_reported_at', { ascending: false });
     if (queryError) throw queryError;
     const tasks = (data ?? []) as MalfunctionTask[];
     setRows(tasks);
-    const staffIds = [...new Set(tasks.flatMap(row => [row.malfunction_reported_by, row.purchaser_id]).filter((id): id is string => !!id))];
+    const staffIds = [...new Set(tasks.flatMap(row => [row.malfunction_reported_by, row.purchaser_id, row.deliverer_id]).filter((id): id is string => !!id))];
     if (staffIds.length) {
       const { data: people, error: staffError } = await sb.from('staff').select('id,name').in('id', staffIds);
       if (staffError) throw staffError;
@@ -236,8 +242,17 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeTask(task.id)}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
     {rows.map(row => <li key={'malfunction-' + row.id} className="malfunction-task-row">
-      <div><strong>動作不良 · {row.title}（{row.lot_seq}）</strong><small>SKU {row.sku} · 報告先 {names.get(row.purchaser_id ?? '') ?? '仕入担当者未設定'} · 報告者 {names.get(row.malfunction_reported_by ?? '') ?? '担当者不明'} · {new Date(row.malfunction_reported_at).toLocaleString('ja-JP')}</small>
-        <p style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment}</p>
+      <div className="malfunction-task-content">
+        <strong className="malfunction-task-heading">動作不良</strong>
+        <div className="malfunction-task-metadata">
+          <div><span>SKU</span><span>{row.sku}</span></div>
+          <div><span>型番</span><span>{row.products?.[0]?.model_no || row.title || '—'}</span></div>
+          <div><span>メーカー</span><span>{row.products?.[0]?.maker || '—'}</span></div>
+          <div><span>納品担当者</span><span>{names.get(row.deliverer_id ?? '') ?? '未設定'}</span></div>
+          <div><span>送信時間</span><span>{new Date(row.malfunction_reported_at).toLocaleString('ja-JP')}</span></div>
+        </div>
+        <p className="malfunction-report-message">DVD、ブルーレイともに読み込み不可。他動作は問題なし。</p>
+        {row.malfunction_comment && row.malfunction_comment !== 'DVD、ブルーレイともに読み込み不可。他動作は問題なし。' && <p className="malfunction-original-comment">報告内容：{row.malfunction_comment}</p>}
         <MalfunctionConversation item={row} staff={staff} />
       </div>
       {staff.role === 'purchaser' && <button className="btn" disabled={busy !== null} onClick={() => void resolve(row.id)}>{busy === row.id ? '更新中…' : '対応完了'}</button>}
