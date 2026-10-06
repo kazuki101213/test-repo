@@ -78,7 +78,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
   ].filter(Boolean)));
 
   return (
-    <div className="card task-card" data-expanded={!!expandedId}>
+    <div id={`delivery-task-${task.id}`} className="card task-card" data-expanded={!!expandedId}>
       <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
       <div className="task-content">
       <div className="task-card-overview">
