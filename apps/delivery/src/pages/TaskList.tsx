@@ -111,7 +111,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     const q = normalizeSearch(query);
     const originalIds = new Map<string, string>();
     for (const task of tasks) {
-      if (!hasSerialSuffix(task)) continue;
+      if (!hasSerialSuffix(task) || task.marketplace === '動作品Amazon返品') continue;
       const original = tasks.find(candidate => !candidate.is_accessory && !hasSerialSuffix(candidate)
         && baseSerialNumber(candidate) === baseSerialNumber(task) && candidate.marketplace_item_id);
       const productId = original?.marketplace_item_id || task.marketplace_item_id;
