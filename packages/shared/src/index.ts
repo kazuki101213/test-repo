@@ -5,3 +5,4 @@ export * from './supabase';
 export * from './constants';
 export * from './receipts';
 export * from './spares';
+export * from './labelTone';

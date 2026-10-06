@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
+import ColoredLabel from './ColoredLabel';
 
 const PHOTO_AUCTION_TEMPLATES = [
   'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
@@ -11,9 +12,9 @@ const PHOTO_AUCTION_TEMPLATES = [
 const TASK_TEMPLATES = ['Amazon販売', '仕入先確認', ...PHOTO_AUCTION_TEMPLATES, 'ヤフオク その他'] as const;
 type TaskKind = typeof TASK_TEMPLATES[number];
 interface MalfunctionTask {
-  id: string; sku: string; lot_seq: number; title: string; marketplace_item_id: string | null;
+  id: string; sku: string; lot_seq: number; title: string; asin: string | null; marketplace_item_id: string | null;
   purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
-  products: { model_no: string | null; maker: string | null }[];
+  products: { model_no: string | null }[];
 }
 interface TaskComment {
   id: string; item_id: string; author_id: string; body: string; created_at: string;
@@ -188,7 +189,7 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
       <input type="file" aria-label="返信写真を追加" accept="image/*" multiple disabled={busy} onChange={event => { choosePhotos(event.target.files); event.target.value = ''; }} />
     </label>
     {error && <p className="error" role="alert">メッセージ：{error}</p>}
-    <button className="btn primary" disabled={(!draft.trim() && photos.length === 0) || busy} onClick={() => void sendReply()}>
+    <button className="btn primary task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy} onClick={() => void sendReply()}>
       {busy ? '送信中…' : '送信'}
     </button>
   </div>;
@@ -197,6 +198,7 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
 export default function MalfunctionTasks({ staff }: { staff: Staff }) {
   const [rows, setRows] = useState<MalfunctionTask[]>([]);
   const [actionTasks, setActionTasks] = useState<ActionTask[]>([]);
+  const [makersByAsin, setMakersByAsin] = useState<Map<string, string>>(new Map());
   const [names, setNames] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -204,12 +206,23 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
   async function refresh() {
     const sb = getSupabase();
     let query = sb.from('items')
-      .select('id,sku,lot_seq,title,marketplace_item_id,purchaser_id,deliverer_id,malfunction_comment,malfunction_reported_at,malfunction_reported_by,products(model_no,maker)')
+      .select('id,sku,lot_seq,title,asin,marketplace_item_id,purchaser_id,deliverer_id,malfunction_comment,malfunction_reported_at,malfunction_reported_by,products(model_no)')
       .eq('malfunction_reported', true).is('malfunction_resolved_at', null);
     if (staff.role === 'purchaser') query = query.eq('purchaser_id', staff.id);
     const { data, error: queryError } = await query.order('malfunction_reported_at', { ascending: false });
     if (queryError) throw queryError;
     const tasks = (data ?? []) as MalfunctionTask[];
+    const asins = [...new Set(tasks.flatMap(task => task.asin?.trim() ? [task.asin.trim()] : []))];
+    const makers = new Map<string, string>();
+    for (let start = 0; start < asins.length; start += 100) {
+      const { data: products, error: productError } = await sb.from('products')
+        .select('asin,maker').in('asin', asins.slice(start, start + 100)).eq('is_active', true);
+      if (productError) throw productError;
+      for (const product of products ?? []) {
+        if (product.maker) makers.set(product.asin.trim(), product.maker);
+      }
+    }
+    setMakersByAsin(makers);
     setRows(tasks);
     const staffIds = [...new Set(tasks.flatMap(row => [row.malfunction_reported_by, row.purchaser_id, row.deliverer_id]).filter((id): id is string => !!id))];
     if (staffIds.length) {
@@ -259,7 +272,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {error && <li className="error" role="alert">動作不良タスク：{error}</li>}
     {!error && rows.length === 0 && actionTasks.length === 0 && <li className="muted">動作不良の報告はありません。</li>}
     {actionTasks.map(task => <li key={'action-' + task.id} className="malfunction-task-row">
-      <div className="task-action-details"><strong>【{task.items?.lot_seq ?? '—'}】</strong> <a className="btn ghost" href={'https://bussan-delivery.vercel.app/?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.items?.marketplace_item_id ?? '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? 'ヤフオク販売' : task.task_kind}<small>{task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
+      <div className="task-action-details"><strong>【{task.items?.lot_seq ?? '—'}】</strong> <a className="btn ghost" href={'https://bussan-delivery.vercel.app/?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.items?.marketplace_item_id ?? '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? <><ColoredLabel value="ヤフオク" />販売</> : task.task_kind}<small>{task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
       <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeTask(task.id)}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
     {rows.map(row => <li key={'malfunction-' + row.id} className="malfunction-task-row">
@@ -268,7 +281,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
         <div className="malfunction-task-metadata">
           <div><span>SKU</span><span>{row.sku}</span></div>
           <div><span>型番</span><span>{row.products?.[0]?.model_no || row.title || '—'}</span></div>
-          <div><span>メーカー</span><span>{row.products?.[0]?.maker || '—'}</span></div>
+          <div><span>メーカー</span><span>{makersByAsin.get(row.asin?.trim() ?? '') || '—'}</span></div>
           <div><span>納品担当者</span><span>{names.get(row.deliverer_id ?? '') ?? '未設定'}</span></div>
           <div><span>送信時間</span><span>{new Date(row.malfunction_reported_at).toLocaleString('ja-JP')}</span></div>
         </div>

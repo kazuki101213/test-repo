@@ -6,3 +6,21 @@
 body, button, input, select, textarea, pre, code, kbd, samp {
   font-family: var(--app-font-family);
 }
+
+.colored-label[data-tone]::before {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--label-dot-color);
+  vertical-align: middle;
+}
+.colored-label[data-tone='orange'] { --label-dot-color: #f4c598; }
+.colored-label[data-tone='red'] { --label-dot-color: #efb2b2; }
+.colored-label[data-tone='yellow'] { --label-dot-color: #efdc92; }
+.colored-label[data-tone='purple'] { --label-dot-color: #d4b7e8; }
+.colored-label[data-tone='blue'] { --label-dot-color: #a9cdef; }
+.colored-label[data-tone='green'] { --label-dot-color: #b4d9ab; }
+.colored-label[data-tone='gray'] { --label-dot-color: #b7b7b7; }
