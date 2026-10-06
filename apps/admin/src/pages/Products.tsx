@@ -3,6 +3,7 @@ import { yen } from '@bussan/shared';
 import type { Product } from '@bussan/shared';
 import { createProduct, fetchProductSaleHistory, fetchProducts, updateProductField, type ProductField, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
+import ColoredLabel from '../components/ColoredLabel';
 
 export default function Products() {
   const [rows, setRows] = useState<Product[]>([]);
@@ -140,7 +141,7 @@ export default function Products() {
           <div className="scroll"><table className="products-table">
             <thead><tr><th>販売日</th><th>SKU</th><th>販売先</th><th className="num">販売金額</th><th className="num">振込金額</th></tr></thead>
             <tbody>{(salesByProduct[historyProduct.id] ?? []).map(sale => <tr key={sale.id}>
-              <td>{sale.sold_on}</td><td>{sale.sku}</td><td>{sale.sales_channel ?? '—'}</td>
+              <td>{sale.sold_on}</td><td>{sale.sku}</td><td><ColoredLabel value={sale.sales_channel ?? '—'} /></td>
               <td className="num">{yen(sale.sold_price)}</td><td className="num">{yen(sale.payout_amount)}</td>
             </tr>)}</tbody>
           </table></div>

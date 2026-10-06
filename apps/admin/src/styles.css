@@ -329,3 +329,5 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
   .malfunction-task-metadata > div { grid-template-columns:90px minmax(0,1fr); }
   .invoice-task-rows .malfunction-task-row > button.btn { padding:5px 8px; }
 }
+
+.malfunction-conversation .task-reply-send { display:block; width:max-content; max-width:100%; margin:10px 0 0 auto; padding:6px 12px; white-space:nowrap; }
