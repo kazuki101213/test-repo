@@ -1,3 +1,5 @@
+@import "@bussan/shared/typography.css";
+
 :root {
   --bg: #f3efe5;
   --surface: #fbf8f0;
@@ -15,7 +17,7 @@
 
 body {
   margin: 0; background: var(--bg); background-image: linear-gradient(180deg, rgba(255,255,255,.28), transparent 32%); color: var(--text);
-  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  font-family: var(--app-font-family);
   font-size: 14px;
 }
 
@@ -29,7 +31,7 @@ button, input, select, textarea { font: inherit; }
   background: var(--surface); border-right: 1px solid var(--border);
   padding: 16px 12px; display: flex; flex-direction: column; gap: 4px;
 }
-.sidebar h1 { font-family: 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif JP', serif; font-size: 17px; margin: 0 8px 14px; }
+.sidebar h1 { font-family: inherit; font-size: 17px; margin: 0 8px 14px; }
 .sidebar .who { color: var(--muted); font-size: 12px; margin: 0 8px 16px; }
 .nav {
   display: block; width: 100%; text-align: left; padding: 9px 10px;
@@ -39,7 +41,7 @@ button, input, select, textarea { font: inherit; }
 .nav[data-active='true'] { background: #dce2d3; color: #344332; font-weight: 600; }
 
 main { padding: 20px 24px 64px; min-width: 0; }
-h2 { font-family: 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif JP', serif; font-size: 20px; margin: 0 0 4px; }
+h2 { font-family: inherit; font-size: 20px; margin: 0 0 4px; }
 .sub { color: var(--muted); margin: 0 0 18px; }
 
 .grid { display: grid; gap: 12px; }
@@ -90,7 +92,7 @@ td.num, th.num { text-align: right; }
 tbody tr:hover { background: var(--surface-2); }
 .scroll { overflow: auto; max-height: 68vh; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 
-.sku { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--accent); }
+.sku { font-family: inherit; font-size: 12px; color: var(--accent); }
 .products-table { min-width: 1120px; }
 .products-table .num .inventory-cell-edit { text-align: right; }
 
@@ -140,14 +142,14 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 @media (min-width: 861px) {
   .inventory-workspace { min-height: calc(100dvh - 84px); }
   .inventory-list { display: flex; flex-direction: column; min-height: 0; }
-  .inventory-list > .scroll { flex: none; height: auto; max-height: none; overflow-y: visible; }
+  .inventory-list > .scroll { flex: none; }
 }
 .inventory-table tr[data-group-end='false'] > td { border-bottom: 0; }
 .inventory-table thead tr { height: 40px; }
 .inventory-table tr[data-lot] { height: 64px; }
 .inventory-table tr[data-lot] > td { padding: 4px 8px; line-height: 18px; }
-.inventory-table { min-width: 2710px; table-layout: fixed; }
-.inventory-table th { position: sticky; top: 22px; z-index: 10; height: 40px; vertical-align: middle; }
+.inventory-table { min-width: 2710px; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.inventory-table th { position: sticky; top: 0; z-index: 10; height: 40px; vertical-align: middle; }
 .inventory-table th:nth-child(1) { width: 88px; }
 .inventory-table th:nth-child(2) { width: 240px; }
 .inventory-table th:nth-child(3) { width: 190px; }
@@ -174,17 +176,16 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-photo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .inventory-photo img { display: block; width: 52px; height: 52px; object-fit: contain; border-radius: 5px; background: var(--surface-2); }
 .inventory-photo-empty { display: block; width: 52px; text-align: center; }
-.inventory-item-type { flex: none; color: var(--muted); font-size: 11px; }
 .inventory-comment { display: grid; grid-template-rows: repeat(2, 18px); width: 10em; max-width: 100%; line-height: 18px; white-space: nowrap; text-overflow: clip; }
 .inventory-comment span { display: block; overflow: hidden; text-overflow: clip; }
 .inventory-sale-status > span { display: block; white-space: nowrap; }
 .inventory-comment-panel { width: min(440px, 100vw); margin: auto; overflow-wrap: anywhere; }
 .inventory-full-edit-panel { width: min(1000px, 96vw); max-height: 94vh; overflow: auto; margin: auto; }
-.inventory-bottom-scroll { overflow-x: hidden; }
+.inventory-bottom-scroll { overflow: auto; touch-action: pan-x pan-y pinch-zoom; }
 @media (max-width: 620px) {
-  .inventory-bottom-scroll { overflow-x: auto; overflow-y: auto; max-height: 68dvh; scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-y pinch-zoom; }
+  .inventory-bottom-scroll { overflow-x: auto; overflow-y: auto; max-height: 68dvh; scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y pinch-zoom; }
   .inventory-bottom-scroll::-webkit-scrollbar { display: none; }
-  .inventory-top-scroll { -webkit-overflow-scrolling: touch; }
+  .inventory-top-scroll { display: none; }
 }
 .inventory-table .btn { padding: 5px 10px; }
 .inventory-table .virtual-spacer > td { padding: 0; border: 0; }

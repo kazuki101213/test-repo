@@ -160,8 +160,8 @@ export default function TaskList({ staff }: { staff: Staff }) {
         style={{ marginTop: 12 }}
       />
 
-      <section className="card delivery-reply-tasks" aria-label="タスク">
-        <h3>タスク</h3>
+      <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>
+      <section className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading">
         {replyTaskError && <p className="error" role="alert">返信タスクを読み込めませんでした：{replyTaskError}</p>}
         {replyTasks.length === 0 ? null : <ul className="invoice-task-rows">
           {replyTasks.map(task => <li key={task.id}>

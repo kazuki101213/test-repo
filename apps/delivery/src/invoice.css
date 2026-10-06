@@ -19,7 +19,7 @@
 .invoice-note-input { margin-top:16px; width:100%; }
 .invoice-preview,.receipt-document { display:none; }
 .invoice-preview.is-preview,.receipt-document.is-preview { display:block; overflow:visible; }
-.invoice-sheet { box-sizing:border-box; width:min(100%,190mm); min-height:270mm; background:white; color:#000; margin:20px auto; padding:5mm; font:10px/1.35 Arial,Meiryo,sans-serif; }
+.invoice-sheet { box-sizing:border-box; width:min(100%,190mm); min-height:270mm; background:white; color:#000; margin:20px auto; padding:5mm; font:10px/1.35 var(--app-font-family); }
 .invoice-issued { text-align:right; margin-bottom:4mm; }
 .invoice-sheet h1 { background:#93b5d8; text-align:center; font-size:22px; letter-spacing:.3em; margin:0 0 4mm; padding:1mm; color:#000; }
 .invoice-parties { display:grid; grid-template-columns:1fr 1fr; gap:8mm; white-space:pre-line; overflow-wrap:anywhere; }
