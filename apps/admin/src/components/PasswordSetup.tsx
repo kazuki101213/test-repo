@@ -1,3 +1,4 @@
+import { adminAppUrl, deliveryAppUrl } from '../appUrls';
 import { useEffect, useState, type FormEvent } from 'react';
 import { getSupabase } from '@bussan/shared';
 
@@ -31,13 +32,13 @@ export default function PasswordSetup() {
   }
   return <div className="login">
     <h2>パスワードの設定</h2>
-    {done ? <><p>設定しました。次回からメールアドレスとこのパスワードでログインできます。</p><p><a href="https://test-repo-delivery.vercel.app/">納品アプリを開く</a></p><p><a href="https://bussan-admin.vercel.app/">管理アプリを開く（管理者・編集担当者）</a></p></>
+    {done ? <><p>設定しました。次回からメールアドレスとこのパスワードでログインできます。</p><p><a href={deliveryAppUrl}>納品アプリを開く</a></p><p><a href={adminAppUrl}>管理アプリを開く（管理者・編集担当者）</a></p></>
       : ready ? <form className="card" onSubmit={submit}>
         <label>新しいパスワード<input aria-label="新しいパスワード" type="password" autoComplete="new-password" minLength={12} value={password} onChange={e => setPassword(e.target.value)} required /></label>
         <label>パスワード（確認）<input aria-label="パスワード（確認）" type="password" autoComplete="new-password" minLength={12} value={confirmation} onChange={e => setConfirmation(e.target.value)} required /></label>
         <button className="btn primary" disabled={busy}>{busy ? '設定中…' : 'パスワードを設定'}</button>
       </form> : !error && <p role="status">招待・認証リンクを確認中…</p>}
     {error && <div className="error" role="alert">{error}</div>}
-    <p><a href="/">ログイン画面へ戻る</a></p>
+    <p><a href={import.meta.env.BASE_URL}>ログイン画面へ戻る</a></p>
   </div>;
 }
