@@ -147,4 +147,3 @@ export default function DescriptionEditor({ task, listingSkus, onSaved }: { task
     {notice && <p role="status">{notice}</p>}{error && <div className="error" role="alert">{error}</div>}
   </form>;
 }
-

@@ -3,7 +3,7 @@ import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
   addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
-  queueMarketplaceMessage, reportItemMalfunction, setDeliveryProgress, setWorkProgress, uploadPhoto,
+  queueMarketplaceMessage, requestMarketplaceMessageSync, reportItemMalfunction, setDeliveryProgress, setWorkProgress, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
@@ -36,11 +36,15 @@ export default function TaskDetail({
   const [pending, setPending] = useState<WorkStep | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
+  const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
+  const [photoSaveMessage, setPhotoSaveMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [malfunctionChecked, setMalfunctionChecked] = useState(false);
   const [malfunctionComment, setMalfunctionComment] = useState('');
   const [malfunctionBusy, setMalfunctionBusy] = useState(false);
   const [marketplaceConversation, setMarketplaceConversation] = useState<MarketplaceConversation>({ messages: [], outbox: [] });
+  const [marketplaceVisible, setMarketplaceVisible] = useState(false);
+  const [marketplaceLoading, setMarketplaceLoading] = useState(false);
   const [marketplaceDraft, setMarketplaceDraft] = useState('');
   const [marketplaceSending, setMarketplaceSending] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState('');
@@ -65,21 +69,22 @@ export default function TaskDetail({
 
   useEffect(() => { void reload(); }, [reload]);
 
-  const refreshMarketplaceConversation = useCallback(async () => {
+
+
+  async function displayMarketplaceMessages() {
+    if (!task || marketplaceLoading) return;
+    if (marketplaceVisible) { setMarketplaceVisible(false); return; }
+    setMarketplaceVisible(true); setMarketplaceLoading(true); setMarketplaceError('');
     try {
-      setMarketplaceConversation(await fetchMarketplaceConversation(itemId));
-      setMarketplaceError('');
-    } catch (cause) {
-      setMarketplaceError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, [itemId]);
-
-  useEffect(() => {
-    void refreshMarketplaceConversation();
-    const timer = window.setInterval(() => void refreshMarketplaceConversation(), 8000);
-    return () => window.clearInterval(timer);
-  }, [refreshMarketplaceConversation]);
-
+      const current = await fetchMarketplaceConversation(itemId); setMarketplaceConversation(current);
+      if (current.expired) { setMarketplaceError('梱包完了から7日を過ぎたため、取引メッセージは保存期間終了です。'); return; }
+      if (!current.first_app_sent_at) { setMarketplaceError('アプリから取引メッセージを送信した後に、相手のメッセージを確認できます。'); return; }
+      await requestMarketplaceMessageSync(itemId);
+      const deadline = Date.now() + 120000;
+      while (Date.now() < deadline) { await new Promise(resolve => window.setTimeout(resolve, 4000)); const updated = await fetchMarketplaceConversation(itemId); setMarketplaceConversation(updated); if (updated.sync?.status === 'completed') { if(updated.sync.result_note)setMarketplaceError(updated.sync.result_note); return; } if (updated.sync?.status === 'failed') { setMarketplaceError(updated.sync.result_note || '拡張機能で取引メッセージを確認できませんでした。'); return; } }
+      setMarketplaceError('拡張機能の確認待ちです。ログイン済みChromeで拡張機能を起動し、もう一度「メッセージを表示」を押してください。');
+    } catch (cause) { setMarketplaceError(cause instanceof Error ? cause.message : String(cause)); } finally { setMarketplaceLoading(false); }
+  }
   async function toggle(step: WorkStep) {
     if (!task) return;
     setPending(step);
@@ -140,6 +145,37 @@ export default function TaskDetail({
     finally { setDriveBusy(false); }
   }
 
+  async function savePhotoToAlbum(photo: ItemPhoto, index: number) {
+    if (!task || savingPhotoId) return;
+    setSavingPhotoId(photo.id);
+    setPhotoSaveMessage('');
+    try {
+      const response = await fetch(photo.url);
+      if (!response.ok) throw new Error('写真をダウンロードできませんでした。通信状態を確認してください。');
+      const blob = await response.blob();
+      const safeSku = task.sku.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const file = new File([blob], `${safeSku}_photo_${index + 1}.jpg`, { type: blob.type || 'image/jpeg' });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        setPhotoSaveMessage('端末の共有メニューから「写真に保存」または「画像を保存」を選んでください。');
+        await navigator.share({ files: [file], title: file.name });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        setPhotoSaveMessage('画像をダウンロードしました。端末の写真アプリに保存してください。');
+      }
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === 'AbortError') setPhotoSaveMessage('保存をキャンセルしました。');
+      else setPhotoSaveMessage(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSavingPhotoId(null);
+    }
+  }
   async function removePhoto(photo: ItemPhoto) {
     if (!window.confirm('この写真をアプリとGoogleドライブから削除します。よろしいですか？')) return;
     setDeletingPhotoId(photo.id); setError(null); setDriveMessage('');
@@ -168,9 +204,29 @@ export default function TaskDetail({
     setMarketplaceSending(true);
     setMarketplaceError('');
     try {
-      await queueMarketplaceMessage(task.id, marketplaceDraft.trim());
+      const requestId = await queueMarketplaceMessage(task.id, marketplaceDraft.trim());
       setMarketplaceDraft('');
-      await refreshMarketplaceConversation();
+      const deadline = Date.now() + 120000;
+      while (Date.now() < deadline) {
+        const updated = await fetchMarketplaceConversation(task.id);
+        setMarketplaceConversation(updated);
+        if (updated.expired) {
+          setMarketplaceError('梱包完了から7日を過ぎたため、送信結果を確認できません。');
+          return;
+        }
+        const request = updated.outbox.find(row => row.id === requestId);
+        if (!request) {
+          setMarketplaceError('送信依頼は登録されましたが、結果を読み取れませんでした。再送前に会話を再読み込みしてください。');
+          return;
+        }
+        if (request.status === 'sent') return;
+        if (request.status === 'failed' || request.status === 'uncertain') {
+          setMarketplaceError(request.result_note || (request.status === 'failed' ? 'フリマサイトへの送信に失敗しました。' : '送信結果を確認できません。フリマサイト上の送信状況を確認してください。'));
+          return;
+        }
+        await new Promise(resolve => window.setTimeout(resolve, 3000));
+      }
+      setMarketplaceError('送信依頼は登録されていますが、拡張機能からの結果待ちです。送信状態を再確認してください。');
     } catch (cause) {
       setMarketplaceError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -215,14 +271,20 @@ export default function TaskDetail({
           onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブに追加中…' : 'Googleドライブに追加'}</button>
       </div>}
       {driveMessage && <p className="ok" role="status">{driveMessage}</p>}
+      {photoSaveMessage && <p className="muted" role="status">{photoSaveMessage}</p>}
       {!isWorkingAmazonReturn && <div className="product-photos">
         {photos.length > 0 && <div className="photos">{photos.map((photo, index) => <div className="uploaded-photo" key={photo.id}>
           <a href={photo.url} target="_blank" rel="noreferrer">
             <img src={photo.url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
           </a>
-          <button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={deletingPhotoId !== null || uploading || driveBusy} onClick={() => void removePhoto(photo)}>
-            {deletingPhotoId === photo.id ? '削除中…' : '削除'}
-          </button>
+                    <div className="uploaded-photo-actions">
+            <button type="button" className="btn photo-save" aria-label={`写真${index + 1}を端末に保存`} title="端末の写真アルバムに保存" disabled={savingPhotoId !== null || deletingPhotoId !== null || uploading || driveBusy} onClick={() => void savePhotoToAlbum(photo, index)}>
+              {savingPhotoId === photo.id ? <span className="photo-save-progress">…</span> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>}
+            </button>
+            <button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
+              {deletingPhotoId === photo.id ? '削除中…' : '削除'}
+            </button>
+          </div>
         </div>)}</div>}
       </div>}
       {!isWorkingAmazonReturn && photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
@@ -233,6 +295,26 @@ export default function TaskDetail({
       <div className="card">
         <strong>作業チェック</strong>
         <div className="steps">
+          <div className="malfunction-step-wrap">
+            <div className="step" data-done={task.malfunction_reported || malfunctionChecked}>
+              <button type="button" className="step-toggle" aria-pressed={task.malfunction_reported || malfunctionChecked}
+                disabled={malfunctionBusy || task.malfunction_reported}
+                onClick={() => setMalfunctionChecked(checked => !checked)}>
+                <span className="check">{task.malfunction_reported || malfunctionChecked ? '✓' : ''}</span>
+                <span><span className="label">動作不良</span><br />
+                  <span className="hint">{task.malfunction_reported
+                    ? `仕入担当者（${task.purchaser_name || '未設定'}）へ報告済み`
+                    : '不具合がある場合に選択して、仕入担当者へ報告します'}</span>
+                </span>
+              </button>
+            </div>
+            {task.malfunction_reported
+              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '仕入担当者への報告は対応済みです。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
+              : malfunctionChecked && <div className="malfunction-report">
+                <textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
+                <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '仕入担当者に報告'}</button>
+              </div>}
+          </div>
           {WORK_STEPS.map((step) => {
             const s = isWorkingAmazonReturn && step.key === 'listing' ? { ...step, label: '商品登録' } : step;
             const done = isStepDone(task, s.key);
@@ -254,26 +336,7 @@ export default function TaskDetail({
               </div>
             );
           })}
-          <div className="malfunction-step-wrap">
-            <div className="step" data-done={task.malfunction_reported || malfunctionChecked}>
-              <button type="button" className="step-toggle" aria-pressed={task.malfunction_reported || malfunctionChecked}
-                disabled={malfunctionBusy || task.malfunction_reported}
-                onClick={() => setMalfunctionChecked(checked => !checked)}>
-                <span className="check">{task.malfunction_reported || malfunctionChecked ? '✓' : ''}</span>
-                <span><span className="label">動作不良</span><br />
-                  <span className="hint">{task.malfunction_reported
-                    ? `仕入担当者（${task.purchaser_name || '未設定'}）へ報告済み`
-                    : '不具合がある場合に選択して、仕入担当者へ報告します'}</span>
-                </span>
-              </button>
-            </div>
-            {task.malfunction_reported
-              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '仕入担当者への報告は対応済みです。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
-              : malfunctionChecked && <div className="malfunction-report">
-                <textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
-                <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '仕入担当者に報告'}</button>
-              </div>}
-          </div>
+
         </div>
       </div>
       {!isWorkingAmazonReturn && !isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}
@@ -303,31 +366,28 @@ export default function TaskDetail({
 
       <div className="card marketplace-conversation" aria-label="フリマサイト取引メッセージ">
         <div className="marketplace-conversation-heading"><strong>取引メッセージ</strong><span className="muted">{task.marketplace} · {task.marketplace_item_id || '取引IDなし'}</span></div>
-        {marketplaceError && <p className="error" role="alert">{marketplaceError}</p>}
-        {!task.marketplace_item_id
-          ? <p className="muted">商品IDが登録されていないため、取引メッセージを連携できません。</p>
-          : <>
+        {!task.marketplace_item_id ? <p className="muted">商品IDが登録されていないため、取引メッセージを連携できません。</p> : <>
+          <button type="button" className="btn" disabled={marketplaceLoading} onClick={() => void displayMarketplaceMessages()}>{marketplaceLoading ? '確認中…' : marketplaceVisible ? 'メッセージを閉じる' : 'メッセージを表示'}</button>
+          {marketplaceError && <p className="error" role="alert">{marketplaceError}</p>}
+          {marketplaceVisible && <>
             <div className="marketplace-message-list" aria-live="polite">
-              {marketplaceConversation.messages.length === 0 && <p className="muted">メッセージはまだ同期されていません。ログイン済みChromeでフリマ取引サポート拡張機能の「取引メッセージを同期」を実行してください。</p>}
+              {marketplaceConversation.messages.length === 0 && <p className="muted">アプリから送信した後の相手メッセージはありません。</p>}
               {marketplaceConversation.messages.map(message => <article key={message.id} className="marketplace-message" data-author={message.author_role}>
-                <div className="meta">{message.author || (message.author_role === 'self' ? '自分' : '取引相手')}{message.sent_at ? ` · ${new Date(message.sent_at).toLocaleString('ja-JP')}` : ''}</div>
-                <p>{message.body}</p>
+                <div className="meta">{message.author || (message.author_role === 'self' ? '自分' : '取引相手')}{message.sent_at ? ' · ' + new Date(message.sent_at).toLocaleString('ja-JP') : ''}</div><p>{message.body}</p>
               </article>)}
               {marketplaceConversation.outbox.map(request => <article key={request.id} className="marketplace-message" data-author="self" data-status={request.status}>
-                <div className="meta">{({ queued: '拡張機能の送信待ち', sending: 'サイトへ送信中', sent: '送信済み', failed: '送信失敗', uncertain: '送信結果を要確認' } as const)[request.status]}{request.sent_at ? ` · ${new Date(request.sent_at).toLocaleString('ja-JP')}` : ''}</div>
-                <p>{request.body}</p>
-                {request.result_note && <small>{request.result_note}</small>}
+                <div className="meta">{({ queued: '拡張機能の送信待ち', sending: 'サイトへ送信中', sent: '送信済み', failed: '送信失敗', uncertain: '送信結果を要確認' } as const)[request.status]}{request.sent_at ? ' · ' + new Date(request.sent_at).toLocaleString('ja-JP') : ''}</div><p>{request.body}</p>{request.result_note && <small>{request.result_note}</small>}
               </article>)}
             </div>
-            <div className="marketplace-message-composer">
+            {marketplaceConversation.expired ? <p className="muted">梱包完了から7日を経過したため、会話の保存期間は終了しました。</p> : <div className="marketplace-message-composer">
               <textarea aria-label="フリマ取引相手へのメッセージ" value={marketplaceDraft} onChange={event => setMarketplaceDraft(event.target.value)} maxLength={2000} placeholder="取引相手へのメッセージ" />
-              <button type="button" className="btn primary" disabled={!marketplaceDraft.trim() || marketplaceSending} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信依頼中…' : '取引メッセージを送信'}</button>
+              <button type="button" className="btn primary" disabled={!marketplaceDraft.trim() || marketplaceSending} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信結果を確認中…' : '取引メッセージを送信'}</button>
               <small className="muted">送信後は、ログイン済みChromeの拡張機能が取引画面へ反映します。</small>
-            </div>
+            </div>}
           </>}
+        </>}
       </div>
 
     </section>
   );
 }
-

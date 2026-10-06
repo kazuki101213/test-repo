@@ -135,7 +135,7 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .inventory-workspace.with-purchase { grid-template-columns: minmax(320px, 1fr) minmax(340px, 420px); }
 .inventory-list { min-width: 0; }
-.inventory-top-scroll { height: 18px; margin: 0 0 4px; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.inventory-top-scroll { position: sticky; top: 0; z-index: 12; height: 22px; margin: 0 0 4px; overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .inventory-top-scroll > div { pointer-events: none; }
 @media (min-width: 861px) {
   .inventory-workspace { min-height: calc(100dvh - 84px); }
@@ -146,13 +146,14 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-table thead tr { height: 40px; }
 .inventory-table tr[data-lot] { height: 64px; }
 .inventory-table tr[data-lot] > td { padding: 4px 8px; line-height: 18px; }
-.inventory-table { min-width: 2550px; table-layout: fixed; }
-.inventory-table th { height: 40px; vertical-align: middle; }
+.inventory-table { min-width: 2710px; table-layout: fixed; }
+.inventory-table th { position: sticky; top: 22px; z-index: 10; height: 40px; vertical-align: middle; }
 .inventory-table th:nth-child(1) { width: 88px; }
 .inventory-table th:nth-child(2) { width: 240px; }
 .inventory-table th:nth-child(3) { width: 190px; }
 .inventory-table th:nth-child(5) { width: var(--tracking-column-width, 360px); }
 .inventory-table th:nth-child(16) { width: 180px; }
+.inventory-table th:nth-child(17) { width: 160px; }
 .inventory-table tr[data-lot] > td { height: 64px; max-height: 64px; overflow: hidden; vertical-align: middle; }
 .inventory-cell-edit, .inventory-comment { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .inventory-cell-stack { min-width: 0; }
@@ -176,9 +177,15 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-item-type { flex: none; color: var(--muted); font-size: 11px; }
 .inventory-comment { display: grid; grid-template-rows: repeat(2, 18px); width: 10em; max-width: 100%; line-height: 18px; white-space: nowrap; text-overflow: clip; }
 .inventory-comment span { display: block; overflow: hidden; text-overflow: clip; }
+.inventory-sale-status > span { display: block; white-space: nowrap; }
 .inventory-comment-panel { width: min(440px, 100vw); margin: auto; overflow-wrap: anywhere; }
 .inventory-full-edit-panel { width: min(1000px, 96vw); max-height: 94vh; overflow: auto; margin: auto; }
 .inventory-bottom-scroll { overflow-x: hidden; }
+@media (max-width: 620px) {
+  .inventory-bottom-scroll { overflow-x: auto; overflow-y: auto; max-height: 68dvh; scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-y pinch-zoom; }
+  .inventory-bottom-scroll::-webkit-scrollbar { display: none; }
+  .inventory-top-scroll { -webkit-overflow-scrolling: touch; }
+}
 .inventory-table .btn { padding: 5px 10px; }
 .inventory-table .virtual-spacer > td { padding: 0; border: 0; }
 .inventory-table .virtual-spacer:hover { background: transparent; }
@@ -285,3 +292,5 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .inventory-table tr.inventory-row-listed-30 > td { background-color: #f5dfdd; }
 .inventory-table tr.inventory-row-sold > td { background-color: #e8e8e8; }
 
+.product-history-panel { width: min(860px, 100vw); max-height: calc(100dvh - 32px); overflow: auto; margin: auto; }
+@media (max-width: 700px) { .product-history-panel { width: 100vw; max-height: 100dvh; margin: 0; } }

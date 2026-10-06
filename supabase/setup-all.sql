@@ -13,7 +13,6 @@
 --   何度流しても壊れないようには作っていません。エラーが出た場合は
 --   一度 `drop schema app cascade;` で消してから流し直してください。
 -- =============================================================================
-
 -- ▼▼▼ 20260920000100_core_schema.sql ▼▼▼
 
 -- =============================================================================
@@ -259,7 +258,7 @@ create table if not exists app.items (
 
   -- 受け取った返金（仕入れ先関連返金 / Amazon一部返金 / Amazon在庫払い戻し）。
   -- 利益を押し上げる側の金額なので、原価ではなく収入として足す。
-  refund_amount     bigint not null default 0 check (refund_amount >= 0),
+  refund_amount     bigint not null default 0,
   refund_note       text,
 
   -- 粗利（振込額 + 返金 - 仕入 - 送料 - その他）
@@ -286,7 +285,11 @@ create table if not exists app.items (
   memo              text,
   created_by        uuid references app.staff(id) on delete set null,
   created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now()
+  updated_at        timestamptz not null default now(),
+
+  -- 販売済みなら販売日が必須。販売金額は不明のまま保存できる
+  constraint items_sold_requires_date
+    check (status <> '販売済' or sold_on is not null)
 );
 
 comment on table app.items is '仕入れた個体 1 点ごとのレコード。古物台帳の買受行そのものでもある。';
@@ -2675,7 +2678,7 @@ grant select on app.v_amazon_unmatched_app_sales to authenticated;
 
 -- Keep the two refund sources visible without changing the existing profit formula.
 alter table app.items
-  add column if not exists amazon_refund_amount bigint not null default 0 check (amazon_refund_amount >= 0),
+  add column if not exists amazon_refund_amount bigint not null default 0,
   add column if not exists non_amazon_refund_amount bigint not null default 0 check (non_amazon_refund_amount >= 0);
 
 update app.items
@@ -2688,8 +2691,9 @@ create or replace function app.sync_refund_sources() returns trigger
 language plpgsql security invoker set search_path = '' as $$
 begin
   if tg_op = 'INSERT' then
-    if new.refund_amount > 0 and new.amazon_refund_amount = 0 and new.non_amazon_refund_amount = 0 then
+    if new.refund_amount <> 0 and new.amazon_refund_amount = 0 and new.non_amazon_refund_amount = 0 then
       if new.refund_note ilike '%Amazon%' then new.amazon_refund_amount := new.refund_amount;
+      elsif new.refund_amount < 0 then raise exception 'Negative refund amounts must be recorded as Amazon refunds';
       else new.non_amazon_refund_amount := new.refund_amount; end if;
     else
       new.refund_amount := new.amazon_refund_amount + new.non_amazon_refund_amount;
@@ -2701,6 +2705,8 @@ begin
     if new.refund_note ilike '%Amazon%' then
       new.amazon_refund_amount := new.refund_amount;
       new.non_amazon_refund_amount := 0;
+    elsif new.refund_amount < 0 then
+      raise exception 'Negative refund amounts must be recorded as Amazon refunds';
     else
       new.amazon_refund_amount := 0;
       new.non_amazon_refund_amount := new.refund_amount;
@@ -2727,6 +2733,92 @@ left join lateral (
   order by created_at desc, id desc limit 1
 ) latest on true;
 grant select on app.v_inventory_display to authenticated;
+
+
+-- ▼▼▼ 20261005140000_stop_purchase_sync_at_inventory_match.sql ▼▼▼
+
+create function app.extension_sync_purchase_drafts(
+  p_marketplace text, p_account_label text, p_purchases jsonb, p_stop_on_match boolean
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  row_data jsonb;
+  inserted_count integer := 0;
+  refreshed_count integer := 0;
+  matched_item_ids text[] := array[]::text[];
+  v_id text;
+  v_title text;
+  v_url text;
+  v_price bigint;
+  v_date date;
+  was_inserted boolean;
+  v_existing_item uuid;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  if nullif(btrim(p_account_label),'') is null or length(p_account_label)>120 then raise exception 'アカウント名が不正です'; end if;
+  if jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then raise exception '購入履歴の形式または件数が不正です'; end if;
+  for row_data in select value from jsonb_array_elements(p_purchases) loop
+    v_id := nullif(btrim(row_data->>'marketplace_item_id'),'');
+    v_title := nullif(btrim(row_data->>'title'),'');
+    v_url := nullif(btrim(row_data->>'marketplace_url'),'');
+    if v_id is null or v_title is null or v_url is null or length(v_id)>200 or length(v_title)>500 or length(v_url)>2000 then continue; end if;
+    if (p_marketplace='メルカリ' and v_url !~ '^https://jp\.mercari\.com/')
+      or (p_marketplace='ヤフオク' and v_url !~ '^https://(auctions|page\.auctions|contact\.auctions|buy\.auctions)\.yahoo\.co\.jp/')
+      or (p_marketplace in ('ヤフフリ','PayPayフリマ') and v_url !~ '^https://paypayfleamarket(-sec)?\.yahoo\.co\.jp/')
+      or (p_marketplace='ラクマ' and v_url !~ '^https://(www\.)?fril\.jp/' and v_url !~ '^https://item\.fril\.jp/') then continue; end if;
+
+    select i.id into v_existing_item from app.items i
+      where i.marketplace_item_id=v_id
+        and (i.marketplace=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and i.marketplace in ('ヤフフリ','PayPayフリマ')))
+      order by i.created_at desc limit 1;
+    if v_existing_item is not null then
+      insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,state,registered_item_id)
+        values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,
+          case when coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then (row_data->>'purchased_at')::date else null end,
+          case when coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then (row_data->>'cost_amount')::bigint else null end,
+          'registered',v_existing_item)
+        on conflict(marketplace,marketplace_item_id) do nothing;
+      matched_item_ids := array_append(matched_item_ids,v_id);
+      if p_stop_on_match then exit; end if;
+      continue;
+    end if;
+
+    v_price := null;
+    if coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then v_price := (row_data->>'cost_amount')::bigint; end if;
+    v_date := null;
+    if coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then v_date := (row_data->>'purchased_at')::date; end if;
+    insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount)
+      values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,v_date,v_price)
+      on conflict(marketplace,marketplace_item_id) do update set
+        marketplace_url=excluded.marketplace_url,
+        account_label=excluded.account_label,
+        title=excluded.title,
+        purchased_at=coalesce(excluded.purchased_at,app.marketplace_purchase_drafts.purchased_at),
+        cost_amount=coalesce(excluded.cost_amount,app.marketplace_purchase_drafts.cost_amount),
+        last_seen_at=now()
+      where app.marketplace_purchase_drafts.state='draft'
+      returning (xmax=0) into was_inserted;
+    if found then
+      if was_inserted then inserted_count := inserted_count+1;
+      else refreshed_count := refreshed_count+1; end if;
+    end if;
+  end loop;
+  return jsonb_build_object('inserted',inserted_count,'refreshed',refreshed_count,'matched_item_ids',to_jsonb(matched_item_ids));
+end $$;
+
+revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) from public, anon;
+grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) to authenticated;
+create or replace function app.extension_sync_purchase_drafts(
+  p_marketplace text,p_account_label text,p_purchases jsonb
+)
+returns jsonb language sql security definer set search_path = '' as $$
+  select app.extension_sync_purchase_drafts(p_marketplace,p_account_label,p_purchases,false);
+$$;
+revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb) from public, anon;
+grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb) to authenticated;
+notify pgrst,'reload schema';
+
 
 
 -- ▼▼▼ 20260929091000_inventory_product_profit.sql ▼▼▼
@@ -3947,7 +4039,7 @@ create table app.amazon_refund_matches (
   sku text not null,
   item_id uuid not null references app.items(id),
   refund_kind text not null check (refund_kind in ('inventory','amazon_refund')),
-  amount bigint not null check (amount >= 0),
+  amount bigint not null check ((refund_kind = 'inventory' and amount >= 0) or refund_kind = 'amazon_refund'),
   applied_by uuid not null references auth.users(id),
   applied_at timestamptz not null default now(),
   primary key(account_key,marketplace_id,transaction_id,sku)
@@ -3967,7 +4059,7 @@ begin
             when lower(coalesce(txn.transaction_type,''))='refund' then 'amazon_refund' else null end;
  if kind is null then return jsonb_build_object('status','review','reason','対象外の取引種類です。'); end if;
  if (select count(*) from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku)<>1 then return jsonb_build_object('status','review','reason','SKUを取引内で一意に特定できません。'); end if;
- select abs((e->>'amount')::numeric)::bigint into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
+ select case when kind='inventory' then abs((e->>'amount')::numeric)::bigint else (e->>'amount')::numeric::bigint end into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
  if amount_value is null then return jsonb_build_object('status','review','reason','SKU別の返金額が円の整数として確認できません。'); end if;
  select * into target from app.items where sku=p_sku and not is_accessory for update;
  if not found then return jsonb_build_object('status','review','reason','SKUが在庫一覧にありません。'); end if;
@@ -3975,7 +4067,7 @@ begin
  delta:=amount_value-coalesce(prior.amount,0);
  if delta<>0 then
    if kind='inventory' then update app.items set inventory_refund_amount=greatest(inventory_refund_amount+delta,0) where id=target.id;
-   else update app.items set amazon_refund_amount=greatest(amazon_refund_amount+delta,0) where id=target.id;
+   else update app.items set amazon_refund_amount=amazon_refund_amount+delta where id=target.id;
    end if;
  end if;
  insert into app.amazon_refund_matches(account_key,marketplace_id,transaction_id,sku,item_id,refund_kind,amount,applied_by)
@@ -4513,7 +4605,7 @@ begin
             when lower(coalesce(txn.transaction_type,'')) in ('refund','返金') then 'amazon_refund' else null end;
  if kind is null then return jsonb_build_object('status','review','reason','対象外の取引種類です。'); end if;
  if (select count(*) from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku)<>1 then return jsonb_build_object('status','review','reason','SKUを取引内で一意に特定できません。'); end if;
- select abs((e->>'amount')::numeric)::bigint into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
+ select case when kind='inventory' then abs((e->>'amount')::numeric)::bigint else (e->>'amount')::numeric::bigint end into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
  if amount_value is null then return jsonb_build_object('status','review','reason','SKU別の返金額が円の整数として確認できません。'); end if;
 
  root_serial:=(regexp_match(p_sku,'^([0-9]+)'))[1];
@@ -4554,7 +4646,7 @@ begin
  delta:=amount_value-coalesce(prior.amount,0);
  if delta<>0 then
    if kind='inventory' then update app.items set inventory_refund_amount=greatest(inventory_refund_amount+delta,0) where id=target.id;
-   else update app.items set amazon_refund_amount=greatest(amazon_refund_amount+delta,0) where id=target.id;
+   else update app.items set amazon_refund_amount=amazon_refund_amount+delta where id=target.id;
    end if;
  end if;
  insert into app.amazon_refund_matches(account_key,marketplace_id,transaction_id,sku,item_id,refund_kind,amount,applied_by)
@@ -5344,3 +5436,369 @@ create policy spare_accessories_delete on app.spare_accessories
   );
 
 
+-- ▼▼▼ 20261005124842_inventory_amazon_image_asin_fallback.sql ▼▼▼
+
+create or replace view app.v_inventory_display with (security_invoker = true) as
+with totals as materialized (
+  select app.product_serial(i.sku, i.lot_seq) as serial_key,
+    sum(i.refund_amount) as refunds,
+    sum(i.inventory_refund_amount) as inventory_refunds,
+    sum(i.shipping_cost) as shipping,
+    sum(i.other_cost) as other_cost
+  from app.items i
+  group by app.product_serial(i.sku, i.lot_seq)
+)
+select inventory.*, raw.product_id, product.product_no,
+  coalesce(nullif(btrim(product.image_url), ''), nullif(btrim(asin_product.image_url), '')) as amazon_image_url,
+  raw.amazon_refund_amount, raw.non_amazon_refund_amount, latest.body as latest_comment,
+  case when not inventory.product_sale_conflict and inventory.product_sold_on is not null
+      and inventory.product_payout_amount is not null
+    then inventory.product_payout_amount + totals.refunds + totals.inventory_refunds
+      - inventory.product_cost - totals.shipping - totals.other_cost end as product_profit,
+  raw.inventory_refund_amount
+from app.v_inventory_items inventory
+join app.items raw on raw.id=inventory.id
+left join app.products product on product.id=raw.product_id
+left join app.products asin_product on asin_product.asin=raw.asin
+left join totals on totals.serial_key=app.product_serial(raw.sku,raw.lot_seq)
+left join lateral (
+  select body from app.item_comments
+  where item_id=inventory.id
+  order by created_at desc,id desc
+  limit 1
+) latest on true;
+
+grant select on app.v_inventory_display to authenticated;
+
+
+-- ▼▼▼ 20261005141543_enrich_marketplace_purchase_drafts.sql ▼▼▼
+alter table app.marketplace_purchase_drafts
+  add column if not exists product_id uuid references app.products(id) on delete set null,
+  add column if not exists model_no text,
+  add column if not exists product_no integer,
+  add column if not exists asin char(10),
+  add column if not exists planned_price bigint,
+  add column if not exists planned_payout bigint;
+
+create or replace function app.extension_probe_purchase_item(
+  p_marketplace text, p_marketplace_item_id text
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  v_count integer;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  if nullif(btrim(p_marketplace_item_id),'') is null or length(p_marketplace_item_id)>200 then raise exception '商品IDが不正です'; end if;
+  select count(*) into v_count from app.items i
+    where i.marketplace_item_id=btrim(p_marketplace_item_id)
+      and (i.marketplace=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and i.marketplace in ('ヤフフリ','PayPayフリマ')));
+  return jsonb_build_object('matched',v_count>0,'count',v_count);
+end $$;
+revoke all on function app.extension_probe_purchase_item(text,text) from public, anon;
+grant execute on function app.extension_probe_purchase_item(text,text) to authenticated;
+
+create or replace function app.extension_sync_purchase_drafts(
+  p_marketplace text, p_account_label text, p_purchases jsonb, p_stop_on_match boolean
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  row_data jsonb;
+  inserted_count integer := 0;
+  refreshed_count integer := 0;
+  matched_item_ids text[] := array[]::text[];
+  v_id text;
+  v_title text;
+  v_url text;
+  v_price bigint;
+  v_date date;
+  v_model_no text;
+  v_product_id uuid;
+  v_product_no integer;
+  v_asin char(10);
+  v_planned_price bigint;
+  v_planned_payout bigint;
+  v_best_model_length integer;
+  v_best_model_count integer;
+  was_inserted boolean;
+  v_existing_item uuid;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  if nullif(btrim(p_account_label),'') is null or length(p_account_label)>120 then raise exception 'アカウント名が不正です'; end if;
+  if jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then raise exception '購入履歴の形式または件数が不正です'; end if;
+  for row_data in select value from jsonb_array_elements(p_purchases) loop
+    v_id := nullif(btrim(row_data->>'marketplace_item_id'),'');
+    v_title := nullif(btrim(row_data->>'title'),'');
+    v_url := nullif(btrim(row_data->>'marketplace_url'),'');
+    if v_id is null or v_title is null or v_url is null or length(v_id)>200 or length(v_title)>500 or length(v_url)>2000 then continue; end if;
+    if (p_marketplace='メルカリ' and v_url !~ '^https://jp\.mercari\.com/')
+      or (p_marketplace='ヤフオク' and v_url !~ '^https://(auctions|page\.auctions|contact\.auctions|buy\.auctions)\.yahoo\.co\.jp/')
+      or (p_marketplace in ('ヤフフリ','PayPayフリマ') and v_url !~ '^https://paypayfleamarket(-sec)?\.yahoo\.co\.jp/')
+      or (p_marketplace='ラクマ' and v_url !~ '^https://(www\.)?fril\.jp/' and v_url !~ '^https://item\.fril\.jp/') then continue; end if;
+
+    v_product_id := null; v_model_no := null; v_product_no := null; v_asin := null;
+    v_planned_price := null; v_planned_payout := null; v_best_model_length := null; v_best_model_count := 0;
+    select max(length(btrim(p.model_no))) into v_best_model_length
+      from app.products p
+      where p.is_active and nullif(btrim(p.model_no),'') is not null
+        and position(lower(btrim(p.model_no)) in lower(v_title))>0;
+    if v_best_model_length is not null then
+      select count(*) into v_best_model_count from app.products p
+        where p.is_active and nullif(btrim(p.model_no),'') is not null
+          and length(btrim(p.model_no))=v_best_model_length
+          and position(lower(btrim(p.model_no)) in lower(v_title))>0;
+      if v_best_model_count=1 then
+        select p.id,p.model_no,p.product_no,p.asin,p.list_price,p.payout_estimate
+          into v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout
+          from app.products p
+          where p.is_active and nullif(btrim(p.model_no),'') is not null
+            and length(btrim(p.model_no))=v_best_model_length
+            and position(lower(btrim(p.model_no)) in lower(v_title))>0
+          limit 1;
+      end if;
+    end if;
+
+    select i.id into v_existing_item from app.items i
+      where i.marketplace_item_id=v_id
+        and (i.marketplace=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and i.marketplace in ('ヤフフリ','PayPayフリマ')))
+      order by i.created_at desc limit 1;
+    if v_existing_item is not null then
+      insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,state,registered_item_id,product_id,model_no,product_no,asin,planned_price,planned_payout)
+        values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,
+          case when coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then (row_data->>'purchased_at')::date else null end,
+          case when coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then (row_data->>'cost_amount')::bigint else null end,
+          'registered',v_existing_item,v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout)
+        on conflict(marketplace,marketplace_item_id) do nothing;
+      matched_item_ids := array_append(matched_item_ids,v_id);
+      if p_stop_on_match then exit; end if;
+      continue;
+    end if;
+
+    v_price := null;
+    if coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then v_price := (row_data->>'cost_amount')::bigint; end if;
+    v_date := null;
+    if coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then v_date := (row_data->>'purchased_at')::date; end if;
+    insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,product_id,model_no,product_no,asin,planned_price,planned_payout)
+      values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,v_date,v_price,v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout)
+      on conflict(marketplace,marketplace_item_id) do update set
+        marketplace_url=excluded.marketplace_url,
+        account_label=excluded.account_label,
+        title=excluded.title,
+        purchased_at=coalesce(excluded.purchased_at,app.marketplace_purchase_drafts.purchased_at),
+        cost_amount=coalesce(excluded.cost_amount,app.marketplace_purchase_drafts.cost_amount),
+        product_id=coalesce(excluded.product_id,app.marketplace_purchase_drafts.product_id),
+        model_no=coalesce(excluded.model_no,app.marketplace_purchase_drafts.model_no),
+        product_no=coalesce(excluded.product_no,app.marketplace_purchase_drafts.product_no),
+        asin=coalesce(excluded.asin,app.marketplace_purchase_drafts.asin),
+        planned_price=coalesce(excluded.planned_price,app.marketplace_purchase_drafts.planned_price),
+        planned_payout=coalesce(excluded.planned_payout,app.marketplace_purchase_drafts.planned_payout),
+        last_seen_at=now()
+      where app.marketplace_purchase_drafts.state='draft'
+      returning (xmax=0) into was_inserted;
+    if found then
+      if was_inserted then inserted_count := inserted_count+1;
+      else refreshed_count := refreshed_count+1; end if;
+    end if;
+  end loop;
+  return jsonb_build_object('inserted',inserted_count,'refreshed',refreshed_count,'matched_item_ids',to_jsonb(matched_item_ids));
+end $$;
+revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) from public, anon;
+grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) to authenticated;
+notify pgrst,'reload schema';
+
+-- marketplace_message_button_and_retention 20261006110000
+alter table app.items add column if not exists packed_completed_at timestamptz;
+update app.items set packed_completed_at=((packed_on + 1)::timestamp at time zone 'Asia/Tokyo' - interval '1 microsecond') where packed_on is not null and packed_completed_at is null;
+create or replace function app.capture_packed_completion_time() returns trigger language plpgsql set search_path='' as $$
+begin
+ if new.packed_on is null then new.packed_completed_at:=null;
+ elsif tg_op='INSERT' then new.packed_completed_at:=clock_timestamp();
+ elsif old.packed_on is null or old.packed_completed_at is null then new.packed_completed_at:=clock_timestamp();
+ else new.packed_completed_at:=old.packed_completed_at; end if;
+ return new;
+end; $$;
+drop trigger if exists items_capture_packed_completion_time on app.items;
+create trigger items_capture_packed_completion_time before insert or update of packed_on on app.items for each row execute function app.capture_packed_completion_time();
+create index if not exists items_packed_completed_at_idx on app.items(packed_completed_at) where packed_completed_at is not null;
+
+create table if not exists app.marketplace_message_sync_requests (
+ id uuid primary key default gen_random_uuid(), item_id uuid not null references app.items(id) on delete cascade,
+ marketplace text not null, marketplace_item_id text not null, requested_by uuid not null references auth.users(id),
+ status text not null default 'queued' check(status in ('queued','processing','completed','failed')),
+ requested_at timestamptz not null default now(), claimed_at timestamptz, claimed_by text, completed_at timestamptz, result_note text
+);
+create unique index if not exists marketplace_message_sync_active_item_idx on app.marketplace_message_sync_requests(item_id) where status in ('queued','processing');
+create index if not exists marketplace_message_sync_queue_idx on app.marketplace_message_sync_requests(status,requested_at);
+alter table app.marketplace_message_sync_requests enable row level security;
+revoke all on app.marketplace_message_sync_requests from anon,authenticated;
+grant select,insert,update on app.marketplace_message_sync_requests to authenticated;
+drop policy if exists marketplace_message_sync_read on app.marketplace_message_sync_requests;
+create policy marketplace_message_sync_read on app.marketplace_message_sync_requests for select to authenticated using (requested_by=auth.uid() or app.is_admin() or app.current_role()='purchaser');
+drop policy if exists marketplace_message_sync_insert on app.marketplace_message_sync_requests;
+create policy marketplace_message_sync_insert on app.marketplace_message_sync_requests for insert to authenticated with check (requested_by=auth.uid() and exists(select 1 from app.items i where i.id=app.marketplace_message_sync_requests.item_id and i.marketplace::text=app.marketplace_message_sync_requests.marketplace and i.marketplace_item_id=app.marketplace_message_sync_requests.marketplace_item_id and (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
+drop policy if exists marketplace_message_sync_admin_update on app.marketplace_message_sync_requests;
+create policy marketplace_message_sync_admin_update on app.marketplace_message_sync_requests for all to authenticated using (app.is_admin()) with check (app.is_admin());
+
+create or replace function app.read_marketplace_messages(p_item_id uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare first_sent timestamptz; packed_at timestamptz;
+begin
+ if not exists(select 1 from app.items i where i.id=p_item_id and (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id()))
+ then raise exception 'この商品の取引メッセージを表示する権限がありません' using errcode='42501'; end if;
+ select min(o.sent_at) into first_sent from app.marketplace_message_outbox o where o.item_id=p_item_id and o.status='sent' and o.sent_at is not null;
+ select i.packed_completed_at into packed_at from app.items i where i.id=p_item_id;
+ if packed_at is not null and packed_at<=now()-interval '7 days' then
+  return jsonb_build_object('messages','[]'::jsonb,'outbox','[]'::jsonb,'first_app_sent_at',first_sent,'sync',null,'expired',true);
+ end if;
+ return jsonb_build_object(
+  'messages',coalesce((select jsonb_agg(jsonb_build_object('id',m.id,'author',m.author,'author_role',m.author_role,'body',m.body,'sent_at',m.sent_at) order by m.sent_at,m.id)
+   from app.marketplace_messages m where m.item_id=p_item_id and first_sent is not null and m.author_role='other' and m.sent_at>=first_sent),'[]'::jsonb),
+  'outbox',coalesce((select jsonb_agg(jsonb_build_object('id',o.id,'body',o.body,'status',o.status,'requested_at',o.requested_at,'sent_at',o.sent_at,'result_note',o.result_note) order by o.requested_at)
+   from app.marketplace_message_outbox o where o.item_id=p_item_id and o.requested_by=auth.uid()),'[]'::jsonb),
+  'first_app_sent_at',first_sent,
+  'sync',(select jsonb_build_object('id',r.id,'status',r.status,'requested_at',r.requested_at,'completed_at',r.completed_at,'result_note',r.result_note) from app.marketplace_message_sync_requests r where r.item_id=p_item_id and r.requested_by=auth.uid() order by r.requested_at desc limit 1),
+  'expired',false);
+end; $$;
+
+create or replace function app.queue_marketplace_message_sync(p_item_id uuid)
+returns uuid language plpgsql security invoker set search_path='' as $$
+declare v_item app.items%rowtype; first_sent timestamptz; request_id uuid;
+begin
+ select * into v_item from app.items where id=p_item_id;
+ if not found or not (app.is_admin() or app.current_role()='purchaser' or v_item.deliverer_id=app.current_staff_id()) then raise exception 'この商品の取引メッセージを確認する権限がありません' using errcode='42501'; end if;
+ if nullif(btrim(v_item.marketplace_item_id),'') is null then raise exception '取引IDが登録されていません'; end if;
+ if v_item.marketplace::text not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception 'この仕入先は取引メッセージ連携の対象外です'; end if;
+ if v_item.packed_completed_at is not null and v_item.packed_completed_at<=now()-interval '7 days' then raise exception '梱包完了から7日を過ぎているため、メッセージを確認できません'; end if;
+ select min(sent_at) into first_sent from app.marketplace_message_outbox where item_id=p_item_id and status='sent' and sent_at is not null;
+ if first_sent is null then raise exception '先にアプリから取引メッセージを送信してください'; end if;
+ insert into app.marketplace_message_sync_requests(item_id,marketplace,marketplace_item_id,requested_by) values(p_item_id,v_item.marketplace::text,v_item.marketplace_item_id,auth.uid())
+ on conflict(item_id) where status in ('queued','processing') do nothing returning id into request_id;
+ if request_id is null then select id into request_id from app.marketplace_message_sync_requests where item_id=p_item_id and status in ('queued','processing') order by requested_at desc limit 1; end if;
+ return request_id;
+end; $$;
+
+create or replace function app.extension_marketplace_message_sync_queue(p_marketplaces text[])
+returns jsonb language plpgsql security invoker set search_path='' as $$
+begin
+ if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+ return coalesce((select jsonb_agg(jsonb_build_object('id',r.id,'item_id',r.item_id,'marketplace',r.marketplace,'marketplace_item_id',r.marketplace_item_id) order by r.requested_at)
+  from app.marketplace_message_sync_requests r join app.items i on i.id=r.item_id where (r.status='queued' or (r.status='processing' and r.claimed_at<now()-interval '10 minutes')) and r.marketplace=any(p_marketplaces)
+   and (i.packed_completed_at is null or i.packed_completed_at>now()-interval '7 days')),'[]'::jsonb);
+end; $$;
+create or replace function app.extension_claim_marketplace_message_sync(p_id uuid,p_claimant text)
+returns boolean language plpgsql security invoker set search_path='' as $$
+declare changed integer;
+begin
+ if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+ update app.marketplace_message_sync_requests set status='processing',claimed_at=now(),claimed_by=left(coalesce(p_claimant,''),120),result_note=null
+ where id=p_id and (status='queued' or (status='processing' and claimed_at<now()-interval '10 minutes'));
+ get diagnostics changed=row_count; return changed=1;
+end; $$;
+create or replace function app.extension_finish_marketplace_message_sync(p_id uuid,p_status text,p_note text default null)
+returns boolean language plpgsql security invoker set search_path='' as $$
+declare changed integer;
+begin
+ if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+ if p_status not in ('completed','failed') then raise exception '同期結果が不正です'; end if;
+ update app.marketplace_message_sync_requests set status=p_status,completed_at=now(),result_note=left(p_note,500) where id=p_id and status='processing';
+ get diagnostics changed=row_count; return changed=1;
+end; $$;
+
+create or replace function app.extension_sync_marketplace_messages(p_marketplace text,p_item_id text,p_account_label text,p_messages jsonb)
+returns integer language plpgsql security invoker set search_path='' as $$
+declare linked_id uuid; affected integer; matched integer; first_sent timestamptz;
+begin
+ if auth.uid() is null or not app.is_admin() then raise exception '管理者権限が必要です' using errcode='42501'; end if;
+ if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') or length(p_item_id)>160 then raise exception '取引を特定できません'; end if;
+ select count(*) into matched from app.items where marketplace_item_id=p_item_id and (marketplace::text=p_marketplace or (p_marketplace='ヤフフリ' and marketplace::text='PayPayフリマ'));
+ if matched>1 then raise exception '同じ取引IDの商品が複数あり、メッセージを結び付けられません'; end if;
+ if matched=1 then select id into linked_id from app.items where marketplace_item_id=p_item_id and (marketplace::text=p_marketplace or (p_marketplace='ヤフフリ' and marketplace::text='PayPayフリマ')); end if;
+ if linked_id is null then raise exception 'アプリの在庫行に一致しません'; end if;
+ select min(sent_at) into first_sent from app.marketplace_message_outbox where item_id=linked_id and status='sent' and sent_at is not null;
+ if first_sent is null then raise exception 'アプリからの送信成功後だけ相手のメッセージを取り込めます'; end if;
+ if jsonb_typeof(p_messages)<>'array' or jsonb_array_length(p_messages)>500 then raise exception '取引メッセージの形式が不正です'; end if;
+ insert into app.marketplace_messages(marketplace,marketplace_item_id,item_id,external_id,author,author_role,body,sent_at)
+ select p_marketplace,p_item_id,linked_id,entry->>'external_id',nullif(left(entry->>'author',200),''),'other',left(entry->>'body',10000),nullif(entry->>'sent_at','')::timestamptz
+ from jsonb_array_elements(p_messages) entry where coalesce(entry->>'external_id','')<>'' and coalesce(entry->>'body','')<>''
+  and entry->>'author_role'='other' and nullif(entry->>'sent_at','')::timestamptz>=first_sent
+ on conflict(marketplace,marketplace_item_id,external_id) do update set item_id=excluded.item_id,author=excluded.author,author_role=excluded.author_role,body=excluded.body,sent_at=coalesce(excluded.sent_at,app.marketplace_messages.sent_at),synced_at=now();
+ get diagnostics affected=row_count; return affected;
+end; $$;
+
+create or replace function app.purge_expired_marketplace_messages()
+returns void language plpgsql security definer set search_path='' as $$
+begin
+ delete from app.marketplace_messages m using app.items i where m.item_id=i.id and i.packed_completed_at is not null and i.packed_completed_at<=now()-interval '7 days';
+ delete from app.marketplace_message_outbox o using app.items i where o.item_id=i.id and i.packed_completed_at is not null and i.packed_completed_at<=now()-interval '7 days';
+ delete from app.marketplace_message_sync_requests r using app.items i where r.item_id=i.id and i.packed_completed_at is not null and i.packed_completed_at<=now()-interval '7 days';
+end; $$;
+revoke all on function app.purge_expired_marketplace_messages() from public,anon,authenticated;
+grant execute on function app.purge_expired_marketplace_messages() to postgres;
+create extension if not exists pg_cron with schema pg_catalog;
+do $$ declare existing_job bigint; begin
+ select jobid into existing_job from cron.job where jobname='marketplace-message-retention';
+ if existing_job is not null then perform cron.unschedule(existing_job); end if;
+ perform cron.schedule('marketplace-message-retention','*/15 * * * *','select app.purge_expired_marketplace_messages()');
+end; $$;
+
+grant execute on function app.read_marketplace_messages(uuid) to authenticated;
+grant execute on function app.queue_marketplace_message_sync(uuid) to authenticated;
+grant execute on function app.extension_marketplace_message_sync_queue(text[]) to authenticated;
+grant execute on function app.extension_claim_marketplace_message_sync(uuid,text) to authenticated;
+grant execute on function app.extension_finish_marketplace_message_sync(uuid,text,text) to authenticated;
+grant execute on function app.extension_sync_marketplace_messages(text,text,text,jsonb) to authenticated;
+
+-- marketplace_message_results_visibility_and_expiry 20261006060009
+
+drop policy if exists marketplace_message_outbox_read on app.marketplace_message_outbox;
+create policy marketplace_message_outbox_read on app.marketplace_message_outbox for select to authenticated
+using (exists(select 1 from app.items i where i.id=item_id and
+  (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
+drop policy if exists marketplace_message_sync_read on app.marketplace_message_sync_requests;
+create policy marketplace_message_sync_read on app.marketplace_message_sync_requests for select to authenticated
+using (exists(select 1 from app.items i where i.id=item_id and
+  (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
+
+create or replace function app.read_marketplace_messages(p_item_id uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare first_sent timestamptz; packed_at timestamptz;
+begin
+ if not exists(select 1 from app.items i where i.id=p_item_id and (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id()))
+ then raise exception 'この商品の取引メッセージを表示する権限がありません' using errcode='42501'; end if;
+ select min(o.sent_at) into first_sent from app.marketplace_message_outbox o where o.item_id=p_item_id and o.status='sent' and o.sent_at is not null;
+ select i.packed_completed_at into packed_at from app.items i where i.id=p_item_id;
+ if packed_at is not null and packed_at<=now()-interval '7 days' then
+  return jsonb_build_object('messages','[]'::jsonb,'outbox','[]'::jsonb,'first_app_sent_at',first_sent,'sync',null,'expired',true);
+ end if;
+ return jsonb_build_object(
+  'messages',coalesce((select jsonb_agg(jsonb_build_object('id',m.id,'author',m.author,'author_role',m.author_role,'body',m.body,'sent_at',m.sent_at) order by m.sent_at,m.id)
+   from app.marketplace_messages m where m.item_id=p_item_id and first_sent is not null and m.author_role='other' and m.sent_at>=first_sent),'[]'::jsonb),
+  'outbox',coalesce((select jsonb_agg(jsonb_build_object('id',o.id,'body',o.body,'status',o.status,'requested_at',o.requested_at,'sent_at',o.sent_at,'result_note',o.result_note) order by o.requested_at)
+   from app.marketplace_message_outbox o where o.item_id=p_item_id),'[]'::jsonb),
+  'first_app_sent_at',first_sent,
+  'sync',(select jsonb_build_object('id',r.id,'status',r.status,'requested_at',r.requested_at,'completed_at',r.completed_at,'result_note',r.result_note) from app.marketplace_message_sync_requests r where r.item_id=p_item_id order by r.requested_at desc limit 1),
+  'expired',false);
+end; $$;
+
+create or replace function app.queue_marketplace_message(p_item_id uuid,p_body text)
+returns uuid language plpgsql security invoker set search_path='' as $$
+declare v_item app.items%rowtype; v_market text; v_outbox_id uuid;
+begin
+ if auth.uid() is null then raise exception 'ログインが必要です' using errcode='42501'; end if;
+ if length(btrim(coalesce(p_body,''))) not between 1 and 2000 then raise exception 'メッセージは1〜2000文字で入力してください'; end if;
+ select * into v_item from app.items where id=p_item_id;
+ if not found or not (app.is_admin() or app.current_role()='purchaser' or v_item.deliverer_id=app.current_staff_id()) then
+  raise exception 'この商品の取引メッセージを送信する権限がありません' using errcode='42501';
+ end if;
+ if v_item.packed_completed_at is not null and v_item.packed_completed_at<=now()-interval '7 days' then raise exception '梱包完了から7日を過ぎているため、メッセージを送信できません'; end if;
+ if nullif(btrim(v_item.marketplace_item_id),'') is null then raise exception '取引IDが登録されていません'; end if;
+ v_market:=v_item.marketplace::text;
+ if v_market not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception 'この仕入先は取引メッセージ連携の対象外です'; end if;
+ if exists(select 1 from app.marketplace_message_outbox where item_id=v_item.id and status in ('queued','sending')) then
+  raise exception 'この商品の前の送信依頼が処理中です。結果を確認してから送信してください';
+ end if;
+ insert into app.marketplace_message_outbox(item_id,marketplace,marketplace_item_id,body,requested_by)
+  values(v_item.id,v_market,v_item.marketplace_item_id,btrim(p_body),auth.uid()) returning id into strict v_outbox_id;
+ return v_outbox_id;
+end; $$;

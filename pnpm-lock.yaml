@@ -78,6 +78,8 @@ importers:
         specifier: ^5.4.9
         version: 5.4.21
 
+  apps/fleamarket-extension: {}
+
   packages/shared:
     dependencies:
       '@supabase/supabase-js':

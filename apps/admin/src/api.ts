@@ -272,11 +272,12 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
       .range(from, to);
 
     if (hasStatusFilter) {
-      if (statusValues.length && marketplaces.length) q = q.or(`status.in.(${statusValues.join(',')}),marketplace.in.(${marketplaces.join(',')})`);
-      else if (statusValues.length) q = q.in('status', statusValues);
+      if (statusValues.length && marketplaces.length) {
+        q = q.or(`status.in.(${statusValues.join(',')}),marketplace.in.(${marketplaces.join(',')})`);
+      } else if (statusValues.length) q = q.in('status', statusValues);
       else q = q.in('marketplace', marketplaces);
     }
-    if (filter.delivererIds?.length) q = q.in('deliverer_id', filter.delivererIds);
+    if (filter.delivererIds && filter.delivererIds.length) q = q.in('deliverer_id', filter.delivererIds);
     if (unsoldOnly) q = q.eq('sale_row_count', 0).neq('status', '返品処理').neq('status', '廃棄');
     if (filter.purchasedFrom) q = q.gte('purchased_at', filter.purchasedFrom);
     if (filter.purchasedTo) q = q.lte('purchased_at', filter.purchasedTo);
@@ -367,11 +368,11 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
       (fields.planned_payout !== null && (!Number.isSafeInteger(fields.planned_payout) || fields.planned_payout < 0)) ||
       (fields.sold_price !== null && (!Number.isSafeInteger(fields.sold_price) || fields.sold_price < 0)) ||
       (fields.payout_amount !== null && (!Number.isSafeInteger(fields.payout_amount) || fields.payout_amount < 0)) ||
-      !Number.isSafeInteger(fields.refund_amount) || fields.refund_amount < 0 ||
-      !Number.isSafeInteger(fields.amazon_refund_amount) || fields.amazon_refund_amount < 0 ||
+      !Number.isSafeInteger(fields.refund_amount) ||
+      !Number.isSafeInteger(fields.amazon_refund_amount) ||
       !Number.isSafeInteger(fields.non_amazon_refund_amount) || fields.non_amazon_refund_amount < 0 ||
       !Number.isSafeInteger(fields.inventory_refund_amount) || fields.inventory_refund_amount < 0) {
-    throw new Error('金額は0円以上の整数で入力してください。');
+    throw new Error('Amazon返金金額と返金合計は整数で入力してください。それ以外の金額は0円以上で入力してください。');
   }
   if (!!fields.sold_on !== (fields.sold_price !== null)) throw new Error('販売日と販売金額は両方入力してください。');
   if (fields.is_accessory && !item.is_accessory) {
@@ -546,6 +547,51 @@ export async function fetchProducts(query?: string): Promise<Product[]> {
     if (error) throw error;
     return (data ?? []) as Product[];
   });
+}
+
+export type ProductSaleHistory = {
+  id: string;
+  product_id: string;
+  sku: string;
+  sold_on: string;
+  sold_price: number | null;
+  payout_amount: number | null;
+  sales_channel: string | null;
+};
+
+/** Past main-item sales linked to the selected product master rows. */
+export async function fetchProductSaleHistory(products: Pick<Product, 'id' | 'asin'>[]): Promise<ProductSaleHistory[]> {
+  const histories: ProductSaleHistory[] = [];
+  for (let start = 0; start < products.length; start += 100) {
+    const batch = products.slice(start, start + 100);
+    const ids = batch.map(product => product.id);
+    const productIdByAsin = new Map(batch.map(product => [product.asin, product.id]));
+    const asins = [...productIdByAsin.keys()];
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await getSupabase().from('items')
+        .select('id,product_id,sku,sold_on,sold_price,payout_amount,sales_channel')
+        .in('product_id', ids).eq('is_accessory', false).not('sold_on', 'is', null)
+        .order('sold_on', { ascending: false }).order('id').range(offset, offset + 499);
+      if (error) throw error;
+      const page = (data ?? []) as ProductSaleHistory[];
+      histories.push(...page);
+      if (page.length < 500) break;
+    }
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await getSupabase().from('items')
+        .select('id,asin,sku,sold_on,sold_price,payout_amount,sales_channel')
+        .in('asin', asins).is('product_id', null).eq('is_accessory', false).not('sold_on', 'is', null)
+        .order('sold_on', { ascending: false }).order('id').range(offset, offset + 499);
+      if (error) throw error;
+      const page = (data ?? []) as Array<Omit<ProductSaleHistory, 'product_id'> & { asin: string | null }>;
+      histories.push(...page.flatMap(sale => {
+        const productId = sale.asin ? productIdByAsin.get(sale.asin.trim()) : undefined;
+        return productId ? [{ ...sale, product_id: productId }] : [];
+      }));
+      if (page.length < 500) break;
+    }
+  }
+  return histories;
 }
 
 export type LedgerDisplayRow = LedgerRow & { 仕入先: string | null; 商品ID: string | null };
