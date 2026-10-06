@@ -17,10 +17,20 @@ body, button, input, select, textarea, pre, code, kbd, samp {
   background: var(--label-dot-color);
   vertical-align: middle;
 }
-.colored-label[data-tone='orange'] { --label-dot-color: #f4c598; }
-.colored-label[data-tone='red'] { --label-dot-color: #efb2b2; }
-.colored-label[data-tone='yellow'] { --label-dot-color: #efdc92; }
-.colored-label[data-tone='purple'] { --label-dot-color: #d4b7e8; }
-.colored-label[data-tone='blue'] { --label-dot-color: #a9cdef; }
-.colored-label[data-tone='green'] { --label-dot-color: #b4d9ab; }
-.colored-label[data-tone='gray'] { --label-dot-color: #b7b7b7; }
+.colored-label[data-tone='orange'], .colored-select[data-tone='orange'] { --label-dot-color: #f4c598; }
+.colored-label[data-tone='red'], .colored-select[data-tone='red'] { --label-dot-color: #efb2b2; }
+.colored-label[data-tone='yellow'], .colored-select[data-tone='yellow'] { --label-dot-color: #efdc92; }
+.colored-label[data-tone='purple'], .colored-select[data-tone='purple'] { --label-dot-color: #d4b7e8; }
+.colored-label[data-tone='blue'], .colored-select[data-tone='blue'] { --label-dot-color: #a9cdef; }
+.colored-label[data-tone='green'], .colored-select[data-tone='green'] { --label-dot-color: #b4d9ab; }
+.colored-label[data-tone='gray'], .colored-select[data-tone='gray'] { --label-dot-color: #b7b7b7; }
+
+/* Native selects cannot draw ::before; place the selected-value line outside. */
+.colored-select { position: relative; width: 100%; font: inherit; }
+.colored-select > select { width: 100%; }
+.colored-select[data-tone] > select { padding-left: 23px; }
+.colored-select[data-tone]::before {
+  content: ''; position: absolute; left: 11px; top: 50%;
+  transform: translateY(-50%); width: 3px; height: 1em;
+  background: var(--label-dot-color); pointer-events: none;
+}

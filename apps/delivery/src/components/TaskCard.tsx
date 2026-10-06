@@ -88,7 +88,9 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
       <div className="task-card-overview">
         <div className="task-card-info">
           <span className="muted">仕入日 {jpDate(task.purchased_at)}</span>
+          <span className="muted">仕入先 <ColoredLabel value={task.marketplace} /></span>
           <span className="muted">販売先 <ColoredLabel value={task.sales_channel || '—'} /></span>
+          <span className="muted">コンディション <ColoredLabel value={task.condition || '—'} /></span>
           <CopyableText label="販売金額" value={task.planned_price == null ? '' : String(task.planned_price)} displayValue={yen(task.planned_price)} />
           <CopyableText label="SKU" value={task.sku} />
           <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label="型番" value={modelFor(task)} /></span>

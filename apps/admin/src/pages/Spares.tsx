@@ -1,3 +1,5 @@
+import ColoredLabel from '../components/ColoredLabel';
+import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { MARKETPLACES, deleteSpareAccessory, fetchSpareAccessories, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
@@ -131,7 +133,7 @@ export default function Spares({ me }: { me: Staff }) {
         <label className="field"><span>ASIN</span><input value={form.asin ?? ''} onChange={event => setForm(current => ({ ...current, asin: event.target.value || null }))} /></label>
         <label className="field"><span>購入日</span><input type="date" value={form.purchased_at ?? ''} onChange={event => setForm(current => ({ ...current, purchased_at: event.target.value || null }))} /></label>
         <label className="field"><span>仕入金額</span><input type="number" min={0} step={1} value={form.cost_amount} onChange={event => setForm(current => ({ ...current, cost_amount: Number(event.target.value) }))} /></label>
-        <label className="field"><span>仕入先</span><select value={form.marketplace ?? ''} onChange={event => setForm(current => ({ ...current, marketplace: event.target.value || null }))}><option value="">未設定</option>{MARKETPLACES.map(value => <option key={value}>{value}</option>)}</select></label>
+        <label className="field"><span>仕入先</span><ColoredSelect value={form.marketplace ?? ''} onChange={event => setForm(current => ({ ...current, marketplace: event.target.value || null }))}><option value="">未設定</option>{MARKETPLACES.map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
         <label className="field"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
         <label className="field"><span>商品ID</span><input value={form.marketplace_item_id ?? ''} onChange={event => setForm(current => ({ ...current, marketplace_item_id: event.target.value || null }))} /></label>
         <label className="field"><span>追跡番号</span><input value={form.tracking_no ?? ''} onChange={event => setForm(current => ({ ...current, tracking_no: event.target.value || null }))} /></label>
@@ -151,7 +153,7 @@ export default function Spares({ me }: { me: Staff }) {
       <td><EditableSpare row={row} field="manufacturer" onEdit={setEditFor}>{row.manufacturer || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="cost_amount" onEdit={setEditFor}>{yen(row.cost_amount)}</EditableSpare></td>
-      <td><EditableSpare row={row} field="marketplace" onEdit={setEditFor}>{row.marketplace || '—'}</EditableSpare></td>
+      <td><EditableSpare row={row} field="marketplace" onEdit={setEditFor}><ColoredLabel value={row.marketplace || '—'} /></EditableSpare></td>
       <td><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || (row.used_for_item_id ? '商品へ割当済み' : '—')}</EditableSpare></td>
@@ -189,7 +191,7 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label={`${labels[field]}を編集`}>
     <div className="card inventory-comment-panel"><h3>{labels[field]}を編集</h3>
       <label className="field"><span>{labels[field]}</span>
-        {field === 'marketplace' ? <select autoFocus value={value} onChange={event => setValue(event.target.value)}><option value="">未設定</option>{MARKETPLACES.map(option => <option key={option}>{option}</option>)}</select>
+        {field === 'marketplace' ? <ColoredSelect autoFocus value={value} onChange={event => setValue(event.target.value)}><option value="">未設定</option>{MARKETPLACES.map(option => <option key={option}>{option}</option>)}</ColoredSelect>
           : <input autoFocus type={date ? 'date' : numeric ? 'number' : 'text'} min={numeric ? 0 : undefined} step={numeric ? 1 : undefined} value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />}
       </label>
       {error && <div className="error" role="alert">{error}</div>}

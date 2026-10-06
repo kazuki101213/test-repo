@@ -1,3 +1,4 @@
+import ColoredSelect from './ColoredSelect';
 import { useEffect, useState, type FormEvent } from 'react';
 import type { DeliveryTask } from '@bussan/shared';
 import { fetchProductMaker, saveDeliveryDescription } from '../api';
@@ -119,14 +120,14 @@ export default function DescriptionEditor({ task, listingSkus, onSaved }: { task
     <h2>商品説明文</h2>
     <fieldset disabled={busy}>
       <div className="description-options">
-        <label>販売先<select value={target} onChange={e => {
+        <label>販売先<ColoredSelect value={target} onChange={e => {
           const nextTarget = e.target.value as DescriptionTarget;
           setTarget(nextTarget);
           if (!CONDITIONS_BY_TARGET[nextTarget].includes(condition)) setCondition(conditionForTarget(nextTarget, storedCondition(target, condition)) || CONDITIONS_BY_TARGET[nextTarget][0] || '');
           updateSelection();
-        }}><option value="amazon">Amazon</option><option value="mercari">メルカリ</option><option value="yahoo-auction">ヤフオク</option></select></label>
+        }}><option value="amazon">Amazon</option><option value="mercari">メルカリ</option><option value="yahoo-auction">ヤフオク</option></ColoredSelect></label>
         <label>商品<select value={product} onChange={e => { setProduct(e.target.value); updateSelection(); }}><option value="">選択してください</option>{PRODUCT_TYPES.map(value => <option key={value}>{value}</option>)}</select></label>
-        <label>コンディション<select value={condition} onChange={e => { setCondition(e.target.value); updateSelection(); }}><option value="">選択してください</option>{CONDITIONS_BY_TARGET[target].map(value => <option key={value}>{value}</option>)}</select></label>
+        <label>コンディション<ColoredSelect value={condition} onChange={e => { setCondition(e.target.value); updateSelection(); }}><option value="">選択してください</option>{CONDITIONS_BY_TARGET[target].map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
         {target !== 'amazon' && <label>メーカー<input value={manufacturer} onChange={e => { setManufacturer(e.target.value); updateSelection(); }} placeholder="商品リストから取得・必要に応じて修正" /></label>}
         {target === 'amazon' && <label>製造年（任意）<input type="number" min={1900} max={2100} step={1} value={year} onChange={e => { setYear(e.target.value); updateSelection(); }} placeholder="例：2020" /></label>}
       </div>
