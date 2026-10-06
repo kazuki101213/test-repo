@@ -105,7 +105,7 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
     setError('');
     if (!value) return;
     setDraft(templateBody(value as TaskKind, item));
-    if (value !== 'Panasonic◯ヤフオク' && value !== 'Panasonic×ヤフオク') return;
+    if (!(AUCTION_TEMPLATES as readonly string[]).includes(value)) return;
     setLoadingTemplatePhotos(true);
     try {
       const { data, error: photoError } = await getSupabase().from('item_comment_template_photos')
