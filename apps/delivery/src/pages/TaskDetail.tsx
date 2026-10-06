@@ -149,7 +149,7 @@ export default function TaskDetail({
     setDriveBusy(true); setError(null); setDriveMessage('');
     try {
       const result = await addPhotosToDrive(task.id);
-      setDriveMessage(`${result.total}枚をSKUフォルダに保存しました。管理アプリで写真確認を待っています。`);
+      setDriveMessage(`${result.total}枚を通番号${task.lot_seq}の共通フォルダに保存しました。管理アプリで写真確認を待っています。`);
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setDriveBusy(false); }
@@ -275,7 +275,7 @@ export default function TaskDetail({
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
-      {!isWorkingAmazonReturn && <div className="card photo-control-row">
+      <div className="card photo-control-row">
         <span className="muted">写真 {photos.length}枚</span>
         <label className="btn photo-upload">{uploading ? '追加中…' : '写真追加'}
           <input type="file" aria-label="商品写真追加" accept="image/*" multiple disabled={uploading || pending !== null || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
@@ -285,20 +285,20 @@ export default function TaskDetail({
         <button type="button" className="btn photo-save-all" aria-label="商品写真をすべて端末に保存" title="すべての写真を端末に保存" disabled={savingPhotoId !== null || photos.length === 0 || driveBusy || uploading} onClick={() => void saveAllPhotosToAlbum()}>
           {savingPhotoId === 'all' ? '…' : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>}
         </button>
-      </div>}
+      </div>
       {driveMessage && <p className="ok" role="status">{driveMessage}</p>}
       {photoSaveMessage && <p className="muted" role="status">{photoSaveMessage}</p>}
-      {!isWorkingAmazonReturn && <div className="product-photos">
+      <div className="product-photos">
         {photos.length > 0 && <div className="photos">{photos.map((photo, index) => <div className="uploaded-photo" key={photo.id}>
           <a href={photo.url} target="_blank" rel="noreferrer">
             <img src={photo.url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
           </a>
-                    <div className="uploaded-photo-actions"><button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
+                    <div className="uploaded-photo-actions"><button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={photo.canDelete === false || deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
               {deletingPhotoId === photo.id ? '削除中…' : '削除'}
             </button>
           </div>
         </div>)}</div>}
-      </div>}
+      </div>
       {!isWorkingAmazonReturn && photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
         写真確認：{photoReview.approved_at ? '完了' : '確認待ち'}
       </p>}

@@ -290,28 +290,17 @@ export async function uploadPhoto(sku: string, itemId: string, staffId: string, 
 export interface ItemPhoto {
   id: string;
   url: string;
+  canDelete?: boolean;
 }
 
 export async function fetchPhotoUrls(itemId: string): Promise<ItemPhoto[]> {
-  const sb = getSupabase();
-  const { data, error } = await sb
-    .from('item_photos')
-    .select('id,storage_path')
-    .eq('item_id', itemId)
-    .order('sort_order');
-  if (error) throw error;
-
-  const rows = (data ?? []) as { id: string; storage_path: string }[];
-  if (rows.length === 0) return [];
-
-  const { data: signed, error: signErr } = await sb.storage
-    .from(PHOTO_BUCKET)
-    .createSignedUrls(rows.map(row => row.storage_path), 3600);
-  if (signErr) throw signErr;
-  return rows.flatMap((row, index) => {
-    const url = signed?.[index]?.signedUrl;
-    return typeof url === 'string' && url.length > 0 ? [{ id: row.id, url }] : [];
-  });
+  const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, action: 'list' } });
+  if (error) {
+    const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
+    throw new Error(message || error.message);
+  }
+  if (!Array.isArray(data?.photos)) throw new Error('同じ通番号の写真を取得できませんでした。');
+  return data.photos as ItemPhoto[];
 }
 
 export async function deletePhoto(photoId: string): Promise<void> {

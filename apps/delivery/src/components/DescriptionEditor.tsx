@@ -5,6 +5,7 @@ import { fetchProductMaker, saveDeliveryDescription } from '../api';
 import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, type DescriptionTarget } from '../description';
 
 function initialTarget(task: DeliveryTask): DescriptionTarget {
+  if (task.marketplace === '動作品Amazon返品') return 'mercari';
   if (task.sales_channel === 'メルカリ' || task.description?.includes('商品名（メルカリ）')) return 'mercari';
   if (task.sales_channel === 'ヤフオク' || task.description?.includes('商品名（ヤフオク）')) return 'yahoo-auction';
   return 'amazon';
