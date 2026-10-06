@@ -79,6 +79,7 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
   const [kind, setKind] = useState<TaskKind | ''>('');
   const [photos, setPhotos] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loadingTemplatePhotos, setLoadingTemplatePhotos] = useState(false);
   const [error, setError] = useState('');
 
   async function refreshComments() {
@@ -98,9 +99,28 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
     return () => { active = false; };
   }, [item.id]);
 
-  function chooseTemplate(value: string) {
+  async function chooseTemplate(value: string) {
     setKind(value as TaskKind | '');
-    if (value) setDraft(templateBody(value as TaskKind, item));
+    setPhotos([]);
+    setError('');
+    if (!value) return;
+    setDraft(templateBody(value as TaskKind, item));
+    if (value !== 'Panasonic◯ヤフオク') return;
+    setLoadingTemplatePhotos(true);
+    try {
+      const { data, error: photoError } = await getSupabase().from('item_comment_template_photos')
+        .select('file_name,mime_type,photo_base64,sort_order')
+        .eq('task_kind', value).order('sort_order');
+      if (photoError) throw photoError;
+      if (!data?.length) throw new Error('Panasonic◯ヤフオクの定型写真が登録されていません。');
+      const files = (data as { file_name: string; mime_type: string; photo_base64: string; sort_order: number }[]).map(photo => {
+        const bytes = Uint8Array.from(atob(photo.photo_base64), char => char.charCodeAt(0));
+        return new File([bytes], photo.file_name, { type: photo.mime_type });
+      });
+      setPhotos(files);
+    } catch (cause) {
+      setError(messageOf(cause));
+    } finally { setLoadingTemplatePhotos(false); }
   }
 
   async function sendReply() {
@@ -158,12 +178,12 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
       {comment.photos?.length ? <div className="malfunction-comment-photos">{comment.photos.map((photo, index) =>
         <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={'返信写真 ' + (index + 1)} loading="lazy" /></a>)}</div> : null}
     </div>)}
-    <label className="field"><span>定型文</span><select aria-label="返信の定型文" value={kind} onChange={event => chooseTemplate(event.target.value)}>
+    <label className="field"><span>定型文</span><select aria-label="返信の定型文" value={kind} disabled={busy || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value)}>
       <option value="">定型文を選択（任意）</option>{TASK_TEMPLATES.map(value => <option key={value} value={value}>{value}</option>)}
     </select></label>
     <textarea aria-label="納品担当者への返信" value={draft} onChange={event => setDraft(event.target.value)}
       maxLength={2000} placeholder="納品担当者への返信を入力" />
-    <label className="btn photo-upload">写真追加（{photos.length}枚）
+    <label className="btn photo-upload">{loadingTemplatePhotos ? '定型写真を読み込み中…' : ('写真追加（' + photos.length + '枚）')}
       <input type="file" aria-label="返信写真を追加" accept="image/*" multiple disabled={busy} onChange={event => { choosePhotos(event.target.files); event.target.value = ''; }} />
     </label>
     {error && <p className="error" role="alert">メッセージ：{error}</p>}
