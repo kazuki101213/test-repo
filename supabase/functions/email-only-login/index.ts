@@ -1,6 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 const allowedOrigins = new Set([
+  'https://kazuki101213.github.io',
   'https://bussan-admin.vercel.app',
   'https://test-repo-delivery.vercel.app',
   'http://localhost:5173',
