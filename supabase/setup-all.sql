@@ -5979,3 +5979,10 @@ drop policy if exists item_comment_template_photos_admin_select on app.item_comm
 create policy item_comment_template_photos_admin_select
   on app.item_comment_template_photos for select to authenticated
   using (app.current_role() = 'admin');
+
+
+alter table app.item_comment_template_photos
+  drop constraint if exists item_comment_template_photos_task_kind_check;
+alter table app.item_comment_template_photos
+  add constraint item_comment_template_photos_task_kind_check
+  check (task_kind in ('Panasonic◯ヤフオク', 'Panasonic×ヤフオク'));
