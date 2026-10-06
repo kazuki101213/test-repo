@@ -228,3 +228,14 @@ textarea { min-height: 80px; resize: vertical; }
 .marketplace-message-composer { display: grid; gap: 8px; margin-top: 12px; }
 .marketplace-message-composer textarea { min-height: 76px; resize: vertical; }
 .spare-row-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+
+.photo-control-row { display:flex; align-items:stretch; flex-wrap:wrap; gap:8px; }
+.photo-control-row > .btn { min-height:38px; display:inline-flex; align-items:center; justify-content:center; }
+.photo-control-row .photo-upload { min-height:38px; display:inline-flex; align-items:center; }
+.photo-save-all { width:40px; min-width:40px; padding:6px; }
+.photo-save-all svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.uploaded-photo-actions { grid-template-columns:minmax(0,1fr); }
+.malfunction-comment-photos { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,128px)); gap:8px; margin-top:8px; }
+.malfunction-comment-photos a { display:block; }
+.malfunction-comment-photos img { display:block; width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; background:var(--surface-2); }
+.malfunction-conversation .field { display:grid; gap:6px; margin-top:8px; }

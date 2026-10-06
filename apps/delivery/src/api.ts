@@ -140,15 +140,26 @@ export async function updateDeliveryFields(itemId: string, fields: {
 }
 
 export async function fetchComments(itemId: string): Promise<ItemComment[]> {
-  const { data, error } = await getSupabase()
-    .from('item_comments')
-    .select('*')
-    .eq('item_id', itemId)
-    .order('created_at');
+  const sb = getSupabase();
+  const { data, error } = await sb.from('item_comments')
+    .select('id,item_id,author_id,body,created_at,task_kind,task_completed_at,item_comment_photos(id,storage_path,sort_order)')
+    .eq('item_id', itemId).order('created_at');
   if (error) throw error;
-  return (data ?? []) as ItemComment[];
+  const rows = (data ?? []) as Array<ItemComment & { item_comment_photos?: { id: string; storage_path: string; sort_order: number }[] }>;
+  const attachments = rows.flatMap(row => (row.item_comment_photos ?? []).map(photo => ({ ...photo, item_comment_id: row.id })));
+  const { data: signed, error: signError } = attachments.length
+    ? await sb.storage.from(PHOTO_BUCKET).createSignedUrls(attachments.map(photo => photo.storage_path), 3600)
+    : { data: [], error: null };
+  if (signError) throw signError;
+  return rows.map(row => ({
+    ...row,
+    photos: attachments.filter(photo => photo.item_comment_id === row.id).sort((a,b) => a.sort_order - b.sort_order)
+      .flatMap(photo => {
+        const url = signed?.[attachments.indexOf(photo)]?.signedUrl;
+        return url ? [{ id: photo.id, url }] : [];
+      }),
+  }));
 }
-
 export async function postComment(itemId: string, authorId: string, body: string) {
   const { error } = await getSupabase()
     .from('item_comments')

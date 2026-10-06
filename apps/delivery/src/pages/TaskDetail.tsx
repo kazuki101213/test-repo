@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
@@ -26,6 +26,7 @@ export default function TaskDetail({
   itemId, staff, listingSkus, onClose, onChanged,
 }: { itemId: string; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void }) {
   const [task, setTask] = useState<DeliveryTask | null>(null);
+  const autoOpenedMessages = useRef(false);
   const [comments, setComments] = useState<ItemComment[]>([]);
   const [photos, setPhotos] = useState<ItemPhoto[]>([]);
   const [photoReview, setPhotoReview] = useState<PhotoReviewState | null>(null);
@@ -85,6 +86,14 @@ export default function TaskDetail({
       setMarketplaceError('拡張機能の確認待ちです。ログイン済みChromeで拡張機能を起動し、もう一度「メッセージを表示」を押してください。');
     } catch (cause) { setMarketplaceError(cause instanceof Error ? cause.message : String(cause)); } finally { setMarketplaceLoading(false); }
   }
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!task || autoOpenedMessages.current || params.get('itemId') !== itemId || params.get('openMessages') !== '1'
+      || staff.role !== 'admin' || staff.name !== '長部一輝') return;
+    autoOpenedMessages.current = true;
+    const timer = window.setTimeout(() => { void displayMarketplaceMessages(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [task, itemId, staff.id, staff.name, staff.role]);
   async function toggle(step: WorkStep) {
     if (!task) return;
     setPending(step);
@@ -121,7 +130,7 @@ export default function TaskDetail({
         await uploadPhoto(task.sku, task.id, staff.id, file);
         uploadedCount++;
       }
-      setDriveMessage('新しい写真があります。Googleドライブに追加してください。');
+      setDriveMessage('新しい写真があります。Googleドライブ追加してください。');
       if (!task.photo_uploaded) await setWorkProgress(task.id, 'photo', true);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -145,43 +154,46 @@ export default function TaskDetail({
     finally { setDriveBusy(false); }
   }
 
-  async function savePhotoToAlbum(photo: ItemPhoto, index: number) {
-    if (!task || savingPhotoId) return;
-    setSavingPhotoId(photo.id);
+  async function saveAllPhotosToAlbum() {
+    if (!task || savingPhotoId || photos.length === 0) return;
+    setSavingPhotoId('all');
     setPhotoSaveMessage('');
     try {
-      const response = await fetch(photo.url);
-      if (!response.ok) throw new Error('写真をダウンロードできませんでした。通信状態を確認してください。');
-      const blob = await response.blob();
-      const safeSku = task.sku.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const file = new File([blob], `${safeSku}_photo_${index + 1}.jpg`, { type: blob.type || 'image/jpeg' });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      const files: File[] = [];
+      for (let index = 0; index < photos.length; index++) {
+        const photo = photos[index];
+        if (!photo) continue;
+        const response = await fetch(photo.url);
+        if (!response.ok) throw new Error('写真をダウンロードできませんでした。通信状態を確認してください。');
+        const blob = await response.blob();
+        const safeSku = task.sku.replace(/[^a-zA-Z0-9_-]/g, '_');
+        files.push(new File([blob], safeSku + '_photo_' + (index + 1) + '.jpg', { type: blob.type || 'image/jpeg' }));
+      }
+      if (navigator.share && navigator.canShare?.({ files })) {
         setPhotoSaveMessage('端末の共有メニューから「写真に保存」または「画像を保存」を選んでください。');
-        await navigator.share({ files: [file], title: file.name });
+        await navigator.share({ files, title: task.sku + ' 商品写真' });
       } else {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = file.name;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        setPhotoSaveMessage('画像をダウンロードしました。端末の写真アプリに保存してください。');
+        for (const file of files) {
+          const url = URL.createObjectURL(file);
+          const link = document.createElement('a');
+          link.href = url; link.download = file.name; document.body.appendChild(link); link.click(); link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          await new Promise(resolve => window.setTimeout(resolve, 250));
+        }
+        setPhotoSaveMessage(files.length + '枚をダウンロードしました。端末の写真アプリに保存してください。');
       }
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === 'AbortError') setPhotoSaveMessage('保存をキャンセルしました。');
       else setPhotoSaveMessage(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSavingPhotoId(null);
-    }
+    } finally { setSavingPhotoId(null); }
   }
+
   async function removePhoto(photo: ItemPhoto) {
     if (!window.confirm('この写真をアプリとGoogleドライブから削除します。よろしいですか？')) return;
     setDeletingPhotoId(photo.id); setError(null); setDriveMessage('');
     try {
       await deletePhoto(photo.id);
-      setDriveMessage('写真を削除しました。残りの写真は「Googleドライブに追加」から確認へ再提出してください。');
+      setDriveMessage('写真を削除しました。残りの写真は「Googleドライブ追加」から確認へ再提出してください。');
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setDeletingPhotoId(null); }
@@ -262,13 +274,16 @@ export default function TaskDetail({
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
-      {!isWorkingAmazonReturn && <div className="card row">
+      {!isWorkingAmazonReturn && <div className="card photo-control-row">
         <span className="muted">写真 {photos.length}枚</span>
-        <label className="btn photo-upload">{uploading ? '追加中…' : '写真を追加'}
-          <input type="file" aria-label="商品写真を追加" accept="image/*" multiple disabled={uploading || pending !== null || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+        <label className="btn photo-upload">{uploading ? '追加中…' : '写真追加'}
+          <input type="file" aria-label="商品写真追加" accept="image/*" multiple disabled={uploading || pending !== null || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>
         <button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
-          onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブに追加中…' : 'Googleドライブに追加'}</button>
+          onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブ追加中…' : 'Googleドライブ追加'}</button>
+        <button type="button" className="btn photo-save-all" aria-label="商品写真をすべて端末に保存" title="すべての写真を端末に保存" disabled={savingPhotoId !== null || photos.length === 0 || driveBusy || uploading} onClick={() => void saveAllPhotosToAlbum()}>
+          {savingPhotoId === 'all' ? '…' : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>}
+        </button>
       </div>}
       {driveMessage && <p className="ok" role="status">{driveMessage}</p>}
       {photoSaveMessage && <p className="muted" role="status">{photoSaveMessage}</p>}
@@ -277,11 +292,7 @@ export default function TaskDetail({
           <a href={photo.url} target="_blank" rel="noreferrer">
             <img src={photo.url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
           </a>
-                    <div className="uploaded-photo-actions">
-            <button type="button" className="btn photo-save" aria-label={`写真${index + 1}を端末に保存`} title="端末の写真アルバムに保存" disabled={savingPhotoId !== null || deletingPhotoId !== null || uploading || driveBusy} onClick={() => void savePhotoToAlbum(photo, index)}>
-              {savingPhotoId === photo.id ? <span className="photo-save-progress">…</span> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>}
-            </button>
-            <button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
+                    <div className="uploaded-photo-actions"><button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
               {deletingPhotoId === photo.id ? '削除中…' : '削除'}
             </button>
           </div>
@@ -350,7 +361,8 @@ export default function TaskDetail({
         {comments.map((c) => (
           <div key={c.id} className={`comment ${c.author_id === staff.id ? 'mine' : ''}`}>
             <div className="meta">{jpDate(c.created_at)} {new Date(c.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</div>
-            {c.body}
+            <p style={{whiteSpace: 'pre-wrap', margin: '4px 0'}}>{c.body}</p>
+            {c.photos?.length ? <div className="malfunction-comment-photos">{c.photos.map((photo, index) => <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={'返信写真 ' + (index + 1)} loading="lazy" /></a>)}</div> : null}
           </div>
         ))}
         <div className="row" style={{ marginTop: 10 }}>

@@ -76,7 +76,7 @@ export default function PhotoReviewTasks() {
         <p><a href={`https://drive.google.com/drive/folders/${encodeURIComponent(selected.drive_folder_id)}`} target="_blank" rel="noreferrer">GoogleドライブのSKUフォルダを開く</a></p>
         {loadingPhotos ? <p>写真を読み込み中…</p> : <div className="photo-review-gallery">{photos.map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={index}><img src={url} alt={`商品写真 ${index + 1}`} /></a>)}</div>}
         {!loadingPhotos && <p className="sub">アプリ保存 {photos.length}枚 ／ Google Drive送信済み {selected.exported_photo_count}枚</p>}
-        {!loadingPhotos && photos.length !== selected.exported_photo_count && <div className="error" role="status">写真枚数が一致しないため完了できません。納品アプリで「Googleドライブに追加」を再実行して、追加分も送信してください。</div>}
+        {!loadingPhotos && photos.length !== selected.exported_photo_count && <div className="error" role="status">写真枚数が一致しないため完了できません。納品アプリで「Googleドライブ追加」を再実行して、追加分も送信してください。</div>}
         <button className="btn primary" disabled={busy || loadingPhotos || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '確認中…' : '写真確認を完了'}</button>
       </div>
     </div>, document.body)}
