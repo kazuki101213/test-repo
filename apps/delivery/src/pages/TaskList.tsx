@@ -67,6 +67,12 @@ export default function TaskList({ staff }: { staff: Staff }) {
       try {
         const rows = await fetchMyTasks();
         if (active) { setTasks(rows); setError(null); }
+        try {
+          const itemIds = await fetchMalfunctionReplyItemIds(rows, staff.id);
+          if (active) { setReplyItemIds(itemIds); setReplyTaskError(null); }
+        } catch (replyError) {
+          if (active) setReplyTaskError(replyError instanceof Error ? replyError.message : String(replyError));
+        }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : String(e));
       } finally {
