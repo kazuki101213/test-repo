@@ -25,8 +25,23 @@ export async function fetchMyTasks(): Promise<DeliveryTask[]> {
       .order('lot_seq', { ascending: false }).order('id').range(offset, offset + 499);
     if (error) throw error;
     rows.push(...(data ?? []) as DeliveryTask[]);
-    if ((data?.length ?? 0) < 500) return rows;
+    if ((data?.length ?? 0) < 500) return resolveWorkingReturnModels(rows);
   }
+}
+
+async function resolveWorkingReturnModels(tasks: DeliveryTask[]): Promise<DeliveryTask[]> {
+  const asins = [...new Set(tasks.filter(task => task.marketplace === '動作品Amazon返品').flatMap(task => task.asin?.trim() ? [task.asin.trim()] : []))];
+  const models = new Map<string, string | null>();
+  for (let offset = 0; offset < asins.length; offset += 100) {
+    const { data, error } = await getSupabase().from('products').select('asin,model_no').in('asin', asins.slice(offset, offset + 100));
+    if (error) throw error;
+    for (const product of data ?? []) models.set(product.asin.trim(), product.model_no);
+  }
+  return tasks.map(task => task.marketplace === '動作品Amazon返品' ? {
+    ...task,
+    model_no: models.get(task.asin?.trim() ?? '') ?? null,
+    tracking_no: task.tracking_no || (/^X[A-Z0-9]{9}$/.test(task.title.trim()) ? task.title.trim() : null),
+  } : task);
 }
 
 export interface MalfunctionReplyNotice {
@@ -89,7 +104,7 @@ export async function fetchTask(id: string): Promise<DeliveryTask | null> {
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
-  return (data as DeliveryTask) ?? null;
+  return data ? (await resolveWorkingReturnModels([data as DeliveryTask]))[0] ?? null : null;
 }
 
 /** SKU 直打ち / スキャンから 1 件引く */

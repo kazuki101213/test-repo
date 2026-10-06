@@ -72,7 +72,10 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
 export default function TaskCard({ task, amazonImageUrl, members, originalMarketplaceIds, staff, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
-  const productIdFor = (item: DeliveryTask) => originalMarketplaceIds.get(item.id) || item.marketplace_item_id || '—';
+  const productIdFor = (item: DeliveryTask) => (item.marketplace === '動作品Amazon返品' ? item.marketplace_item_id : originalMarketplaceIds.get(item.id) || item.marketplace_item_id) || '—';
+  const modelFor = (item: DeliveryTask) => item.marketplace === '動作品Amazon返品' ? item.model_no || '—' : item.model_no || item.title;
+  const itemIdLabel = (item: DeliveryTask) => item.marketplace === '動作品Amazon返品' ? 'ENA' : '商品ID';
+  const trackingLabel = (item: DeliveryTask) => item.marketplace === '動作品Amazon返品' ? 'FNSKU' : '追跡番号';
   const listingSkus = Array.from(new Set([
     (members.find(member => !member.is_accessory) ?? task).sku,
     ...members.filter(member => member.is_accessory).map(member => member.sku),
@@ -88,10 +91,10 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
           <span className="muted">販売先 <ColoredLabel value={task.sales_channel || '—'} /></span>
           <CopyableText label="販売金額" value={task.planned_price == null ? '' : String(task.planned_price)} displayValue={yen(task.planned_price)} />
           <CopyableText label="SKU" value={task.sku} />
-          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label={task.marketplace === '動作品Amazon返品' ? 'FNSKU' : '型番'} value={task.model_no || task.title} /></span>
+          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label="型番" value={modelFor(task)} /></span>
           <CopyableText label="ASIN" value={task.asin || '—'} />
-          <span className="task-item-id-line"><CopyableText label={task.marketplace === '動作品Amazon返品' ? 'EAN' : '商品ID'} value={productIdFor(task)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
-          <CopyableText label="追跡番号" value={task.tracking_no || '—'} />
+          <span className="task-item-id-line"><CopyableText label={itemIdLabel(task)} value={productIdFor(task)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
+          <CopyableText label={trackingLabel(task)} value={task.tracking_no || '—'} />
         </div>
         <div className="task-photo-action">
           <button type="button" className="task-card-photo-button" aria-label={expandedId ? '作業詳細を閉じる' : '写真をクリックして作業詳細を開く'} aria-expanded={!!expandedId} onClick={() => expandedId ? onClose() : onOpen()}>
@@ -110,14 +113,15 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
             <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
               品名 {member.title}
             </button>
-            <span className="task-item-id-line"><CopyableText label="商品ID" value={productIdFor(member)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
-            <CopyableText label="追跡番号" value={member.tracking_no || '—'} />
+            <span className="task-item-id-line"><CopyableText label={itemIdLabel(member)} value={productIdFor(member)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
+            <CopyableText label={trackingLabel(member)} value={member.tracking_no || '—'} />
             <span>利用記録 {member.lot_seq}</span>
           </> : <>
             <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
-              同じ商品：{member.title}
+              同じ商品：{modelFor(member)}
             </button>
-            <CopyableText label="追跡番号" value={member.tracking_no || '—'} />
+            {member.marketplace === '動作品Amazon返品' && <CopyableText label="ENA" value={productIdFor(member)} />}
+            <CopyableText label={trackingLabel(member)} value={member.tracking_no || '—'} />
             <span className="muted task-member-date">仕入日 {jpDate(member.purchased_at)}</span>
           </>}
         </div>)}

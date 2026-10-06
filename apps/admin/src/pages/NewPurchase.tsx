@@ -99,15 +99,16 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     fetchSpareAccessories().then(setSpares).catch(() => undefined);
   }, []);
   useEffect(() => {
-    if (productId) return;
-    const term = productSearch.trim();
+    if (productId && !isWorkingAmazonReturn) return;
+    const term = isWorkingAmazonReturn ? asin.trim().toUpperCase() : productSearch.trim();
     if (!term) { setProducts([]); return; }
     let active = true;
     const timer = setTimeout(() => { fetchProducts(term).then(rows => { if (active) setProducts(rows); }).catch(() => undefined); }, 220);
     return () => { active = false; clearTimeout(timer); };
-  }, [productSearch, productId]);
+  }, [productSearch, productId, isWorkingAmazonReturn, asin]);
 
   const product = products.find((p) => p.id === productId);
+  const returnProduct = isWorkingAmazonReturn ? products.find(p => p.asin.trim() === asin.trim().toUpperCase()) : undefined;
 
   // 商品マスタを選んだら、想定販売価格と振込額を引き継ぐ
   useEffect(() => {
@@ -156,7 +157,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setDelivererId(current => source.deliverer_id ?? current);
       setWorkStream(source.work_stream ?? '');
       setPurchasedAt(source.purchased_at ?? today());
-      setTitle(source.title);
+      setTitle(isWorkingAmazonReturn ? source.model_no || '' : source.title);
       setCost(source.cost_amount);
       setProductId(isWorkingAmazonReturn ? '' : source.product_id ?? '');
       setProductSearch(isWorkingAmazonReturn ? '' : source.model_no || source.title);
@@ -207,7 +208,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     try {
       if (!purchaser || purchaser.role === 'deliverer' || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
       if ((isAmazonReturn || isWorkingAmazonReturn) && !returnSku) throw new Error('返品商品は、元商品の通番号を入力して情報を読み込んでください。');
-      if (isWorkingAmazonReturn && (!asin.trim() || !title.trim() || !marketplaceItemId.trim())) throw new Error('動作品Amazon返品は、ASIN・FNSKU（型番欄）・EAN（商品ID欄）を入力してください。');
+      if (isWorkingAmazonReturn && (!asin.trim() || !trackingNo.trim() || !marketplaceItemId.trim())) throw new Error('動作品Amazon返品は、ASIN・FNSKU（追跡番号欄）・ENA（商品ID欄）を入力してください。');
       if (marketplaceUrl.trim()) {
         let url: URL;
         try { url = new URL(marketplaceUrl.trim()); }
@@ -233,7 +234,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         deliverer_id: delivererId || null,
         work_stream: workStream || null,
         purchased_at: purchasedAt,
-        title: title.trim(),
+        title: isWorkingAmazonReturn ? returnProduct?.model_no || '型番未登録' : title.trim(),
         cost_amount: Number(cost),
         marketplace,
         marketplace_item_id: generatedReference?.itemId ?? (marketplaceItemId.trim() || null),
@@ -241,7 +242,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         tracking_no: trackingNo.trim() || null,
         card_id: cardId || null,
         product_id: isWorkingAmazonReturn ? null : productId || null,
-        asin: asin.trim() || null,
+        asin: asin.trim().toUpperCase() || null,
         condition: condition || null,
         planned_price: plannedPrice === '' ? null : Number(plannedPrice),
         planned_payout: plannedPayout === '' ? null : Number(plannedPayout),
@@ -298,17 +299,17 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                   {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </label>
-              <label className="field"><span>商品ID</span>
+              <label className="field"><span>{isWorkingAmazonReturn ? 'ENA' : '商品ID'}</span>
                 <input type="text" value={marketplaceItemId} onChange={(e) => changeItemId(e.target.value)} />
               </label>
-              <label className="field"><span>追跡番号</span>
+              <label className="field"><span>{isWorkingAmazonReturn ? 'FNSKU' : '追跡番号'}</span>
                 <input type="text" value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} />
               </label>
               <label className="field"><span>仕入先URL</span>
                 <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} />
               </label>
             </div>
-            {marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
+            {!isWorkingAmazonReturn && marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           <div>
             {!isWorkingAmazonReturn && <label className="field"><span>商品リスト検索</span>
                 <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
@@ -320,7 +321,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
             </div>}
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 8 }}>
               <label className="field"><span>型番</span>
-                <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+                <input type="text" value={isWorkingAmazonReturn ? returnProduct?.model_no || '' : title} readOnly={isWorkingAmazonReturn} placeholder={isWorkingAmazonReturn ? 'ASINから型番を参照' : undefined} onChange={(e) => setTitle(e.target.value)} required={!isWorkingAmazonReturn} />
               </label>
               <label className="field"><span>ASIN</span>
                 <input type="text" value={asin} onChange={(e) => setAsin(e.target.value)} />
