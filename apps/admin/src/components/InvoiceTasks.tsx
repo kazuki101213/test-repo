@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSupabase, yen, loadInvoiceReceipts, releaseReceiptImages } from '@bussan/shared';
-import type { InvoiceReceipt } from '@bussan/shared';
+import type { InvoiceReceipt, Staff } from '@bussan/shared';
+import MalfunctionTasks from './MalfunctionTasks';
 import PackedSummary from './PackedSummary';
 import PhotoReviewTasks from './PhotoReviewTasks';
 
@@ -75,7 +76,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
  </dialog>;
 }
 
-export default function InvoiceTasks({onApproved}:{onApproved:()=>void}){
+export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;staff:Staff}){
  const [rows,setRows]=useState<Task[]>([]);const [filter,setFilter]=useState<'pending'|'approved'>('pending');const [selected,setSelected]=useState<Task|null>(null);
  const [error,setError]=useState('');const [message,setMessage]=useState('');const [loading,setLoading]=useState(true);const [revision,setRevision]=useState(0);
  useEffect(()=>{
@@ -88,7 +89,7 @@ export default function InvoiceTasks({onApproved}:{onApproved:()=>void}){
  const filtered=rows.filter(row=>filter==='pending'?!approval(row.invoice):!!approval(row.invoice));
  return <section className="card invoice-tasks" aria-label="タスク"><div className="toolbar"><h3>タスク</h3><span>書類承認待ち {pending}件</span><select aria-label="書類の状態" value={filter} onChange={e=>setFilter(e.target.value as 'pending'|'approved')}><option value="pending">承認待ち</option><option value="approved">承認済み</option></select></div>
  {error&&<div className="error" role="alert">{error}<button className="btn" onClick={()=>setRevision(n=>n+1)}>再読み込み</button></div>}{message&&<p className="ok" role="status">{message}</p>}
- {loading?<p>読み込み中…</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id}><button onClick={()=>setSelected(row)}><span>{row.name}<small>{row.month.slice(0,7)} {row.invoice?'請求書':''}{row.invoice&&row.receipts?'・':''}{row.receipts?'領収書':''}</small></span><strong>{row.invoice?yen(row.invoice.total):'領収書のみ'}</strong><span>確認 ›</span></button></li>)}<PhotoReviewTasks /></ul>}
+ {loading?<p>読み込み中…</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id}><button onClick={()=>setSelected(row)}><span>{row.name}<small>{row.month.slice(0,7)} {row.invoice?'請求書':''}{row.invoice&&row.receipts?'・':''}{row.receipts?'領収書':''}</small></span><strong>{row.invoice?yen(row.invoice.total):'領収書のみ'}</strong><span>確認 ›</span></button></li>)}<PhotoReviewTasks /><MalfunctionTasks staff={staff} /></ul>}
  {selected&&<InvoiceReview key={selected.id} task={selected} onClose={()=>setSelected(null)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費一覧の外注費に追加しました。');onApproved();}}/>}
  </section>;
 }
