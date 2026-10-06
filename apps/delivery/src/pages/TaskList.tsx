@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DeliveryTask, Staff } from '@bussan/shared';
-import { fetchAmazonFeed, fetchDeliveryStaff, fetchMyTasks } from '../api';
+import { fetchAmazonFeed, fetchDeliveryStaff, fetchMalfunctionReplyItemIds, fetchMyTasks } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 
@@ -37,6 +37,8 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
+  const [replyItemIds, setReplyItemIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -65,6 +67,12 @@ export default function TaskList({ staff }: { staff: Staff }) {
       try {
         const rows = await fetchMyTasks();
         if (active) { setTasks(rows); setError(null); }
+        try {
+          const itemIds = await fetchMalfunctionReplyItemIds(rows, staff.id);
+          if (active) { setReplyItemIds(itemIds); setReplyTaskError(null); }
+        } catch (replyError) {
+          if (active) setReplyTaskError(replyError instanceof Error ? replyError.message : String(replyError));
+        }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -123,6 +131,13 @@ export default function TaskList({ staff }: { staff: Staff }) {
     return { rows, originalIds };
   }, [tasks, filter, query, staff.role, delivererId]);
   const shownRows = shown.rows;
+  const replyTasks = tasks.filter(task => replyItemIds.has(task.id));
+  function openReplyTask(task: DeliveryTask) {
+    setFilter('all');
+    setQuery(task.sku);
+    setExpandedId(task.id);
+    window.setTimeout(() => document.getElementById(`delivery-task-${task.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
+  }
 
   return (
     <>
@@ -132,6 +147,18 @@ export default function TaskList({ staff }: { staff: Staff }) {
         value={query} onChange={(e) => setQuery(e.target.value)}
         style={{ marginTop: 12 }}
       />
+
+      <section className="card delivery-reply-tasks" aria-label="タスク">
+        <h3>タスク</h3>
+        {replyTaskError && <p className="error" role="alert">返信タスクを読み込めませんでした：{replyTaskError}</p>}
+        {replyTasks.length === 0 ? <p className="muted">動作不良への新しい返信はありません。</p> : <ul className="invoice-task-rows">
+          {replyTasks.map(task => <li key={task.id}>
+            <button type="button" className="btn" onClick={() => openReplyTask(task)}>
+              <strong>{task.sku}</strong><span>メッセージあり</span>
+            </button>
+          </li>)}
+        </ul>}
+      </section>
 
       <div className="filters task-filters">
         {FILTERS.map((f) => (
