@@ -1,3 +1,4 @@
+import { deliveryAppUrl } from '../appUrls';
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
@@ -272,7 +273,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {error && <li className="error" role="alert">動作不良タスク：{error}</li>}
     {!error && rows.length === 0 && actionTasks.length === 0 && <li className="muted">動作不良の報告はありません。</li>}
     {actionTasks.map(task => <li key={'action-' + task.id} className="malfunction-task-row">
-      <div className="task-action-details"><strong>【{task.items?.lot_seq ?? '—'}】</strong> <a className="btn ghost" href={'https://bussan-delivery.vercel.app/?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.items?.marketplace_item_id ?? '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? <><ColoredLabel value="ヤフオク" />販売</> : task.task_kind}<small>{task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
+      <div className="task-action-details"><strong>【{task.items?.lot_seq ?? '—'}】</strong> <a className="btn ghost" href={deliveryAppUrl + '?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.items?.marketplace_item_id ?? '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? <><ColoredLabel value="ヤフオク" />販売</> : task.task_kind}<small>{task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
       <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeTask(task.id)}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
     {rows.map(row => <li key={'malfunction-' + row.id} className="malfunction-task-row">

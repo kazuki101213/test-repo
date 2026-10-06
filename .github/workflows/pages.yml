@@ -1,0 +1,61 @@
+name: Publish apps to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/configure-pages@v5
+        id: pages
+      - run: pnpm install --frozen-lockfile
+      - name: Verify and build both apps
+        env:
+          VITE_ADMIN_APP_URL: ${{ steps.pages.outputs.base_url }}/admin/
+          VITE_DELIVERY_APP_URL: ${{ steps.pages.outputs.base_url }}/delivery/
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_ANON_KEY"
+          pnpm -r typecheck
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          pnpm --dir apps/admin exec vite build --base "/$repo_name/admin/"
+          pnpm --dir apps/delivery exec vite build --base "/$repo_name/delivery/"
+          mkdir -p _site/admin _site/delivery
+          cp -R apps/admin/dist/. _site/admin/
+          cp -R apps/delivery/dist/. _site/delivery/
+          touch _site/.nojekyll
+          printf '<!doctype html><html lang="ja"><meta charset="utf-8"><title>管理・納品アプリ</title><a href="./admin/">管理アプリ</a><br><a href="./delivery/">納品アプリ</a></html>' > _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4
+        id: deploy
