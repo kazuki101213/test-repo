@@ -2,7 +2,6 @@ import { deliveryAppUrl } from '../appUrls';
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
-import ColoredLabel from './ColoredLabel';
 
 const PHOTO_AUCTION_TEMPLATES = [
   'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
@@ -25,7 +24,7 @@ interface TaskComment {
 }
 interface ActionTask {
   id: string; item_id: string; task_kind: TaskKind; task_completed_at: string | null; created_at: string;
-  items: { lot_seq: number; marketplace_item_id: string | null; sku: string } | null;
+  lot_seq: number; marketplace_item_id: string | null; sku: string;
 }
 const PHOTO_BUCKET = 'item-photos';
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
@@ -75,7 +74,7 @@ async function fetchCommentRows(itemId: string): Promise<TaskComment[]> {
   return rows;
 }
 
-function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff: Staff }) {
+function MalfunctionConversation({ item, staff, onReplied }: { item: MalfunctionTask; staff: Staff; onReplied: () => Promise<void> }) {
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [authors, setAuthors] = useState<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
@@ -134,11 +133,8 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
     const sb = getSupabase();
     const commentId = crypto.randomUUID();
     const paths: string[] = [];
+    let saved = false;
     try {
-      if (kind.includes('ヤフオク')) {
-        const { error: auctionError } = await sb.rpc('prepare_yahoo_auction_item', { p_item_id: item.id });
-        if (auctionError) throw auctionError;
-      }
       for (let index = 0; index < photos.length; index++) {
         const file = await prepareImage(photos[index]!);
         const path = item.sku + '/reply/' + commentId + '/' + String(index + 1).padStart(2, '0') + '.jpg';
@@ -146,21 +142,20 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
         if (uploadError) throw uploadError;
         paths.push(path);
       }
-      const { error: insertError } = await sb.from('item_comments').insert({
-        id: commentId, item_id: item.id, author_id: staff.id, body: body || '写真を送信しました。', task_kind: kind || null,
+      const { error: insertError } = await sb.rpc('send_malfunction_reply', {
+        p_comment_id: commentId, p_item_id: item.id, p_body: body || '写真を送信しました。', p_task_kind: kind || null,
+        p_photo_paths: paths,
       });
       if (insertError) throw insertError;
-      if (paths.length) {
-        const { error: photoError } = await sb.from('item_comment_photos').insert(paths.map((storage_path, sort_order) => ({
-          item_comment_id: commentId, item_id: item.id, storage_path, sort_order,
-        })));
-        if (photoError) throw photoError;
-      }
+      saved = true;
       setDraft(''); setKind(''); setPhotos([]);
-      await refreshComments();
+      await onReplied();
     } catch (cause) {
-      if (paths.length) await sb.storage.from(PHOTO_BUCKET).remove(paths);
-      await sb.from('item_comments').delete().eq('id', commentId);
+      // An uncertain response may have committed. Never remove a successfully saved reply's photos.
+      if (!saved) {
+        const { data: existing, error: lookupError } = await sb.from('item_comments').select('id').eq('id', commentId).maybeSingle();
+        if (!lookupError && !existing && paths.length) await sb.storage.from(PHOTO_BUCKET).remove(paths);
+      }
       setError(messageOf(cause));
     } finally { setBusy(false); }
   }
@@ -232,9 +227,8 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       setNames(new Map((people ?? []).map(person => [person.id as string, person.name as string])));
     } else setNames(new Map());
     if (staff.role === 'admin') {
-      const { data: actions, error: actionError } = await sb.from('item_comments')
-        .select('id,item_id,task_kind,task_completed_at,created_at,items!inner(lot_seq,marketplace_item_id,sku)')
-        .not('task_kind', 'is', null).is('task_completed_at', null).order('created_at', { ascending: false });
+      const { data: actions, error: actionError } = await sb.from('v_item_action_tasks')
+        .select('*').is('task_completed_at', null).order('created_at', { ascending: false });
       if (actionError) throw actionError;
       setActionTasks((actions ?? []) as unknown as ActionTask[]);
     } else setActionTasks([]);
@@ -273,24 +267,25 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {error && <li className="error" role="alert">動作不良タスク：{error}</li>}
     {!error && rows.length === 0 && actionTasks.length === 0 && <li className="muted">動作不良の報告はありません。</li>}
     {actionTasks.map(task => <li key={'action-' + task.id} className="malfunction-task-row">
-      <div className="task-action-details"><strong>【{task.items?.lot_seq ?? '—'}】</strong> <a className="btn ghost" href={deliveryAppUrl + '?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.items?.marketplace_item_id ?? '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? <><ColoredLabel value="ヤフオク" />販売</> : task.task_kind}<small>{task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
+      <div className="task-action-details"><strong>【{task.lot_seq}】</strong> <a className="btn ghost" href={deliveryAppUrl + '?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? 'ヤフオク販売' : task.task_kind}<small>{task.sku} {task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
       <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeTask(task.id)}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
     {rows.map(row => <li key={'malfunction-' + row.id} className="malfunction-task-row">
       <div className="malfunction-task-content">
         <strong className="malfunction-task-heading">動作不良</strong>
         <div className="malfunction-task-metadata">
+          <div><span>通番号</span><span>{row.lot_seq}</span></div>
           <div><span>SKU</span><span>{row.sku}</span></div>
           <div><span>型番</span><span>{row.products?.[0]?.model_no || row.title || '—'}</span></div>
           <div><span>メーカー</span><span>{makersByAsin.get(row.asin?.trim() ?? '') || '—'}</span></div>
           <div><span>納品担当者</span><span>{names.get(row.deliverer_id ?? '') ?? '未設定'}</span></div>
+          <div><span>報告者</span><span>{names.get(row.malfunction_reported_by ?? '') ?? '不明'}</span></div>
           <div><span>送信時間</span><span>{new Date(row.malfunction_reported_at).toLocaleString('ja-JP')}</span></div>
         </div>
-        <p className="malfunction-report-message">DVD、ブルーレイともに読み込み不可。他動作は問題なし。</p>
-        {row.malfunction_comment && row.malfunction_comment !== 'DVD、ブルーレイともに読み込み不可。他動作は問題なし。' && <p className="malfunction-original-comment">報告内容：{row.malfunction_comment}</p>}
-        <MalfunctionConversation item={row} staff={staff} />
+        <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
+        <MalfunctionConversation item={row} staff={staff} onReplied={refresh} />
       </div>
-      {staff.role === 'purchaser' && <button className="btn" disabled={busy !== null} onClick={() => void resolve(row.id)}>{busy === row.id ? '更新中…' : '対応完了'}</button>}
+      {(staff.role === 'admin' || staff.role === 'purchaser') && <button className="btn" disabled={busy !== null} onClick={() => void resolve(row.id)}>{busy === row.id ? '更新中…' : '対応完了'}</button>}
     </li>)}
   </>;
 }
