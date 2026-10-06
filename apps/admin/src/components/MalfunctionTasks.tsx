@@ -105,14 +105,14 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
     setError('');
     if (!value) return;
     setDraft(templateBody(value as TaskKind, item));
-    if (value !== 'Panasonic◯ヤフオク') return;
+    if (value !== 'Panasonic◯ヤフオク' && value !== 'Panasonic×ヤフオク') return;
     setLoadingTemplatePhotos(true);
     try {
       const { data, error: photoError } = await getSupabase().from('item_comment_template_photos')
         .select('file_name,mime_type,photo_base64,sort_order')
         .eq('task_kind', value).order('sort_order');
       if (photoError) throw photoError;
-      if (!data?.length) throw new Error('Panasonic◯ヤフオクの定型写真が登録されていません。');
+      if (!data?.length) throw new Error(value + 'の定型写真が登録されていません。');
       const files = (data as { file_name: string; mime_type: string; photo_base64: string; sort_order: number }[]).map(photo => {
         const bytes = Uint8Array.from(atob(photo.photo_base64), char => char.charCodeAt(0));
         return new File([bytes], photo.file_name, { type: photo.mime_type });
