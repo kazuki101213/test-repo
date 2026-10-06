@@ -54,7 +54,7 @@ export default function Dashboard({ staff }: { staff: Staff }) {
       {error && <div className="error">{error}</div>}
 
       <div className="grid kpi">
-        {isAdmin && <InvoiceTasks onApproved={() => setExpenseRevision(n => n + 1)} />}
+        {isAdmin && <InvoiceTasks staff={staff} onApproved={() => setExpenseRevision(n => n + 1)} />}
         <div className="card sales-summary-card">
           <div className="kpi-label">今月の販売</div>
           <div className="sales-kpi-line"><span>今月の売上</span><strong>{yen(current?.売上)} / {current?.販売数 ?? 0} 点</strong></div>
@@ -79,11 +79,11 @@ export default function Dashboard({ staff }: { staff: Staff }) {
         </div>
       </div>
 
-      <section className="card" style={{ marginTop: 16 }} aria-label="動作不良の報告">
+      {staff.role === 'purchaser' && <section className="card" style={{ marginTop: 16 }} aria-label="動作不良の報告">
         <h3>動作不良の報告</h3>
         <p className="muted">納品担当者から届いた報告です。返信は納品アプリの商品詳細のコメント欄に表示されます。</p>
         <ul className="invoice-task-rows"><MalfunctionTasks staff={staff} /></ul>
-      </section>
+      </section>}
 
       <div className="dashboard-charts">
         <DailySalesChart />
