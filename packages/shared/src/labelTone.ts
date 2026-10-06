@@ -5,5 +5,5 @@ const LABEL_TONES: Record<string, string> = {
 };
 
 export function labelTone(value: string): string | undefined {
-  return LABEL_TONES[value];
+  return LABEL_TONES[value.trim()];
 }

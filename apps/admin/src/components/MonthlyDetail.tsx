@@ -1,3 +1,4 @@
+import ColoredLabel from './ColoredLabel';
 import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
 import { fetchMonthlyDetail, type MonthlyDetailItem } from '../api';
@@ -43,7 +44,7 @@ export default function MonthlyDetail({ month, metric, onClose }: { month: strin
         <thead><tr><th>通番号</th><th>{kind === 'purchase' ? '仕入日' : '販売日'}</th><th>商品・仕入先</th><th className="num">仕入金額</th>{kind !== 'purchase' && <><th className="num">販売価格</th><th className="num">振込金額</th><th className="num">返金額</th><th className="num">送料・その他</th><th className="num">粗利益</th></>}</tr></thead>
         <tbody>{data.items.map((row, i) => <tr key={row.id}>
           <td>{productSerial(data.items[i - 1]?.sku,data.items[i - 1]?.lot_seq) !== productSerial(row.sku,row.lot_seq) ? productSerial(row.sku,row.lot_seq) : ''}</td><td>{kind === 'purchase' ? row.purchased_at : row.sold_on}</td>
-          <td className="detail-description">{row.title}<div className="expense-hint">{row.marketplace}</div></td><td className="num">{yen(row.cost_amount)}</td>
+          <td className="detail-description">{row.title}<div className="expense-hint"><ColoredLabel value={row.marketplace || '—'} /></div></td><td className="num">{yen(row.cost_amount)}</td>
           {kind !== 'purchase' && <><td className="num">{yen(row.sold_price)}</td><td className="num">{yen(row.payout_amount)}</td><td className="num">{yen(row.refund_amount)}</td><td className="num">{yen(row.shipping_cost + row.other_cost)}</td><td className="num">{yen(row.profit)}</td></>}
         </tr>)}</tbody>
       </table></div>)}

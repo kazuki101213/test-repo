@@ -1,3 +1,4 @@
+import ColoredLabel from './ColoredLabel';
 import { useEffect, useRef, useState } from 'react';
 import { fetchWorkloadDetail, type WorkloadItem, type WorkloadMetric } from '../api';
 import { productSerial } from '../inventory';
@@ -33,7 +34,7 @@ export default function WorkloadDetail({ delivererId, name, metric, onClose }: {
         <thead><tr><th>通番号</th><th>商品・仕入先</th><th>状況</th><th>仕入日</th><th>入荷日</th><th>出荷日</th><th className="num">作業日数</th></tr></thead>
         <tbody>{rows.map((row, index) => <tr key={row.id}>
           <td>{productSerial(rows[index - 1]?.sku,rows[index - 1]?.lot_seq) !== productSerial(row.sku,row.lot_seq) ? productSerial(row.sku,row.lot_seq) : ''}</td>
-          <td className="detail-description">{row.title}<div className="expense-hint">{row.marketplace} · {row.sku}</div></td>
+          <td className="detail-description">{row.title}<div className="expense-hint"><ColoredLabel value={row.marketplace || '—'} /> · {row.sku}</div></td>
           <td>{row.status}</td><td>{row.purchased_at || '—'}</td><td>{row.arrived_on || '—'}</td><td>{row.shipped_on || '—'}</td><td className="num">{workDays(row) ?? '—'}</td>
         </tr>)}</tbody>
       </table></div>}

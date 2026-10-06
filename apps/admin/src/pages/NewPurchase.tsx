@@ -1,3 +1,4 @@
+import ColoredSelect from '../components/ColoredSelect';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen,
@@ -289,9 +290,9 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 <input type="number" min={0} value={cost} onChange={(e) => setCost(e.target.value === '' ? '' : Number(e.target.value))} required />
               </label>
               <label className="field"><span>仕入先</span>
-                <select value={marketplace} onChange={(e) => { setMarketplace(e.target.value as Marketplace); setUrlOverride(null); }}>
+                <ColoredSelect value={marketplace} onChange={(e) => { setMarketplace(e.target.value as Marketplace); setUrlOverride(null); }}>
                   {MARKETPLACES.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
+                </ColoredSelect>
               </label>
               <label className="field"><span>支払い方法</span>
                 <select value={cardId} onChange={(e) => setCardId(e.target.value)}>
@@ -327,15 +328,15 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 <input type="text" value={asin} onChange={(e) => setAsin(e.target.value)} />
               </label>
               <label className="field"><span>コンディション</span>
-                <select value={condition} onChange={(e) => setCondition(e.target.value as ItemCondition)}>
+                <ColoredSelect value={condition} onChange={(e) => setCondition(e.target.value as ItemCondition)}>
                   <option value="">—</option>
                   {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                </ColoredSelect>
               </label>
               <label className="field"><span>販売先</span>
-                <select value={salesChannel} onChange={(e) => setSalesChannel(e.target.value as SalesChannel)}>
+                <ColoredSelect value={salesChannel} onChange={(e) => setSalesChannel(e.target.value as SalesChannel)}>
                   {SALES_CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                </ColoredSelect>
               </label>
               <label className="field"><span>販売予定価格</span>
                 <input type="number" min={0} value={plannedPrice} onChange={(e) => setPlannedPrice(e.target.value === '' ? '' : Number(e.target.value))} />

@@ -1,3 +1,4 @@
+import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen } from '@bussan/shared';
 import type { PurchaseDraft, Staff } from '@bussan/shared';
@@ -198,7 +199,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </div>
         {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
         {purchaseDrafts.length > 0 ? <div className="scroll"><table><thead><tr><th>購入日</th><th>商品情報</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>販売予定金額</th><th>振込予定金額</th><th>アカウント</th><th>操作</th></tr></thead><tbody>
-          {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a href={draft.marketplace_url} target="_blank" rel="noreferrer">{draft.title}</a><div className="sub">型番 {draft.model_no || '未特定'} / 品番 {draft.product_no ?? '未特定'} / ASIN {draft.asin || '未特定'}</div></td><td>{draft.marketplace}</td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.planned_price == null ? '未特定' : yen(draft.planned_price)}</td><td>{draft.planned_payout == null ? '未特定' : yen(draft.planned_payout)}</td><td>{draft.account_label}</td><td className="toolbar">
+          {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a href={draft.marketplace_url} target="_blank" rel="noreferrer">{draft.title}</a><div className="sub">型番 {draft.model_no || '未特定'} / 品番 {draft.product_no ?? '未特定'} / ASIN {draft.asin || '未特定'}</div></td><td><ColoredLabel value={draft.marketplace} /></td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.planned_price == null ? '未特定' : yen(draft.planned_price)}</td><td>{draft.planned_payout == null ? '未特定' : yen(draft.planned_payout)}</td><td>{draft.account_label}</td><td className="toolbar">
             <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); }}>在庫一覧へ反映</button>
             <button type="button" className="btn" onClick={async () => { if (!window.confirm('この購入履歴を仕入れリストから除外しますか？')) return; try { await dismissPurchaseDraft(draft.id); loadPurchaseDrafts(); } catch (error) { setDraftError(error instanceof Error ? error.message : String(error)); } }}>除外</button>
           </td></tr>)}
@@ -373,7 +374,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
         return <label className="field" key={field}><span>{fieldLabels[field]}</span>
-          {options ? <select value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+          {options ? <ColoredSelect value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
             : <input type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) ? 0 : undefined} step={numberFields.has(field) ? 1 : undefined} value={String(current)} onChange={event => set(field, event.target.value)} />}
         </label>;
@@ -419,7 +420,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
     <div className="card inventory-comment-panel">
       <h3>{fieldLabels[field]}を編集</h3><p className="sku">{item.lot_seq} / {item.sku}</p>
       <label className="field"><span>{fieldLabels[field]}</span>
-        {options ? <select value={value} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+        {options ? <ColoredSelect value={value} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
           : field === 'memo' ? <textarea value={value} onChange={e => setValue(e.target.value)} />
             : <input autoFocus type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={field === 'lot_seq' || field === 'product_no' ? '1' : numberFields.has(field) ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
       </label>

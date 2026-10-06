@@ -1,3 +1,4 @@
+import ColoredLabel from '../components/ColoredLabel';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WORK_STEPS, jpDate } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
@@ -377,7 +378,7 @@ export default function TaskDetail({
       </div>
 
       <div className="card marketplace-conversation" aria-label="フリマサイト取引メッセージ">
-        <div className="marketplace-conversation-heading"><strong>取引メッセージ</strong><span className="muted">{task.marketplace} · {task.marketplace_item_id || '取引IDなし'}</span></div>
+        <div className="marketplace-conversation-heading"><strong>取引メッセージ</strong><span className="muted"><ColoredLabel value={task.marketplace} /> · {task.marketplace_item_id || '取引IDなし'}</span></div>
         {!task.marketplace_item_id ? <p className="muted">商品IDが登録されていないため、取引メッセージを連携できません。</p> : <>
           <button type="button" className="btn" disabled={marketplaceLoading} onClick={() => void displayMarketplaceMessages()}>{marketplaceLoading ? '確認中…' : marketplaceVisible ? 'メッセージを閉じる' : 'メッセージを表示'}</button>
           {marketplaceError && <p className="error" role="alert">{marketplaceError}</p>}
