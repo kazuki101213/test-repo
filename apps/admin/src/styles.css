@@ -331,3 +331,12 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 }
 
 .malfunction-conversation .task-reply-send { display:block; width:max-content; max-width:100%; margin:10px 0 0 auto; padding:6px 12px; white-space:nowrap; }
+
+.inventory-list { --inventory-placeholder-color: #757575; }
+.inventory-list input[type='search']::placeholder { color:var(--inventory-placeholder-color); opacity:1; }
+.inventory-date-range { display:flex; align-items:center; gap:8px; }
+.inventory-date-field { position:relative; display:block; }
+.inventory-date-field input { width:150px; }
+.inventory-date-placeholder { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--inventory-placeholder-color); pointer-events:none; }
+.inventory-date-field[data-empty='true']:not(:focus-within) input { color:transparent; }
+.inventory-date-field:focus-within .inventory-date-placeholder { display:none; }
