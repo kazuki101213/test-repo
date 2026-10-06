@@ -29,6 +29,49 @@ export async function fetchMyTasks(): Promise<DeliveryTask[]> {
   }
 }
 
+export interface MalfunctionReplyNotice {
+  item_id: string;
+}
+
+export async function fetchMalfunctionReplyItemIds(tasks: DeliveryTask[], staffId: string): Promise<Set<string>> {
+  const reportedAt = new Map(tasks
+    .filter(task => task.malfunction_reported && task.malfunction_reported_at)
+    .map(task => [task.id, task.malfunction_reported_at as string]));
+  const itemIds = [...reportedAt.keys()];
+  if (!itemIds.length) return new Set();
+
+  const comments: Array<{ item_id: string; author_id: string; created_at: string }> = [];
+  for (let start = 0; start < itemIds.length; start += 100) {
+    const batch = itemIds.slice(start, start + 100);
+    const earliestReport = batch.map(id => reportedAt.get(id)!).sort()[0]!;
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await getSupabase().from('item_comments')
+        .select('item_id,author_id,created_at').in('item_id', batch)
+        .gt('created_at', earliestReport).neq('author_id', staffId)
+        .order('created_at', { ascending: false }).range(offset, offset + 499);
+      if (error) throw error;
+      const page = (data ?? []) as typeof comments;
+      comments.push(...page);
+      if (page.length < 500) break;
+    }
+  }
+  if (!comments.length) return new Set();
+
+  const authorIds = [...new Set(comments.map(comment => comment.author_id))];
+  const managementIds = new Set<string>();
+  for (let start = 0; start < authorIds.length; start += 100) {
+    const { data, error } = await getSupabase().from('staff').select('id,role').in('id', authorIds.slice(start, start + 100));
+    if (error) throw error;
+    for (const person of data ?? []) {
+      if (person.role === 'admin' || person.role === 'purchaser') managementIds.add(person.id as string);
+    }
+  }
+  return new Set(comments
+    .filter(comment => managementIds.has(comment.author_id)
+      && Date.parse(comment.created_at) > Date.parse(reportedAt.get(comment.item_id) ?? ''))
+    .map(comment => comment.item_id));
+}
+
 export async function saveDeliveryDescription(itemId: string, input: {
   condition: ItemCondition | null; accessories: string; description: string; template: string | null; year: number | null;
 }) {
