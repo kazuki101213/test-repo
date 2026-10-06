@@ -286,11 +286,7 @@ create table if not exists app.items (
   memo              text,
   created_by        uuid references app.staff(id) on delete set null,
   created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now(),
-
-  -- 販売済みなら販売日と金額が必須
-  constraint items_sold_requires_date
-    check (status <> '販売済' or (sold_on is not null and sold_price is not null))
+  updated_at        timestamptz not null default now()
 );
 
 comment on table app.items is '仕入れた個体 1 点ごとのレコード。古物台帳の買受行そのものでもある。';
@@ -3694,12 +3690,8 @@ begin
 end;
 $$;
 
--- Attached accessories carry the parent's sale date but never its revenue.
--- Permit a sold status with no sale amount for those informational rows.
+-- Sale dates and prices may both be blank when an item is marked sold.
 alter table app.items drop constraint if exists items_sold_requires_date;
-alter table app.items add constraint items_sold_requires_date check (
-  status <> '販売済' or (sold_on is not null and (sold_price is not null or is_accessory))
-);
 
 -- Show the return source under supplier; retain the special status internally
 -- because delivery and reconciliation workflows use it as a processing marker.

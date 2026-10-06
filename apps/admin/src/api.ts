@@ -373,7 +373,6 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
       !Number.isSafeInteger(fields.inventory_refund_amount) || fields.inventory_refund_amount < 0) {
     throw new Error('金額は0円以上の整数で入力してください。');
   }
-  if (fields.status === '販売済' && (!fields.sold_on || fields.sold_price === null)) throw new Error('販売済にする場合は販売日・価格を入力してください。');
   if (!!fields.sold_on !== (fields.sold_price !== null)) throw new Error('販売日と販売金額は両方入力してください。');
   if (fields.is_accessory && !item.is_accessory) {
     const { data: possibleParents, error: parentError } = await getSupabase().from('items')
