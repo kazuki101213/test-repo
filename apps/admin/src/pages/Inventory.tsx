@@ -41,7 +41,7 @@ function inventoryRowTone(item: InventoryItem): string {
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>([...STATUSES, 'marketplace:動作品Amazon返品']);
+  const [selectedStatuses, setSelectedStatuses] = useState<string[] | null>(null);
   const [selectedDelivererIds, setSelectedDelivererIds] = useState<string[] | null>(null);
   const [query, setQuery] = useState('');
   const [purchasedFrom, setPurchasedFrom] = useState('');
@@ -72,9 +72,8 @@ export default function Inventory({ me }: { me: Staff }) {
     setError(null);
     try {
       if (purchasedFrom && purchasedTo && purchasedFrom > purchasedTo) throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
-      const allDelivererIds = staff.filter(person => person.role === 'deliverer').map(person => person.id);
-      const delivererFilter = selectedDelivererIds && selectedDelivererIds.length < allDelivererIds.length ? selectedDelivererIds : undefined;
-      const result = await fetchItems({ statuses: selectedStatuses, delivererIds: delivererFilter, query: query || undefined, purchasedFrom, purchasedTo }, active.signal);
+      const delivererFilter = selectedDelivererIds ?? undefined;
+      const result = await fetchItems({ statuses: selectedStatuses ?? undefined, delivererIds: delivererFilter, query: query || undefined, purchasedFrom, purchasedTo }, active.signal);
       if (current !== request.current) return;
       setItems(result.items); setCount(result.count);
     } catch (e) {
@@ -84,7 +83,7 @@ export default function Inventory({ me }: { me: Staff }) {
     } finally {
       if (current === request.current) setLoading(false);
     }
-  }, [selectedStatuses, selectedDelivererIds, staff, query, purchasedFrom, purchasedTo]);
+  }, [selectedStatuses, selectedDelivererIds, query, purchasedFrom, purchasedTo]);
 
   useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
   useEffect(() => {
@@ -122,7 +121,16 @@ export default function Inventory({ me }: { me: Staff }) {
   };
   const deliverers = staff.filter(s => s.role === 'deliverer');
   const statusOptions = [...STATUSES.map(value => ({ value, label: value })), { value: 'marketplace:動作品Amazon返品', label: '動作品Amazon返品' }, { value: '__unsold__', label: '未販売のみ' }];
-  const unsoldOnly = selectedStatuses.includes('__unsold__');
+  const allStatusValues = statusOptions.filter(option => option.value !== '__unsold__').map(option => option.value);
+  const unsoldOnly = selectedStatuses?.includes('__unsold__') ?? false;
+
+  function toggleStatus(value: string, checked: boolean) {
+    setSelectedStatuses(current => {
+      const selected = current ?? allStatusValues;
+      const next = checked ? [...new Set([...selected, value])] : selected.filter(option => option !== value);
+      return !next.includes('__unsold__') && allStatusValues.every(option => next.includes(option)) ? null : next;
+    });
+  }
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
@@ -138,28 +146,38 @@ export default function Inventory({ me }: { me: Staff }) {
           aria-label="在庫を検索" onChange={(e) => { setQuery(e.target.value); }} style={{ minWidth: 240 }}
         />
         <details className="inventory-filter-dropdown">
-          <summary>状態（{selectedStatuses.filter(value => value !== '__unsold__').length}/{statusOptions.length - 1}{unsoldOnly ? '・未販売のみ' : ''}）</summary>
-          <div className="inventory-filter-options">{statusOptions.map(option => <label key={option.value}>
-            <input type="checkbox" checked={selectedStatuses.includes(option.value)} onChange={event => setSelectedStatuses(current => event.target.checked ? [...current, option.value] : current.filter(value => value !== option.value))} />
+          <summary>状態（{selectedStatuses === null ? 'すべて' : `${selectedStatuses.filter(value => value !== '__unsold__').length}/${allStatusValues.length}${unsoldOnly ? '・未販売のみ' : ''}`}）</summary>
+          <div className="inventory-filter-options">
+            <label><input type="checkbox" checked={selectedStatuses === null} onChange={event => setSelectedStatuses(event.target.checked ? null : [])} />すべて</label>
+            {statusOptions.map(option => <label key={option.value}>
+            <input type="checkbox" checked={selectedStatuses === null ? option.value !== '__unsold__' : selectedStatuses.includes(option.value)} onChange={event => toggleStatus(option.value, event.target.checked)} />
             {option.label}
           </label>)}</div>
         </details>
         <details className="inventory-filter-dropdown">
-          <summary>納品担当者（{selectedDelivererIds?.length ?? deliverers.length}/{deliverers.length}）</summary>
-          <div className="inventory-filter-options">{deliverers.map(person => <label key={person.id}>
+          <summary>納品担当者（{selectedDelivererIds === null ? '全員' : `${selectedDelivererIds.length}/${deliverers.length}`}）</summary>
+          <div className="inventory-filter-options">
+            <label><input type="checkbox" checked={selectedDelivererIds === null} onChange={event => setSelectedDelivererIds(event.target.checked ? null : [])} />全員</label>
+            {deliverers.map(person => <label key={person.id}>
             <input type="checkbox" checked={selectedDelivererIds === null || selectedDelivererIds.includes(person.id)} onChange={event => setSelectedDelivererIds(current => {
               const selected = current ?? deliverers.map(row => row.id);
-              return event.target.checked ? [...new Set([...selected, person.id])] : selected.filter(id => id !== person.id);
+              const next = event.target.checked ? [...new Set([...selected, person.id])] : selected.filter(id => id !== person.id);
+              return deliverers.every(row => next.includes(row.id)) ? null : next;
             })} />
             {person.name}
           </label>)}</div>
         </details>
-        <label className="field"><span>仕入日・開始</span>
-          <input type="date" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
-        </label>
-        <label className="field"><span>仕入日・終了</span>
-          <input type="date" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
-        </label>
+        <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
+          <label className="inventory-date-field" data-empty={!purchasedFrom}>
+            <input type="date" aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
+            {!purchasedFrom && <span className="inventory-date-placeholder" aria-hidden="true">仕入日</span>}
+          </label>
+          <span aria-hidden="true">〜</span>
+          <label className="inventory-date-field" data-empty={!purchasedTo}>
+            <input type="date" aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
+            {!purchasedTo && <span className="inventory-date-placeholder" aria-hidden="true">仕入日</span>}
+          </label>
+        </div>
         {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
         <button className="btn" onClick={() => void load()}>再読込</button>
         <span style={{ flex: 1 }} />
