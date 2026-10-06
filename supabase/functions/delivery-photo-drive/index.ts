@@ -9,8 +9,26 @@ const cors = {
 };
 const json = (status: number, value: unknown) => new Response(JSON.stringify(value), { status, headers: cors });
 class RequestError extends Error { constructor(readonly status: number, message: string) { super(message); } }
-type Photo = { id: string; storage_path: string; drive_file_id: string | null };
-type DriveFile = { id: string; name?: string };
+type Photo = { id: string; item_id: string; storage_path: string; drive_file_id: string | null; uploaded_by: string | null };
+type DriveFile = { id: string; name?: string; parents?: string[] };
+
+async function allRows<T>(read: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += 500) {
+    const { data, error } = await read(from, from + 499);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if ((data?.length ?? 0) < 500) return rows;
+  }
+}
+
+async function moveToFolder(token: string, fileId: string, folderId: string): Promise<void> {
+  const file = await drive<DriveFile>(token, `files/${encodeURIComponent(fileId)}?fields=id,parents`);
+  if (file.parents?.includes(folderId)) return;
+  const query = new URLSearchParams({ addParents: folderId, fields: 'id' });
+  if (file.parents?.length) query.set('removeParents', file.parents.join(','));
+  await drive(token, `files/${encodeURIComponent(fileId)}?${query}`, { method: 'PATCH' });
+}
 
 async function googleToken(): Promise<string> {
   const clientId = Deno.env.get('GOOGLE_DRIVE_CLIENT_ID');
@@ -96,7 +114,8 @@ export async function handler(req: Request): Promise<Response> {
     const authorization = req.headers.get('authorization') ?? '';
     if (!/^Bearer\s+\S+$/i.test(authorization)) throw new RequestError(401, 'ログインが必要です。');
     const token = authorization.replace(/^Bearer\s+/i, '');
-    const { itemId } = await req.json().catch(() => ({}));
+    const { itemId, action = 'save' } = await req.json().catch(() => ({}));
+    if (action !== 'list' && action !== 'save') throw new RequestError(400, '写真の操作が不正です。');
     if (typeof itemId !== 'string' || !/^[\da-f-]{36}$/i.test(itemId)) throw new RequestError(400, '商品の指定が不正です。');
     const url = Deno.env.get('SUPABASE_URL')!;
     const userClient = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, {
@@ -111,28 +130,58 @@ export async function handler(req: Request): Promise<Response> {
     if (profileError || !profile) throw new RequestError(403, '担当者を確認できません。');
     const { data: staff, error: staffError } = await service.from('staff').select('role,is_active').eq('id', profile.staff_id).maybeSingle();
     if (staffError || !staff?.is_active) throw new RequestError(403, '担当者の権限がありません。');
-    const { data: item, error: itemError } = await service.from('items').select('id,sku,deliverer_id').eq('id', itemId).maybeSingle();
-    if (itemError || !item || (staff.role !== 'admin' && item.deliverer_id !== profile.staff_id)) throw new RequestError(403, 'この商品の写真を追加する権限がありません。');
-    const { data: photos, error: photoError } = await service.from('item_photos')
-      .select('id,storage_path,drive_file_id').eq('item_id', itemId).order('created_at');
-    if (photoError) throw photoError;
-    if (!photos?.length) throw new RequestError(400, '先に商品写真を追加してください。');
+    const { data: item, error: itemError } = await service.from('items').select('id,sku,lot_seq,deliverer_id').eq('id', itemId).maybeSingle();
+    if (itemError || !item || (staff.role !== 'admin' && item.deliverer_id !== profile.staff_id && !(action === 'list' && staff.role === 'purchaser'))) throw new RequestError(403, 'この商品の写真を扱う権限がありません。');
+    // Authorize the requested item first, then expose only its own lot's photos.
+    const members = await allRows<{ id: string }>((from, to) => service.from('items')
+      .select('id').eq('lot_seq', item.lot_seq).order('id').range(from, to));
+    const memberIds = members.map(member => member.id);
+    const photos: Photo[] = [];
+    for (let start = 0; start < memberIds.length; start += 100) {
+      photos.push(...await allRows<Photo>((from, to) => service.from('item_photos')
+        .select('id,item_id,storage_path,drive_file_id,uploaded_by').in('item_id', memberIds.slice(start, start + 100))
+        .order('created_at').order('id').range(from, to)));
+    }
+    if (action === 'list') {
+      const urls: Array<{ id: string; url: string; canDelete: boolean }> = [];
+      for (let start = 0; start < photos.length; start += 100) {
+        const batch = photos.slice(start, start + 100);
+        const { data: signed, error } = await service.storage.from('item-photos').createSignedUrls(batch.map(photo => photo.storage_path), 3600);
+        if (error) throw error;
+        for (let index = 0; index < batch.length; index++) {
+          const photo = batch[index], url = signed?.[index]?.signedUrl;
+          if (!photo || !url) throw new RequestError(502, '写真の読み込みに失敗しました。');
+          urls.push({ id: photo.id, url, canDelete: staff.role === 'admin' || photo.uploaded_by === profile.staff_id });
+        }
+      }
+      return json(200, { photos: urls, lotSeq: item.lot_seq });
+    }
+    if (!photos.length) throw new RequestError(400, '先に商品写真を追加してください。');
 
     const driveToken = await googleToken();
     const root = Deno.env.get('GOOGLE_DRIVE_ROOT_FOLDER_ID') || await ensureFolder(driveToken, 'root', '納品アプリ写真');
     const { data: review, error: reviewError } = await service.from('photo_reviews').select('drive_folder_id,approved_at').eq('item_id', itemId).maybeSingle();
     if (reviewError) throw reviewError;
-    const folderId = review?.drive_folder_id || await ensureFolder(driveToken, root, item.sku);
-    // If the SKU was edited after the folder was created, keep the same folder and rename it.
-    if (review?.drive_folder_id) {
-      const folder = await drive<DriveFile>(driveToken, `files/${encodeURIComponent(folderId)}?fields=id,name`);
-      if (folder.name !== item.sku) await drive(driveToken, `files/${encodeURIComponent(folderId)}?fields=id`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: item.sku }),
-      });
+    const { data: existing, error: folderError } = await service.from('lot_photo_folders').select('drive_folder_id').eq('lot_seq', item.lot_seq).maybeSingle();
+    if (folderError) throw folderError;
+    if (!existing) {
+      const candidate = review?.drive_folder_id || await ensureFolder(driveToken, root, String(item.lot_seq));
+      const { error } = await service.from('lot_photo_folders').upsert({ lot_seq: item.lot_seq, drive_folder_id: candidate }, { onConflict: 'lot_seq', ignoreDuplicates: true });
+      if (error) throw error;
     }
+    const { data: shared, error: sharedError } = await service.from('lot_photo_folders').select('drive_folder_id').eq('lot_seq', item.lot_seq).single();
+    if (sharedError) throw sharedError;
+    const folderId = shared.drive_folder_id as string;
+    const folder = await drive<DriveFile>(driveToken, `files/${encodeURIComponent(folderId)}?fields=id,name`);
+    if (folder.name !== String(item.lot_seq)) await drive(driveToken, `files/${encodeURIComponent(folderId)}?fields=id`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: String(item.lot_seq) }),
+    });
     let added = 0;
     for (const photo of photos as Photo[]) {
-      if (photo.drive_file_id) continue;
+      if (photo.drive_file_id) {
+        await moveToFolder(driveToken, photo.drive_file_id, folderId);
+        continue;
+      }
       const blobResult = await service.storage.from('item-photos').download(photo.storage_path);
       if (blobResult.error || !blobResult.data) throw new RequestError(502, '保存済みの写真を読み込めません。');
       const fileId = await findUploadedPhoto(driveToken, folderId, photo.id)
@@ -141,9 +190,14 @@ export async function handler(req: Request): Promise<Response> {
       if (savedError) throw savedError;
       added++;
     }
+    // Keep per-item approval and counts; only the physical folder is shared.
+    for (let start = 0; start < memberIds.length; start += 100) {
+      const { error } = await service.from('photo_reviews').update({ drive_folder_id: folderId }).in('item_id', memberIds.slice(start, start + 100));
+      if (error) throw error;
+    }
     if (added > 0 || !review) {
       const { error: taskError } = await service.from('photo_reviews').upsert({
-        item_id: itemId, drive_folder_id: folderId, exported_photo_count: photos.length,
+        item_id: itemId, drive_folder_id: folderId, exported_photo_count: photos.filter(photo => photo.item_id === itemId).length,
         submitted_at: new Date().toISOString(), approved_at: null, approved_by: null, updated_at: new Date().toISOString(),
       });
       if (taskError) throw taskError;
