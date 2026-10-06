@@ -79,11 +79,11 @@ export default function Dashboard({ staff }: { staff: Staff }) {
         </div>
       </div>
 
-      {staff.role === 'purchaser' && <section className="card" style={{ marginTop: 16 }} aria-label="仕入担当者への報告">
-        <h3>仕入担当者への報告</h3>
-        <p className="muted">納品担当者から届いた動作不良の報告です。</p>
+      <section className="card" style={{ marginTop: 16 }} aria-label="動作不良の報告">
+        <h3>動作不良の報告</h3>
+        <p className="muted">納品担当者から届いた報告です。返信は納品アプリの商品詳細のコメント欄に表示されます。</p>
         <ul className="invoice-task-rows"><MalfunctionTasks staff={staff} /></ul>
-      </section>}
+      </section>
 
       <div className="dashboard-charts">
         <DailySalesChart />
