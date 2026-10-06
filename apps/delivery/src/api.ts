@@ -44,47 +44,24 @@ async function resolveWorkingReturnModels(tasks: DeliveryTask[]): Promise<Delive
   } : task);
 }
 
-export interface MalfunctionReplyNotice {
+export interface DeliveryItemNotice {
   item_id: string;
+  lot_seq: number;
+  reply_at: string | null;
+  photo_at: string | null;
 }
 
-export async function fetchMalfunctionReplyItemIds(tasks: DeliveryTask[], staffId: string): Promise<Set<string>> {
-  const reportedAt = new Map(tasks
-    .filter(task => task.malfunction_reported && task.malfunction_reported_at)
-    .map(task => [task.id, task.malfunction_reported_at as string]));
-  const itemIds = [...reportedAt.keys()];
-  if (!itemIds.length) return new Set();
+export async function fetchDeliveryItemNotices(): Promise<DeliveryItemNotice[]> {
+  const { data, error } = await getSupabase().rpc('list_delivery_item_notices');
+  if (error) throw error;
+  return (data ?? []) as DeliveryItemNotice[];
+}
 
-  const comments: Array<{ item_id: string; author_id: string; created_at: string }> = [];
-  for (let start = 0; start < itemIds.length; start += 100) {
-    const batch = itemIds.slice(start, start + 100);
-    const earliestReport = batch.map(id => reportedAt.get(id)!).sort()[0]!;
-    for (let offset = 0; ; offset += 500) {
-      const { data, error } = await getSupabase().from('item_comments')
-        .select('item_id,author_id,created_at').in('item_id', batch)
-        .gt('created_at', earliestReport).neq('author_id', staffId)
-        .order('created_at', { ascending: false }).range(offset, offset + 499);
-      if (error) throw error;
-      const page = (data ?? []) as typeof comments;
-      comments.push(...page);
-      if (page.length < 500) break;
-    }
-  }
-  if (!comments.length) return new Set();
-
-  const authorIds = [...new Set(comments.map(comment => comment.author_id))];
-  const managementIds = new Set<string>();
-  for (let start = 0; start < authorIds.length; start += 100) {
-    const { data, error } = await getSupabase().from('staff').select('id,role').in('id', authorIds.slice(start, start + 100));
-    if (error) throw error;
-    for (const person of data ?? []) {
-      if (person.role === 'admin' || person.role === 'purchaser') managementIds.add(person.id as string);
-    }
-  }
-  return new Set(comments
-    .filter(comment => managementIds.has(comment.author_id)
-      && Date.parse(comment.created_at) > Date.parse(reportedAt.get(comment.item_id) ?? ''))
-    .map(comment => comment.item_id));
+export async function markDeliveryItemNoticesRead(notice: DeliveryItemNotice): Promise<void> {
+  const { error } = await getSupabase().rpc('mark_item_notices_read', {
+    p_item_id: notice.item_id, p_reply_through: notice.reply_at, p_photo_through: notice.photo_at,
+  });
+  if (error) throw error;
 }
 
 export async function saveDeliveryDescription(itemId: string, input: {

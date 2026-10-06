@@ -40,8 +40,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Verify and build both apps
         env:
-          VITE_ADMIN_APP_URL: ${{ steps.pages.outputs.base_url }}/admin/
-          VITE_DELIVERY_APP_URL: ${{ steps.pages.outputs.base_url }}/delivery/
+          VITE_ADMIN_APP_URL: https://bussan-admin.vercel.app/
+          VITE_DELIVERY_APP_URL: https://test-repo-delivery.vercel.app/
         run: |
           test -n "$VITE_SUPABASE_URL"
           test -n "$VITE_SUPABASE_ANON_KEY"

@@ -24,9 +24,10 @@ function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
 }
 
 export default function TaskDetail({
-  itemId, staff, listingSkus, onClose, onChanged,
-}: { itemId: string; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void }) {
+  itemId, staff, listingSkus, onClose, onChanged, onOpened,
+}: { itemId: string; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
   const [task, setTask] = useState<DeliveryTask | null>(null);
+  const openedReported = useRef(false);
   const autoOpenedMessages = useRef(false);
   const [comments, setComments] = useState<ItemComment[]>([]);
   const [photos, setPhotos] = useState<ItemPhoto[]>([]);
@@ -64,10 +65,11 @@ export default function TaskDetail({
       setPhotos(p);
       setPhotoReview(review);
       setReviewEnforced(enforced);
+      if (!openedReported.current) { openedReported.current = true; onOpened(itemId); }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [itemId, onChanged]);
+  }, [itemId, onChanged, onOpened]);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -321,7 +323,7 @@ export default function TaskDetail({
               </button>
             </div>
             {task.malfunction_reported
-              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '仕入担当者への報告は対応済みです。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
+              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '動作不良の報告は対応完了です。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
               : malfunctionChecked && <div className="malfunction-report">
                 <textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
                 <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '仕入担当者に報告'}</button>

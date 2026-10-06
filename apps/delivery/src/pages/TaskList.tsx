@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff } from '@bussan/shared';
-import { fetchAmazonFeed, fetchDeliveryStaff, fetchMalfunctionReplyItemIds, fetchMyTasks } from '../api';
+import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 
@@ -38,10 +38,11 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
-  const [replyItemIds, setReplyItemIds] = useState<Set<string>>(() => new Set());
+  const [notices, setNotices] = useState<DeliveryItemNotice[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detailRevision, setDetailRevision] = useState(0);
   const deepLinkItemId = new URLSearchParams(window.location.search).get('itemId');
   const deepLinkHandled = useRef(false);
   const toggleExpanded = (id: string) => setExpandedId(current => current === id ? null : id);
@@ -80,8 +81,8 @@ export default function TaskList({ staff }: { staff: Staff }) {
         const rows = await fetchMyTasks();
         if (active) { setTasks(rows); setError(null); }
         try {
-          const itemIds = await fetchMalfunctionReplyItemIds(rows, staff.id);
-          if (active) { setReplyItemIds(itemIds); setReplyTaskError(null); }
+          const latestNotices = await fetchDeliveryItemNotices();
+          if (active) { setNotices(latestNotices); setReplyTaskError(null); }
         } catch (replyError) {
           if (active) setReplyTaskError(replyError instanceof Error ? replyError.message : String(replyError));
         }
@@ -143,11 +144,33 @@ export default function TaskList({ staff }: { staff: Staff }) {
     return { rows, originalIds };
   }, [tasks, filter, query, staff.role, delivererId]);
   const shownRows = shown.rows;
-  const replyTasks = tasks.filter(task => replyItemIds.has(task.id));
+  const noticeRef = useRef(notices);
+  noticeRef.current = notices;
+  const openingReads = useRef(new Set<string>());
+  const acknowledgeOpened = useCallback((itemId: string) => {
+    const notice = noticeRef.current.find(row => row.item_id === itemId);
+    if (!notice || openingReads.current.has(itemId)) return;
+    openingReads.current.add(itemId);
+    void markDeliveryItemNoticesRead(notice).then(() => {
+      setNotices(current => current.flatMap(row => {
+        if (row.item_id !== itemId) return [row];
+        const next = { ...row, reply_at: row.reply_at === notice.reply_at ? null : row.reply_at,
+          photo_at: row.photo_at === notice.photo_at ? null : row.photo_at };
+        return next.reply_at || next.photo_at ? [next] : [];
+      }));
+      setReplyTaskError(null);
+    }).catch(cause => setReplyTaskError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => openingReads.current.delete(itemId));
+  }, []);
+  const taskById = new Map(tasks.map(task => [task.id, task]));
+  const visibleNotices = notices.filter(notice => taskById.has(notice.item_id));
+  const unreadPhotoItemIds = new Set(notices.filter(notice => notice.photo_at).map(notice => notice.item_id));
   function openReplyTask(task: DeliveryTask) {
     setFilter('all');
     setQuery(task.sku);
     setExpandedId(task.id);
+    setDetailRevision(current => current + 1);
+    if (staff.role === 'admin') setDelivererId(task.deliverer_id || '');
     window.setTimeout(() => document.getElementById(`delivery-task-${task.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
   }
 
@@ -163,11 +186,14 @@ export default function TaskList({ staff }: { staff: Staff }) {
       <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>
       <section className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading">
         {replyTaskError && <p className="error" role="alert">返信タスクを読み込めませんでした：{replyTaskError}</p>}
-        {replyTasks.length === 0 ? null : <ul className="invoice-task-rows">
-          {replyTasks.map(task => <li key={task.id}>
-            <button type="button" className="btn" onClick={() => openReplyTask(task)}>
-              <strong>{task.sku}</strong><span>メッセージあり</span>
-            </button>
+        {visibleNotices.length === 0 ? null : <ul className="invoice-task-rows">
+          {visibleNotices.map(notice => <li key={notice.item_id}>
+            {notice.reply_at && <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
+              【{notice.lot_seq}】メッセージあり
+            </button>}
+            {notice.photo_at && <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
+              【{notice.lot_seq}】写真が承認されました。
+            </button>}
           </li>)}
         </ul>}
       </section>
@@ -192,7 +218,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadPhotoItemIds={unreadPhotoItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;

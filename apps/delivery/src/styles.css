@@ -244,3 +244,6 @@ textarea { min-height: 80px; resize: vertical; }
 
 .delivery-task-heading { margin: 12px 0 4px; font-size: 15px; font-weight: 400; }
 .delivery-reply-tasks { margin-top: 0; }
+.task-card { position: relative; }
+.photo-approval-mark { position: absolute; top: 8px; right: 8px; width: 10px; height: 10px; border-radius: 50%; background: #d83b3b; }
+.delivery-notice-message { text-align: left; font: inherit; }
