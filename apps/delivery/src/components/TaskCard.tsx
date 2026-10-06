@@ -120,6 +120,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
             <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
               同じ商品：{modelFor(member)}
             </button>
+            {member.marketplace === '動作品Amazon返品' && <CopyableText label="ENA" value={productIdFor(member)} />}
             <CopyableText label={trackingLabel(member)} value={member.tracking_no || '—'} />
             <span className="muted task-member-date">仕入日 {jpDate(member.purchased_at)}</span>
           </>}
