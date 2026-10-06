@@ -5965,7 +5965,7 @@ create table if not exists app.item_comment_template_photos (
   file_name text not null,
   mime_type text not null check (mime_type = 'image/jpeg'),
   photo_base64 text not null,
-  sort_order smallint not null check (sort_order between 1 and 9),
+  sort_order smallint not null check (sort_order between 1 and 10),
   created_at timestamptz not null default now(),
   unique(task_kind, sort_order),
   check (length(photo_base64) > 0)
