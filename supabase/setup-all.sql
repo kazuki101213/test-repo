@@ -5816,7 +5816,8 @@ alter table app.item_comments add constraint item_comments_task_kind_check check
     'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
     'SONY◯ヤフオク', 'SONY×ヤフオク',
     'SHARP◯ヤフオク', 'SHARP×ヤフオク',
-    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク'
+    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク',
+    'ヤフオク その他'
   )
 );
 
@@ -5965,7 +5966,7 @@ create table if not exists app.item_comment_template_photos (
   file_name text not null,
   mime_type text not null check (mime_type = 'image/jpeg'),
   photo_base64 text not null,
-  sort_order smallint not null check (sort_order between 1 and 9),
+  sort_order smallint not null check (sort_order between 1 and 10),
   created_at timestamptz not null default now(),
   unique(task_kind, sort_order),
   check (length(photo_base64) > 0)
@@ -5985,4 +5986,9 @@ alter table app.item_comment_template_photos
   drop constraint if exists item_comment_template_photos_task_kind_check;
 alter table app.item_comment_template_photos
   add constraint item_comment_template_photos_task_kind_check
-  check (task_kind in ('Panasonic◯ヤフオク', 'Panasonic×ヤフオク'));
+  check (task_kind in (
+    'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
+    'SONY◯ヤフオク', 'SONY×ヤフオク',
+    'SHARP◯ヤフオク', 'SHARP×ヤフオク',
+    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク'
+  ));
