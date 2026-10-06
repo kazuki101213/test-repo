@@ -90,7 +90,7 @@ create function app.apply_malfunction_reply()
 returns trigger language plpgsql security definer set search_path='' as $$
 begin
   if auth.uid() is null or new.author_id is distinct from app.current_staff_id()
-    or app.current_role() not in ('admin','purchaser') then return new; end if;
+    or not coalesce(app.current_role() in ('admin','purchaser'),false) then return new; end if;
   if app.current_role()='purchaser' and not exists (
     select 1 from app.items where id=new.item_id and purchaser_id=app.current_staff_id()
   ) then raise exception '担当外の商品には返信できません' using errcode='42501'; end if;
@@ -108,7 +108,7 @@ create function app.send_malfunction_reply(p_comment_id uuid,p_item_id uuid,p_bo
 returns void language plpgsql security definer set search_path='' as $$
 declare v_sku text; v_existing app.item_comments%rowtype;
 begin
-  if auth.uid() is null or app.current_role() not in ('admin','purchaser') then
+  if auth.uid() is null or not coalesce(app.current_role() in ('admin','purchaser'),false) then
     raise exception '返信する権限がありません' using errcode='42501'; end if;
   select sku into v_sku from app.items where id=p_item_id and (app.is_admin() or purchaser_id=app.current_staff_id()) for update;
   if not found then raise exception '対象商品が見つかりません' using errcode='42501'; end if;
@@ -119,7 +119,9 @@ begin
   select * into v_existing from app.item_comments where id=p_comment_id;
   if found then
     if v_existing.item_id=p_item_id and v_existing.author_id=app.current_staff_id() and v_existing.body=btrim(p_body)
-      and v_existing.task_kind is not distinct from p_task_kind then return; end if;
+      and v_existing.task_kind is not distinct from p_task_kind
+      and coalesce((select array_agg(storage_path order by sort_order) from app.item_comment_photos where item_comment_id=p_comment_id),'{}'::text[])
+        =coalesce(p_photo_paths,'{}'::text[]) then return; end if;
     raise exception '返信IDが重複しています' using errcode='22023';
   end if;
   insert into app.item_comments(id,item_id,author_id,body,task_kind)

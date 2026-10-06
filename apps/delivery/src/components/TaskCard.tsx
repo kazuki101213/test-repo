@@ -69,7 +69,7 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
   </span>;
 }
 
-export default function TaskCard({ task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadPhotoItemIds, onDetailOpened, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadPhotoItemIds: Set<string>; onDetailOpened: (itemId: string) => void; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
+export default function TaskCard({ task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadPhotoItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadPhotoItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
   const productIdFor = (item: DeliveryTask) => (item.marketplace === '動作品Amazon返品' ? item.marketplace_item_id : originalMarketplaceIds.get(item.id) || item.marketplace_item_id) || '—';
@@ -130,7 +130,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
         </div>)}
       </div>}
       </div>
-      {expandedId && <TaskDetail key={expandedId} itemId={expandedId} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />}
+      {expandedId && <TaskDetail key={`${expandedId}-${detailRevision}`} itemId={expandedId} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />}
     </div>
   );
 }
