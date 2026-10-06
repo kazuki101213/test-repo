@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchMalfunctionReplyItemIds, fetchMyTasks } from '../api';
 import { downloadTsv } from '../csv';
@@ -42,11 +42,23 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const deepLinkItemId = new URLSearchParams(window.location.search).get('itemId');
+  const deepLinkHandled = useRef(false);
   const toggleExpanded = (id: string) => setExpandedId(current => current === id ? null : id);
   const updateTask = useCallback((updated: DeliveryTask) => {
     setTasks(current => current.map(task => task.id === updated.id ? updated : task));
   }, []);
 
+  useEffect(() => {
+    if (!deepLinkItemId || deepLinkHandled.current || loading) return;
+    const item = tasks.find(row => row.id === deepLinkItemId);
+    if (!item) return;
+    deepLinkHandled.current = true;
+    setFilter('all');
+    setQuery(item.sku);
+    setExpandedId(item.id);
+    if (staff.role === 'admin' && item.deliverer_id) setDelivererId(item.deliverer_id);
+  }, [deepLinkItemId, loading, tasks, staff.role]);
   async function exportAmazon() {
     if (exporting || selected.size === 0) return;
     setExporting(true); setError(null);
@@ -151,7 +163,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       <section className="card delivery-reply-tasks" aria-label="タスク">
         <h3>タスク</h3>
         {replyTaskError && <p className="error" role="alert">返信タスクを読み込めませんでした：{replyTaskError}</p>}
-        {replyTasks.length === 0 ? <p className="muted">動作不良への新しい返信はありません。</p> : <ul className="invoice-task-rows">
+        {replyTasks.length === 0 ? null : <ul className="invoice-task-rows">
           {replyTasks.map(task => <li key={task.id}>
             <button type="button" className="btn" onClick={() => openReplyTask(task)}>
               <strong>{task.sku}</strong><span>メッセージあり</span>

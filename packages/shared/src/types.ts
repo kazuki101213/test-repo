@@ -210,6 +210,9 @@ export interface ItemComment {
   author_id: string;
   body: string;
   created_at: string;
+  task_kind?: string | null;
+  task_completed_at?: string | null;
+  photos?: { id: string; url: string }[];
 }
 
 export interface MonthlySummary {
