@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "フリマ取引サポート",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "購入履歴の仕入れリスト連携、取引メッセージ同期・送信、追跡番号照合を支援します。",
   "minimum_chrome_version": "120",
   "permissions": [

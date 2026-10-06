@@ -20,9 +20,9 @@ function elapsedJstDays(value: string | null | undefined): number | null {
 }
 
 function inventoryRowTone(item: InventoryItem): string {
+  if (item.status === '販売済' || (item.status === 'Amazon返品' && item.product_sold_on)) return 'inventory-row-sold';
   if (item.status === 'Amazon返品') return 'inventory-row-amazon-return';
   if (item.status === '返品処理') return 'inventory-row-return-processing';
-  if (item.status === '販売済') return 'inventory-row-sold';
   if (item.status === '作業中') {
     const days = elapsedJstDays(item.purchased_at);
     return days !== null && days >= 7 ? 'inventory-row-working-overdue' : '';
@@ -128,22 +128,6 @@ export default function Inventory({ me }: { me: Staff }) {
       <section className="inventory-list" aria-label="在庫一覧">
       <h2>在庫一覧</h2>
 
-      <details className="card purchase-draft-panel">
-        <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
-        <div className="toolbar" style={{ marginTop: 12 }}>
-          <button type="button" className="btn" onClick={loadPurchaseDrafts}>リストを更新</button>
-          <span className="sub">拡張機能の「購入履歴を同期」で追加した下書きです。在庫へ反映する前に金額・担当者を確認してください。</span>
-        </div>
-        {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
-        {purchaseDrafts.length > 0 ? <div className="scroll"><table><thead><tr><th>購入日</th><th>商品</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>アカウント</th><th>操作</th></tr></thead><tbody>
-          {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a href={draft.marketplace_url} target="_blank" rel="noreferrer">{draft.title}</a></td><td>{draft.marketplace}</td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.account_label}</td><td className="toolbar">
-            <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); }}>在庫一覧へ反映</button>
-            <button type="button" className="btn" onClick={async () => { if (!window.confirm('この購入履歴を仕入れリストから除外しますか？')) return; try { await dismissPurchaseDraft(draft.id); loadPurchaseDrafts(); } catch (error) { setDraftError(error instanceof Error ? error.message : String(error)); } }}>除外</button>
-          </td></tr>)}
-        </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
-      </details>
-
-
       <div className="toolbar">
         <input
           type="search" placeholder="SKU / 商品名 / ASIN / 型番 / 商品ID / 追跡番号" value={query}
@@ -166,24 +150,40 @@ export default function Inventory({ me }: { me: Staff }) {
             {person.name}
           </label>)}</div>
         </details>
-        <label className="field"><span>仕入日・開始</span>
-          <input type="date" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
-        </label>
-        <label className="field"><span>仕入日・終了</span>
-          <input type="date" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
-        </label>
+        <div className="field inventory-date-range">
+          <span>仕入 年/月/日</span>
+          <div>
+            <input type="date" aria-label="仕入開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
+            <span aria-hidden="true">～</span>
+            <input type="date" aria-label="仕入終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
+          </div>
+        </div>
         {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
          <button className="btn" onClick={() => void load()}>再読込</button>
         <span style={{ flex: 1 }} />
-        <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>
-          一覧をCSV
-        </button>
         <button className="btn" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
           {purchaseOpen ? '在庫登録を閉じる' : '在庫登録'}
         </button>
       </div>
 
-      {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
+      <div className="toolbar inventory-amazon-actions">
+        {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
+        <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>CSV変換</button>
+      </div>
+            <details className="card purchase-draft-panel">
+        <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
+        <div className="toolbar" style={{ marginTop: 12 }}>
+          <button type="button" className="btn" onClick={loadPurchaseDrafts}>リストを更新</button>
+          <span className="sub">拡張機能の「購入履歴を同期」で追加した下書きです。在庫へ反映する前に金額・担当者を確認してください。</span>
+        </div>
+        {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
+        {purchaseDrafts.length > 0 ? <div className="scroll"><table><thead><tr><th>購入日</th><th>商品情報</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>販売予定金額</th><th>振込予定金額</th><th>アカウント</th><th>操作</th></tr></thead><tbody>
+          {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a href={draft.marketplace_url} target="_blank" rel="noreferrer">{draft.title}</a><div className="sub">型番 {draft.model_no || '未特定'} / 品番 {draft.product_no ?? '未特定'} / ASIN {draft.asin || '未特定'}</div></td><td>{draft.marketplace}</td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.planned_price == null ? '未特定' : yen(draft.planned_price)}</td><td>{draft.planned_payout == null ? '未特定' : yen(draft.planned_payout)}</td><td>{draft.account_label}</td><td className="toolbar">
+            <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); }}>在庫一覧へ反映</button>
+            <button type="button" className="btn" onClick={async () => { if (!window.confirm('この購入履歴を仕入れリストから除外しますか？')) return; try { await dismissPurchaseDraft(draft.id); loadPurchaseDrafts(); } catch (error) { setDraftError(error instanceof Error ? error.message : String(error)); } }}>除外</button>
+          </td></tr>)}
+        </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
+      </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
       <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite">
         <span>{loading ? '読み込み中…' : `${count.toLocaleString()}商品`}</span>
@@ -208,7 +208,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
                 <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
                 <th>販売金額<br />振込金額</th><th>利益額<br />利益率</th>
-                <th>在庫の払い戻し</th><th>Amazon返金金額<br />Amazon以外からの返金</th><th>納品担当者からのコメント</th>
+                <th>在庫の払い戻し</th><th>Amazon返金金額<br />Amazon以外からの返金</th><th>納品担当者からのコメント</th><th>販売状態</th>
               </tr>
             </thead>
             <tbody>
@@ -255,11 +255,12 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(yen(i.planned_price), 'planned_price', yen(i.planned_payout), 'planned_payout')}</td>
                   <td>{stacked(yen(i.expected_profit), 'planned_payout', expectedRate, 'planned_price')}</td>
                   <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
-                  <td>{stacked(yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
-                  <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
+                  <td>{stacked(i.is_accessory ? '—' : yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', i.is_accessory ? '—' : yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
+                  <td>{stacked(i.is_accessory ? '—' : yen(i.product_profit), 'payout_amount', i.is_accessory ? '—' : actualRate, 'sold_price')}</td>
                   <td><button type="button" className="inventory-cell-edit" onClick={() => edit('inventory_refund_amount')} title="在庫の払い戻しをクリックして編集">{yen(i.inventory_refund_amount)}</button></td>
                   <td>{stacked(yen(i.amazon_refund_amount), 'amazon_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
+                  <td><div className="inventory-cell-stack"><span>{i.status === 'Amazon返品' && i.product_sold_on ? '販売済' : i.status}</span><span className="sub">{i.is_accessory ? '付属品' : '本体'}</span></div></td>
                 </tr>
               ); })}
             </tbody>

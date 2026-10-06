@@ -99,6 +99,12 @@ export interface PurchaseDraft {
   title: string;
   purchased_at: string | null;
   cost_amount: number | null;
+  product_id: string | null;
+  model_no: string | null;
+  product_no: number | null;
+  asin: string | null;
+  planned_price: number | null;
+  planned_payout: number | null;
   state: 'draft' | 'registered' | 'dismissed';
   registered_item_id: string | null;
   first_seen_at: string;
