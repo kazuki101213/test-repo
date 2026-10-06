@@ -13,9 +13,15 @@ async function saveSettings(s){validateSettings(s);const {job}=await STORE.get('
   await STORE.set({settings:s});await schedule();return {saved:true};}
 async function content(tabId,type,args={}){
   const account=args.account;
-  if(account?.identity?.pageUrl&&type!=='identity'){
+  if(account?.identity?.pageUrl&&type==='scrollList'){
+    const target=await chrome.tabs.get(tabId);assertSiteUrl(account.site,target.url);
+    if(target.url!==account.listUrl)throw new Error('登録済みの購入一覧ページから移動したためスクロールを停止しました');
+    args={...args,account:{...account,_identityConfirmed:true}};
+  }else if(account?.identity?.pageUrl&&type==='purchaseDetail'&&account._identityConfirmed===true){
+    const target=await chrome.tabs.get(tabId);assertSiteUrl(account.site,target.url);
+  }else if(account?.identity?.pageUrl&&type!=='identity'){
     assertSiteUrl(account.site,account.identity.pageUrl);if(!['rakuma','mercari','flea','auctions'].includes(account.site))throw new Error('アカウント確認ページが不正です');
-    if(!['list','detail','preflight','submit','success','messageDetail','sendMessage'].includes(type))throw new Error('アカウント確認の処理種別が不正です');
+    if(!['list','detail','preflight','submit','success','messageDetail','sendMessage','purchaseDetail'].includes(type))throw new Error('アカウント確認の処理種別が不正です');
     const target=await chrome.tabs.get(tabId);assertSiteUrl(account.site,target.url);
     const checkTab=await chrome.tabs.create({url:account.identity.pageUrl,active:false});
     try{
@@ -48,11 +54,17 @@ async function start(kind,manual=false){if(!['tracking','receipt','messages','pu
   if(kind==='receipt'&&s.mode!=='full')throw new Error('受け取り評価は実画面検証と切り替え後に有効になります');
   // 診断モードにはSupabaseの読み取り照合も含むが、登録・評価送信は行わない。
   if(await rpc('is_admin')!==true)throw new Error('管理アプリとの連携を確認してください');
-  const outbox=kind==='messages'?await rpc('extension_marketplace_message_queue',{p_marketplaces:[...new Set(accounts.flatMap(a=>SITES[a.site].db))]}):[];
-  await STORE.set({job:{id:crypto.randomUUID(),kind,manual,day:jstDay(),accountIndex:0,stage:'list',pageUrl:accounts[0].listUrl,seenPages:[],urls:[],index:0,tabId:null,counts:{checked:0,updated:0,rated:0,imported:0,skipped:0,errors:0},settings:s,accounts,outbox}});
+  const marketplaces=[...new Set(accounts.flatMap(a=>SITES[a.site].db))];
+  const outbox=kind==='messages'?await rpc('extension_marketplace_message_queue',{p_marketplaces:marketplaces}):[];
+  const syncRequests=kind==='messages'?await rpc('extension_marketplace_message_sync_queue',{p_marketplaces:marketplaces}):[];
+  if(kind==='messages'&&!outbox.length&&!syncRequests.length)throw new Error('確認または送信する取引メッセージはありません');
+  const targets=[...new Map([...syncRequests.map(entry=>({...entry,source:'sync'})),...outbox.map(entry=>({...entry,source:'send'}))].map(entry=>[entry.marketplace+':'+entry.marketplace_item_id,entry])).values()];
+  const targetAccounts=kind==='messages'?accounts.filter(a=>targets.some(t=>SITES[a.site].db.includes(t.marketplace))):accounts;
+  if(!targetAccounts.length)throw new Error('取引メッセージの対象サイトに対応するログイン済みアカウントがありません');
+  await STORE.set({job:{id:crypto.randomUUID(),kind,manual,day:jstDay(),accountIndex:0,stage:'list',pageUrl:targetAccounts[0].listUrl,seenPages:[],urls:[],index:0,tabId:null,counts:{checked:0,updated:0,rated:0,imported:0,skipped:0,errors:0},settings:s,accounts:targetAccounts,outbox,syncRequests,targets}});
   await log('info',kind==='tracking'?'追跡番号の巡回を開始':kind==='messages'?'取引メッセージの同期を開始':kind==='purchases'?'購入履歴の取り込みを開始':'受け取り評価の巡回を開始');return {started:true};}
 async function finish(job){if(job.tabId)await chrome.tabs.remove(job.tabId).catch(()=>{});const {lastRun={}}=await STORE.get('lastRun');lastRun[job.kind]={day:job.day,at:new Date().toISOString(),counts:job.counts};await STORE.set({lastRun,job:null});await log('info','巡回終了',job.counts);await diagnosticReport();}
-async function nextAccount(job){if(job.tabId)await chrome.tabs.remove(job.tabId).catch(()=>{});job.tabId=null;job.accountIndex++;job.urls=[];job.index=0;job.seenPages=[];job.stage='list';job.pageUrl=job.accounts[job.accountIndex]?.listUrl;if(job.accountIndex>=job.accounts.length){if(job.kind==='messages')for(const entry of job.outbox||[])await rpc('extension_finish_marketplace_message',{p_id:entry.id,p_status:'failed',p_note:'このChromeプロファイルの購入一覧に該当する取引が見つかりません'}).catch(()=>{});return finish(job);}await STORE.set({job});}
+async function nextAccount(job){if(job.tabId)await chrome.tabs.remove(job.tabId).catch(()=>{});job.tabId=null;job.accountIndex++;job.urls=[];job.index=0;job.seenPages=[];job.stage='list';job.pageUrl=job.accounts[job.accountIndex]?.listUrl;if(job.accountIndex>=job.accounts.length){if(job.kind==='messages'){for(const entry of job.outbox||[])await rpc('extension_finish_marketplace_message',{p_id:entry.id,p_status:'failed',p_note:'登録された購入一覧で対象取引が見つかりません'}).catch(()=>{});for(const request of job.syncRequests||[]){const claimed=await rpc('extension_claim_marketplace_message_sync',{p_id:request.id,p_claimant:'not-found'}).catch(()=>false);if(claimed)await rpc('extension_finish_marketplace_message_sync',{p_id:request.id,p_status:'failed',p_note:'登録された購入一覧で対象取引が見つかりません'}).catch(()=>{});}}return finish(job);}await STORE.set({job});}
 function receiptArgs(a,itemId,action,token=null,details=null){return {p_action:action,p_marketplace:SITES[a.site].db[0],p_item_id:itemId,p_account_label:a.label,p_token:token,p_details:details};}
 async function recoverSend(job,a){
   const p=job.pendingReceipt;
@@ -69,12 +81,61 @@ async function step(){if(busy)return;busy=true;try{
       const listRecipe=['messages','purchases'].includes(job.kind)?{...r,includeCompleted:true}:r;
       await navigate(job,a,job.pageUrl);await capturePage(job,a,'list');const data=await content(job.tabId,'list',{account:a,recipe:listRecipe});if(data.auth)throw new Error(data.auth);
       if(job.kind==='purchases'){
-        const result=await rpc('extension_sync_purchase_drafts',{p_marketplace:SITES[a.site].db[0],p_account_label:a.label,p_purchases:data.purchases||[]});
-        const added=Number(result?.inserted)||0;job.counts.imported+=added;job.counts.checked+=(data.purchases||[]).length;
-        if(added||data.purchases?.length)await log('info',`購入履歴を確認: 新規 ${added}件 / 検出 ${(data.purchases||[]).length}件`,{account:a.label});
+        const seenIds=new Set();let imported=0,checked=0,scrollSteps=0,stalledScrolls=0,previousScrollTop=data.scrollTop??0,stopReason='ページ末尾';let pageData=data;
+        for(let stepIndex=0;;stepIndex++){
+          if(stepIndex>0){pageData=await content(job.tabId,'scrollList',{account:a,recipe:listRecipe});if(pageData.auth)throw new Error(pageData.auth);scrollSteps++;}
+          const fresh=[];
+          for(const purchase of pageData.purchases||[]){
+            if(!purchase.marketplace_item_id||seenIds.has(purchase.marketplace_item_id))continue;
+            seenIds.add(purchase.marketplace_item_id);fresh.push(purchase);
+          }
+          for(const purchase of fresh){
+            checked++;
+            const marketplace=SITES[a.site].db[0];
+            const existing=await rpc('extension_probe_purchase_item',{p_marketplace:marketplace,p_marketplace_item_id:purchase.marketplace_item_id});
+            if(existing?.matched){stopReason='商品IDが在庫と一致';break;}
+            let enriched=purchase;
+            let detailTab=null;
+            try{
+              const detailUrl=purchase.detail_url||purchase.marketplace_url;
+              assertSiteUrl(a.site,detailUrl);
+              detailTab=(await chrome.tabs.create({url:detailUrl,active:false})).id;
+              await loaded(detailTab,a.site);
+              const detail=await content(detailTab,'purchaseDetail',{account:{...a,_identityConfirmed:true},recipe:listRecipe,fallback:purchase});
+              if(detail.auth)throw new Error(detail.auth);
+              enriched=detail;
+            }catch(error){
+              await log('error','購入商品の詳細を読み取れませんでした。購入一覧の情報で下書き登録します: '+error.message,{account:a.label,itemId:purchase.marketplace_item_id});
+            }finally{if(detailTab)await chrome.tabs.remove(detailTab).catch(()=>{});}
+            if(enriched.marketplace_item_id!==purchase.marketplace_item_id){
+              const detailMatch=await rpc('extension_probe_purchase_item',{p_marketplace:marketplace,p_marketplace_item_id:enriched.marketplace_item_id});
+              if(detailMatch?.matched){stopReason='商品IDが在庫と一致';break;}
+            }
+            const result=await rpc('extension_sync_purchase_drafts',{p_marketplace:marketplace,p_account_label:a.label,p_purchases:[enriched],p_stop_on_match:true});
+            imported+=Number(result?.inserted)||0;
+            if(Array.isArray(result?.matched_item_ids)&&result.matched_item_ids.length){stopReason='同期直前に商品IDが在庫と一致';break;}
+          }
+          if(stopReason!=='ページ末尾')break;
+          if(!pageData.hasMore)break;
+          const moved=Number(pageData.scrollTop??0)>previousScrollTop||fresh.length>0;
+          stalledScrolls=moved?0:stalledScrolls+1;previousScrollTop=Number(pageData.scrollTop??previousScrollTop);
+          if(stalledScrolls>=2){stopReason='同じ一覧ページでスクロール進行が止まった';break;}
+        }
+        job.counts.imported+=imported;job.counts.checked+=checked;
+        if(imported||checked)await log('info',`購入履歴を確認: 新規 ${imported}件 / 確認 ${checked}件 / スクロール ${scrollSteps}回 / 停止=${stopReason}`,{account:a.label});
         job.seenPages.push(job.pageUrl);
-        if(job.manual&&data.nextUrl)job.pageUrl=data.nextUrl;else {await nextAccount(job);return;}
-        await STORE.set({job});return;
+        // Start at the top without scrolling. A detail page is opened only for a non-matching ID; the registered listing page is the only page scrolled, and a next listing page is never opened.
+        await nextAccount(job);return;
+      }
+      if(job.kind==='messages'){
+        const wanted=(job.targets||[]).filter(t=>SITES[a.site].db.includes(t.marketplace));const wantedIds=new Set(wanted.map(t=>t.marketplace_item_id));
+        const pageTargets=(data.messageTargets||[]).filter(t=>wantedIds.has(t.itemId));const marketplaceKey=SITES[a.site].db[0];
+        job.urls=[...new Set([...job.urls,...pageTargets.map(t=>t.url)])];job.foundTargetIds=[...new Set([...(job.foundTargetIds||[]),...pageTargets.map(t=>marketplaceKey+':'+t.itemId)])];
+        const found=new Set(job.foundTargetIds);
+        for(const request of job.syncRequests||[]){if(SITES[a.site].db.includes(request.marketplace)&&!found.has(request.marketplace+':'+request.marketplace_item_id)){const claimed=await rpc('extension_claim_marketplace_message_sync',{p_id:request.id,p_claimant:'not-on-current-list'}).catch(()=>false);if(claimed)await rpc('extension_finish_marketplace_message_sync',{p_id:request.id,p_status:'failed',p_note:'登録された購入一覧の現在ページに対象取引がありません。ページ移動は行いません。'}).catch(()=>{});}}
+        for(const entry of job.outbox||[]){if(SITES[a.site].db.includes(entry.marketplace)&&!found.has(entry.marketplace+':'+entry.marketplace_item_id)){await rpc('extension_finish_marketplace_message',{p_id:entry.id,p_status:'failed',p_note:'登録された購入一覧の現在ページに対象取引がありません。ページ移動は行いません。'}).catch(()=>{});job.outbox=job.outbox.filter(x=>x.id!==entry.id);}}
+        job.syncRequests=(job.syncRequests||[]).filter(request=>found.has(request.marketplace+':'+request.marketplace_item_id));job.targets=(job.targets||[]).filter(target=>found.has(target.marketplace+':'+target.marketplace_item_id));
+        job.stage='detail';await STORE.set({job});return;
       }
       if(job.settings.mode==='diagnostic'&&!data.links.length)await log('info','取引リンク0件。未完了取引がないとは未確認です',{account:a.label});
       job.seenPages.push(job.pageUrl);job.urls=[...new Set([...job.urls,...data.links])];if(job.urls.length>500)throw new Error('取引数が上限を超えました');
@@ -83,30 +144,20 @@ async function step(){if(busy)return;busy=true;try{
     }
     if(job.index>=job.urls.length){await nextAccount(job);return;}
     if(job.kind==='messages'){
-      await navigate(job,a,job.urls[job.index]);
-      const tx=await content(job.tabId,'messageDetail',{account:a,recipe:r});
-      if(tx.auth)throw new Error(tx.auth);
-      await rpc('extension_sync_marketplace_messages',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId,p_account_label:a.label,p_messages:tx.messages||[]});
-      const queued=(job.outbox||[]).find(entry=>SITES[a.site].db.includes(entry.marketplace)&&entry.marketplace_item_id===tx.itemId);
-      if(queued){
-        const claimed=await rpc('extension_claim_marketplace_message',{p_id:queued.id,p_claimant:a.id+':'+a.label});
-        job.outbox=job.outbox.filter(entry=>entry.id!==queued.id);
-        if(claimed){
-          let clicked=false;
-          try{
-            const sent=await content(job.tabId,'sendMessage',{account:a,recipe:r,itemId:tx.itemId,body:queued.body});
-            clicked=sent.clicked===true;await loaded(job.tabId,a.site);await wait(1400);
-            const updated=await content(job.tabId,'messageDetail',{account:a,recipe:r});
-            await rpc('extension_sync_marketplace_messages',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId,p_account_label:a.label,p_messages:updated.messages||[]});
-            const echoed=(updated.messages||[]).some(message=>message.body===queued.body&&message.author_role==='self');
-            await rpc('extension_finish_marketplace_message',{p_id:queued.id,p_status:echoed?'sent':'uncertain',p_note:echoed?'取引画面に送信済みの文面を確認しました':'送信後の表示を確認できません。取引画面を確認してください'});
-            await log(echoed?'info':'error',echoed?'取引メッセージを送信しました':'送信結果を要確認',{account:a.label,itemId:tx.itemId});
-          }catch(error){
-            await rpc('extension_finish_marketplace_message',{p_id:queued.id,p_status:clicked?'uncertain':'failed',p_note:clicked?'送信ボタン押下後の確認でエラー: '+error.message:error.message}).catch(()=>{});
-            await log('error','取引メッセージ送信: '+error.message,{account:a.label,itemId:tx.itemId});
-          }
-        }
-      }
+      const targetUrl=job.urls[job.index];await navigate(job,a,targetUrl);
+      const tx=await content(job.tabId,'messageDetail',{account:a,recipe:r});if(tx.auth)throw new Error(tx.auth);
+      const target=(job.targets||[]).find(entry=>SITES[a.site].db.includes(entry.marketplace)&&entry.marketplace_item_id===tx.itemId);
+      if(!target)throw new Error('表示中の取引IDが同期対象と一致しません');
+      const syncRequest=(job.syncRequests||[]).find(entry=>entry.marketplace===target.marketplace&&entry.marketplace_item_id===tx.itemId);
+      if(syncRequest){const claimed=await rpc('extension_claim_marketplace_message_sync',{p_id:syncRequest.id,p_claimant:a.id+':'+a.label});if(claimed){try{await rpc('extension_sync_marketplace_messages',{p_marketplace:target.marketplace,p_item_id:tx.itemId,p_account_label:a.label,p_messages:tx.messages||[]});await rpc('extension_finish_marketplace_message_sync',{p_id:syncRequest.id,p_status:'completed',p_note:'アプリ送信以降の相手メッセージを照合しました'});}catch(error){await rpc('extension_finish_marketplace_message_sync',{p_id:syncRequest.id,p_status:'failed',p_note:error.message}).catch(()=>{});throw error;}}}
+      const queued=(job.outbox||[]).find(entry=>entry.marketplace===target.marketplace&&entry.marketplace_item_id===tx.itemId);
+      if(queued){const claimed=await rpc('extension_claim_marketplace_message',{p_id:queued.id,p_claimant:a.id+':'+a.label});job.outbox=job.outbox.filter(entry=>entry.id!==queued.id);if(claimed){let clicked=false;try{
+        const sent=await content(job.tabId,'sendMessage',{account:a,recipe:r,itemId:tx.itemId,body:queued.body});clicked=sent.clicked===true;await loaded(job.tabId,a.site);await wait(1400);
+        const updated=await content(job.tabId,'messageDetail',{account:a,recipe:r});const echoed=(updated.messages||[]).some(message=>message.body===queued.body&&message.author_role==='self');
+        await rpc('extension_finish_marketplace_message',{p_id:queued.id,p_status:echoed?'sent':'uncertain',p_note:echoed?'取引画面に送信済みの文面を確認しました':'送信後の表示を確認できません。取引画面を確認してください'});
+        if(echoed)await rpc('extension_sync_marketplace_messages',{p_marketplace:target.marketplace,p_item_id:tx.itemId,p_account_label:a.label,p_messages:updated.messages||[]});
+        await log(echoed?'info':'error',echoed?'取引メッセージを送信しました':'送信結果を要確認',{account:a.label,itemId:tx.itemId});
+      }catch(error){await rpc('extension_finish_marketplace_message',{p_id:queued.id,p_status:clicked?'uncertain':'failed',p_note:clicked?'送信ボタン押下後の確認でエラー: '+error.message:error.message}).catch(()=>{});await log('error','取引メッセージ送信: '+error.message,{account:a.label,itemId:tx.itemId});}}}
       job.counts.checked++;job.index++;await STORE.set({job});return;
     }
     await navigate(job,a,job.urls[job.index]);await capturePage(job,a,'detail');const tx=await content(job.tabId,'detail',{account:a,recipe:r});if(tx.auth)throw new Error(tx.auth);job.counts.checked++;
@@ -143,12 +194,9 @@ async function step(){if(busy)return;busy=true;try{
 async function due(){const s=await getSettings();const {lastRun={},job}=await STORE.get(['lastRun','job']);if(job)return;
   try{
     const sites=[...new Set(s.accounts.filter(a=>a.enabled).flatMap(a=>SITES[a.site].db))];
-    if(sites.length&& (await rpc('extension_marketplace_message_queue',{p_marketplaces:sites})).length){await start('messages');return;}
+    if(sites.length){const [sendQueue,syncQueue]=await Promise.all([rpc('extension_marketplace_message_queue',{p_marketplaces:sites}),rpc('extension_marketplace_message_sync_queue',{p_marketplaces:sites})]);if(sendQueue.length||syncQueue.length){await start('messages');return;}}
   }catch(e){await log('error','メッセージ送信依頼の確認: '+e.message);}
-  const purchaseDay=jstDay(),purchaseDue=dueTime(3);if(Date.now()>=purchaseDue&&Date.now()-purchaseDue<12*3600000&&lastRun.purchases?.day!==purchaseDay&&lastRun.purchases?.attemptedDay!==purchaseDay){
-    lastRun.purchases={...(lastRun.purchases||{}),attemptedDay:purchaseDay};await STORE.set({lastRun});
-    try{await start('purchases');return;}catch(e){await log('error','購入履歴の自動同期を開始できません: '+e.message);return;}
-  }
+  const purchaseDue=dueTime(3);if(Date.now()>=purchaseDue&&Date.now()-purchaseDue<12*3600000&&lastRun.purchases?.day!==jstDay()){await start('purchases');return;}
   if(s.mode==='diagnostic')return;
   for(const [kind,hour] of [['tracking',s.trackingHour],['receipt',s.receiptHour]]){if(kind==='receipt'&&s.mode!=='full')continue;const t=dueTime(hour);if(Date.now()>=t&&Date.now()-t<12*3600000&&lastRun[kind]?.day!==jstDay()){await start(kind);break;}}
 }

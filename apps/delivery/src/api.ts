@@ -170,6 +170,9 @@ export interface MarketplaceMessageRequest {
 export interface MarketplaceConversation {
   messages: MarketplaceMessage[];
   outbox: MarketplaceMessageRequest[];
+  first_app_sent_at?: string | null;
+  sync?: { id: string; status: 'queued' | 'processing' | 'completed' | 'failed'; result_note?: string | null } | null;
+  expired?: boolean;
 }
 
 export async function fetchMarketplaceConversation(itemId: string): Promise<MarketplaceConversation> {
@@ -180,6 +183,12 @@ export async function fetchMarketplaceConversation(itemId: string): Promise<Mark
 
 export async function queueMarketplaceMessage(itemId: string, body: string): Promise<string> {
   const { data, error } = await getSupabase().rpc('queue_marketplace_message', { p_item_id: itemId, p_body: body });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function requestMarketplaceMessageSync(itemId: string): Promise<string> {
+  const { data, error } = await getSupabase().rpc('queue_marketplace_message_sync', { p_item_id: itemId });
   if (error) throw error;
   return data as string;
 }

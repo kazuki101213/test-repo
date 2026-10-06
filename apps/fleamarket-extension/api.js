@@ -18,7 +18,7 @@ async function getToken(){
   return session.access_token;
 }
 export async function rpc(name,args={},token=null){
-  if(!['is_admin','reconcile_marketplace_tracking','marketplace_extension_probe','marketplace_extension_receipt','extension_marketplace_message_queue','extension_claim_marketplace_message','extension_finish_marketplace_message','extension_sync_marketplace_messages','extension_sync_purchase_drafts'].includes(name)) throw new Error('許可されていない登録処理です');
+  if(!['is_admin','reconcile_marketplace_tracking','marketplace_extension_probe','marketplace_extension_receipt','extension_marketplace_message_queue','extension_claim_marketplace_message','extension_finish_marketplace_message','extension_sync_marketplace_messages','extension_marketplace_message_sync_queue','extension_claim_marketplace_message_sync','extension_finish_marketplace_message_sync','extension_sync_purchase_drafts','extension_probe_purchase_item'].includes(name)) throw new Error('許可されていない登録処理です');
   return jsonRequest('/rest/v1/rpc/'+name,{method:'POST',headers:{Authorization:'Bearer '+(token||await getToken()),'Content-Profile':'app','Accept-Profile':'app'},body:JSON.stringify(args)});
 }
 export async function connectSession(data) {

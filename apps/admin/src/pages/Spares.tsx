@@ -197,4 +197,3 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
     </div>
   </div>;
 }
-

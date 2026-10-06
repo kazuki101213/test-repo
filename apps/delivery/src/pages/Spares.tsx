@@ -54,4 +54,3 @@ export default function Spares({ staff }: { staff: Staff }) {
       </div>)}</div>}
   </section>;
 }
-
