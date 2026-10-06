@@ -117,7 +117,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const trackingColumnWidth = items.reduce((width, item) => Math.max(width, Math.min(232, (Array.from(item.tracking_no ?? '').length) * 10 + 32)), 140);
   const inventoryTableWidth = Math.max(2710, 2350 + trackingColumnWidth);
   const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
-    if (source && target && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
+    if (source && target && target.clientWidth > 0 && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
   };
   const deliverers = staff.filter(s => s.role === 'deliverer');
   const statusOptions = [...STATUSES.map(value => ({ value, label: value })), { value: 'marketplace:動作品Amazon返品', label: '動作品Amazon返品' }, { value: '__unsold__', label: '未販売のみ' }];
@@ -236,7 +236,6 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
                     {(i.is_accessory || serial !== previousSerial) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span></>}
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
-                    <button type="button" className="inventory-cell-edit inventory-item-type" title="本体・付属品の登録区分を変更" onClick={() => edit('is_accessory')}>{i.is_accessory ? '付属品' : '本体'}</button>
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>

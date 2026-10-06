@@ -1,0 +1,8 @@
+:root {
+  --app-font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  font-family: var(--app-font-family);
+}
+
+body, button, input, select, textarea, pre, code, kbd, samp {
+  font-family: var(--app-font-family);
+}

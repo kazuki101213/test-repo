@@ -1,3 +1,5 @@
+@import "@bussan/shared/typography.css";
+
 :root {
   --bg: #f3efe5;
   --surface: #fbf8f0;
@@ -19,7 +21,7 @@ body {
   background: var(--bg);
   background-image: linear-gradient(180deg, rgba(255,255,255,.28), transparent 32%);
   color: var(--text);
-  font-family: system-ui, -apple-system, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  font-family: var(--app-font-family);
   font-size: 15px;
   -webkit-text-size-adjust: 100%;
 }
@@ -36,7 +38,7 @@ button, input, select, textarea { font: inherit; }
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
-.topbar h1 { font-family: 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif JP', serif; font-size: 19px; margin: 0; }
+.topbar h1 { font-family: inherit; font-size: 19px; margin: 0; }
 .topbar .who { color: var(--muted); font-size: 13px; }
 
 .card {
@@ -48,7 +50,7 @@ button, input, select, textarea { font: inherit; }
 }
 
 .sku {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   font-size: 13px;
   color: var(--accent);
   letter-spacing: .02em;
@@ -56,7 +58,7 @@ button, input, select, textarea { font: inherit; }
 }
 
 .title { font-weight: 600; margin: 4px 0 8px; }
-.card h2, .card h3, .description-editor h2, .invoices h2, .invoices h3 { font-family: 'Yu Mincho', 'Hiragino Mincho ProN', 'Noto Serif JP', serif; }
+.card h2, .card h3, .description-editor h2, .invoices h2, .invoices h3 { font-family: inherit; }
 .muted { color: var(--muted); font-size: 13px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .spread { display: flex; justify-content: space-between; gap: 8px; }
@@ -239,3 +241,6 @@ textarea { min-height: 80px; resize: vertical; }
 .malfunction-comment-photos a { display:block; }
 .malfunction-comment-photos img { display:block; width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; background:var(--surface-2); }
 .malfunction-conversation .field { display:grid; gap:6px; margin-top:8px; }
+
+.delivery-task-heading { margin: 12px 0 4px; font-size: 15px; font-weight: 400; }
+.delivery-reply-tasks { margin-top: 0; }
