@@ -10,10 +10,10 @@ body, button, input, select, textarea, pre, code, kbd, samp {
 .colored-label[data-tone]::before {
   content: '';
   display: inline-block;
-  width: 9px;
-  height: 9px;
+  width: 3px;
+  height: 1em;
   margin-right: 6px;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--label-dot-color);
   vertical-align: middle;
 }
