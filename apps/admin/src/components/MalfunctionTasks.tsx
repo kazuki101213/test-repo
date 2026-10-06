@@ -165,8 +165,8 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
   function choosePhotos(files: FileList | null) {
     if (!files) return;
     const selected = Array.from(files);
-    if (selected.length > 10) { setError('写真は一度に10枚まで追加できます。'); return; }
-    setPhotos(selected); setError('');
+    if (photos.length + selected.length > 10) { setError('写真は一度に10枚まで追加できます。'); return; }
+    setPhotos(current => [...current, ...selected]); setError('');
   }
 
   return <div className="malfunction-conversation">
