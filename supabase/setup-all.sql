@@ -5816,7 +5816,8 @@ alter table app.item_comments add constraint item_comments_task_kind_check check
     'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
     'SONY◯ヤフオク', 'SONY×ヤフオク',
     'SHARP◯ヤフオク', 'SHARP×ヤフオク',
-    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク'
+    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク',
+    'ヤフオク その他'
   )
 );
 

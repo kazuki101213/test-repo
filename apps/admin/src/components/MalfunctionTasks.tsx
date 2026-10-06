@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
 
-const AUCTION_TEMPLATES = [
+const PHOTO_AUCTION_TEMPLATES = [
   'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
   'SONY◯ヤフオク', 'SONY×ヤフオク',
   'SHARP◯ヤフオク', 'SHARP×ヤフオク',
   'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク',
 ] as const;
-const TASK_TEMPLATES = ['Amazon販売', '仕入先確認', ...AUCTION_TEMPLATES] as const;
+const TASK_TEMPLATES = ['Amazon販売', '仕入先確認', ...PHOTO_AUCTION_TEMPLATES, 'ヤフオク その他'] as const;
 type TaskKind = typeof TASK_TEMPLATES[number];
 interface MalfunctionTask {
   id: string; sku: string; lot_seq: number; title: string; marketplace_item_id: string | null;
@@ -32,7 +32,8 @@ function templateBody(kind: TaskKind, row: MalfunctionTask): string {
   const header = '【' + row.lot_seq + '】';
   if (kind === 'Amazon販売') return header + '\nAmazon販売お願いします。';
   if (kind === '仕入先確認') return header + '\n仕入先へ確認します。\nお待ちください。';
-  return header + '\nヤフオク販売お願いします。\nリモコンやB-CASカードや電源ケーブルは予備としてください。\nイメージ写真に付属品が写っていれば付属させてください。\nイメージ写真は撮影ボックスで撮っていますが、床やテーブル等で撮ってください。\nトレイは開かない場合は開かなくて大丈夫です。\n写真は以下の通りです。';
+  if (kind === 'ヤフオク その他') return header + '\nヤフオク販売お願いします。\n【写真に関して】\n付属品はすべてつけてください。\n撮影ボックスではなくて、床やテーブル等で撮ってください。\n電源が確認できるものであれば、確認できるような写真お願いします。';
+  return header + '\nヤフオク販売お願いします。\nリモコンやB-CASカードや電源ケーブルは予備としてください。\n【写真に関して】\n付属品が写っていれば付属させてください。\n撮影ボックスで撮っていますが、床やテーブル等で撮ってください。\nランプや表示は写真の通りお願いします。\nトレイは開かない場合は開かなくて大丈夫です。\n写真は以下の通りです。';
 }
 
 async function prepareImage(file: File): Promise<File> {
@@ -105,7 +106,7 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
     setError('');
     if (!value) return;
     setDraft(templateBody(value as TaskKind, item));
-    if (!(AUCTION_TEMPLATES as readonly string[]).includes(value)) return;
+    if (!(PHOTO_AUCTION_TEMPLATES as readonly string[]).includes(value)) return;
     setLoadingTemplatePhotos(true);
     try {
       const { data, error: photoError } = await getSupabase().from('item_comment_template_photos')
@@ -132,7 +133,7 @@ function MalfunctionConversation({ item, staff }: { item: MalfunctionTask; staff
     const commentId = crypto.randomUUID();
     const paths: string[] = [];
     try {
-      if (kind.endsWith('ヤフオク')) {
+      if (kind.includes('ヤフオク')) {
         const { error: auctionError } = await sb.rpc('prepare_yahoo_auction_item', { p_item_id: item.id });
         if (auctionError) throw auctionError;
       }
@@ -258,7 +259,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {error && <li className="error" role="alert">動作不良タスク：{error}</li>}
     {!error && rows.length === 0 && actionTasks.length === 0 && <li className="muted">動作不良の報告はありません。</li>}
     {actionTasks.map(task => <li key={'action-' + task.id} className="malfunction-task-row">
-      <div className="task-action-details"><strong>【{task.items?.lot_seq ?? '—'}】</strong> <a className="btn ghost" href={'https://bussan-delivery.vercel.app/?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.items?.marketplace_item_id ?? '商品ID未登録'}】</a> {task.task_kind.startsWith('Panasonic') || task.task_kind.startsWith('SONY') || task.task_kind.startsWith('SHARP') || task.task_kind.startsWith('TOSHIBA') ? 'ヤフオク販売' : task.task_kind}<small>{task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
+      <div className="task-action-details"><strong>【{task.items?.lot_seq ?? '—'}】</strong> <a className="btn ghost" href={'https://bussan-delivery.vercel.app/?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.items?.marketplace_item_id ?? '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? 'ヤフオク販売' : task.task_kind}<small>{task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
       <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeTask(task.id)}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
     {rows.map(row => <li key={'malfunction-' + row.id} className="malfunction-task-row">
