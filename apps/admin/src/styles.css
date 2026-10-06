@@ -305,3 +305,26 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .malfunction-comment-photos { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,128px)); gap:8px; margin-top:8px; }
 .malfunction-comment-photos a { display:block; }
 .malfunction-comment-photos img { display:block; width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; background:var(--surface-2); }
+
+.invoice-task-rows .malfunction-task-row {
+  display:flex; align-items:flex-start; justify-content:space-between; gap:14px;
+  padding:14px; margin:10px 0; border:1px solid var(--border); border-radius:12px;
+  background:var(--surface); box-shadow:0 2px 8px rgba(35,28,20,.06);
+}
+.invoice-task-rows .malfunction-task-row > .malfunction-task-content { min-width:0; flex:1; }
+.invoice-task-rows .malfunction-task-row > button.btn { align-self:flex-start; width:auto; flex:none; padding:6px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); }
+.invoice-task-rows .task-action-details { min-width:0; flex:1; line-height:1.5; }
+.invoice-task-rows .task-action-details small { display:block; margin-top:4px; color:var(--muted); font-size:13.333px; }
+.malfunction-task-heading { display:block; margin:0 0 8px; font-size:15px; }
+.malfunction-task-metadata { display:grid; gap:3px; font-family:inherit; font-size:13.333px; line-height:1.45; }
+.malfunction-task-metadata > div { display:grid; grid-template-columns:104px minmax(0,1fr); gap:8px; }
+.malfunction-task-metadata > div > span:first-child { color:var(--muted); }
+.malfunction-report-message { margin:10px 0 4px; font-size:13.333px; line-height:1.5; }
+.malfunction-original-comment { margin:4px 0 10px; color:var(--muted); font-size:13.333px; line-height:1.5; white-space:pre-wrap; }
+.malfunction-empty-message { margin:8px 0; font-size:13.333px; }
+.malfunction-conversation { margin-top:12px; padding-top:10px; border-top:1px solid var(--border); }
+@media (max-width:640px) {
+  .invoice-task-rows .malfunction-task-row { gap:8px; padding:11px; }
+  .malfunction-task-metadata > div { grid-template-columns:90px minmax(0,1fr); }
+  .invoice-task-rows .malfunction-task-row > button.btn { padding:5px 8px; }
+}
