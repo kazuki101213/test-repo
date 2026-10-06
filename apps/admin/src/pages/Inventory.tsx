@@ -127,9 +127,9 @@ export default function Inventory({ me }: { me: Staff }) {
 
   function toggleStatus(value: string, checked: boolean) {
     setSelectedStatuses(current => {
-      const selected = current ?? allStatusValues;
+      const selected = current ?? [];
       const next = checked ? [...new Set([...selected, value])] : selected.filter(option => option !== value);
-      return !next.includes('__unsold__') && allStatusValues.every(option => next.includes(option)) ? null : next;
+      return next;
     });
   }
 
@@ -151,7 +151,7 @@ export default function Inventory({ me }: { me: Staff }) {
           <div className="inventory-filter-options">
             <label><input type="checkbox" checked={selectedStatuses === null} onChange={event => setSelectedStatuses(event.target.checked ? null : [])} />すべて</label>
             {statusOptions.map(option => <label key={option.value}>
-            <input type="checkbox" checked={selectedStatuses === null ? option.value !== '__unsold__' : selectedStatuses.includes(option.value)} onChange={event => toggleStatus(option.value, event.target.checked)} />
+            <input type="checkbox" checked={selectedStatuses?.includes(option.value) ?? false} onChange={event => toggleStatus(option.value, event.target.checked)} />
             {option.label}
           </label>)}</div>
         </details>
@@ -160,10 +160,10 @@ export default function Inventory({ me }: { me: Staff }) {
           <div className="inventory-filter-options">
             <label><input type="checkbox" checked={selectedDelivererIds === null} onChange={event => setSelectedDelivererIds(event.target.checked ? null : [])} />全員</label>
             {deliverers.map(person => <label key={person.id}>
-            <input type="checkbox" checked={selectedDelivererIds === null || selectedDelivererIds.includes(person.id)} onChange={event => setSelectedDelivererIds(current => {
-              const selected = current ?? deliverers.map(row => row.id);
+            <input type="checkbox" checked={selectedDelivererIds?.includes(person.id) ?? false} onChange={event => setSelectedDelivererIds(current => {
+              const selected = current ?? [];
               const next = event.target.checked ? [...new Set([...selected, person.id])] : selected.filter(id => id !== person.id);
-              return deliverers.every(row => next.includes(row.id)) ? null : next;
+              return next;
             })} />
             {person.name}
           </label>)}</div>
