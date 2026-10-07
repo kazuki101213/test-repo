@@ -40,7 +40,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [filter, setFilter] = useState<Filter>(() => staff.name === '長部一輝' ? 'all' : 'arrived');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
-  const [queryField, setQueryField] = useState<DeliverySearchField>('serial');
+  const [queryField, setQueryField] = useState<DeliverySearchField | 'deliverer'>('serial');
   const [error, setError] = useState<string | null>(null);
   const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
   const [notices, setNotices] = useState<DeliveryItemNotice[]>([]);
@@ -126,7 +126,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     }
     const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
     for (const task of tasks) {
-      if (staff.role === 'admin' && delivererId && task.deliverer_id !== delivererId) continue;
+      if (canViewDeliveryAssignee(staff) && queryField === 'deliverer' && delivererId && task.deliverer_id !== delivererId) continue;
       const key = serialNumber(task);
       const members = groups.get(key);
       if (members) members.push(task);
@@ -136,7 +136,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
-      if (q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
+      if (queryField !== 'deliverer' && q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
       const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;
@@ -185,12 +185,14 @@ export default function TaskList({ staff }: { staff: Staff }) {
 
   return (
     <>
-      {staff.role === 'admin' && <label className="field"><span>納品担当者の在庫</span><select value={delivererId} onChange={e => { setDelivererId(e.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">すべての担当者</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select></label>}
       <div className="delivery-inventory-search" role="group" aria-label="在庫検索">
-        <select aria-label="検索項目" value={queryField} onChange={event => setQueryField(event.target.value as DeliverySearchField)}>
+        <select aria-label="検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as DeliverySearchField | 'deliverer'); setDelivererId(''); setQuery(''); setExpandedId(null); setSelected(new Set()); }}>
+          {canViewDeliveryAssignee(staff) && <option value="deliverer">納品担当者</option>}
           {deliverySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
         </select>
-        <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />
+        {queryField === 'deliverer' && canViewDeliveryAssignee(staff)
+          ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
+          : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
       </div>
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>

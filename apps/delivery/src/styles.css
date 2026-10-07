@@ -272,3 +272,9 @@ textarea { min-height: 80px; resize: vertical; }
 .delivery-inventory-search { display: flex; align-items: center; gap: 8px; margin-top: 12px; min-width: 0; }
 .delivery-inventory-search select { flex: 0 0 auto; width: auto; }
 .delivery-inventory-search input { flex: 1; min-width: 0; width: auto; }
+
+.spare-search { display:flex; align-items:center; gap:8px; min-width:0; margin:12px 0; }
+.spare-search > select:first-child { flex:0 0 auto; width:auto; }
+.spare-search > input, .spare-search > select:last-child:not(:first-child) { flex:1; min-width:0; width:auto; }
+
+.delivery-inventory-search > select:last-child:not(:first-child) { flex:1; min-width:0; width:auto; }

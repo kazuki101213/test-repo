@@ -1,3 +1,4 @@
+import { canViewDeliveryAssignee, spareSearchFields, matchesSpareSearch, type SpareSearchField } from '@bussan/shared';
 import { staffDisplayName } from '@bussan/shared';
 import { useEffect, useState } from 'react';
 import { fetchSpareAccessories, spareState, yen } from '@bussan/shared';
@@ -9,17 +10,19 @@ export default function Spares({ staff }: { staff: Staff }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [queryField, setQueryField] = useState<SpareSearchField>('title');
+  const canSearchOwner = canViewDeliveryAssignee(staff);
   const [spareOwners, setSpareOwners] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
 
   useEffect(() => {
-    if (staff.role !== 'admin') return;
+    if (!canSearchOwner) return;
     let active = true;
     fetchSpareOwners()
       .then(data => { if (active) setSpareOwners(data); })
       .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); });
     return () => { active = false; };
-  }, [staff.role]);
+  }, [canSearchOwner]);
 
   useEffect(() => {
     let active = true;
@@ -39,19 +42,21 @@ export default function Spares({ staff }: { staff: Staff }) {
     const timer = window.setInterval(visible, 30000);
     window.addEventListener('focus', visible); document.addEventListener('visibilitychange', visible);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
-  }, [staff.id, staff.role, delivererId]);
+  }, [staff.id, staff.role]);
 
   const selectedOwner = spareOwners.find(owner => owner.id === delivererId);
-  const shown = rows.filter(row => !row.used_for_item_id
-    && (staff.role !== 'admin' || !delivererId || row.owner_staff_id === delivererId || (!row.owner_staff_id && row.owner_name === selectedOwner?.name))
-    && [row.title, row.source_sku, row.marketplace_item_id, row.tracking_no, row.owner_name]
-    .some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
+  const shown = rows.filter(row => !row.used_for_item_id && matchesSpareSearch(row, queryField, query, delivererId, selectedOwner?.name));
   return <section className="card">
     <h2>予備</h2>
-    {staff.role === 'admin'
-      ? <label className="field"><span>予備の担当者</span><select value={delivererId} onChange={event => setDelivererId(event.target.value)}><option value="">すべての担当者</option>{spareOwners.map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select></label>
-      : <p className="muted staff-scope">担当者：{staffDisplayName(staff)}</p>}
-    <input type="search" aria-label="予備を検索" placeholder="品名・SKU・商品ID・追跡番号" value={query} onChange={event => setQuery(event.target.value)} />
+    {!canSearchOwner && <p className="muted staff-scope">担当者：{staffDisplayName(staff)}</p>}
+    <div className="spare-search" role="group" aria-label="予備検索">
+      <select aria-label="予備の検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as SpareSearchField); setQuery(''); setDelivererId(''); }}>
+        {spareSearchFields.filter(field => canSearchOwner || field.value !== 'owner').map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
+      </select>
+      {queryField === 'owner' && canSearchOwner
+        ? <select aria-label="保管担当者で検索" value={delivererId} onChange={event => setDelivererId(event.target.value)}><option value="">全員</option>{spareOwners.map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select>
+        : <input type="search" aria-label="予備を検索" placeholder="検索" value={query} onChange={event => setQuery(event.target.value)} />}
+    </div>
     {error && <p className="error" role="alert">{error}</p>}
     {loading ? <p>読み込み中…</p> : shown.length === 0 ? <p className="empty">予備はありません。</p> :
       <div className="spare-list">{shown.map(row => <div className="spare-row" key={row.id}>

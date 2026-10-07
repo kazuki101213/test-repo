@@ -9,3 +9,4 @@ export * from './spareShipping';
 export * from './labelTone';
 export * from './staffNames';
 export * from './productModel';
+export * from './spareSearch';
