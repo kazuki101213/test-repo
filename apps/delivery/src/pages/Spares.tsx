@@ -24,11 +24,21 @@ export default function Spares({ staff }: { staff: Staff }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchSpareAccessories(staff.role === 'admin' ? undefined : staff.id)
-      .then(data => { if (active) setRows(data); })
-      .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    let fetching = false;
+    const refresh = async () => {
+      if (fetching) return;
+      fetching = true;
+      try {
+        const data = await fetchSpareAccessories(staff.role === 'admin' ? undefined : staff.id);
+        if (active) { setRows(data); setError(''); }
+      } catch (cause) { if (active) setError(cause instanceof Error ? cause.message : String(cause)); }
+      finally { fetching = false; if (active) setLoading(false); }
+    };
+    const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    void refresh();
+    const timer = window.setInterval(visible, 30000);
+    window.addEventListener('focus', visible); document.addEventListener('visibilitychange', visible);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
   }, [staff.id, staff.role, delivererId]);
 
   const selectedOwner = spareOwners.find(owner => owner.id === delivererId);
