@@ -57,6 +57,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [purchaseDrafts, setPurchaseDrafts] = useState<PurchaseDraft[]>([]);
   const [selectedPurchaseDraft, setSelectedPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [dismissingDraft, setDismissingDraft] = useState<string | null>(null);
   const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
   const [fullEditFor, setFullEditFor] = useState<InventoryItem | null>(null);
   const [expandedComment, setExpandedComment] = useState<InventoryItem | null>(null);
@@ -126,6 +127,14 @@ export default function Inventory({ me }: { me: Staff }) {
   const allStatusValues = statusOptions.filter(option => option.value !== '__unsold__').map(option => option.value);
   const unsoldOnly = selectedStatuses?.includes('__unsold__') ?? false;
 
+  async function excludeDraft(id: string) {
+    if (dismissingDraft) return;
+    setDismissingDraft(id); setDraftError(null);
+    try { await dismissPurchaseDraft(id); setPurchaseDrafts(rows => rows.filter(row => row.id !== id)); }
+    catch (cause) { setDraftError(cause instanceof Error ? cause.message : cause && typeof cause === 'object' && 'message' in cause ? String(cause.message) : String(cause)); }
+    finally { setDismissingDraft(null); }
+  }
+
   function toggleStatus(value: string, checked: boolean) {
     setSelectedStatuses(current => {
       const selected = current ?? [];
@@ -133,6 +142,12 @@ export default function Inventory({ me }: { me: Staff }) {
       return next;
     });
   }
+
+  if (purchaseOpen) return <section className="purchase-registration-screen" aria-label="在庫登録">
+    <button type="button" className="btn" onClick={() => { setPurchaseOpen(false); setSelectedPurchaseDraft(null); }}>在庫・仕入れリストへ戻る</button>
+    {selectedPurchaseDraft && <p>仕入れリストから登録: {selectedPurchaseDraft.title}</p>}
+    <NewPurchase key={selectedPurchaseDraft?.id ?? 'new'} me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
+  </section>;
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
@@ -196,14 +211,14 @@ export default function Inventory({ me }: { me: Staff }) {
         <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
         <div className="toolbar" style={{ marginTop: 12 }}>
           <button type="button" className="btn" onClick={loadPurchaseDrafts}>リストを更新</button>
-          <span className="sub">拡張機能の「購入履歴を同期」で追加した下書きです。在庫へ反映する前に金額・担当者を確認してください。</span>
+          <span className="sub">フリマの購入・落札履歴から取得した下書きです。在庫へ反映する前に金額・担当者を確認してください。</span>
         </div>
         {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
-        {purchaseDrafts.length > 0 ? <div className="scroll"><table><thead><tr><th>購入日</th><th>商品情報</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>販売予定金額</th><th>振込予定金額</th><th>アカウント</th><th>操作</th></tr></thead><tbody>
-          {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a href={draft.marketplace_url} target="_blank" rel="noreferrer">{draft.title}</a><div className="sub">型番 {draft.model_no || '未特定'} / 品番 {draft.product_no ?? '未特定'} / ASIN {draft.asin || '未特定'}</div></td><td><ColoredLabel value={draft.marketplace} /></td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.planned_price == null ? '未特定' : yen(draft.planned_price)}</td><td>{draft.planned_payout == null ? '未特定' : yen(draft.planned_payout)}</td><td>{draft.account_label}</td><td className="toolbar">
-            <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); }}>在庫へ反映</button>
-            <button type="button" className="btn" onClick={async () => { if (!window.confirm('この購入履歴を仕入れリストから除外しますか？')) return; try { await dismissPurchaseDraft(draft.id); loadPurchaseDrafts(); } catch (error) { setDraftError(error instanceof Error ? error.message : String(error)); } }}>除外</button>
-          </td></tr>)}
+        {purchaseDrafts.length > 0 ? <div className="scroll"><table className="purchase-draft-table"><thead><tr><th>購入日</th><th>商品情報</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>販売予定金額</th><th>振込予定金額</th><th>操作</th></tr></thead><tbody>
+          {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a title={draft.title} href={draft.marketplace_url} target="_blank" rel="noreferrer">{Array.from(draft.title).slice(0, 20).join('')}</a><div className="purchase-draft-product-meta">型番 {draft.model_no || '未特定'} / 品番 {draft.product_no ?? '未特定'} / ASIN {draft.asin || '未特定'}</div></td><td><ColoredLabel value={draft.marketplace} /></td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.planned_price == null ? '未特定' : yen(draft.planned_price)}</td><td>{draft.planned_payout == null ? '未特定' : yen(draft.planned_payout)}</td><td><div className="purchase-draft-actions">
+            <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); window.scrollTo({ top: 0 }); }}>在庫へ反映</button>
+            <button type="button" className="btn" disabled={dismissingDraft !== null} onClick={() => void excludeDraft(draft.id)}>{dismissingDraft === draft.id ? '除外中…' : '除外'}</button>
+          </div></td></tr>)}
         </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
@@ -289,10 +304,7 @@ export default function Inventory({ me }: { me: Staff }) {
       )}
       {visibleCount < items.length && <div ref={loadMoreRef} className="toolbar"><button className="btn" onClick={() => setVisibleCount(current => Math.min(current + 80, items.length))}>さらに表示</button></div>}
       </section>
-      {purchaseOpen && <aside id="inventory-purchase-panel" className="purchase-panel" aria-label="在庫登録">
-        {selectedPurchaseDraft && <div className="sub">仕入れリストから登録中: {selectedPurchaseDraft.title}</div>}
-        <NewPurchase me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
-      </aside>}
+
 
       {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
       {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} canDelete={me.role === 'admin'} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}

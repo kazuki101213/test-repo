@@ -1,5 +1,5 @@
 export const PRODUCTION_PLAN={
-  "id": "2026-10-07-automatic-purchase-production",
+  "id": "2026-10-07-purchase-two-weeks",
   "mode": "tracking",
   "cancelled": false,
   "inspectLists": false,

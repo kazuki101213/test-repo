@@ -5,7 +5,7 @@ export async function purchaseImportStep(job,a,s){
  if(job.stage==='purchase-context'){
   const c=await rpc('marketplace_purchase_context',{p_marketplace:dbSite});
   if(!/^\d{4}-\d{2}-\d{2}$/.test(c.day)||!/^\d{4}-\d{2}-\d{2}$/.test(c.cutoff)||!Array.isArray(c.knownIds))throw new Error('仕入れリストの照合条件を確認できません');
-  job.purchaseDay=c.day;job.purchaseCutoff=c.cutoff;job.knownIds=c.knownIds;job.purchaseSeen=[];job.purchasePages=0;job.purchaseQueue=[];job.index=0;
+  job.inventoryIds=Array.isArray(c.inventoryIds)?c.inventoryIds:[];job.inventoryStreak=0;job.purchaseInventoryEnd=false;job.purchaseDay=c.day;job.purchaseCutoff=c.cutoff;job.knownIds=c.knownIds;job.purchaseSeen=[];job.purchasePages=0;job.purchaseQueue=[];job.index=0;
   await verifyAccount(job,a);job.stage='purchase-list';job.pageUrl=a.listUrl;job.purchaseNavigate=true;return save(job);
  }
  if(job.stage==='purchase-list'){
@@ -18,13 +18,19 @@ export async function purchaseImportStep(job,a,s){
   job.purchasePages++;job.purchaseQueue=[];job.index=0;
   for(const row of fresh){
    job.purchaseSeen.push(row.marketplace_item_id);
+   if(job.inventoryIds.includes(row.marketplace_item_id)){
+    job.inventoryStreak++;job.counts.skipped++;
+    if(job.inventoryStreak>=5){job.purchaseInventoryEnd=true;break;}
+    continue;
+   }
+   job.inventoryStreak=0;
    if(row.cancelled||row.purchased_at&&row.purchased_at<job.purchaseCutoff||job.knownIds.includes(row.marketplace_item_id)){job.counts.skipped++;continue;}
    if(row.purchased_at&&row.purchased_at>job.purchaseDay){await note(row,'購入日が未来のため追加しません');continue;}
    job.purchaseQueue.push(row);
   }
   const dated=data.purchaseRows.filter(r=>r.purchased_at).map(r=>r.purchased_at);
   const ordered=dated.every((d,i)=>!i||d<=dated[i-1]);
-  job.purchaseEnd=!!data.emptyConfirmed||ordered&&data.purchaseRows.length>0&&data.purchaseRows.every(r=>!!r.purchased_at)&&dated.some(d=>d<job.purchaseCutoff);
+  job.purchaseEnd=!!job.purchaseInventoryEnd||!!data.emptyConfirmed||ordered&&data.purchaseRows.length>0&&data.purchaseRows.every(r=>!!r.purchased_at)&&dated.some(d=>d<job.purchaseCutoff);
   job.purchaseNext=data.nextUrl||null;job.purchaseContinuation=data.continuationUnconfirmed===true;
   job.stage='purchase-detail';return save(job);
  }

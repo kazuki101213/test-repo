@@ -80,7 +80,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setMarketplace(draft.marketplace);
     setMarketplaceItemId(draft.marketplace_item_id);
     setUrlOverride(draft.marketplace_url);
-    setTitle(draft.title);
+    setTitle(draft.model_no || draft.title);
     setPurchasedAt(draft.purchased_at || '');
     setCost(draft.cost_amount ?? '');
     setAsin(draft.asin ?? '');
