@@ -135,7 +135,7 @@ export default function PhotoReviewTasks() {
         {!loadingPhotos && <p className="sub">アプリ保存 {photos.length}枚 ／ Google Drive送信済み {selected.exported_photo_count}枚</p>}
         {!loadingPhotos && photos.length !== selected.exported_photo_count && <div className="error" role="status">写真枚数が一致しないため完了できません。納品アプリで「Googleドライブ追加」を再実行して、追加分も送信してください。</div>}
         <div className="photo-review-actions">
-          <button type="button" className="btn primary photo-review-icon" aria-label="写真確認を完了" title="写真確認を完了" disabled={busy || saving || loadingPhotos || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '…' : '👍'}</button>
+          <button type="button" className="btn primary photo-review-icon" aria-label="写真確認を完了" title="写真確認を完了" disabled={busy || saving || loadingPhotos || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '…' : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 10v11H3V10h4Zm0 0 5-7a3 3 0 0 1 2 3l-1 4h6a2 2 0 0 1 2 2l-1 7a2 2 0 0 1-2 2H7" /></svg>}</button>
           <button type="button" className="btn photo-review-icon" aria-label="通番号の写真をすべて保存" title={preparingSave ? '写真を準備中' : '通番号の写真をすべて保存'} disabled={busy || saving || preparingSave} onClick={() => void savePhotos()}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5" /></svg>
           </button>
