@@ -5,8 +5,8 @@ import { productSerial } from './inventory';
 export interface ColumnFilter { values: string[] | null; from: string; to: string }
 export type ColumnFilters = Record<string, ColumnFilter>;
 export interface InventoryColumn { label: string; kind?: 'number' | 'date'; value: (item: InventoryItem) => string | number | null | undefined }
-const salePrice = (i: InventoryItem) => i.product_sale_conflict ? i.sold_price : i.product_sold_price;
-const salePayout = (i: InventoryItem) => i.product_sale_conflict ? i.payout_amount : i.product_payout_amount;
+export const salePrice = (i: InventoryItem) => i.is_accessory || i.product_sale_conflict ? i.sold_price : i.product_sold_price;
+export const salePayout = (i: InventoryItem) => i.is_accessory || i.product_sale_conflict ? i.payout_amount : i.product_payout_amount;
 export const inventoryColumns: Record<string, InventoryColumn> = {
   photo: { label: 'Amazonの写真', value: i => i.amazon_image_url ? 'あり' : 'なし' },
   serial: { label: '通番号', value: i => productSerial(i.sku, i.lot_seq) },

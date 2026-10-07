@@ -12,7 +12,7 @@ import AmazonSalesSync from '../components/AmazonSalesSync';
 import ColoredLabel from '../components/ColoredLabel';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { productCount, productSerial } from '../inventory';
-import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, type ColumnFilters } from '../inventoryFilters';
+import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, type ColumnFilters } from '../inventoryFilters';
 import InventoryColumnFilter from '../components/InventoryColumnFilter';
 
 function elapsedJstDays(value: string | null | undefined): number | null {
@@ -271,7 +271,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const next = viewItems[index + 1];
                 const previousSerial = previous ? productSerial(previous.sku, previous.lot_seq) : null;
                 const nextSerial = next ? productSerial(next.sku, next.lot_seq) : null;
-                const sharedSaleItem = i.is_accessory && !i.product_sale_conflict ? { ...i, sold_on: i.product_sold_on, sold_price: i.product_sold_price, payout_amount: i.product_payout_amount } : i;
+                const sharedSaleItem = i.is_accessory && !i.product_sale_conflict ? { ...i, sold_on: i.product_sold_on } : i;
                 const edit = (field: InventoryField) => setEditFor({ item: ['sold_on','sold_price','payout_amount','sales_channel'].includes(field) ? sharedSaleItem : i, field });
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
@@ -307,7 +307,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(yen(i.planned_price), 'planned_price', yen(i.planned_payout), 'planned_payout')}</td>
                   <td>{stacked(yen(i.expected_profit), 'planned_payout', expectedRate, 'planned_price')}</td>
                   <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
-                  <td>{stacked(yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
+                  <td>{stacked(yen(salePrice(i)), 'sold_price', yen(salePayout(i)), 'payout_amount')}</td>
                   <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
                   <td>{stacked(yen(i.inventory_refund_amount), 'inventory_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td><button type="button" className="inventory-cell-edit" onClick={() => edit('amazon_refund_amount')} title="Amazon返金金額をクリックして編集">{yen(i.amazon_refund_amount)}</button></td>
