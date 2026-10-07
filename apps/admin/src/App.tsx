@@ -9,16 +9,15 @@ import Products from './pages/Products';
 import Ledger from './pages/Ledger';
 import ExpenseList from './components/ExpenseList';
 import Spares from './pages/Spares';
-import PushSettings from './components/PushSettings';
 import { disableDevicePush } from './push';
 
 type Page = 'dashboard' | 'inventory' | 'spares' | 'expenses' | 'products' | 'ledger';
 
 const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
-  { key: 'inventory', label: '在庫一覧' },
-  { key: 'spares', label: '予備一覧' },
-  { key: 'expenses', label: '経費一覧' },
+  { key: 'inventory', label: '在庫' },
+  { key: 'spares', label: '予備' },
+  { key: 'expenses', label: '経費' },
   { key: 'products',  label: '商品リスト' },
   { key: 'ledger',    label: '古物台帳' },
 ];
@@ -86,8 +85,7 @@ export default function App() {
 
       <main>
         {error && <p className="error" role="alert">{error}</p>}
-        <PushSettings key={session.user.id} userId={session.user.id} />
-        {page === 'dashboard' && <Dashboard staff={session.staff} />}
+        {page === 'dashboard' && <Dashboard staff={session.staff} userId={session.user.id} />}
         {page === 'inventory' && <Inventory me={session.staff} />}
         {page === 'spares' && <Spares me={session.staff} />}
         {page === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}

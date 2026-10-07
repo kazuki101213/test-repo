@@ -62,8 +62,8 @@ export default function PushSettings({ userId }: { userId: string }) {
     finally { setBusy(false); }
   }
 
-  return <section className="card no-print" aria-label="タスクの通知設定">
-    <div className="row"><span>タスクの通知：{enabled ? '有効' : '未設定'}</span>
+  return <section className="card no-print" aria-label="通知設定">
+    <div className="row"><span>通知設定：{enabled ? '有効' : '未設定'}</span>
       {!homeScreen && supported && <button className="btn ghost" disabled={busy} onClick={() => void (enabled ? disable() : enable())}>{busy ? '設定中…' : enabled ? '通知を停止' : '通知を有効にする'}</button>}
       {enabled && <button className="btn ghost" disabled={busy} onClick={() => void testNotification()}>テスト通知</button>}
     </div>

@@ -74,7 +74,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
  <PackedSummary staffId={task.staff_id} initialMonth={task.month.slice(0,7)} billedCount={invoice?.snapshot.lines.reduce((n,l)=>n+l.quantity,0)}/>
  {error&&<div className="error" role="alert">{error}</div>}
  {invoice&&!approved&&<form onSubmit={e=>{e.preventDefault();void approve();}}><div className="toolbar"><label className="field"><span>経費の計上日</span><input type="date" required value={date} disabled={busy} onChange={e=>setDate(e.target.value)}/></label><button className="btn primary" disabled={busy||imagesLoading||!!imageError||invoice.total<=0}>{busy?'承認中…':'承認して外注費に追加'}</button></div></form>}
- {approved&&<p className="ok">承認済み・経費一覧に追加済みです。</p>}
+ {approved&&<p className="ok">承認済み・経費に追加済みです。</p>}
  </dialog>;
 }
 
@@ -100,7 +100,7 @@ export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;sta
  return <section className="card invoice-tasks" aria-label="タスク"><div className="toolbar"><h3>タスク</h3><span>書類承認待ち {pending}件</span><select aria-label="書類の状態" value={filter} onChange={e=>setFilter(e.target.value as 'pending'|'approved')}><option value="pending">承認待ち</option><option value="approved">承認済み</option></select></div>
  {error&&<div className="error" role="alert">{error}<button className="btn" onClick={()=>setRevision(n=>n+1)}>再読み込み</button></div>}{message&&<p className="ok" role="status">{message}</p>}
  {loading?<p>読み込み中…</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id}><button onClick={()=>setSelected(row)}><span>{staffDisplayName(row.name)}<small>{row.month.slice(0,7)} {row.invoice?'請求書':''}{row.invoice&&row.receipts?'・':''}{row.receipts?'領収書':''}</small></span><strong>{row.invoice?yen(row.invoice.total):'領収書のみ'}</strong><span>確認 ›</span></button></li>)}<PhotoReviewTasks /><MalfunctionTasks staff={staff} /></ul>}
- {selected&&<InvoiceReview key={selected.id} task={selected} onClose={()=>setSelected(null)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費一覧の外注費に追加しました。');onApproved();}}/>}
+ {selected&&<InvoiceReview key={selected.id} task={selected} onClose={()=>setSelected(null)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費の外注費に追加しました。');onApproved();}}/>}
  </section>;
 }
 

@@ -15,6 +15,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'tasks' | 'spares' | 'invoices'>('tasks');
   const [invoiceNavigation, setInvoiceNavigation] = useState<'busy' | 'dirty' | null>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const canLeave = () => invoiceNavigation !== 'busy' && (invoiceNavigation !== 'dirty' || window.confirm('保存していない請求書の変更を破棄しますか？'));
   async function logout() {
     if (!canLeave()) return;
@@ -57,12 +58,17 @@ export default function App() {
         <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      {['admin','deliverer'].includes(session.staff.role) && <PushSettings key={session.user.id} userId={session.user.id} />}
       <nav className="row invoice-tabs no-print" aria-label="納品アプリのメニュー">
-        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('tasks'); }}>在庫一覧</button>
-        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'spares' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('spares'); }}>予備一覧</button>
-        <button className="btn ghost" aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => setTab('invoices')}>請求書・領収書</button>
+        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('tasks'); }}>在庫</button>
+        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'spares' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('spares'); }}>予備</button>
+        <div className="invoice-notification-actions">
+          <button className="btn ghost" aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => setTab('invoices')}>請求書・領収書</button>
+          {['admin','deliverer'].includes(session.staff.role) && <button className="btn ghost" aria-expanded={notificationsOpen} aria-controls="notification-settings" onClick={() => setNotificationsOpen(open => !open)}>通知設定</button>}
+        </div>
       </nav>
+      {['admin','deliverer'].includes(session.staff.role) && <div id="notification-settings" hidden={!notificationsOpen}>
+        <PushSettings key={session.user.id} userId={session.user.id} />
+      </div>}
       {tab === 'tasks' ? <TaskList staff={session.staff} /> : tab === 'spares' ? <Spares staff={session.staff} /> : <Invoices key={session.user.id} staff={session.staff} onNavigationChange={setInvoiceNavigation} />}
     </div>
   );

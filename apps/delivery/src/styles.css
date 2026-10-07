@@ -114,6 +114,8 @@ textarea { min-height: 80px; resize: vertical; }
 }
 .btn.primary { background: var(--accent); color: #fffdf7; border-color: var(--accent); font-weight: 600; }
 .btn.ghost { background: transparent; }
+.invoice-tabs .btn { width: auto; min-width: 0; flex: none; white-space: nowrap; padding: 8px; }
+.invoice-notification-actions { display: flex; gap: 8px; align-items: center; }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn:disabled { opacity: .6; cursor: not-allowed; }
 

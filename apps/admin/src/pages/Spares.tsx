@@ -79,7 +79,7 @@ export default function Spares({ me }: { me: Staff }) {
         model_no: item.model_no,
         asin: item.asin,
       }));
-      setReferenceMessage(mode === 'remote' ? `${item.sku} のリモコン情報を反映します。登録後、在庫一覧のこのリモコン行を削除します。` : `${item.sku} の本体情報を反映します（品名・金額・SKUを指定どおりに設定）。本体行は変更しません。`);
+      setReferenceMessage(mode === 'remote' ? `${item.sku} のリモコン情報を反映します。登録後、在庫のこのリモコン行を削除します。` : `${item.sku} の本体情報を反映します（品名・金額・SKUを指定どおりに設定）。本体行は変更しません。`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally { setAutofillBusy(false); }
@@ -87,7 +87,7 @@ export default function Spares({ me }: { me: Staff }) {
 
   async function add(event: FormEvent) {
     event.preventDefault();
-    if (referenceMode === 'remote' && sourceItemId && !window.confirm('このリモコン情報を予備一覧へ登録し、在庫一覧のリモコン行を削除します。続けますか？')) return;
+    if (referenceMode === 'remote' && sourceItemId && !window.confirm('このリモコン情報を予備へ登録し、在庫のリモコン行を削除します。続けますか？')) return;
     setSaving(true); setError('');
     try {
       if (!form.title.trim()) throw new Error('品名を入力してください。');
@@ -104,7 +104,7 @@ export default function Spares({ me }: { me: Staff }) {
   }
 
   async function remove(row: SpareAccessory) {
-    if (!window.confirm(`「${row.title}」${row.source_sku ? `（${row.source_sku}）` : ''}を予備一覧から削除します。この操作は取り消せません。削除しますか？`)) return;
+    if (!window.confirm(`「${row.title}」${row.source_sku ? `（${row.source_sku}）` : ''}を予備から削除します。この操作は取り消せません。削除しますか？`)) return;
     setDeletingId(row.id); setError('');
     try {
       await deleteSpareAccessory(row.id);
@@ -114,7 +114,7 @@ export default function Spares({ me }: { me: Staff }) {
   }
 
   return <section className="card">
-    <div className="toolbar"><h2 style={{ margin: 0 }}>予備一覧</h2><span style={{ flex: 1 }} />
+    <div className="toolbar"><h2 style={{ margin: 0 }}>予備</h2><span style={{ flex: 1 }} />
       <button className="btn primary" aria-expanded={adding} onClick={() => { setAdding(open => !open); setError(''); }}>予備を追加</button>
     </div>
     {adding && <form className="card" onSubmit={event => void add(event)}>
