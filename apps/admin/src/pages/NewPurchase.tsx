@@ -1,9 +1,9 @@
-import { STAFF_DISPLAY_NAMES, staffDisplayName } from '@bussan/shared';
+import { STAFF_DISPLAY_NAMES, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen,
-  fetchSpareAccessories, getSupabase,
+  fetchSpareAccessories,
 } from '@bussan/shared';
 import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
@@ -120,8 +120,10 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setPlannedPrice(product.list_price ?? '');
     setPlannedPayout(product.payout_estimate ?? '');
   }, [product]);
-  useEffect(() => {
-    if (!selectedSpare) return;
+  function selectSpare(id: string) {
+    setSpareId(id);
+    const selectedSpare = availableSpares.find(row => row.id === id);
+    if (!selectedSpare || workStream !== '付属品' || isAmazonReturn || isWorkingAmazonReturn) return;
     setProductId('');
     setProductSearch('');
     setTitle(selectedSpare.title);
@@ -137,7 +139,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       ? selectedSpare.marketplace as Marketplace : 'その他');
     const spareOwner = staff.find(row => row.id === selectedSpare.owner_staff_id && row.role !== 'deliverer' && purchaserNames.includes(row.name));
     if (spareOwner) setPurchaserId(spareOwner.id);
-  }, [selectedSpare, staff]);
+  }
   useEffect(() => {
     if ((!isAmazonReturn && !isWorkingAmazonReturn) || lotSeq === '') {
       setReturnSku(null);
@@ -219,7 +221,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       }
       let assignedReturnSku = returnSku;
       if (isWorkingAmazonReturn && returnSku) {
-        const assignedDeliverer = staff.find(row => row.id === delivererId && row.role === 'deliverer');
+        const assignedDeliverer = deliveryStaffOptions(staff).find(row => row.id === delivererId);
         if (!assignedDeliverer || !purchaser?.code || !assignedDeliverer.code) throw new Error('動作品Amazon返品は納品担当者を選択してください。');
         const parts = returnSku.split('-');
         if (parts.length !== 4) throw new Error('動作品Amazon返品のSKU形式を確認してください。');
@@ -253,14 +255,12 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         ...(draft ? { source_purchase_draft_id: draft.id } : {}),
       };
 
-      const created = await createItem(payload);
+      const created = await createItem(payload, spareId || undefined);
       if (spareId) {
-        const { error: spareError } = await getSupabase().rpc('allocate_spare_accessory', { p_spare_id: spareId, p_item_id: created.id });
-        if (spareError) throw new Error(`在庫 ${created.sku} は登録しましたが、予備の割り当てに失敗しました：${spareError.message}`);
         setSpares(current => current.filter(row => row.id !== spareId));
         setSpareId('');
       }
-      setDone(`登録しました: ${created.sku}`);
+      setDone(`登録しました: ${created.sku}${created.accessory_sku ? ` ／ 付属品 ${created.accessory_sku}` : ''}`);
       // 続けて同じ商品の仕入れを登録できるよう、通番号と担当者は残す
       setTitle(''); setAsin(''); setProductSearch(''); setCost(''); setMarketplaceItemId(''); setTrackingNo(''); setUrlOverride(null);
       if (isAmazonReturn || isWorkingAmazonReturn) { setLotSeq(''); setReturnSku(null); setReturnLookup(''); }
@@ -362,7 +362,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
               <label className="field"><span>納品担当者</span>
                 <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)}>
                   <option value="">— 未定 —</option>
-                  {staff.map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code] || `${s.code} ${s.name}`}</option>)}
+                  {deliveryStaffOptions(staff).map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code]}</option>)}
                 </select>
               </label>
               <label className="field"><span>作業ライン</span>
@@ -376,11 +376,12 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
               </label>
               {(isAmazonReturn || isWorkingAmazonReturn) && <p className="sub" role="status" style={{ gridColumn: '1 / -1', margin: 0 }}>{returnLookup || '元商品の通番号を入力すると、商品情報を読み込みます。'}</p>}
               <label className="field"><span>使用する予備付属品</span>
-                <select value={spareId} size={6} onChange={e => setSpareId(e.target.value)}>
+                <select value={spareId} size={6} onChange={e => selectSpare(e.target.value)}>
                   <option value="">使用しない</option>
                   {availableSpares.map(row => <option key={row.id} value={row.id}>{row.title} ／ {staffDisplayName(row.owner_name) || '担当未設定'} ／ {row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</option>)}
                 </select>
               </label>
+              {selectedSpare && workStream !== '付属品' && <p className="sub" style={{ gridColumn: '1 / -1', margin: 0 }}>本体の入力情報を保ち、付属品「{selectedSpare.title}」（{yen(selectedSpare.cost_amount)}）を同じ通番号に登録します。</p>}
             </div>
             <div className="field" style={{ marginTop: 10 }}>
               <label htmlFor="purchase-handoff">納品担当者への申し送り</label>

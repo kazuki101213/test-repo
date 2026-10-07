@@ -1,4 +1,4 @@
-import { staffDisplayName, productModelText } from '@bussan/shared';
+import { staffDisplayName, productModelText, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen } from '@bussan/shared';
@@ -122,7 +122,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
     if (source && target && target.clientWidth > 0 && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
   };
-  const deliverers = staff.filter(s => s.role === 'deliverer');
+  const deliverers = deliveryStaffOptions(staff);
   const statusOptions = [...STATUSES.map(value => ({ value, label: value })), { value: 'marketplace:動作品Amazon返品', label: '動作品Amazon返品' }, { value: '__unsold__', label: '未販売のみ' }];
   const allStatusValues = statusOptions.filter(option => option.value !== '__unsold__').map(option => option.value);
   const unsoldOnly = selectedStatuses?.includes('__unsold__') ?? false;
@@ -243,7 +243,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
                 <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
                 <th>販売金額<br />振込金額</th><th>利益額<br />利益率</th>
-                <th>在庫の払い戻し</th><th>Amazon返金金額<br />Amazon以外からの返金</th><th>納品担当者からのコメント</th><th>販売状態</th>
+                <th>在庫の払い戻し<br />Amazon以外からの返金</th><th>Amazon返金金額</th><th>納品担当者からのコメント</th><th>販売状態</th>
               </tr>
             </thead>
             <tbody>
@@ -291,8 +291,8 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
                   <td>{stacked(yen(i.product_sale_conflict ? i.sold_price : i.product_sold_price), 'sold_price', yen(i.product_sale_conflict ? i.payout_amount : i.product_payout_amount), 'payout_amount')}</td>
                   <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
-                  <td><button type="button" className="inventory-cell-edit" onClick={() => edit('inventory_refund_amount')} title="在庫の払い戻しをクリックして編集">{yen(i.inventory_refund_amount)}</button></td>
-                  <td>{stacked(yen(i.amazon_refund_amount), 'amazon_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
+                  <td>{stacked(yen(i.inventory_refund_amount), 'inventory_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
+                  <td><button type="button" className="inventory-cell-edit" onClick={() => edit('amazon_refund_amount')} title="Amazon返金金額をクリックして編集">{yen(i.amazon_refund_amount)}</button></td>
                   <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
                   <td><div className="inventory-cell-stack inventory-sale-status"><span>{i.status || '—'}</span><span className="muted">{i.is_accessory ? '付属品' : '本体'}</span></div></td>
                 </tr>
@@ -344,7 +344,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     if (field === 'sales_channel') return SALES_CHANNELS.map(value => ({ value, label: value }));
     if (field === 'condition') return CONDITIONS.map(value => ({ value, label: value }));
     if (field === 'purchaser_id') return staff.filter(person => person.role !== 'deliverer').map(person => ({ value: person.id, label: staffDisplayName(person) }));
-    if (field === 'deliverer_id') return staff.filter(person => person.role === 'deliverer').map(person => ({ value: person.id, label: staffDisplayName(person) }));
+    if (field === 'deliverer_id') return deliveryStaffOptions(staff).map(person => ({ value: person.id, label: staffDisplayName(person) }));
     return null;
   }
   function set(field: keyof InventoryEdit, text: string) {
@@ -389,7 +389,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         return <label className="field" key={field}><span>{fieldLabels[field]}</span>
           {options ? <ColoredSelect value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
-            : <input type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) ? 0 : undefined} step={numberFields.has(field) ? 1 : undefined} value={String(current)} onChange={event => set(field, event.target.value)} />}
+            : <input type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) && field !== 'amazon_refund_amount' ? 0 : undefined} step={numberFields.has(field) ? 1 : undefined} value={String(current)} onChange={event => set(field, event.target.value)} />}
         </label>;
       })}</div>
       {error && <div className="error" role="alert">{error}</div>}
@@ -423,7 +423,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
     : field === 'sales_channel' ? SALES_CHANNELS.map(v => ({ value: v, label: v }))
     : field === 'condition' ? CONDITIONS.map(v => ({ value: v, label: v }))
     : field === 'purchaser_id' ? staff.filter(s => s.role !== 'deliverer').map(s => ({ value: s.id, label: staffDisplayName(s) }))
-    : field === 'deliverer_id' ? staff.map(s => ({ value: s.id, label: staffDisplayName(s) })) : null;
+    : field === 'deliverer_id' ? deliveryStaffOptions(staff).map(s => ({ value: s.id, label: staffDisplayName(s) })) : null;
   async function save() {
     setBusy(true); setError('');
     try { await updateInventoryField(item, field, value); onSaved(); }
@@ -435,7 +435,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
       <label className="field"><span>{fieldLabels[field]}</span>
         {options ? <ColoredSelect value={value} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
           : field === 'memo' ? <textarea value={value} onChange={e => setValue(e.target.value)} />
-            : <input autoFocus type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={field === 'lot_seq' || field === 'product_no' ? '1' : numberFields.has(field) ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
+            : <input autoFocus type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={field === 'lot_seq' || field === 'product_no' ? '1' : numberFields.has(field) && field !== 'amazon_refund_amount' ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
       </label>
       {field === 'is_accessory' && value === 'true' && !item.is_accessory && <p className="muted">付属品に変更すると、販売金額と振込金額は自動で空欄になります。</p>}
       {error && <div className="error" role="alert">{error}</div>}

@@ -316,7 +316,7 @@ export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
   return data as InventoryItem;
 }
 
-export async function createItem(input: ItemInsert): Promise<{ id: string; sku: string }> {
+export async function createItem(input: ItemInsert, spareId?: string): Promise<{ id: string; sku: string; accessory_sku?: string }> {
   const normalizedInput = input.marketplace === 'Amazon返品' ? { ...input, is_accessory: false } : input;
   if (normalizedInput.is_accessory) {
     if (!normalizedInput.lot_seq) throw new Error('付属品には本体と同じ通番号を入力してください。');
@@ -324,6 +324,11 @@ export async function createItem(input: ItemInsert): Promise<{ id: string; sku: 
       .from('items').select('id').eq('lot_seq', normalizedInput.lot_seq).eq('is_accessory', false).limit(1);
     if (parentError) throw parentError;
     if (!parent?.length) throw new Error('この通番号の本体が見つかりません。本体を先に登録してください。');
+  }
+  if (spareId) {
+    const { data, error } = await getSupabase().rpc('register_item_with_spare', { p_item: normalizedInput, p_spare_id: spareId });
+    if (error) throw error;
+    return data as { id: string; sku: string; accessory_sku?: string };
   }
   const { data, error } = await getSupabase()
     .from('items').insert(normalizedInput).select('id, sku').single();
@@ -501,7 +506,9 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
   }
   if (field === 'title' && (!text || text.length > 500)) throw new Error('商品名を入力してください。');
   const numbers = new Set<InventoryField>(['cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'inventory_refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
-  if (numbers.has(field) && text && (!Number.isSafeInteger(Number(text)) || Number(text) < 0)) throw new Error('金額は0円以上の整数で入力してください。');
+  if (numbers.has(field) && text && (!Number.isSafeInteger(Number(text)) || (field !== 'amazon_refund_amount' && Number(text) < 0))) {
+    throw new Error(field === 'amazon_refund_amount' ? 'Amazon返金金額は整数で入力してください（マイナスも入力できます）。' : '金額は0円以上の整数で入力してください。');
+  }
   if (field === 'cost_amount' && !text) throw new Error('仕入金額を入力してください。');
   const requiredText = new Set<InventoryField>(['title', 'status', 'marketplace']);
   const next = numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;

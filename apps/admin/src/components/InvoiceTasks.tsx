@@ -1,4 +1,4 @@
-import { staffDisplayName } from '@bussan/shared';
+import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import { useEffect, useRef, useState } from 'react';
 import { getSupabase, yen, loadInvoiceReceipts, releaseReceiptImages } from '@bussan/shared';
 import type { InvoiceReceipt, Staff } from '@bussan/shared';
@@ -107,8 +107,8 @@ export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;sta
 export function AdminPackedSummary(){
  const [people,setPeople]=useState<Person[]>([]);const [staffId,setStaffId]=useState('');const [error,setError]=useState('');
  useEffect(()=>{let active=true;void(async()=>{
-  const {data,error}=await getSupabase().from('staff').select('id,name').eq('is_active',true).order('name');if(error)throw error;
-  if(active){const rows=data.map(p=>({staff_id:p.id,details:{issuer_name:p.name}}));setPeople(rows);setStaffId(rows[0]?.staff_id??'');}
+  const {data,error}=await getSupabase().from('staff').select('id,code,name').eq('is_active',true);if(error)throw error;
+  if(active){const rows=deliveryStaffOptions(data).map(p=>({staff_id:p.id,details:{issuer_name:p.name}}));setPeople(rows);setStaffId(rows[0]?.staff_id??'');}
  })().catch(e=>{if(active)setError(messageOf(e));});return()=>{active=false;};},[]);
  return <section className="card" style={{marginTop:16}}><h3>担当者別の納品実績</h3>{error&&<p className="error">{error}</p>}<label>担当者 <select value={staffId} onChange={e=>setStaffId(e.target.value)}>{people.map(p=><option key={p.staff_id} value={p.staff_id}>{staffDisplayName(p.details.issuer_name)}</option>)}</select></label>{staffId&&<PackedSummary staffId={staffId}/>}</section>;
 }

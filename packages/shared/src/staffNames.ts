@@ -10,10 +10,16 @@ const labelsByName = new Map([
   ['株式会社コエル', STAFF_DISPLAY_NAMES.KK], ['土井花菜', STAFF_DISPLAY_NAMES.LL],
   ['株式会社吉光', STAFF_DISPLAY_NAMES.MM],
 ]);
+export const DELIVERY_STAFF_CODES = ['AA', 'DD', 'EE', 'HH', 'II', 'KK', 'LL', 'MM'] as const;
+/** One ordered list for delivery assignee selectors in both apps. */
+export function deliveryStaffOptions<T extends { name: string; code?: string; is_active?: boolean }>(rows: T[]): T[] {
+  const codeOf = (row: T) => row.code || DELIVERY_STAFF_CODES.find(code => STAFF_DISPLAY_NAMES[code] === staffDisplayName(row.name));
+  return DELIVERY_STAFF_CODES.flatMap(code => rows.filter(row => row.is_active !== false && codeOf(row) === code));
+}
 /** Format labels without changing identity fields or saved business names. */
 export function staffDisplayName(value: string | Pick<Staff, 'name'> & Partial<Pick<Staff, 'code' | 'display_name'>> | null | undefined): string {
   if (!value) return '';
-  if (typeof value !== 'string') return value.display_name || (value.code && STAFF_DISPLAY_NAMES[value.code]) || staffDisplayName(value.name);
+  if (typeof value !== 'string') return (value.code && STAFF_DISPLAY_NAMES[value.code]) || value.display_name || staffDisplayName(value.name);
   return labelsByName.get(value.replace(/\s/g, '')) || value;
 }
 export function canViewDeliveryAssignee(staff: Pick<Staff, 'code' | 'role'>): boolean {

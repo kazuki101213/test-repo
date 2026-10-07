@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Staff } from '@bussan/shared';
-import { staffDisplayName } from '@bussan/shared';
+import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday, monthlyGrossProfit } from '../invoices';
 import PackedSummary from '../components/PackedSummary';
 import GrossProfitSummary from '../components/GrossProfitSummary';
@@ -82,8 +82,10 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   useEffect(() => {
     let cancelled = false;
     setProfileLoading(true);
-    void invoiceProfiles().then(rows => {
+    void invoiceProfiles().then(allRows => {
       if (cancelled) return;
+      const rows = staff.role === 'admin'
+        ? deliveryStaffOptions(allRows.map(row => ({ ...row, name: row.details.issuer_name }))) : allRows;
       setProfiles(rows);
       if (!rows.some(p => p.staff_id === staff.id) && staff.role === 'admin' && rows[0]) setStaffId(rows[0].staff_id);
     }).catch(e => { if (!cancelled) setError(errorText(e)); }).finally(() => { if (!cancelled) setProfileLoading(false); });
