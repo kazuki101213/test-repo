@@ -14,7 +14,7 @@ function ShippingRow({task,staff,management,onChanged}:{
   const [error,setError]=useState('');
   const owner=staffDisplayName({code:task.owner_code,name:task.owner_name});
   const recipient=staffDisplayName({code:task.recipient_code,name:task.recipient_name});
-  const canShip=!task.sent_at && task.owner_staff_id===staff.id;
+  const canShip=!task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
   const overview=management || canViewDeliveryAssignee(staff);
   const canComplete=management && staff.role==='admin' && !!task.sent_at;
   async function act(send:boolean) {
@@ -33,7 +33,7 @@ function ShippingRow({task,staff,management,onChanged}:{
         ? `${owner}→${recipient}の${task.sent_at ? '発送済み' : '発送準備中'}`
         : `${recipient}へ発送お願いします。`}</span>
       {canComplete && <button className="btn" disabled={busy} onClick={()=>void act(false)}>完了</button>}
-      {canShip && !editing && <button className="btn" onClick={()=>setEditing(true)}>完了</button>}
+      {canShip && !editing && <button className="btn" onClick={()=>setEditing(true)}>発送</button>}
     </div>
     <div className="spare-shipping-details">
       <span>品名：{task.title}</span>
