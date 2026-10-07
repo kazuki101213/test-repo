@@ -38,7 +38,7 @@ export default function ExpensePanel({ onSaved, onBusyChange, initial, template 
       };
       if (original) await updateExpense(input, original);
       else await saveExpense(input);
-      setDone(`${date} ${input.name} ${yen(input.amount)}を保存しました。左メニューの「経費一覧」で確認できます。`);
+      setDone(`${date} ${input.name} ${yen(input.amount)}を保存しました。左メニューの「経費」で確認できます。`);
       if (initial || template) setOriginal(input);
       else { id.current = crypto.randomUUID(); setName(''); setAmount(''); setMemo(''); }
       onSaved(input);

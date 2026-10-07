@@ -386,7 +386,7 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
   const { data, error } = await getSupabase().from('items').update({ ...fields, title })
     .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
+  if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
   if (item.product_id && fields.asin !== item.asin) {
     const { error: productError } = await getSupabase().from('products').update({ asin: fields.asin }).eq('id', item.product_id);
     if (productError) throw productError;
@@ -426,7 +426,7 @@ export async function findInventoryAccessoryForSpare(serial: string): Promise<(P
     .eq('lot_seq', lotSeq).eq('is_accessory', true);
   if (error) throw error;
   const remotes = (data ?? []).filter(row => row.title.toLocaleLowerCase().includes('リモコン'));
-  if (remotes.length > 1) throw new Error(`通番号 ${lotSeq} にリモコン行が複数あります。対象を1件に特定できないため、在庫一覧を確認してください。`);
+  if (remotes.length > 1) throw new Error(`通番号 ${lotSeq} にリモコン行が複数あります。対象を1件に特定できないため、在庫を確認してください。`);
   const item = remotes[0];
   if (!item) return null;
   const { data: reference, error: refError } = await getSupabase().from('items').select('marketplace_item_id').eq('id', item.id).single();
@@ -439,7 +439,7 @@ export async function deleteInventoryItem(item: InventoryItem): Promise<void> {
     .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error?.code === '23503') throw new Error('関連データがあるため削除できません。販売履歴や付属品との紐付きを確認してください。');
   if (error) throw error;
-  if (!data) throw new Error('他の画面で変更されたか、削除権限がありません。在庫一覧を再読み込みしてください。');
+  if (!data) throw new Error('他の画面で変更されたか、削除権限がありません。在庫を再読み込みしてください。');
 }
 
 export async function updateProductNumber(item: InventoryItem, productNo: number | null): Promise<void> {
@@ -481,7 +481,7 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
     const { data, error } = await getSupabase().from('items').update({ is_accessory: isAccessory })
       .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
     if (error) throw error;
-    if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
+    if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
     return;
   }
   if (field === 'asin' && item.product_id) {
@@ -506,7 +506,7 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
   const next = numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
   const { data, error } = await getSupabase().from('items').update({ [field]: next }).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
-  if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫一覧を読み直してください。');
+  if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
 }
 
 export type ProductField = 'asin' | 'model_no' | 'product_no' | 'maker' | 'genre' | 'turnover' |

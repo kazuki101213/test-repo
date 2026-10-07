@@ -136,8 +136,8 @@ export default function Inventory({ me }: { me: Staff }) {
 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
-      <section className="inventory-list" aria-label="在庫一覧">
-      <h2>在庫一覧</h2>
+      <section className="inventory-list" aria-label="在庫">
+      <h2>在庫</h2>
 
 
 
@@ -201,7 +201,7 @@ export default function Inventory({ me }: { me: Staff }) {
         {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
         {purchaseDrafts.length > 0 ? <div className="scroll"><table><thead><tr><th>購入日</th><th>商品情報</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>販売予定金額</th><th>振込予定金額</th><th>アカウント</th><th>操作</th></tr></thead><tbody>
           {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a href={draft.marketplace_url} target="_blank" rel="noreferrer">{draft.title}</a><div className="sub">型番 {draft.model_no || '未特定'} / 品番 {draft.product_no ?? '未特定'} / ASIN {draft.asin || '未特定'}</div></td><td><ColoredLabel value={draft.marketplace} /></td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.planned_price == null ? '未特定' : yen(draft.planned_price)}</td><td>{draft.planned_payout == null ? '未特定' : yen(draft.planned_payout)}</td><td>{draft.account_label}</td><td className="toolbar">
-            <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); }}>在庫一覧へ反映</button>
+            <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); }}>在庫へ反映</button>
             <button type="button" className="btn" onClick={async () => { if (!window.confirm('この購入履歴を仕入れリストから除外しますか？')) return; try { await dismissPurchaseDraft(draft.id); loadPurchaseDrafts(); } catch (error) { setDraftError(error instanceof Error ? error.message : String(error)); } }}>除外</button>
           </td></tr>)}
         </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
@@ -215,7 +215,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
       {!loading && items.length > 0 && (
         <>
-        <div className="inventory-top-scroll" aria-label="在庫一覧を左右にスクロール" ref={inventoryTopScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTableScrollRef.current)}>
+        <div className="inventory-top-scroll" aria-label="在庫を左右にスクロール" ref={inventoryTopScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTableScrollRef.current)}>
           <div style={{ width: inventoryTableWidth, height: 1 }} />
         </div>
         <div className="scroll inventory-bottom-scroll" ref={inventoryTableScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTopScrollRef.current)}>
@@ -359,7 +359,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setBusy(false); }
   }
   async function remove() {
-    const confirmed = window.confirm(`「${item.sku}」を在庫一覧から削除しますか？削除した商品情報は元に戻せません。`);
+    const confirmed = window.confirm(`「${item.sku}」を在庫から削除しますか？削除した商品情報は元に戻せません。`);
     if (!confirmed) return;
     setBusy(true); setError('');
     try { await deleteInventoryItem(item); onSaved(); }

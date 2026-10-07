@@ -10,6 +10,7 @@ import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
 import WorkloadDetail from '../components/WorkloadDetail';
 import InvoiceTasks from '../components/InvoiceTasks';
 import MalfunctionTasks from '../components/MalfunctionTasks';
+import PushSettings from '../components/PushSettings';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
 
@@ -24,7 +25,7 @@ function Kpi({ label, value, tone, detail, count }: { label: string; value: stri
   );
 }
 
-export default function Dashboard({ staff }: { staff: Staff }) {
+export default function Dashboard({ staff, userId }: { staff: Staff; userId: string }) {
   const isAdmin = staff.role === 'admin';
   const [expenseRevision, setExpenseRevision] = useState(0);
   const [stock, setStock] = useState<StockSummary | null>(null);
@@ -146,6 +147,7 @@ export default function Dashboard({ staff }: { staff: Staff }) {
         </div>
       </div>
       </section>
+      <div className="dashboard-notification-settings"><PushSettings key={userId} userId={userId} /></div>
       {detail && <MonthlyDetail month={detail.month} metric={detail.metric} onClose={() => setDetail(null)} />}
       {workloadDetail && <WorkloadDetail {...workloadDetail} onClose={() => setWorkloadDetail(null)} />}
     </div>

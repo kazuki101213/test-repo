@@ -34,11 +34,12 @@ button, input, select, textarea { font: inherit; }
 .sidebar h1 { font-family: inherit; font-size: 17px; margin: 0 8px 14px; }
 .sidebar .who { color: var(--muted); font-size: 12px; margin: 0 8px 16px; }
 .nav {
-  display: block; width: 100%; text-align: left; padding: 9px 10px;
+  display: block; width: fit-content; text-align: left; padding: 9px 10px;
   border-radius: 8px; border: 0; background: transparent; color: var(--muted); cursor: pointer;
 }
 .nav:hover { background: var(--surface-2); color: var(--text); }
 .nav[data-active='true'] { background: #dce2d3; color: #344332; font-weight: 600; }
+.dashboard-notification-settings { margin-top: 16px; }
 
 main { padding: 20px 24px 64px; min-width: 0; }
 h2 { font-family: inherit; font-size: 20px; margin: 0 0 4px; }

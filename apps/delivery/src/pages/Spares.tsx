@@ -37,7 +37,7 @@ export default function Spares({ staff }: { staff: Staff }) {
     && [row.title, row.source_sku, row.marketplace_item_id, row.tracking_no, row.owner_name]
     .some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
   return <section className="card">
-    <h2>予備一覧</h2>
+    <h2>予備</h2>
     {staff.role === 'admin'
       ? <label className="field"><span>予備の担当者</span><select value={delivererId} onChange={event => setDelivererId(event.target.value)}><option value="">すべての担当者</option>{spareOwners.map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select></label>
       : <p className="muted staff-scope">担当者：{staffDisplayName(staff)}</p>}
