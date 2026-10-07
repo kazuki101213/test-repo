@@ -15,7 +15,7 @@ const react={
 };
 const jsx=(type,props)=>({type,props});
 const shared={...names.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>[spare]};
-const api={fetchStaff:async()=>staff,fetchCards:async()=>[],nextLotSeq:async()=>5000,fetchProducts:async()=>[],createItem:async(payload,id)=>{saved={payload,id};return{id:'created',sku:'body-sku',accessory_sku:'accessory-sku'};}};
+const api={fetchStaff:async()=>staff,fetchCards:async()=>[{id:'amex',name:'アメックスカード'}],nextLotSeq:async()=>5000,fetchProducts:async()=>[],createItem:async(payload,id)=>{saved={payload,id};return{id:'created',sku:'body-sku',accessory_sku:'accessory-sku'};}};
 const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../purchaseUrl'?{buildPurchaseUrl:()=>null,parsePurchaseUrl:()=>null}:{default:'select'},setTimeout:fn=>{fn();return 1;},clearTimeout(){},Date,URL};
 vm.runInNewContext(compile('apps/admin/src/pages/NewPurchase.tsx'),context);
 function render(){cursor=0;dirty=false;tree=context.exports.default({me:staff.find(s=>s.code==='AA')});for(const fn of pending.splice(0))fn();}
@@ -24,6 +24,7 @@ function all(node,output=[]){if(!node||typeof node!=='object')return output;if(A
 function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props.children).some(c=>c.type==='span'&&c.props.children===label));assert(node,label);return all(node.props.children).find(n=>n.type==='input'||n.type==='select'||n.type==='textarea'||n.type==='default');}
 (async()=>{
  await settle();
+ assert.equal(field('支払い方法').props.value,'amex');assert.equal(field('作業ライン').props.value,'ブルーレイ');
  for(const [label,value] of [['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）','43210'],['商品ID','body-id'],['追跡番号','body-track'],['作業ライン','ブルーレイ']]){field(label).props.onChange({target:{value}});await settle();}
  all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
  for(const [label,value] of [['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）',43210],['商品ID','body-id'],['追跡番号','body-track']])assert.equal(field(label).props.value,value,label+' must stay unchanged');

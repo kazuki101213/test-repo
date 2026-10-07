@@ -15,6 +15,16 @@ import { productCount, productSerial } from '../inventory';
 import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, type ColumnFilters } from '../inventoryFilters';
 import InventoryColumnFilter from '../components/InventoryColumnFilter';
 
+function inventoryError(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  if (cause && typeof cause === 'object') {
+    const error = cause as { message?: unknown; details?: unknown; hint?: unknown };
+    const parts = [error.message, error.details, error.hint].filter((part): part is string => typeof part === 'string' && !!part);
+    if (parts.length) return parts.join(' ');
+  }
+  return '保存できませんでした。';
+}
+
 function elapsedJstDays(value: string | null | undefined): number | null {
   if (!value) return null;
   const date = value.slice(0, 10);
@@ -391,7 +401,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
       if (identity.model_no !== item.model_no) await updateInventoryField(current, 'model_no', String(identity.model_no ?? ''));
       onSaved();
     }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setBusy(false); }
+    catch (cause) { setError(inventoryError(cause)); setBusy(false); }
   }
   async function remove() {
     const confirmed = window.confirm(`「${item.sku}」を在庫から削除しますか？削除した商品情報は元に戻せません。`);
@@ -450,7 +460,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
   async function save() {
     setBusy(true); setError('');
     try { await updateInventoryField(item, field, value); onSaved(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : '保存できませんでした。'); setBusy(false); }
+    catch (cause) { setError(inventoryError(cause)); setBusy(false); }
   }
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label={`${fieldLabels[field]}を編集`}>
     <div className="card inventory-comment-panel">

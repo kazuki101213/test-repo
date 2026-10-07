@@ -125,10 +125,10 @@ export default function Spares({ me }: { me: Staff }) {
           <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'remote'} onChange={() => { setReferenceMode('remote'); void autofillFromUsageSerial(form.usage_note ?? '', 'remote'); }} />リモコン情報参照</label>
           <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
         </fieldset>
-        {me.role === 'admin' ? <label className="field"><span>保管担当</span>
+        {me.role === 'admin' ? <label className="field"><span>保管担当者</span>
           <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff).map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
-        </label> : <label className="field"><span>保管担当</span><input value={staffDisplayName(me)} readOnly /></label>}
-        <label className="field"><span>保管担当名</span><input value={form.owner_name ?? ''} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} /></label>
+        </label> : <label className="field"><span>保管担当者</span><input value={staffDisplayName(me)} readOnly /></label>}
+        <label className="field"><span>保管担当者名</span><input value={form.owner_name ?? ''} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} /></label>
         <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>
         <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
         <label className="field"><span>ASIN</span><input value={form.asin ?? ''} onChange={event => setForm(current => ({ ...current, asin: event.target.value || null }))} /></label>
@@ -147,7 +147,7 @@ export default function Spares({ me }: { me: Staff }) {
     <label className="field"><span>検索</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="品名・担当者・商品ID" /></label>
     {error && !adding && <p className="error">{error}</p>}
     {loading ? <p>読み込み中…</p> : <div className="scroll"><table><thead><tr>
-      <th>保管担当</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th>操作</th>}
+      <th>保管担当者</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th>操作</th>}
     </tr></thead><tbody>{filtered.map(row => <tr key={row.id}>
       <td><EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{staffDisplayName(row.owner_name) || '未設定'}</EditableSpare></td>
       <td><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></td>
@@ -170,7 +170,7 @@ function EditableSpare({ row, field, onEdit, children }: { row: SpareAccessory; 
 
 function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessory; field: SpareAccessoryField; onClose: () => void; onSaved: () => void | Promise<void> }) {
   const labels: Record<SpareAccessoryField, string> = {
-    source_sku: 'SKU', owner_name: '保管担当', purchased_at: '購入日', title: '品名', manufacturer: 'メーカー', model_no: '型番', asin: 'ASIN', cost_amount: '仕入金額',
+    source_sku: 'SKU', owner_name: '保管担当者', purchased_at: '購入日', title: '品名', manufacturer: 'メーカー', model_no: '型番', asin: 'ASIN', cost_amount: '仕入金額',
     marketplace: '仕入先', marketplace_item_id: '商品ID', tracking_no: '追跡番号', usage_note: '利用記録',
   };
   const initial = row[field] ?? '';
