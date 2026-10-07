@@ -343,3 +343,10 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .inventory-date-field:focus-within .inventory-date-placeholder { display:none; }
 /* A task opened from a push notification is highlighted without changing its state. */
 .malfunction-task-row:target { outline: 2px solid #71836b; outline-offset: 3px; }
+
+.purchase-draft-table td { vertical-align: middle; }
+.purchase-draft-table .purchase-draft-product-meta { font-size: inherit; font-weight: inherit; line-height: inherit; }
+.purchase-draft-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.purchase-draft-actions .btn { white-space: nowrap; font-size: inherit; padding: 8px 10px; }
+.purchase-registration-screen { max-width: 1000px; margin: 0 auto; }
+.purchase-registration-screen > .btn { margin-bottom: 12px; }

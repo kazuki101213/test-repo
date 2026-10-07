@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "フリマ取引サポート",
+  "version": "0.1.44",
+  "description": "購入履歴の仕入れリスト連携、取引メッセージ同期・送信、追跡番号照合を支援します。",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://jp.mercari.com/*",
+    "https://auctions.yahoo.co.jp/*",
+    "https://page.auctions.yahoo.co.jp/*",
+    "https://contact.auctions.yahoo.co.jp/*",
+    "https://buy.auctions.yahoo.co.jp/*",
+    "https://paypayfleamarket.yahoo.co.jp/*",
+    "https://fril.jp/*",
+    "https://www.fril.jp/*",
+    "https://item.fril.jp/*",
+    "https://bussan-admin.vercel.app/*",
+    "https://xgoppuqoqeppckyunnvx.supabase.co/*",
+    "https://paypayfleamarket-sec.yahoo.co.jp/*",
+    "https://web.fril.jp/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "フリマ取引サポート",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://jp.mercari.com/*",
+        "https://auctions.yahoo.co.jp/*",
+        "https://page.auctions.yahoo.co.jp/*",
+        "https://contact.auctions.yahoo.co.jp/*",
+        "https://buy.auctions.yahoo.co.jp/*",
+        "https://paypayfleamarket.yahoo.co.jp/*",
+        "https://fril.jp/*",
+        "https://www.fril.jp/*",
+        "https://item.fril.jp/*",
+        "https://paypayfleamarket-sec.yahoo.co.jp/*",
+        "https://web.fril.jp/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  }
+}
