@@ -1,3 +1,4 @@
+import { staffDisplayName } from '@bussan/shared';
 import { useEffect, useRef, useState } from 'react';
 import { getSupabase, yen, loadInvoiceReceipts, releaseReceiptImages } from '@bussan/shared';
 import type { InvoiceReceipt, Staff } from '@bussan/shared';
@@ -60,7 +61,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
   }catch(e){setError(messageOf(e));}finally{setBusy(false);}
  }
  return <dialog ref={dialog} className="monthly-detail invoice-review" aria-labelledby="invoice-review-title" onCancel={e=>{if(busy)e.preventDefault();else onClose();}}>
- <div className="toolbar"><h2 id="invoice-review-title">{task.name} · {task.month.slice(0,7)}</h2><span style={{flex:1}}/><button className="btn" disabled={busy} onClick={onClose} autoFocus>閉じる</button></div>
+ <div className="toolbar"><h2 id="invoice-review-title">{staffDisplayName(task.name)} · {task.month.slice(0,7)}</h2><span style={{flex:1}}/><button className="btn" disabled={busy} onClick={onClose} autoFocus>閉じる</button></div>
  <div className="document-review-columns"><section><h3>請求書</h3>
  {invoice?<><p>請求日：{invoice.issued_on}　請求金額：<strong>{yen(invoice.total)}</strong>　{approved?'承認済み':'承認待ち'}</p>
  <div className="scroll" style={{maxHeight:'55vh'}}><table><thead><tr><th>購入日／日付</th><th>内容</th><th>数量</th><th>単価</th><th>金額</th></tr></thead><tbody>{lines.map((line,i)=><tr key={i}><td>{line.date??'—'}</td><td>{line.description}{line.lot_seq!=null&&'（'+line.lot_seq+'）'}</td><td>{line.quantity}</td><td>{yen(line.unit_price)}</td><td>{yen(line.quantity*line.unit_price)}</td></tr>)}</tbody></table></div>
@@ -89,7 +90,7 @@ export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;sta
  const filtered=rows.filter(row=>filter==='pending'?!approval(row.invoice):!!approval(row.invoice));
  return <section className="card invoice-tasks" aria-label="タスク"><div className="toolbar"><h3>タスク</h3><span>書類承認待ち {pending}件</span><select aria-label="書類の状態" value={filter} onChange={e=>setFilter(e.target.value as 'pending'|'approved')}><option value="pending">承認待ち</option><option value="approved">承認済み</option></select></div>
  {error&&<div className="error" role="alert">{error}<button className="btn" onClick={()=>setRevision(n=>n+1)}>再読み込み</button></div>}{message&&<p className="ok" role="status">{message}</p>}
- {loading?<p>読み込み中…</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id}><button onClick={()=>setSelected(row)}><span>{row.name}<small>{row.month.slice(0,7)} {row.invoice?'請求書':''}{row.invoice&&row.receipts?'・':''}{row.receipts?'領収書':''}</small></span><strong>{row.invoice?yen(row.invoice.total):'領収書のみ'}</strong><span>確認 ›</span></button></li>)}<PhotoReviewTasks /><MalfunctionTasks staff={staff} /></ul>}
+ {loading?<p>読み込み中…</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id}><button onClick={()=>setSelected(row)}><span>{staffDisplayName(row.name)}<small>{row.month.slice(0,7)} {row.invoice?'請求書':''}{row.invoice&&row.receipts?'・':''}{row.receipts?'領収書':''}</small></span><strong>{row.invoice?yen(row.invoice.total):'領収書のみ'}</strong><span>確認 ›</span></button></li>)}<PhotoReviewTasks /><MalfunctionTasks staff={staff} /></ul>}
  {selected&&<InvoiceReview key={selected.id} task={selected} onClose={()=>setSelected(null)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費一覧の外注費に追加しました。');onApproved();}}/>}
  </section>;
 }
@@ -100,5 +101,5 @@ export function AdminPackedSummary(){
   const {data,error}=await getSupabase().from('staff').select('id,name').eq('is_active',true).order('name');if(error)throw error;
   if(active){const rows=data.map(p=>({staff_id:p.id,details:{issuer_name:p.name}}));setPeople(rows);setStaffId(rows[0]?.staff_id??'');}
  })().catch(e=>{if(active)setError(messageOf(e));});return()=>{active=false;};},[]);
- return <section className="card" style={{marginTop:16}}><h3>担当者別の納品実績</h3>{error&&<p className="error">{error}</p>}<label>担当者 <select value={staffId} onChange={e=>setStaffId(e.target.value)}>{people.map(p=><option key={p.staff_id} value={p.staff_id}>{p.details.issuer_name}</option>)}</select></label>{staffId&&<PackedSummary staffId={staffId}/>}</section>;
+ return <section className="card" style={{marginTop:16}}><h3>担当者別の納品実績</h3>{error&&<p className="error">{error}</p>}<label>担当者 <select value={staffId} onChange={e=>setStaffId(e.target.value)}>{people.map(p=><option key={p.staff_id} value={p.staff_id}>{staffDisplayName(p.details.issuer_name)}</option>)}</select></label>{staffId&&<PackedSummary staffId={staffId}/>}</section>;
 }

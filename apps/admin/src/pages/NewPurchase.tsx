@@ -1,3 +1,4 @@
+import { STAFF_DISPLAY_NAMES, staffDisplayName } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
@@ -355,13 +356,13 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <label className="field"><span>仕入担当者</span>
                 <select value={purchaserId} onChange={(e) => setPurchaserId(e.target.value)} required>
-                  {staff.filter(s => s.role !== 'deliverer' && purchaserNames.includes(s.name)).map((s) => <option key={s.id} value={s.id}>{s.code} {s.name}</option>)}
+                  {staff.filter(s => s.role !== 'deliverer' && purchaserNames.includes(s.name)).map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code] || `${s.code} ${s.name}`}</option>)}
                 </select>
               </label>
               <label className="field"><span>納品担当者</span>
                 <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)}>
                   <option value="">— 未定 —</option>
-                  {staff.map((s) => <option key={s.id} value={s.id}>{s.code} {s.name}</option>)}
+                  {staff.map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code] || `${s.code} ${s.name}`}</option>)}
                 </select>
               </label>
               <label className="field"><span>作業ライン</span>
@@ -377,7 +378,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
               <label className="field"><span>使用する予備付属品</span>
                 <select value={spareId} size={6} onChange={e => setSpareId(e.target.value)}>
                   <option value="">使用しない</option>
-                  {availableSpares.map(row => <option key={row.id} value={row.id}>{row.title} ／ {row.owner_name || '担当未設定'} ／ {row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</option>)}
+                  {availableSpares.map(row => <option key={row.id} value={row.id}>{row.title} ／ {staffDisplayName(row.owner_name) || '担当未設定'} ／ {row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</option>)}
                 </select>
               </label>
             </div>

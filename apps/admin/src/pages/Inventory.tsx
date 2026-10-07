@@ -1,3 +1,4 @@
+import { staffDisplayName } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen } from '@bussan/shared';
@@ -165,7 +166,7 @@ export default function Inventory({ me }: { me: Staff }) {
               const next = event.target.checked ? [...new Set([...selected, person.id])] : selected.filter(id => id !== person.id);
               return next;
             })} />
-            {person.name}
+            {staffDisplayName(person)}
           </label>)}</div>
         </details>
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
@@ -261,7 +262,7 @@ export default function Inventory({ me }: { me: Staff }) {
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>
                     <button type="button" className="inventory-cell-edit" onClick={() => edit(modelOrAccessoryField)} title={i.is_accessory ? i.title : 'クリックして編集'}>{modelOrAccessoryName}</button>
                   </div></td>
-                  <td>{stacked(i.purchaser_name ?? '—', 'purchaser_id', i.deliverer_name ?? '—', 'deliverer_id')}</td>
+                  <td>{stacked(staffDisplayName(i.purchaser_name) || '—', 'purchaser_id', staffDisplayName(i.deliverer_name) || '—', 'deliverer_id')}</td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit inventory-marketplace-name" onClick={() => edit('marketplace')} title="仕入先を編集">{<ColoredLabel value={i.marketplace} />}</button>
                     <button type="button" className="inventory-cell-edit inventory-marketplace-item-id" onClick={() => edit('marketplace_item_id')} title="商品IDをクリックして編集">{i.marketplace_item_id || '—'}</button>
@@ -330,8 +331,8 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     if (field === 'marketplace') return MARKETPLACES.map(value => ({ value, label: value }));
     if (field === 'sales_channel') return SALES_CHANNELS.map(value => ({ value, label: value }));
     if (field === 'condition') return CONDITIONS.map(value => ({ value, label: value }));
-    if (field === 'purchaser_id') return staff.filter(person => person.role !== 'deliverer').map(person => ({ value: person.id, label: person.name }));
-    if (field === 'deliverer_id') return staff.filter(person => person.role === 'deliverer').map(person => ({ value: person.id, label: person.name }));
+    if (field === 'purchaser_id') return staff.filter(person => person.role !== 'deliverer').map(person => ({ value: person.id, label: staffDisplayName(person) }));
+    if (field === 'deliverer_id') return staff.filter(person => person.role === 'deliverer').map(person => ({ value: person.id, label: staffDisplayName(person) }));
     return null;
   }
   function set(field: keyof InventoryEdit, text: string) {
@@ -409,8 +410,8 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
     : field === 'marketplace' ? MARKETPLACES.map(v => ({ value: v, label: v }))
     : field === 'sales_channel' ? SALES_CHANNELS.map(v => ({ value: v, label: v }))
     : field === 'condition' ? CONDITIONS.map(v => ({ value: v, label: v }))
-    : field === 'purchaser_id' ? staff.filter(s => s.role !== 'deliverer').map(s => ({ value: s.id, label: s.name }))
-    : field === 'deliverer_id' ? staff.map(s => ({ value: s.id, label: s.name })) : null;
+    : field === 'purchaser_id' ? staff.filter(s => s.role !== 'deliverer').map(s => ({ value: s.id, label: staffDisplayName(s) }))
+    : field === 'deliverer_id' ? staff.map(s => ({ value: s.id, label: staffDisplayName(s) })) : null;
   async function save() {
     setBusy(true); setError('');
     try { await updateInventoryField(item, field, value); onSaved(); }

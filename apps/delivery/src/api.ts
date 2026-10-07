@@ -1,4 +1,4 @@
-import { getSupabase, PHOTO_BUCKET } from '@bussan/shared';
+import { getSupabase, PHOTO_BUCKET, staffDisplayName } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, ItemCondition, WorkStep } from '@bussan/shared';
 
 export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
@@ -17,7 +17,7 @@ export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
  * RLS で自分の担当行しか見えないうえ、更新は RPC 経由に限定されている。
  */
 
-export async function fetchMyTasks(): Promise<DeliveryTask[]> {
+export async function fetchMyTasks(includeAssignees = false): Promise<DeliveryTask[]> {
   const rows: DeliveryTask[] = [];
   for (let offset = 0; ; offset += 500) {
     const { data, error } = await getSupabase().from('v_delivery_tasks').select('*')
@@ -25,8 +25,24 @@ export async function fetchMyTasks(): Promise<DeliveryTask[]> {
       .order('lot_seq', { ascending: false }).order('id').range(offset, offset + 499);
     if (error) throw error;
     rows.push(...(data ?? []) as DeliveryTask[]);
-    if ((data?.length ?? 0) < 500) return resolveWorkingReturnModels(rows);
+    if ((data?.length ?? 0) < 500) return hydrateDeliveryTasks(rows, includeAssignees);
   }
+}
+
+async function hydrateDeliveryTasks(tasks: DeliveryTask[], includeAssignees: boolean): Promise<DeliveryTask[]> {
+  const loadNames = async () => {
+    const names = new Map<string, string>();
+    if (!includeAssignees) return names;
+    const ids = [...new Set(tasks.flatMap(task => task.deliverer_id ? [task.deliverer_id] : []))];
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const { data, error } = await getSupabase().from('staff').select('id,code,name,display_name').in('id',ids.slice(offset,offset+100));
+      if (error) throw error;
+      for (const person of data ?? []) names.set(person.id,staffDisplayName(person));
+    }
+    return names;
+  };
+  const [rows, names] = await Promise.all([resolveWorkingReturnModels(tasks), loadNames()]);
+  return rows.map(task => includeAssignees ? { ...task, deliverer_name: names.get(task.deliverer_id ?? '') ?? null } : task);
 }
 
 async function resolveWorkingReturnModels(tasks: DeliveryTask[]): Promise<DeliveryTask[]> {
@@ -74,14 +90,14 @@ export async function saveDeliveryDescription(itemId: string, input: {
   if (error) throw error;
 }
 
-export async function fetchTask(id: string): Promise<DeliveryTask | null> {
+export async function fetchTask(id: string, includeAssignees = false): Promise<DeliveryTask | null> {
   const { data, error } = await getSupabase()
     .from('v_delivery_tasks')
     .select('*')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
-  return data ? (await resolveWorkingReturnModels([data as DeliveryTask]))[0] ?? null : null;
+  return data ? (await hydrateDeliveryTasks([data as DeliveryTask], includeAssignees))[0] ?? null : null;
 }
 
 /** SKU 直打ち / スキャンから 1 件引く */

@@ -6,3 +6,4 @@ export * from './constants';
 export * from './receipts';
 export * from './spares';
 export * from './labelTone';
+export * from './staffNames';

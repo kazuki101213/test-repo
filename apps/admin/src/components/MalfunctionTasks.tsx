@@ -1,3 +1,4 @@
+import { staffDisplayName } from '@bussan/shared';
 import { deliveryAppUrl } from '../appUrls';
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
@@ -91,7 +92,7 @@ function MalfunctionConversation({ item, staff, onReplied }: { item: Malfunction
     if (ids.length) {
       const { data, error: peopleError } = await getSupabase().from('staff').select('id,name').in('id', ids);
       if (peopleError) throw peopleError;
-      setAuthors(new Map((data ?? []).map(person => [person.id as string, person.name as string])));
+      setAuthors(new Map((data ?? []).map(person => [person.id as string, staffDisplayName(person.name)])));
     } else setAuthors(new Map());
   }
 
@@ -171,7 +172,7 @@ function MalfunctionConversation({ item, staff, onReplied }: { item: Malfunction
     <strong>納品担当者とのメッセージ</strong>
     {comments.length === 0 && <p className="muted malfunction-empty-message">まだメッセージありません。</p>}
     {comments.map(comment => <div className={'comment ' + (comment.author_id === staff.id ? 'mine' : '')} key={comment.id}>
-      <div className="meta">{authors.get(comment.author_id) ?? '担当者'} · {new Date(comment.created_at).toLocaleString('ja-JP')}</div>
+      <div className="meta">{staffDisplayName(authors.get(comment.author_id)) || '担当者'} · {new Date(comment.created_at).toLocaleString('ja-JP')}</div>
       <p style={{ whiteSpace: 'pre-wrap', margin: '4px 0 0' }}>{comment.body}</p>
       {comment.photos?.length ? <div className="malfunction-comment-photos">{comment.photos.map((photo, index) =>
         <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={'返信写真 ' + (index + 1)} loading="lazy" /></a>)}</div> : null}
@@ -224,7 +225,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     if (staffIds.length) {
       const { data: people, error: staffError } = await sb.from('staff').select('id,name').in('id', staffIds);
       if (staffError) throw staffError;
-      setNames(new Map((people ?? []).map(person => [person.id as string, person.name as string])));
+      setNames(new Map((people ?? []).map(person => [person.id as string, staffDisplayName(person.name)])));
     } else setNames(new Map());
     if (staff.role === 'admin') {
       const { data: actions, error: actionError } = await sb.from('v_item_action_tasks')

@@ -1,3 +1,4 @@
+import { staffDisplayName } from '@bussan/shared';
 import { useEffect, useState } from 'react';
 import { loadSession, signOut } from '@bussan/shared';
 import type { Session } from '@bussan/shared';
@@ -67,7 +68,7 @@ export default function App() {
     <div className="layout">
       <aside className="sidebar">
         <h1>物販管理</h1>
-        <p className="who">{session.staff.name}（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</p>
+        <p className="who">{staffDisplayName(session.staff)}（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</p>
         {NAV.filter(n => n.key !== 'expenses' || session.staff.role === 'admin').map((n) => (
           <button key={n.key} className="nav" data-active={page === n.key} onClick={() => setPage(n.key)}>
             {n.label}

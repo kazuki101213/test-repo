@@ -1,3 +1,4 @@
+import { staffDisplayName } from '@bussan/shared';
 import { useEffect, useState } from 'react';
 import { fetchSpareAccessories, spareState, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
@@ -38,14 +39,14 @@ export default function Spares({ staff }: { staff: Staff }) {
   return <section className="card">
     <h2>予備一覧</h2>
     {staff.role === 'admin'
-      ? <label className="field"><span>予備の担当者</span><select value={delivererId} onChange={event => setDelivererId(event.target.value)}><option value="">すべての担当者</option>{spareOwners.map(owner => <option key={owner.id} value={owner.id}>{owner.name}</option>)}</select></label>
-      : <p className="muted staff-scope">担当者：{staff.display_name || staff.name}</p>}
+      ? <label className="field"><span>予備の担当者</span><select value={delivererId} onChange={event => setDelivererId(event.target.value)}><option value="">すべての担当者</option>{spareOwners.map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select></label>
+      : <p className="muted staff-scope">担当者：{staffDisplayName(staff)}</p>}
     <input type="search" aria-label="予備を検索" placeholder="品名・SKU・商品ID・追跡番号" value={query} onChange={event => setQuery(event.target.value)} />
     {error && <p className="error" role="alert">{error}</p>}
     {loading ? <p>読み込み中…</p> : shown.length === 0 ? <p className="empty">予備はありません。</p> :
       <div className="spare-list">{shown.map(row => <div className="spare-row" key={row.id}>
         <div className="spare-row-heading"><div><strong>{row.title}</strong> <span className="badge">{spareState(row)}</span></div></div>
-        <div>保管担当：{row.owner_name || '未設定'}</div>
+        <div>保管担当：{staffDisplayName(row.owner_name) || '未設定'}</div>
         <div>購入日：{row.purchased_at || '—'}　仕入金額：{yen(row.cost_amount)}</div>
         {row.source_sku && <div>SKU：{row.source_sku}</div>}
         {row.marketplace_item_id && <div>商品ID：{row.marketplace_item_id}</div>}
