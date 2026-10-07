@@ -375,12 +375,16 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
               </label>
               {(isAmazonReturn || isWorkingAmazonReturn) && <p className="sub" role="status" style={{ gridColumn: '1 / -1', margin: 0 }}>{returnLookup || '元商品の通番号を入力すると、商品情報を読み込みます。'}</p>}
-              <label className="field"><span>使用する予備付属品</span>
-                <select value={spareId} size={6} onChange={e => selectSpare(e.target.value)}>
-                  <option value="">使用しない</option>
-                  {availableSpares.map(row => <option key={row.id} value={row.id}>{row.title} ／ {staffDisplayName(row.owner_name) || '担当未設定'} ／ {row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</option>)}
-                </select>
-              </label>
+              <fieldset className="purchase-spare-picker">
+                <legend>使用する予備付属品</legend>
+                <div className="purchase-spare-options">
+                  <label><input type="radio" name="purchase-spare" value="" checked={!spareId} onChange={() => selectSpare('')} /><span>使用しない</span></label>
+                  {availableSpares.map(row => <label key={row.id}>
+                    <input type="radio" name="purchase-spare" value={row.id} checked={spareId === row.id} onChange={() => selectSpare(row.id)} />
+                    <span><span>{row.title}</span><span className="sub">{staffDisplayName(row.owner_name) || '担当未設定'} ／ {yen(row.cost_amount)}</span><span className="sub">{row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</span></span>
+                  </label>)}
+                </div>
+              </fieldset>
               {selectedSpare && workStream !== '付属品' && <p className="sub" style={{ gridColumn: '1 / -1', margin: 0 }}>本体の入力情報を保ち、付属品「{selectedSpare.title}」（{yen(selectedSpare.cost_amount)}）を同じ通番号に登録します。</p>}
             </div>
             <div className="field" style={{ marginTop: 10 }}>

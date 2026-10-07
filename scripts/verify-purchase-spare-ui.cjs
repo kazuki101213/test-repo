@@ -24,7 +24,7 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
 (async()=>{
  await settle();
  for(const [label,value] of [['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）','43210'],['商品ID','body-id'],['追跡番号','body-track'],['作業ライン','ブルーレイ']]){field(label).props.onChange({target:{value}});await settle();}
- field('使用する予備付属品').props.onChange({target:{value:'spare'}});await settle();
+ all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
  for(const [label,value] of [['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）',43210],['商品ID','body-id'],['追跡番号','body-track']])assert.equal(field(label).props.value,value,label+' must stay unchanged');
  assert.deepEqual(all(field('納品担当者')).filter(n=>n.type==='option'&&n.props.value).map(n=>n.props.value),codes);
  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
