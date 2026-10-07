@@ -283,6 +283,8 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .photo-review-tasks { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
 .photo-review-tasks h4 { margin: 0 0 8px; }
 .photo-review-panel { width: min(850px, 94vw); max-height: 90vh; overflow: auto; }
+.photo-review-actions { display: flex; align-items: center; gap: 8px; }
+.photo-review-icon { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 8px; font-size: 22px; }
 .photo-review-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
 .photo-review-gallery img { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--surface-2); border-radius: 8px; }
 

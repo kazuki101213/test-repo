@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
 import { createPortal } from 'react-dom';
 import { getSupabase, PHOTO_BUCKET } from '@bussan/shared';
+import { preparePhotoFiles, savePhotoFiles } from '../photoSave';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
-interface Item { id: string; sku: string; title: string }
+interface Item { id: string; sku: string; title: string; lot_seq: number }
 
 export default function PhotoReviewTasks() {
   const notice = adminTaskNotice();
@@ -18,6 +19,11 @@ export default function PhotoReviewTasks() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+  const [saveFiles, setSaveFiles] = useState<File[]>([]);
+  const [preparingSave, setPreparingSave] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [saveRevision, setSaveRevision] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -30,7 +36,7 @@ export default function PhotoReviewTasks() {
       let byId: Record<string, Item> = {};
       if (rows.length) {
         const { data: found, error: itemError } = await getSupabase().from('items')
-          .select('id,sku,title').in('id', rows.map(row => row.item_id));
+          .select('id,sku,title,lot_seq').in('id', rows.map(row => row.item_id));
         if (itemError) throw itemError;
         byId = Object.fromEntries(((found ?? []) as Item[]).map(item => [item.id, item]));
       }
@@ -64,6 +70,44 @@ export default function PhotoReviewTasks() {
     return () => { active = false; };
   }, [selected]);
 
+  useEffect(() => {
+    setSaveFiles([]); setSaveMessage('');
+    if (!selected) return;
+    const controller = new AbortController();
+    let active = true;
+    setPreparingSave(true);
+    (async () => {
+      const { data, error: listError } = await getSupabase().functions.invoke('delivery-photo-drive', {
+        body: { itemId: selected.item_id, action: 'list' },
+      });
+      if (listError) throw listError;
+      if (!Array.isArray(data?.photos) || typeof data?.lotSeq !== 'number') throw new Error('通番号の写真を取得できませんでした。');
+      const files = await preparePhotoFiles(data.photos, data.lotSeq, controller.signal);
+      if (active) {
+        setSaveFiles(files);
+        setSaveMessage(files.length ? `通番号${data.lotSeq}の写真${files.length}枚をまとめて保存できます。` : '保存できる写真がありません。');
+      }
+    })().catch(cause => { if (active) setSaveMessage(cause instanceof Error ? cause.message : String(cause)); })
+      .finally(() => { if (active) setPreparingSave(false); });
+    return () => { active = false; controller.abort(); };
+  }, [selected, saveRevision]);
+
+  async function savePhotos() {
+    if (!selected || saving || preparingSave) return;
+    if (!saveFiles.length) { setSaveRevision(value => value + 1); return; }
+    setSaving(true);
+    try {
+      // No network awaits here: the prepared files preserve the click activation.
+      const result = await savePhotoFiles(saveFiles, `通番号${items[selected.item_id]?.lot_seq} 商品写真`);
+      setSaveMessage(result === 'share'
+        ? '共有メニューで「画像を保存」または「写真に保存」を選んでください。'
+        : `${saveFiles.length}枚をダウンロードしました。端末の写真アプリに保存してください。`);
+    } catch (cause) {
+      setSaveMessage(cause instanceof DOMException && cause.name === 'AbortError'
+        ? '保存をキャンセルしました。' : cause instanceof Error ? cause.message : String(cause));
+    } finally { setSaving(false); }
+  }
+
   async function approve() {
     if (!selected) return;
     setBusy(true); setError('');
@@ -85,12 +129,19 @@ export default function PhotoReviewTasks() {
     {selected && createPortal(<div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="写真確認">
       <div className="card inventory-comment-panel photo-review-panel">
         <div className="toolbar"><h3>{items[selected.item_id]?.sku} の写真確認</h3><span style={{ flex: 1 }} />
-          <button className="btn" disabled={busy} onClick={() => setSelected(null)}>閉じる</button></div>
-        <p><a href={`https://drive.google.com/drive/folders/${encodeURIComponent(selected.drive_folder_id)}`} target="_blank" rel="noreferrer">GoogleドライブのSKUフォルダを開く</a></p>
+          <button className="btn" disabled={busy || saving} onClick={() => setSelected(null)}>閉じる</button></div>
+        <p><a href={`https://drive.google.com/drive/folders/${encodeURIComponent(selected.drive_folder_id)}`} target="_blank" rel="noreferrer">Googleドライブの通番号フォルダを開く</a></p>
         {loadingPhotos ? <p>写真を読み込み中…</p> : <div className="photo-review-gallery">{photos.map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={index}><img src={url} alt={`商品写真 ${index + 1}`} /></a>)}</div>}
         {!loadingPhotos && <p className="sub">アプリ保存 {photos.length}枚 ／ Google Drive送信済み {selected.exported_photo_count}枚</p>}
         {!loadingPhotos && photos.length !== selected.exported_photo_count && <div className="error" role="status">写真枚数が一致しないため完了できません。納品アプリで「Googleドライブ追加」を再実行して、追加分も送信してください。</div>}
-        <button className="btn primary" disabled={busy || loadingPhotos || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '確認中…' : '写真確認を完了'}</button>
+        <div className="photo-review-actions">
+          <button type="button" className="btn primary photo-review-icon" aria-label="写真確認を完了" title="写真確認を完了" disabled={busy || saving || loadingPhotos || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '…' : '👍'}</button>
+          <button type="button" className="btn photo-review-icon" aria-label="通番号の写真をすべて保存" title={preparingSave ? '写真を準備中' : '通番号の写真をすべて保存'} disabled={busy || saving || preparingSave} onClick={() => void savePhotos()}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5" /></svg>
+          </button>
+        </div>
+        <p className="sub" role="status">{preparingSave ? '保存する写真を準備中…' : saving ? '写真の保存メニューを開いています…' : saveMessage}</p>
+        <p className="sub">スマホでは保存ボタンを押し、共有メニューの「画像を保存」または「写真に保存」を選んでください。</p>
       </div>
     </div>, document.body)}
   </>;
