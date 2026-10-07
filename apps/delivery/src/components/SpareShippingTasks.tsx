@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { completeSpareShipping, fetchSpareShippingTasks, sendSpareShipping, staffDisplayName } from '@bussan/shared';
+import { completeSpareShipping, fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
 import type { SpareShippingTask, Staff } from '@bussan/shared';
 
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message
@@ -15,6 +15,7 @@ function ShippingRow({task,staff,management,onChanged}:{
   const owner=staffDisplayName({code:task.owner_code,name:task.owner_name});
   const recipient=staffDisplayName({code:task.recipient_code,name:task.recipient_name});
   const canShip=!task.sent_at && task.owner_staff_id===staff.id;
+  const overview=management || canViewDeliveryAssignee(staff);
   const canComplete=management && staff.role==='admin' && !!task.sent_at;
   async function act(send:boolean) {
     if(busy) return;
@@ -28,7 +29,7 @@ function ShippingRow({task,staff,management,onChanged}:{
   }
   return <li className="spare-shipping-row" id={`spare-shipping-${task.id}`}>
     <div className="spare-shipping-heading">
-      <span>{management
+      <span>{overview
         ? `${owner}→${recipient}の${task.sent_at ? '発送済み' : '発送準備中'}`
         : `${recipient}へ発送お願いします。`}</span>
       {canComplete && <button className="btn" disabled={busy} onClick={()=>void act(false)}>完了</button>}
@@ -36,7 +37,7 @@ function ShippingRow({task,staff,management,onChanged}:{
     </div>
     <div className="spare-shipping-details">
       <span>品名：{task.title}</span>
-      {management && task.sent_at ? <>
+      {overview && task.sent_at ? <>
         <span>通番号：{task.lot_seq}</span><span>追跡番号：{task.tracking_no}</span>
       </> : <>
         <span>メーカー：{task.manufacturer || '未登録'}</span>
@@ -78,8 +79,8 @@ export default function SpareShippingTasks({staff,management=false,onChanged}:{
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',visible);
       document.removeEventListener('visibilitychange',visible);};
   },[revision,staff.id]);
-  const visible=rows.filter(task=>management ? staff.role==='admin' || (task.owner_staff_id===staff.id && !task.sent_at)
-    : task.owner_staff_id===staff.id && !task.sent_at);
+  const visible=rows.filter(task=>canViewDeliveryAssignee(staff) || (management ? staff.role==='admin' || (task.owner_staff_id===staff.id && !task.sent_at)
+    : task.owner_staff_id===staff.id && !task.sent_at));
   if(error) return <li className="spare-shipping-row"><p className="error" role="alert">{error}</p>
     <button className="btn" onClick={()=>void refreshRef.current()}>再読み込み</button></li>;
   return <>{visible.map(task=><ShippingRow key={task.id} task={task} staff={staff} management={management}

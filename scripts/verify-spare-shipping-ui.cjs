@@ -11,7 +11,7 @@ for(const app of ['admin','delivery']){
     useRef(value){const i=cursor++;return hooks[i]??={current:value};},
     useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
   };
-  const shared={staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}],
+  const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}],
     sendSpareShipping:async(id,tracking)=>{if(failed)throw{message:'送信に失敗しました'};sent={id,tracking};},
     completeSpareShipping:async id=>{completed=id;}};
   const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
@@ -25,6 +25,14 @@ for(const app of ['admin','delivery']){
   const button=label=>all(tree).find(n=>n.type==='button'&&text(n)===label);
   await mount(context.exports.default,{staff:{id:'EE',role:'purchaser'}});
   assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task']);
+  if(app==='delivery'){
+    await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'}});
+    assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other','sent']);
+    await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
+    assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(!button('完了'));
+    await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
+    assert(text(tree).includes('発送済み'));assert(text(tree).includes('追跡番号：12345'));assert(!button('完了'));
+  }
   await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
   for(const value of ['MM 株式会社吉光へ発送お願いします。','リモコン','Panasonic純正','メルカリ','m123','1647 / 1723'])assert(text(tree).includes(value));
   button('完了').props.onClick();await settle();

@@ -14,9 +14,10 @@ const react={
  useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
 };
 const jsx=(type,props)=>({type,props});
-const shared={...names.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>[spare]};
+const shared={...names.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
+let currentSpares=[spare];
 const api={fetchStaff:async()=>staff,fetchCards:async()=>[{id:'amex',name:'アメックスカード'}],nextLotSeq:async()=>5000,fetchProducts:async()=>[],createItem:async(payload,id)=>{saved={payload,id};return{id:'created',sku:'body-sku',accessory_sku:'accessory-sku'};}};
-const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../purchaseUrl'?{buildPurchaseUrl:()=>null,parsePurchaseUrl:()=>null}:{default:'select'},setTimeout:fn=>{fn();return 1;},clearTimeout(){},Date,URL};
+const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../purchaseUrl'?{buildPurchaseUrl:()=>null,parsePurchaseUrl:()=>null}:{default:'select'},setTimeout:fn=>{fn();return 1;},clearTimeout(){},Date,URL,window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
 vm.runInNewContext(compile('apps/admin/src/pages/NewPurchase.tsx'),context);
 function render(){cursor=0;dirty=false;tree=context.exports.default({me:staff.find(s=>s.code==='AA')});for(const fn of pending.splice(0))fn();}
 async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.resolve();}}
@@ -31,5 +32,16 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
  assert.deepEqual(all(field('納品担当者')).filter(n=>n.type==='option'&&n.props.value).map(n=>n.props.value),codes);
  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
  assert(saved);assert.equal(saved.id,'spare');assert.equal(saved.payload.title,'本体型番');assert.equal(saved.payload.cost_amount,43210);assert.equal(saved.payload.is_accessory,false);
+ // A reserve allocated in another screen is rejected before registration, without clearing body inputs.
+ hooks.splice(0);cursor=0;pending=[];saved=undefined;dirty=true;await settle();
+ for(const [label,value] of [['型番','維持する本体'],['ASIN','B000000002'],['仕入金額（円）','24409'],['商品ID','c1243675380'],['追跡番号','body-track']]){field(label).props.onChange({target:{value}});await settle();}
+ all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
+ currentSpares=[{...spare,used_for_item_id:'other-item'}];
+ await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+ assert.equal(saved,undefined);assert(JSON.stringify(tree).includes('すでに別の商品に使用'));assert.equal(field('型番').props.value,'維持する本体');assert.equal(field('仕入金額（円）').props.value,24409);assert.equal(field('商品ID').props.value,'c1243675380');
+ api.createItem=async()=>{throw{message:'登録できません',details:'具体的な原因',hint:'再度確認してください'};};
+ await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+ assert(JSON.stringify(tree).includes('登録できません 具体的な原因 再度確認してください'));assert(!JSON.stringify(tree).includes('[object Object]'));assert.equal(field('型番').props.value,'維持する本体');
+ console.log('Stale reserve prevented before save, input preservation and plain database error display passed');
  console.log('Main form preserved on spare selection; one atomic save; exact eight ordered assignee options passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

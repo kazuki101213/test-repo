@@ -93,6 +93,33 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const spareSelection = useRef({ id: spareId, busy });
+  spareSelection.current = { id: spareId, busy };
+  const unavailableSpareMessage = '選択した予備はすでに別の商品に使用されているか、削除されています。「使用しない」または別の未使用の予備を選択してください。本体の入力内容は保持しています。';
+  useEffect(() => {
+    let active = true, fetching = false;
+    const refresh = async () => {
+      if (fetching || spareSelection.current.busy) return;
+      fetching = true;
+      try {
+        const rows = await fetchSpareAccessories();
+        if (!active || spareSelection.current.busy) return;
+        setSpares(rows);
+        const selected = spareSelection.current.id;
+        if (selected && !rows.some(row => row.id === selected && !row.used_for_item_id)) {
+          setSpareId(''); setError(unavailableSpareMessage);
+        }
+      } catch (cause) { if (active) setError(errorMessage(cause)); }
+      finally { fetching = false; }
+    };
+    const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    void refresh();
+    const timer = window.setInterval(visible, 30000);
+    window.addEventListener('focus', visible);
+    document.addEventListener('visibilitychange', visible);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', visible);
+      document.removeEventListener('visibilitychange', visible); };
+  }, [me.id]);
 
   useEffect(() => {
     if (!draft) return;
@@ -114,13 +141,12 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setStaff(rows);
       setPurchaserId(current => rows.some(s => s.id === current && s.role !== 'deliverer' && purchaserNames.includes(s.name))
         ? current : rows.find(s => s.name === purchaserNames[0] && s.role !== 'deliverer')?.id ?? '');
-    }).catch((e) => setError(String(e)));
+    }).catch((e) => setError(errorMessage(e)));
     fetchCards().then(rows => {
       setCards(rows);
       setCardId(current => current || rows.find(card => card.name === 'アメックスカード')?.id || '');
     }).catch(() => undefined);
     nextLotSeq().then(setLotSeq).catch(() => undefined);
-    fetchSpareAccessories().then(setSpares).catch(() => undefined);
   }, []);
   useEffect(() => {
     if (productId && !isWorkingAmazonReturn) return;
@@ -277,6 +303,13 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         ...(draft ? { source_purchase_draft_id: draft.id } : {}),
       };
 
+      if (spareId) {
+        const latest = await fetchSpareAccessories();
+        setSpares(latest);
+        if (!latest.some(row => row.id === spareId && !row.used_for_item_id)) {
+          setSpareId(''); throw new Error(unavailableSpareMessage);
+        }
+      }
       const created = await createItem(payload, spareId || undefined);
       if (spareId) {
         setSpares(current => current.filter(row => row.id !== spareId));
@@ -289,7 +322,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setProductId(''); setNote(''); setTemplatesOpen(false);
       onSaved?.();
     } catch (e2) {
-      setError(e2 instanceof Error ? e2.message : String(e2));
+      setError(errorMessage(e2));
     } finally {
       setBusy(false);
     }
