@@ -182,7 +182,8 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-sale-status > span { display: block; white-space: nowrap; }
 .inventory-comment-panel { width: min(440px, 100vw); margin: auto; overflow-wrap: anywhere; }
 .inventory-full-edit-panel { width: min(1000px, 96vw); max-height: 94vh; overflow: auto; margin: auto; }
-.inventory-bottom-scroll { overflow: auto; touch-action: pan-x pan-y pinch-zoom; }
+.inventory-bottom-scroll { overflow: auto; scrollbar-width: none; touch-action: pan-x pan-y pinch-zoom; }
+.inventory-bottom-scroll::-webkit-scrollbar { display: none; }
 @media (max-width: 620px) {
   .inventory-bottom-scroll { overflow-x: auto; overflow-y: auto; max-height: 68dvh; scrollbar-width: none; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y pinch-zoom; }
   .inventory-bottom-scroll::-webkit-scrollbar { display: none; }
