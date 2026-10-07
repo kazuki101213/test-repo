@@ -369,9 +369,10 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 
 .purchase-spare-picker { grid-column: 1 / -1; min-width: 0; margin: 0; padding: 0; border: 0; }
 .purchase-spare-picker legend { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
-.purchase-spare-options { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
-.purchase-spare-options > label { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.purchase-spare-options { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.purchase-spare-options > label { display: flex; align-items: center; gap: 8px; min-height: 40px; box-sizing: border-box; padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .purchase-spare-options > label:last-child { border-bottom: 0; }
 .purchase-spare-options > label:has(input:checked) { background: var(--surface-2); }
-.purchase-spare-options input { flex: none; width: auto; margin: 3px 0 0; }
-.purchase-spare-options span { display: block; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.purchase-spare-options input { flex: none; width: auto; margin: 0; }
+.purchase-spare-options span { display: block; min-width: 0; white-space: nowrap; }
+.purchase-spare-line { flex: 1; line-height: 20px; font-size: 15px; }

@@ -9,6 +9,7 @@ const spare={id:'spare',title:'リモコン',cost_amount:1230,purchased_at:'2026
 let cursor=0, dirty=true, tree, pending=[], saved;const hooks=[];
 const react={
  useState(initial){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof initial==='function'?initial():initial};return[hooks[i].value,value=>{hooks[i].value=typeof value==='function'?value(hooks[i].value):value;dirty=true;}];},
+ useLayoutEffect(){},
  useRef(value){const i=cursor++;return(hooks[i]??={current:value});},
  useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
 };
