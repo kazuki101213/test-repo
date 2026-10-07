@@ -8,10 +8,10 @@ import SpareShippingTasks from '../components/SpareShippingTasks';
 import { useTaskViewport } from '../hooks/useTaskViewport';
 import { deliverySearchFields, deliverySearchValue, normalizeSearch, type DeliverySearchField } from '../deliverySearch';
 
-type Filter = 'all' | 'arrived' | 'shipped' | 'return-processing' | 'amazon-return' | 'working-amazon-return';
+type Filter = 'all' | 'working' | 'shipped' | 'return-processing' | 'amazon-return' | 'working-amazon-return';
 
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'arrived', label: '作業中' },
+  { key: 'working', label: '作業中' },
   { key: 'shipped', label: '出荷済' },
   { key: 'return-processing', label: '返品処理' },
   { key: 'amazon-return', label: 'Amazon返品' },
@@ -37,7 +37,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
-  const [filter, setFilter] = useState<Filter>(() => staff.name === '長部一輝' ? 'all' : 'arrived');
+  const [filter, setFilter] = useState<Filter>(() => staff.name === '長部一輝' ? 'all' : 'working');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [queryField, setQueryField] = useState<DeliverySearchField | 'deliverer'>('serial');
@@ -72,7 +72,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     try {
       const rows = await fetchAmazonFeed();
       const chosen = rows.filter(row => selected.has(String(row.item_id)));
-      if (chosen.length !== selected.size) throw new Error('選択した商品に出品準備が未完了の商品が含まれています。商品登録・写真登録などを完了してから出力してください。');
+      if (chosen.length !== selected.size) throw new Error('選択した商品に出品準備が済んでいない商品が含まれています。商品登録・写真登録などを完了してから出力してください。');
       const cleaned = chosen.map(({ item_id: _id, status: _status, deliverer_id: _deliverer, ...rest }) => rest);
       if (!cleaned.length) throw new Error('出品対象（写真登録まで完了した商品）がありません。');
       downloadTsv(`amazon-listing-${new Date().toISOString().slice(0, 10)}.txt`, cleaned);
@@ -139,7 +139,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       if (queryField !== 'deliverer' && q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
       const active = t.status === '作業中';
       switch (filter) {
-        case 'arrived': return active && t.shipped_on === null;
+        case 'working': return active && t.shipped_on === null;
         case 'shipped': return t.shipped_on !== null;
         case 'return-processing': return members.some(member => member.status === '返品処理');
         case 'amazon-return': return members.some(member => member.marketplace === 'Amazon返品');

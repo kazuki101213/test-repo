@@ -12,7 +12,6 @@ import DescriptionEditor from '../components/DescriptionEditor';
 function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
   switch (step) {
     case 'inspection_cleaning': return task.inspected && task.cleaned;
-    case 'arrived':    return task.arrived_on !== null;
     case 'registered': return task.product_registered;
     case 'inspected':  return task.inspected;
     case 'cleaned':    return task.cleaned;
