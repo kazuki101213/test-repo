@@ -13,7 +13,7 @@ export type ItemCondition =
   | '新品' | '再生品' | 'ほぼ新品' | '非常に良い' | '良い' | '可' | 'ジャンク';
 
 export type ItemStatus =
-  | '仕入済' | '入荷済' | '作業中' | '出荷済' | '出品中'
+  | '作業中' | '出荷済' | '出品中'
   | '販売済' | '返品処理' | 'Amazon返品' | '保留' | '廃棄';
 
 export type WorkStream = 'テレビ' | 'ブルーレイ' | '付属品' | 'その他';
@@ -240,7 +240,6 @@ export interface StockSummary {
   中回転: number;
   低回転: number;
   作業中: number;
-  入荷待ち: number;
 }
 
 export interface DelivererWorkload {

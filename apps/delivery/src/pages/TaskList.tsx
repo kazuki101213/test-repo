@@ -137,7 +137,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       members,
     })).filter(({ task: t, members }) => {
       if (queryField !== 'deliverer' && q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
-      const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
+      const active = ['作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;
         case 'shipped': return t.shipped_on !== null;
