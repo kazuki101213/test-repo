@@ -36,8 +36,7 @@ function elapsedJstDays(value: string | null | undefined): number | null {
 }
 
 function inventoryRowTone(item: InventoryItem): string {
-  if (item.status === '販売済' || (item.status === 'Amazon返品' && item.product_sold_on)) return 'inventory-row-sold';
-  if (item.status === 'Amazon返品') return 'inventory-row-amazon-return';
+  if (item.status === '販売済') return 'inventory-row-sold';
   if (item.status === '返品処理') return 'inventory-row-return-processing';
   if (item.status === '作業中') {
     const days = elapsedJstDays(item.purchased_at);

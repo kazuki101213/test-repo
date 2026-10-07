@@ -14,7 +14,7 @@ export type ItemCondition =
 
 export type ItemStatus =
   | '作業中' | '出荷済' | '出品中'
-  | '販売済' | '返品処理' | 'Amazon返品' | '保留' | '廃棄';
+  | '販売済' | '返品処理' | '保留' | '廃棄';
 
 export type WorkStream = 'テレビ' | 'ブルーレイ' | '付属品' | 'その他';
 

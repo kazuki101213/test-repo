@@ -279,7 +279,6 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
 
       const payload: ItemInsert = {
         ...((isAmazonReturn || isWorkingAmazonReturn) && assignedReturnSku ? { sku: assignedReturnSku } : {}),
-        ...(isAmazonReturn ? { status: 'Amazon返品' as const } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
         is_accessory: !isAmazonReturn && !isWorkingAmazonReturn && workStream === '付属品',
         purchaser_id: purchaserId,

@@ -134,7 +134,7 @@ export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadM
     let query = getSupabase().from('items')
       .select('id,lot_seq,sku,title,status,marketplace,purchased_at,arrived_on,shipped_on')
       .eq('deliverer_id', delivererId);
-    if (metric === '未完了') query = query.or('status.eq.作業中,and(status.eq.Amazon返品,shipped_on.is.null)');
+    if (metric === '未完了') query = query.eq('status', '作業中');
     else if (metric === '今月出荷') query = query.gte('shipped_on', monthStart);
     else query = query.not('shipped_on', 'is', null).not('arrived_on', 'is', null);
     const { data, error } = await query.order('lot_seq', { ascending: false }).order('id').range(from, to);

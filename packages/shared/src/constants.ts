@@ -18,7 +18,7 @@ export const WORK_STREAMS: WorkStream[] = ['テレビ', 'ブルーレイ', '付�
 
 export const STATUSES: ItemStatus[] = [
   '作業中', '出品中', '販売済',
-  '返品処理', 'Amazon返品', '保留', '廃棄',
+  '返品処理', '保留', '廃棄',
 ];
 
 export const STATUS_COLORS: Record<ItemStatus, string> = {
@@ -27,7 +27,6 @@ export const STATUS_COLORS: Record<ItemStatus, string> = {
   出品中: '#34d399',
   販売済: '#22c55e',
   返品処理: '#f87171',
-  'Amazon返品': '#fb923c',
   保留: '#cbd5e1',
   廃棄: '#64748b',
 };
