@@ -18,6 +18,10 @@ begin
   if (select count(*) from app.v_delivery_tasks) <> (select count(distinct id) from app.v_delivery_tasks) then
     raise exception 'Catalog fallback duplicated inventory rows';
   end if;
+  if exists(select 1 from app.v_items v join app.items i on i.id=v.id
+      where i.product_id is null and i.marketplace::text <> '動作品Amazon返品' and v.model_no is not null) then
+    raise exception 'ASIN fallback replaced a manually entered model title';
+  end if;
   select p.id,p.model_no,i.id into product,before_model,asin_item from app.items i
     join app.products p on p.asin=i.asin where i.product_id is null and i.marketplace::text='動作品Amazon返品' limit 1;
   select id into linked_item from app.items where product_id=product limit 1;
