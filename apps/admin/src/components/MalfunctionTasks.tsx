@@ -1,6 +1,7 @@
 import { staffDisplayName } from '@bussan/shared';
 import { deliveryAppUrl } from '../appUrls';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { adminTaskNotice } from '../taskNotice';
 import { getSupabase } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
 
@@ -193,6 +194,10 @@ function MalfunctionConversation({ item, staff, onReplied }: { item: Malfunction
 }
 
 export default function MalfunctionTasks({ staff }: { staff: Staff }) {
+  const notice = adminTaskNotice();
+  const noticeHandled = useRef(false);
+  const [loaded, setLoaded] = useState(false);
+  const [noticeMessage, setNoticeMessage] = useState('');
   const [rows, setRows] = useState<MalfunctionTask[]>([]);
   const [actionTasks, setActionTasks] = useState<ActionTask[]>([]);
   const [makersByAsin, setMakersByAsin] = useState<Map<string, string>>(new Map());
@@ -234,7 +239,17 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       setActionTasks((actions ?? []) as unknown as ActionTask[]);
     } else setActionTasks([]);
     setError('');
+    setLoaded(true);
   }
+
+  useEffect(() => {
+    if (!loaded || noticeHandled.current || !notice || !['malfunction','action'].includes(notice.kind)) return;
+    noticeHandled.current = true;
+    const id = notice.kind === 'malfunction' ? notice.itemId : notice.taskId;
+    const found = notice.kind === 'malfunction' ? rows.some(row => row.id === id) : actionTasks.some(task => task.id === id);
+    if (found) document.getElementById(`admin-${notice.kind}-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    else setNoticeMessage('通知のタスクはすでに対応済みか、現在は確認できません。');
+  }, [loaded, rows, actionTasks]);
 
   useEffect(() => {
     let active = true;
@@ -265,13 +280,14 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
   }
 
   return <>
+    {noticeMessage && <li role="status">{noticeMessage}</li>}
     {error && <li className="error" role="alert">動作不良タスク：{error}</li>}
     {!error && rows.length === 0 && actionTasks.length === 0 && <li className="muted">動作不良の報告はありません。</li>}
-    {actionTasks.map(task => <li key={'action-' + task.id} className="malfunction-task-row">
+    {actionTasks.map(task => <li id={`admin-action-${task.id}`} key={'action-' + task.id} className="malfunction-task-row">
       <div className="task-action-details"><strong>【{task.lot_seq}】</strong> <a className="btn ghost" href={deliveryAppUrl + '?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? 'ヤフオク販売' : task.task_kind}<small>{task.sku} {task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
       <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeTask(task.id)}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
-    {rows.map(row => <li key={'malfunction-' + row.id} className="malfunction-task-row">
+    {rows.map(row => <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className="malfunction-task-row">
       <div className="malfunction-task-content">
         <strong className="malfunction-task-heading">動作不良</strong>
         <div className="malfunction-task-metadata">
