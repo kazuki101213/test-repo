@@ -46,3 +46,7 @@ verify_jwt = false
 # Email-only login deliberately creates an authenticated session for the selected staff email.
 [functions.email-only-login]
 verify_jwt = false
+
+# Validates Auth.getUser for settings and a Vault token for the queue dispatcher.
+[functions.delivery-push]
+verify_jwt = false

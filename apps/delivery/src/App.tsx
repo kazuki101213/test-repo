@@ -6,6 +6,8 @@ import Login from './components/Login';
 import TaskList from './pages/TaskList';
 import Invoices from './pages/Invoices';
 import Spares from './pages/Spares';
+import PushSettings from './components/PushSettings';
+import { disableDevicePush } from './push';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -14,6 +16,11 @@ export default function App() {
   const [tab, setTab] = useState<'tasks' | 'spares' | 'invoices'>('tasks');
   const [invoiceNavigation, setInvoiceNavigation] = useState<'busy' | 'dirty' | null>(null);
   const canLeave = () => invoiceNavigation !== 'busy' && (invoiceNavigation !== 'dirty' || window.confirm('保存していない請求書の変更を破棄しますか？'));
+  async function logout() {
+    if (!canLeave()) return;
+    try { await disableDevicePush(); await signOut(); await refresh(); }
+    catch { setError('通知の停止またはログアウトに失敗しました。再度お試しください。'); }
+  }
 
   async function refresh() {
     try {
@@ -47,8 +54,10 @@ export default function App() {
           <h1>納品アプリ</h1>
           <span className="who">{staffDisplayName(session.staff)}</span>
         </div>
-        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => { if (canLeave()) void signOut().then(refresh); }}>ログアウト</button>
+        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button>
       </div>
+      {error && <p className="error" role="alert">{error}</p>}
+      {['admin','deliverer'].includes(session.staff.role) && <PushSettings key={session.user.id} userId={session.user.id} />}
       <nav className="row invoice-tabs no-print" aria-label="納品アプリのメニュー">
         <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('tasks'); }}>在庫一覧</button>
         <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'spares' ? 'page' : undefined} onClick={() => { if (canLeave()) setTab('spares'); }}>予備一覧</button>
