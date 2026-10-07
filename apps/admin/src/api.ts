@@ -1,4 +1,5 @@
 import { getSupabase } from '@bussan/shared';
+import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
@@ -117,6 +118,7 @@ export interface ItemFilter {
   statuses?: string[];
   delivererIds?: string[];
   query?: string;
+  queryField?: InventorySearchField;
   unsoldOnly?: boolean;
   purchasedFrom?: string;
   purchasedTo?: string;
@@ -290,6 +292,7 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
   const needle = filter.query?.trim().toLocaleLowerCase();
   const filteredItems = needle ? items.filter(item => {
     const reference = references.get(item.id);
+    if (filter.queryField) return matchesInventorySearch({ ...item, marketplace_item_id: reference?.marketplace_item_id ?? null }, filter.queryField, filter.query!);
     return [item.sku, item.title, item.asin, item.model_no, item.tracking_no, reference?.marketplace_item_id]
       .some(value => value?.toLocaleLowerCase().includes(needle));
   }) : items;
