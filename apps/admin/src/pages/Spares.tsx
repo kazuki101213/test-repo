@@ -1,4 +1,4 @@
-import { staffDisplayName } from '@bussan/shared';
+import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredLabel from '../components/ColoredLabel';
 import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
@@ -126,7 +126,7 @@ export default function Spares({ me }: { me: Staff }) {
           <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
         </fieldset>
         {me.role === 'admin' ? <label className="field"><span>保管担当</span>
-          <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{staff.map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
+          <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff).map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
         </label> : <label className="field"><span>保管担当</span><input value={staffDisplayName(me)} readOnly /></label>}
         <label className="field"><span>保管担当名</span><input value={form.owner_name ?? ''} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} /></label>
         <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>

@@ -6796,6 +6796,254 @@ create trigger invoices_admin_push after insert or update on app.delivery_invoic
   for each row execute function app.capture_admin_push();
 
 
+-- ▼▼▼ 20261007010454_automatic_purchase_list.sql ▼▼▼
+
+CREATE OR REPLACE FUNCTION app.extension_sync_purchase_drafts(p_marketplace text, p_account_label text, p_purchases jsonb, p_stop_on_match boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  row_data jsonb;
+  inserted_count integer := 0;
+  refreshed_count integer := 0;
+  matched_item_ids text[] := array[]::text[];
+  v_id text;
+  v_title text;
+  v_url text;
+  v_price bigint;
+  v_date date;
+  v_model_no text;
+  v_product_id uuid;
+  v_product_no integer;
+  v_asin char(10);
+  v_planned_price bigint;
+  v_planned_payout bigint;
+  v_best_model_length integer;
+  v_best_model_count integer;
+  was_inserted boolean;
+  v_existing_item uuid;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  if nullif(btrim(p_account_label),'') is null or length(p_account_label)>120 then raise exception 'アカウント名が不正です'; end if;
+  if jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then raise exception '購入履歴の形式または件数が不正です'; end if;
+  for row_data in select value from jsonb_array_elements(p_purchases) loop
+    v_id := nullif(btrim(row_data->>'marketplace_item_id'),'');
+    v_title := nullif(btrim(row_data->>'title'),'');
+    v_url := nullif(btrim(row_data->>'marketplace_url'),'');
+    if v_id is null or v_title is null or v_url is null or length(v_id)>200 or length(v_title)>500 or length(v_url)>2000 then continue; end if;
+    if (p_marketplace='メルカリ' and v_url !~ '^https://jp\.mercari\.com/')
+      or (p_marketplace='ヤフオク' and v_url !~ '^https://(auctions|page\.auctions|contact\.auctions|buy\.auctions)\.yahoo\.co\.jp/')
+      or (p_marketplace in ('ヤフフリ','PayPayフリマ') and v_url !~ '^https://paypayfleamarket(-sec)?\.yahoo\.co\.jp/')
+      or (p_marketplace='ラクマ' and v_url !~ '^https://(www\.)?fril\.jp/' and v_url !~ '^https://item\.fril\.jp/') then continue; end if;
+
+    v_product_id := null; v_model_no := null; v_product_no := null; v_asin := null;
+    v_planned_price := null; v_planned_payout := null; v_best_model_length := null; v_best_model_count := 0;
+    select max(length(btrim(p.model_no))) into v_best_model_length
+      from app.products p
+      where p.is_active and nullif(btrim(p.model_no),'') is not null
+        and position(lower(btrim(p.model_no)) in lower(v_title))>0;
+    if v_best_model_length is not null then
+      select count(*) into v_best_model_count from app.products p
+        where p.is_active and nullif(btrim(p.model_no),'') is not null
+          and length(btrim(p.model_no))=v_best_model_length
+          and position(lower(btrim(p.model_no)) in lower(v_title))>0;
+      if v_best_model_count=1 then
+        select p.id,p.model_no,p.product_no,p.asin,p.list_price,p.payout_estimate
+          into v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout
+          from app.products p
+          where p.is_active and nullif(btrim(p.model_no),'') is not null
+            and length(btrim(p.model_no))=v_best_model_length
+            and position(lower(btrim(p.model_no)) in lower(v_title))>0
+          limit 1;
+      end if;
+    end if;
+
+    select i.id into v_existing_item from app.items i
+      where i.marketplace_item_id=v_id
+        and (i.marketplace::text=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and i.marketplace in ('ヤフフリ','PayPayフリマ')))
+      order by i.created_at desc limit 1;
+    if v_existing_item is not null then
+      insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,state,registered_item_id,product_id,model_no,product_no,asin,planned_price,planned_payout)
+        values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,
+          case when coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then (row_data->>'purchased_at')::date else null end,
+          case when coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then (row_data->>'cost_amount')::bigint else null end,
+          'registered',v_existing_item,v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout)
+        on conflict(marketplace,marketplace_item_id) do nothing;
+      matched_item_ids := array_append(matched_item_ids,v_id);
+      if p_stop_on_match then exit; end if;
+      continue;
+    end if;
+
+    v_price := null;
+    if coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then v_price := (row_data->>'cost_amount')::bigint; end if;
+    v_date := null;
+    if coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then v_date := (row_data->>'purchased_at')::date; end if;
+    insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,product_id,model_no,product_no,asin,planned_price,planned_payout)
+      values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,v_date,v_price,v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout)
+      on conflict(marketplace,marketplace_item_id) do update set
+        marketplace_url=excluded.marketplace_url,
+        account_label=excluded.account_label,
+        title=excluded.title,
+        purchased_at=coalesce(excluded.purchased_at,app.marketplace_purchase_drafts.purchased_at),
+        cost_amount=coalesce(excluded.cost_amount,app.marketplace_purchase_drafts.cost_amount),
+        product_id=coalesce(excluded.product_id,app.marketplace_purchase_drafts.product_id),
+        model_no=coalesce(excluded.model_no,app.marketplace_purchase_drafts.model_no),
+        product_no=coalesce(excluded.product_no,app.marketplace_purchase_drafts.product_no),
+        asin=coalesce(excluded.asin,app.marketplace_purchase_drafts.asin),
+        planned_price=coalesce(excluded.planned_price,app.marketplace_purchase_drafts.planned_price),
+        planned_payout=coalesce(excluded.planned_payout,app.marketplace_purchase_drafts.planned_payout),
+        last_seen_at=now()
+      where app.marketplace_purchase_drafts.state='draft'
+      returning (xmax=0) into was_inserted;
+    if found then
+      if was_inserted then inserted_count := inserted_count+1;
+      else refreshed_count := refreshed_count+1; end if;
+    end if;
+  end loop;
+  return jsonb_build_object('inserted',inserted_count,'refreshed',refreshed_count,'matched_item_ids',to_jsonb(matched_item_ids));
+end $function$
+
+;
+create or replace function app.marketplace_purchase_context(p_marketplace text)
+returns jsonb language plpgsql stable security invoker set search_path = '' as $$
+declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
+  v_day date := (now() at time zone 'Asia/Tokyo')::date; v_ids jsonb;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  select coalesce(jsonb_agg(distinct id),'[]'::jsonb) into v_ids from (
+    select marketplace_item_id as id from app.items where marketplace_item_id is not null
+      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ'))
+    union select marketplace_item_id from app.marketplace_purchase_drafts
+      where marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')
+  ) known;
+  return jsonb_build_object('day',v_day,'cutoff',(v_day-interval '1 month')::date,'knownIds',v_ids);
+end $$;
+revoke all on function app.marketplace_purchase_context(text) from public,anon;
+grant execute on function app.marketplace_purchase_context(text) to authenticated;
+
+create or replace function app.marketplace_purchase_import(p_marketplace text,p_account_label text,p_purchases jsonb)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
+  v_day date := (now() at time zone 'Asia/Tokyo')::date;
+  v_cutoff date := (v_day-interval '1 month')::date; r jsonb; v_id text; v_date date;
+  v_inserted int := 0; v_skipped int := 0; v_rejected int := 0; v_result jsonb;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  if p_purchases is null or jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then
+    raise exception '購入履歴の形式または件数が不正です'; end if;
+  for r in select value from jsonb_array_elements(p_purchases) loop
+    v_id := nullif(btrim(r->>'marketplace_item_id'),''); v_date := null;
+    begin
+      if coalesce(r->>'purchased_at','') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then v_date := (r->>'purchased_at')::date; end if;
+    exception when datetime_field_overflow or invalid_datetime_format then v_date := null; end;
+    if coalesce((r->>'cancelled')::boolean,false) or v_id is null or v_date is null or v_date<v_cutoff or v_date>v_day then v_rejected:=v_rejected+1; continue; end if;
+    if r->>'marketplace_url' <> (case v_site when 'メルカリ' then 'https://jp.mercari.com/item/' when 'ヤフオク' then 'https://auctions.yahoo.co.jp/jp/auction/' when 'ヤフフリ' then 'https://paypayfleamarket.yahoo.co.jp/item/' when 'ラクマ' then 'https://item.fril.jp/' end || v_id) then v_rejected:=v_rejected+1; continue; end if;
+    if exists(select 1 from app.items where marketplace_item_id=v_id
+      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')))
+      or exists(select 1 from app.marketplace_purchase_drafts where marketplace_item_id=v_id
+      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ'))) then
+      v_skipped:=v_skipped+1; continue; end if;
+    v_result := app.extension_sync_purchase_drafts(v_site,p_account_label,jsonb_build_array(r),false);
+    if coalesce((v_result->>'inserted')::int,0)>0 then v_inserted:=v_inserted+1;
+    elsif jsonb_array_length(coalesce(v_result->'matched_item_ids','[]'::jsonb))>0 then v_skipped:=v_skipped+1;
+    else v_rejected:=v_rejected+1; end if;
+  end loop;
+  return jsonb_build_object('inserted',v_inserted,'skipped',v_skipped,'rejected',v_rejected);
+end $$;
+revoke all on function app.marketplace_purchase_import(text,text,jsonb) from public,anon;
+grant execute on function app.marketplace_purchase_import(text,text,jsonb) to authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261007011859_purchase_draft_missing_price_refresh.sql ▼▼▼
+
+create or replace function app.marketplace_purchase_context(p_marketplace text)
+returns jsonb language plpgsql stable security invoker set search_path = '' as $$
+declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
+  v_day date := (now() at time zone 'Asia/Tokyo')::date; v_ids jsonb;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  select coalesce(jsonb_agg(distinct id),'[]'::jsonb) into v_ids from (
+    select marketplace_item_id as id from app.items where marketplace_item_id is not null
+      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ'))
+    union select marketplace_item_id from app.marketplace_purchase_drafts
+      where (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')) and (state<>'draft' or cost_amount is not null)
+  ) known;
+  return jsonb_build_object('day',v_day,'cutoff',(v_day-interval '1 month')::date,'knownIds',v_ids);
+end $$;
+revoke all on function app.marketplace_purchase_context(text) from public,anon;
+grant execute on function app.marketplace_purchase_context(text) to authenticated;
+
+create or replace function app.marketplace_purchase_import(p_marketplace text,p_account_label text,p_purchases jsonb)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
+  v_day date := (now() at time zone 'Asia/Tokyo')::date;
+  v_cutoff date := (v_day-interval '1 month')::date; r jsonb; v_id text; v_date date;
+  v_inserted int := 0; v_refreshed int := 0; v_skipped int := 0; v_rejected int := 0; v_result jsonb;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  if p_purchases is null or jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then
+    raise exception '購入履歴の形式または件数が不正です'; end if;
+  for r in select value from jsonb_array_elements(p_purchases) loop
+    v_id := nullif(btrim(r->>'marketplace_item_id'),''); v_date := null;
+    begin
+      if coalesce(r->>'purchased_at','') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then v_date := (r->>'purchased_at')::date; end if;
+    exception when datetime_field_overflow or invalid_datetime_format then v_date := null; end;
+    if coalesce((r->>'cancelled')::boolean,false) or v_id is null or v_date is null or v_date<v_cutoff or v_date>v_day then v_rejected:=v_rejected+1; continue; end if;
+    if r->>'marketplace_url' <> (case v_site when 'メルカリ' then 'https://jp.mercari.com/item/' when 'ヤフオク' then 'https://auctions.yahoo.co.jp/jp/auction/' when 'ヤフフリ' then 'https://paypayfleamarket.yahoo.co.jp/item/' when 'ラクマ' then 'https://item.fril.jp/' end || v_id) then v_rejected:=v_rejected+1; continue; end if;
+    if exists(select 1 from app.items where marketplace_item_id=v_id
+      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')))
+      or exists(select 1 from app.marketplace_purchase_drafts where marketplace_item_id=v_id
+      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')) and (state<>'draft' or cost_amount is not null)) then
+      v_skipped:=v_skipped+1; continue; end if;
+    v_result := app.extension_sync_purchase_drafts(v_site,p_account_label,jsonb_build_array(r),false);
+    if coalesce((v_result->>'inserted')::int,0)>0 then v_inserted:=v_inserted+1;
+    elsif coalesce((v_result->>'refreshed')::int,0)>0 then v_refreshed:=v_refreshed+1; v_skipped:=v_skipped+1;
+    elsif jsonb_array_length(coalesce(v_result->'matched_item_ids','[]'::jsonb))>0 then v_skipped:=v_skipped+1;
+    else v_rejected:=v_rejected+1; end if;
+  end loop;
+  return jsonb_build_object('inserted',v_inserted,'refreshed',v_refreshed,'skipped',v_skipped,'rejected',v_rejected);
+end $$;
+revoke all on function app.marketplace_purchase_import(text,text,jsonb) from public,anon;
+grant execute on function app.marketplace_purchase_import(text,text,jsonb) to authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261007013525_purchase_site_scan_lease.sql ▼▼▼
+
+create table if not exists app.marketplace_purchase_leases (
+  marketplace text primary key check (marketplace in ('メルカリ','ヤフオク','ヤフフリ','ラクマ')),
+  owner_id uuid not null, expires_at timestamptz not null
+);
+alter table app.marketplace_purchase_leases enable row level security;
+revoke all on app.marketplace_purchase_leases from anon;
+grant select,insert,update,delete on app.marketplace_purchase_leases to authenticated;
+create policy marketplace_purchase_leases_admin on app.marketplace_purchase_leases to authenticated using (app.is_admin()) with check (app.is_admin());
+create or replace function app.marketplace_purchase_lease(p_marketplace text,p_owner uuid,p_action text)
+returns boolean language plpgsql security invoker set search_path='' as $$
+declare v_site text:=case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end; held uuid;
+begin
+ if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+ if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') or p_owner is null then raise exception '取得対象が不正です'; end if;
+ if p_action='release' then delete from app.marketplace_purchase_leases where marketplace=v_site and owner_id=p_owner;return true;end if;
+ if p_action<>'acquire' then raise exception '取得操作が不正です';end if;
+ insert into app.marketplace_purchase_leases(marketplace,owner_id,expires_at) values(v_site,p_owner,now()+interval '2 minutes')
+ on conflict(marketplace) do update set owner_id=excluded.owner_id,expires_at=excluded.expires_at
+ where app.marketplace_purchase_leases.owner_id=p_owner or app.marketplace_purchase_leases.expires_at<now()
+ returning owner_id into held;
+ return held=p_owner;
+end $$;
+revoke all on function app.marketplace_purchase_lease(text,uuid,text) from public,anon;
+grant execute on function app.marketplace_purchase_lease(text,uuid,text) to authenticated;
+notify pgrst,'reload schema';
+
 -- ▼▼▼ 20261007013527_sync_inventory_delivery_models.sql ▼▼▼
 
 -- Both apps read the same live catalog model. Existing product links take priority;
@@ -6982,256 +7230,8 @@ where i.status in ('仕入済','入荷済','作業中','返品処理','Amazon返
 grant select on app.v_delivery_tasks to authenticated;
 
 
+-- ▼▼▼ 20261007021522_purchase_two_weeks_once_only.sql ▼▼▼
 
--- 20261007010454_automatic_purchase_list.sql
-CREATE OR REPLACE FUNCTION app.extension_sync_purchase_drafts(p_marketplace text, p_account_label text, p_purchases jsonb, p_stop_on_match boolean)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
-AS $function$
-declare
-  row_data jsonb;
-  inserted_count integer := 0;
-  refreshed_count integer := 0;
-  matched_item_ids text[] := array[]::text[];
-  v_id text;
-  v_title text;
-  v_url text;
-  v_price bigint;
-  v_date date;
-  v_model_no text;
-  v_product_id uuid;
-  v_product_no integer;
-  v_asin char(10);
-  v_planned_price bigint;
-  v_planned_payout bigint;
-  v_best_model_length integer;
-  v_best_model_count integer;
-  was_inserted boolean;
-  v_existing_item uuid;
-begin
-  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
-  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception '対象外の仕入先です'; end if;
-  if nullif(btrim(p_account_label),'') is null or length(p_account_label)>120 then raise exception 'アカウント名が不正です'; end if;
-  if jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then raise exception '購入履歴の形式または件数が不正です'; end if;
-  for row_data in select value from jsonb_array_elements(p_purchases) loop
-    v_id := nullif(btrim(row_data->>'marketplace_item_id'),'');
-    v_title := nullif(btrim(row_data->>'title'),'');
-    v_url := nullif(btrim(row_data->>'marketplace_url'),'');
-    if v_id is null or v_title is null or v_url is null or length(v_id)>200 or length(v_title)>500 or length(v_url)>2000 then continue; end if;
-    if (p_marketplace='メルカリ' and v_url !~ '^https://jp\.mercari\.com/')
-      or (p_marketplace='ヤフオク' and v_url !~ '^https://(auctions|page\.auctions|contact\.auctions|buy\.auctions)\.yahoo\.co\.jp/')
-      or (p_marketplace in ('ヤフフリ','PayPayフリマ') and v_url !~ '^https://paypayfleamarket(-sec)?\.yahoo\.co\.jp/')
-      or (p_marketplace='ラクマ' and v_url !~ '^https://(www\.)?fril\.jp/' and v_url !~ '^https://item\.fril\.jp/') then continue; end if;
-
-    v_product_id := null; v_model_no := null; v_product_no := null; v_asin := null;
-    v_planned_price := null; v_planned_payout := null; v_best_model_length := null; v_best_model_count := 0;
-    select max(length(btrim(p.model_no))) into v_best_model_length
-      from app.products p
-      where p.is_active and nullif(btrim(p.model_no),'') is not null
-        and position(lower(btrim(p.model_no)) in lower(v_title))>0;
-    if v_best_model_length is not null then
-      select count(*) into v_best_model_count from app.products p
-        where p.is_active and nullif(btrim(p.model_no),'') is not null
-          and length(btrim(p.model_no))=v_best_model_length
-          and position(lower(btrim(p.model_no)) in lower(v_title))>0;
-      if v_best_model_count=1 then
-        select p.id,p.model_no,p.product_no,p.asin,p.list_price,p.payout_estimate
-          into v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout
-          from app.products p
-          where p.is_active and nullif(btrim(p.model_no),'') is not null
-            and length(btrim(p.model_no))=v_best_model_length
-            and position(lower(btrim(p.model_no)) in lower(v_title))>0
-          limit 1;
-      end if;
-    end if;
-
-    select i.id into v_existing_item from app.items i
-      where i.marketplace_item_id=v_id
-        and (i.marketplace::text=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and i.marketplace in ('ヤフフリ','PayPayフリマ')))
-      order by i.created_at desc limit 1;
-    if v_existing_item is not null then
-      insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,state,registered_item_id,product_id,model_no,product_no,asin,planned_price,planned_payout)
-        values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,
-          case when coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then (row_data->>'purchased_at')::date else null end,
-          case when coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then (row_data->>'cost_amount')::bigint else null end,
-          'registered',v_existing_item,v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout)
-        on conflict(marketplace,marketplace_item_id) do nothing;
-      matched_item_ids := array_append(matched_item_ids,v_id);
-      if p_stop_on_match then exit; end if;
-      continue;
-    end if;
-
-    v_price := null;
-    if coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then v_price := (row_data->>'cost_amount')::bigint; end if;
-    v_date := null;
-    if coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then v_date := (row_data->>'purchased_at')::date; end if;
-    insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,product_id,model_no,product_no,asin,planned_price,planned_payout)
-      values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,v_date,v_price,v_product_id,v_model_no,v_product_no,v_asin,v_planned_price,v_planned_payout)
-      on conflict(marketplace,marketplace_item_id) do update set
-        marketplace_url=excluded.marketplace_url,
-        account_label=excluded.account_label,
-        title=excluded.title,
-        purchased_at=coalesce(excluded.purchased_at,app.marketplace_purchase_drafts.purchased_at),
-        cost_amount=coalesce(excluded.cost_amount,app.marketplace_purchase_drafts.cost_amount),
-        product_id=coalesce(excluded.product_id,app.marketplace_purchase_drafts.product_id),
-        model_no=coalesce(excluded.model_no,app.marketplace_purchase_drafts.model_no),
-        product_no=coalesce(excluded.product_no,app.marketplace_purchase_drafts.product_no),
-        asin=coalesce(excluded.asin,app.marketplace_purchase_drafts.asin),
-        planned_price=coalesce(excluded.planned_price,app.marketplace_purchase_drafts.planned_price),
-        planned_payout=coalesce(excluded.planned_payout,app.marketplace_purchase_drafts.planned_payout),
-        last_seen_at=now()
-      where app.marketplace_purchase_drafts.state='draft'
-      returning (xmax=0) into was_inserted;
-    if found then
-      if was_inserted then inserted_count := inserted_count+1;
-      else refreshed_count := refreshed_count+1; end if;
-    end if;
-  end loop;
-  return jsonb_build_object('inserted',inserted_count,'refreshed',refreshed_count,'matched_item_ids',to_jsonb(matched_item_ids));
-end $function$
-
-;
-create or replace function app.marketplace_purchase_context(p_marketplace text)
-returns jsonb language plpgsql stable security invoker set search_path = '' as $$
-declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
-  v_day date := (now() at time zone 'Asia/Tokyo')::date; v_ids jsonb;
-begin
-  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
-  if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') then raise exception '対象外の仕入先です'; end if;
-  select coalesce(jsonb_agg(distinct id),'[]'::jsonb) into v_ids from (
-    select marketplace_item_id as id from app.items where marketplace_item_id is not null
-      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ'))
-    union select marketplace_item_id from app.marketplace_purchase_drafts
-      where marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')
-  ) known;
-  return jsonb_build_object('day',v_day,'cutoff',(v_day-interval '1 month')::date,'knownIds',v_ids);
-end $$;
-revoke all on function app.marketplace_purchase_context(text) from public,anon;
-grant execute on function app.marketplace_purchase_context(text) to authenticated;
-
-create or replace function app.marketplace_purchase_import(p_marketplace text,p_account_label text,p_purchases jsonb)
-returns jsonb language plpgsql security invoker set search_path = '' as $$
-declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
-  v_day date := (now() at time zone 'Asia/Tokyo')::date;
-  v_cutoff date := (v_day-interval '1 month')::date; r jsonb; v_id text; v_date date;
-  v_inserted int := 0; v_skipped int := 0; v_rejected int := 0; v_result jsonb;
-begin
-  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
-  if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') then raise exception '対象外の仕入先です'; end if;
-  if p_purchases is null or jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then
-    raise exception '購入履歴の形式または件数が不正です'; end if;
-  for r in select value from jsonb_array_elements(p_purchases) loop
-    v_id := nullif(btrim(r->>'marketplace_item_id'),''); v_date := null;
-    begin
-      if coalesce(r->>'purchased_at','') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then v_date := (r->>'purchased_at')::date; end if;
-    exception when datetime_field_overflow or invalid_datetime_format then v_date := null; end;
-    if coalesce((r->>'cancelled')::boolean,false) or v_id is null or v_date is null or v_date<v_cutoff or v_date>v_day then v_rejected:=v_rejected+1; continue; end if;
-    if r->>'marketplace_url' <> (case v_site when 'メルカリ' then 'https://jp.mercari.com/item/' when 'ヤフオク' then 'https://auctions.yahoo.co.jp/jp/auction/' when 'ヤフフリ' then 'https://paypayfleamarket.yahoo.co.jp/item/' when 'ラクマ' then 'https://item.fril.jp/' end || v_id) then v_rejected:=v_rejected+1; continue; end if;
-    if exists(select 1 from app.items where marketplace_item_id=v_id
-      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')))
-      or exists(select 1 from app.marketplace_purchase_drafts where marketplace_item_id=v_id
-      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ'))) then
-      v_skipped:=v_skipped+1; continue; end if;
-    v_result := app.extension_sync_purchase_drafts(v_site,p_account_label,jsonb_build_array(r),false);
-    if coalesce((v_result->>'inserted')::int,0)>0 then v_inserted:=v_inserted+1;
-    elsif jsonb_array_length(coalesce(v_result->'matched_item_ids','[]'::jsonb))>0 then v_skipped:=v_skipped+1;
-    else v_rejected:=v_rejected+1; end if;
-  end loop;
-  return jsonb_build_object('inserted',v_inserted,'skipped',v_skipped,'rejected',v_rejected);
-end $$;
-revoke all on function app.marketplace_purchase_import(text,text,jsonb) from public,anon;
-grant execute on function app.marketplace_purchase_import(text,text,jsonb) to authenticated;
-notify pgrst,'reload schema';
-
-
-
--- 20261007011859_purchase_draft_missing_price_refresh.sql
-create or replace function app.marketplace_purchase_context(p_marketplace text)
-returns jsonb language plpgsql stable security invoker set search_path = '' as $$
-declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
-  v_day date := (now() at time zone 'Asia/Tokyo')::date; v_ids jsonb;
-begin
-  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
-  if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') then raise exception '対象外の仕入先です'; end if;
-  select coalesce(jsonb_agg(distinct id),'[]'::jsonb) into v_ids from (
-    select marketplace_item_id as id from app.items where marketplace_item_id is not null
-      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ'))
-    union select marketplace_item_id from app.marketplace_purchase_drafts
-      where (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')) and (state<>'draft' or cost_amount is not null)
-  ) known;
-  return jsonb_build_object('day',v_day,'cutoff',(v_day-interval '1 month')::date,'knownIds',v_ids);
-end $$;
-revoke all on function app.marketplace_purchase_context(text) from public,anon;
-grant execute on function app.marketplace_purchase_context(text) to authenticated;
-
-create or replace function app.marketplace_purchase_import(p_marketplace text,p_account_label text,p_purchases jsonb)
-returns jsonb language plpgsql security invoker set search_path = '' as $$
-declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
-  v_day date := (now() at time zone 'Asia/Tokyo')::date;
-  v_cutoff date := (v_day-interval '1 month')::date; r jsonb; v_id text; v_date date;
-  v_inserted int := 0; v_refreshed int := 0; v_skipped int := 0; v_rejected int := 0; v_result jsonb;
-begin
-  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
-  if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') then raise exception '対象外の仕入先です'; end if;
-  if p_purchases is null or jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then
-    raise exception '購入履歴の形式または件数が不正です'; end if;
-  for r in select value from jsonb_array_elements(p_purchases) loop
-    v_id := nullif(btrim(r->>'marketplace_item_id'),''); v_date := null;
-    begin
-      if coalesce(r->>'purchased_at','') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then v_date := (r->>'purchased_at')::date; end if;
-    exception when datetime_field_overflow or invalid_datetime_format then v_date := null; end;
-    if coalesce((r->>'cancelled')::boolean,false) or v_id is null or v_date is null or v_date<v_cutoff or v_date>v_day then v_rejected:=v_rejected+1; continue; end if;
-    if r->>'marketplace_url' <> (case v_site when 'メルカリ' then 'https://jp.mercari.com/item/' when 'ヤフオク' then 'https://auctions.yahoo.co.jp/jp/auction/' when 'ヤフフリ' then 'https://paypayfleamarket.yahoo.co.jp/item/' when 'ラクマ' then 'https://item.fril.jp/' end || v_id) then v_rejected:=v_rejected+1; continue; end if;
-    if exists(select 1 from app.items where marketplace_item_id=v_id
-      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')))
-      or exists(select 1 from app.marketplace_purchase_drafts where marketplace_item_id=v_id
-      and (marketplace::text=v_site or (v_site='ヤフフリ' and marketplace='PayPayフリマ')) and (state<>'draft' or cost_amount is not null)) then
-      v_skipped:=v_skipped+1; continue; end if;
-    v_result := app.extension_sync_purchase_drafts(v_site,p_account_label,jsonb_build_array(r),false);
-    if coalesce((v_result->>'inserted')::int,0)>0 then v_inserted:=v_inserted+1;
-    elsif coalesce((v_result->>'refreshed')::int,0)>0 then v_refreshed:=v_refreshed+1; v_skipped:=v_skipped+1;
-    elsif jsonb_array_length(coalesce(v_result->'matched_item_ids','[]'::jsonb))>0 then v_skipped:=v_skipped+1;
-    else v_rejected:=v_rejected+1; end if;
-  end loop;
-  return jsonb_build_object('inserted',v_inserted,'refreshed',v_refreshed,'skipped',v_skipped,'rejected',v_rejected);
-end $$;
-revoke all on function app.marketplace_purchase_import(text,text,jsonb) from public,anon;
-grant execute on function app.marketplace_purchase_import(text,text,jsonb) to authenticated;
-notify pgrst,'reload schema';
-
-
-
--- 20261007013525_purchase_site_scan_lease.sql
-create table if not exists app.marketplace_purchase_leases (
-  marketplace text primary key check (marketplace in ('メルカリ','ヤフオク','ヤフフリ','ラクマ')),
-  owner_id uuid not null, expires_at timestamptz not null
-);
-alter table app.marketplace_purchase_leases enable row level security;
-revoke all on app.marketplace_purchase_leases from anon;
-grant select,insert,update,delete on app.marketplace_purchase_leases to authenticated;
-drop policy if exists marketplace_purchase_leases_admin on app.marketplace_purchase_leases;
-create policy marketplace_purchase_leases_admin on app.marketplace_purchase_leases to authenticated using (app.is_admin()) with check (app.is_admin());
-create or replace function app.marketplace_purchase_lease(p_marketplace text,p_owner uuid,p_action text)
-returns boolean language plpgsql security invoker set search_path='' as $$
-declare v_site text:=case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end; held uuid;
-begin
- if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
- if v_site not in ('メルカリ','ヤフオク','ヤフフリ','ラクマ') or p_owner is null then raise exception '取得対象が不正です'; end if;
- if p_action='release' then delete from app.marketplace_purchase_leases where marketplace=v_site and owner_id=p_owner;return true;end if;
- if p_action<>'acquire' then raise exception '取得操作が不正です';end if;
- insert into app.marketplace_purchase_leases(marketplace,owner_id,expires_at) values(v_site,p_owner,now()+interval '2 minutes')
- on conflict(marketplace) do update set owner_id=excluded.owner_id,expires_at=excluded.expires_at
- where app.marketplace_purchase_leases.owner_id=p_owner or app.marketplace_purchase_leases.expires_at<now()
- returning owner_id into held;
- return held=p_owner;
-end $$;
-revoke all on function app.marketplace_purchase_lease(text,uuid,text) from public,anon;
-grant execute on function app.marketplace_purchase_lease(text,uuid,text) to authenticated;
-notify pgrst,'reload schema';
-
--- Two-week, once-only purchase acquisition
 create or replace function app.marketplace_purchase_context(p_marketplace text)
 returns jsonb language plpgsql stable security invoker set search_path = '' as $$
 declare v_site text := case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end;
@@ -7285,3 +7285,63 @@ end $$;
 revoke all on function app.marketplace_purchase_import(text,text,jsonb) from public,anon;
 grant execute on function app.marketplace_purchase_import(text,text,jsonb) to authenticated;
 notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261007110119_register_item_with_spare.sql ▼▼▼
+
+-- Register the input item and its reserve accessory in one transaction.
+create function app.register_item_with_spare(p_item jsonb, p_spare_id uuid)
+returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare
+  v_input app.items;
+  v_item app.items;
+  v_accessory app.items;
+  v_spare app.spare_accessories;
+begin
+  if auth.uid() is null or app.current_role() not in ('admin','purchaser') then
+    raise exception '在庫を登録する権限がありません' using errcode='42501';
+  end if;
+  if p_item is null or jsonb_typeof(p_item) <> 'object' or p_spare_id is null then
+    raise exception '登録情報が不正です' using errcode='22023';
+  end if;
+  -- Serialize this operation without expanding spare-table write privileges.
+  perform pg_advisory_xact_lock(hashtextextended(p_spare_id::text, 179051));
+  select * into v_spare from app.spare_accessories where id=p_spare_id and used_for_item_id is null;
+  if not found or (not app.is_admin() and v_spare.owner_staff_id is distinct from app.current_staff_id()) then
+    raise exception 'この予備は使用済みか、割り当てできません' using errcode='22023';
+  end if;
+  if v_spare.linked_item_id is not null and exists(select 1 from app.items where id=v_spare.linked_item_id) then
+    raise exception 'この予備には在庫行が残っています。二重登録を避けるため予備の登録内容を確認してください' using errcode='22023';
+  end if;
+  v_input := jsonb_populate_record(null::app.items,p_item);
+  if coalesce(v_input.is_accessory,false) and not exists(select 1 from app.items where lot_seq=v_input.lot_seq and not is_accessory) then
+    raise exception 'この通番号の本体が見つかりません。本体を先に登録してください' using errcode='22023';
+  end if;
+  insert into app.items (sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,
+    title,cost_amount,marketplace,marketplace_item_id,marketplace_url,card_id,tracking_no,product_id,
+    asin,condition,accessories,description,planned_price,planned_payout,sales_channel,status,memo,source_purchase_draft_id)
+  values (v_input.sku,v_input.lot_seq,coalesce(v_input.is_accessory,false),v_input.purchaser_id,v_input.deliverer_id,
+    v_input.work_stream,v_input.purchased_at,v_input.title,v_input.cost_amount,v_input.marketplace,
+    v_input.marketplace_item_id,v_input.marketplace_url,v_input.card_id,v_input.tracking_no,v_input.product_id,
+    v_input.asin,v_input.condition,v_input.accessories,v_input.description,v_input.planned_price,v_input.planned_payout,
+    v_input.sales_channel,coalesce(v_input.status,'作業中'::app.item_status),v_input.memo,v_input.source_purchase_draft_id)
+  returning * into v_item;
+  perform app.allocate_spare_accessory(p_spare_id,v_item.id);
+  if not v_item.is_accessory then
+    insert into app.items (lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,
+      cost_amount,marketplace,marketplace_item_id,tracking_no,asin,sales_channel,memo)
+    values (v_item.lot_seq,true,coalesce(v_spare.owner_staff_id,v_item.purchaser_id),v_item.deliverer_id,'付属品',
+      v_spare.purchased_at,v_spare.title,v_spare.cost_amount,
+      case when v_spare.marketplace in (select unnest(enum_range(null::app.marketplace))::text)
+        then v_spare.marketplace::app.marketplace else 'その他'::app.marketplace end,
+      v_spare.marketplace_item_id,v_spare.tracking_no,v_spare.asin,v_item.sales_channel,
+      v_spare.usage_note)
+    returning * into v_accessory;
+  end if;
+  return jsonb_build_object('id',v_item.id,'sku',v_item.sku,'accessory_sku',v_accessory.sku);
+end;
+$$;
+revoke all on function app.register_item_with_spare(jsonb,uuid) from public,anon;
+grant execute on function app.register_item_with_spare(jsonb,uuid) to authenticated;
+
+

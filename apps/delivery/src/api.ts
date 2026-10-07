@@ -1,4 +1,4 @@
-import { getSupabase, PHOTO_BUCKET, staffDisplayName } from '@bussan/shared';
+import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, ItemCondition, WorkStep } from '@bussan/shared';
 
 export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
@@ -327,14 +327,14 @@ export async function addPhotosToDrive(itemId: string): Promise<{ added: number;
 }
 
 export async function fetchDeliveryStaff(): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await getSupabase().from('staff').select('id,name').eq('role', 'deliverer').eq('is_active', true).order('name');
+  const { data, error } = await getSupabase().from('staff').select('id,code,name').eq('is_active', true);
   if (error) throw error;
-  return data ?? [];
+  return deliveryStaffOptions(data ?? []);
 }
 
 export async function fetchSpareOwners(): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await getSupabase().from('staff').select('id,name')
+  const { data, error } = await getSupabase().from('staff').select('id,code,name')
     .in('role', ['admin', 'purchaser', 'deliverer']).eq('is_active', true).order('name');
   if (error) throw error;
-  return data ?? [];
+  return deliveryStaffOptions(data ?? []);
 }
