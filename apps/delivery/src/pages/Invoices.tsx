@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Staff } from '@bussan/shared';
+import { staffDisplayName } from '@bussan/shared';
 import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday, monthlyGrossProfit } from '../invoices';
 import PackedSummary from '../components/PackedSummary';
 import GrossProfitSummary from '../components/GrossProfitSummary';
@@ -166,7 +167,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     <div className="invoice-header no-print">
       <h2>請求書・領収書</h2>
       <div className="row">
-        {staff.role === 'admin' && <label>担当者<select value={staffId} disabled={busy || receiptBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{p.details.issuer_name}</option>)}</select></label>}
+        {staff.role === 'admin' && <label>担当者<select value={staffId} disabled={busy || receiptBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{staffDisplayName(p.details.issuer_name)}</option>)}</select></label>}
         <label>請求月<input aria-label="請求対象月" type="month" required value={month} disabled={busy || receiptBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
         {profile && <button className="btn ghost" disabled={busy || receiptBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>単価・振込先</button>}
       </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff } from '@bussan/shared';
+import { canViewDeliveryAssignee, staffDisplayName } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
@@ -78,7 +79,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     let active = true;
     const refresh = async (initial = false) => {
       try {
-        const rows = await fetchMyTasks();
+        const rows = await fetchMyTasks(canViewDeliveryAssignee(staff));
         if (active) { setTasks(rows); setError(null); }
         try {
           const latestNotices = await fetchDeliveryItemNotices();
@@ -176,7 +177,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
 
   return (
     <>
-      {staff.role === 'admin' && <label className="field"><span>納品担当者の在庫一覧</span><select value={delivererId} onChange={e => { setDelivererId(e.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">すべての担当者</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{deliverer.name}</option>)}</select></label>}
+      {staff.role === 'admin' && <label className="field"><span>納品担当者の在庫一覧</span><select value={delivererId} onChange={e => { setDelivererId(e.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">すべての担当者</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select></label>}
       <input
         type="search" placeholder="SKU / 型番 / ASIN / 商品ID / 追跡番号で検索" aria-label="SKU・型番・ASIN・商品ID・追跡番号を部分一致で検索"
         value={query} onChange={(e) => setQuery(e.target.value)}

@@ -189,6 +189,7 @@ export interface DeliveryTask {
   deliverer_id: string | null;
   purchaser_name: string | null;
   arrived_on: string | null;
+  deliverer_name?: string | null;
   product_registered: boolean;
   inspected: boolean;
   photo_uploaded: boolean;

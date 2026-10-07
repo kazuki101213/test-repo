@@ -1,3 +1,4 @@
+import { staffDisplayName } from '@bussan/shared';
 import ColoredLabel from '../components/ColoredLabel';
 import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
@@ -125,8 +126,8 @@ export default function Spares({ me }: { me: Staff }) {
           <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
         </fieldset>
         {me.role === 'admin' ? <label className="field"><span>保管担当</span>
-          <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{staff.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select>
-        </label> : <label className="field"><span>保管担当</span><input value={me.name} readOnly /></label>}
+          <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{staff.map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
+        </label> : <label className="field"><span>保管担当</span><input value={staffDisplayName(me)} readOnly /></label>}
         <label className="field"><span>保管担当名</span><input value={form.owner_name ?? ''} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} /></label>
         <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>
         <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
@@ -148,7 +149,7 @@ export default function Spares({ me }: { me: Staff }) {
     {loading ? <p>読み込み中…</p> : <div className="scroll"><table><thead><tr>
       <th>保管担当</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th>操作</th>}
     </tr></thead><tbody>{filtered.map(row => <tr key={row.id}>
-      <td><EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{row.owner_name || '未設定'}</EditableSpare></td>
+      <td><EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{staffDisplayName(row.owner_name) || '未設定'}</EditableSpare></td>
       <td><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></td>
       <td><EditableSpare row={row} field="manufacturer" onEdit={setEditFor}>{row.manufacturer || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare></td>

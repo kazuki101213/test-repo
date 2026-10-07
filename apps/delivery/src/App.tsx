@@ -1,3 +1,4 @@
+import { staffDisplayName } from '@bussan/shared';
 import { useEffect, useState } from 'react';
 import { loadSession, signOut } from '@bussan/shared';
 import type { Session } from '@bussan/shared';
@@ -44,7 +45,7 @@ export default function App() {
       <div className="topbar">
         <div>
           <h1>納品アプリ</h1>
-          <span className="who">{session.staff.display_name ?? session.staff.name}</span>
+          <span className="who">{staffDisplayName(session.staff)}</span>
         </div>
         <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => { if (canLeave()) void signOut().then(refresh); }}>ログアウト</button>
       </div>

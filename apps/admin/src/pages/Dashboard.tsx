@@ -1,3 +1,4 @@
+import { staffDisplayName } from '@bussan/shared';
 import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { DelivererWorkload, MonthlySummary, StockSummary } from '@bussan/shared';
@@ -101,10 +102,10 @@ export default function Dashboard({ staff }: { staff: Staff }) {
               {visibleWorkload.map((w) => (
                 <tr key={w.deliverer_id}>
                   <td>
-                    {w.deliverer_name}
+                    {staffDisplayName(w.deliverer_name)}
                   </td>
                   {(['未完了', '今月出荷', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
-                    <button className="metric-link" aria-label={`${w.deliverer_name} ${metric}の詳細`} onClick={() => setWorkloadDetail({ delivererId: w.deliverer_id, name: w.deliverer_name, metric })}>{w[metric] ?? '—'}</button>
+                    <button className="metric-link" aria-label={`${staffDisplayName(w.deliverer_name)} ${metric}の詳細`} onClick={() => setWorkloadDetail({ delivererId: w.deliverer_id, name: staffDisplayName(w.deliverer_name), metric })}>{w[metric] ?? '—'}</button>
                   </td>)}
                 </tr>
               ))}

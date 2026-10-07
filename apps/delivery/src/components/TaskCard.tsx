@@ -1,5 +1,5 @@
 import { useState, type SyntheticEvent, type KeyboardEvent } from 'react';
-import { jpDate, yen } from '@bussan/shared';
+import { jpDate, yen, canViewDeliveryAssignee } from '@bussan/shared';
 import type { DeliveryTask, Staff } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
 import ColoredLabel from './ColoredLabel';
@@ -98,6 +98,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
           <CopyableText label="ASIN" value={task.asin || '—'} />
           <span className="task-item-id-line"><CopyableText label={itemIdLabel(task)} value={productIdFor(task)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
           <CopyableText label={trackingLabel(task)} value={task.tracking_no || '—'} />
+          {canViewDeliveryAssignee(staff) && <span>納品担当者 {task.deliverer_name || '未設定'}</span>}
         </div>
         <div className="task-photo-action">
           <button type="button" className="task-card-photo-button" aria-label={expandedId ? '作業詳細を閉じる' : '写真をクリックして作業詳細を開く'} aria-expanded={!!expandedId} onClick={() => expandedId ? onClose() : onOpen()}>
@@ -118,6 +119,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
             </button>
             <span className="task-item-id-line"><CopyableText label={itemIdLabel(member)} value={productIdFor(member)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
             <CopyableText label={trackingLabel(member)} value={member.tracking_no || '—'} />
+            {canViewDeliveryAssignee(staff) && <span>納品担当者 {member.deliverer_name || '未設定'}</span>}
             <span>利用記録 {member.lot_seq}</span>
           </> : <>
             <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
@@ -125,6 +127,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
             </button>
             {member.marketplace === '動作品Amazon返品' && <CopyableText label="ENA" value={productIdFor(member)} />}
             <CopyableText label={trackingLabel(member)} value={member.tracking_no || '—'} />
+            {canViewDeliveryAssignee(staff) && <span>納品担当者 {member.deliverer_name || '未設定'}</span>}
             <span className="muted task-member-date">仕入日 {jpDate(member.purchased_at)}</span>
           </>}
         </div>)}

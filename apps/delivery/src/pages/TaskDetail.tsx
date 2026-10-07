@@ -1,6 +1,6 @@
 import ColoredLabel from '../components/ColoredLabel';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WORK_STEPS, jpDate } from '@bussan/shared';
+import { WORK_STEPS, jpDate, canViewDeliveryAssignee, staffDisplayName } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
   addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
@@ -56,7 +56,7 @@ export default function TaskDetail({
   const reload = useCallback(async () => {
     try {
       const [t, c, p, review, enforced] = await Promise.all([
-        fetchTask(itemId), fetchComments(itemId), fetchPhotoUrls(itemId), fetchPhotoReview(itemId), fetchPhotoReviewPolicy(),
+        fetchTask(itemId, canViewDeliveryAssignee(staff)), fetchComments(itemId), fetchPhotoUrls(itemId), fetchPhotoReview(itemId), fetchPhotoReviewPolicy(),
       ]);
       if (!t) throw new Error('商品が見つかりません。');
       setTask(t);
@@ -69,7 +69,7 @@ export default function TaskDetail({
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [itemId, onChanged, onOpened]);
+  }, [itemId, onChanged, onOpened, staff.code, staff.role]);
 
   useEffect(() => { void reload(); }, [reload]);
 
@@ -317,7 +317,7 @@ export default function TaskDetail({
                 <span className="check">{task.malfunction_reported || malfunctionChecked ? '✓' : ''}</span>
                 <span><span className="label">動作不良</span><br />
                   <span className="hint">{task.malfunction_reported
-                    ? `仕入担当者（${task.purchaser_name || '未設定'}）へ報告済み`
+                    ? `仕入担当者（${staffDisplayName(task.purchaser_name) || '未設定'}）へ報告済み`
                     : '不具合がある場合に選択して、仕入担当者へ報告します'}</span>
                 </span>
               </button>
