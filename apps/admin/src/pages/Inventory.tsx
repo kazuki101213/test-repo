@@ -1,4 +1,4 @@
-import { staffDisplayName } from '@bussan/shared';
+import { staffDisplayName, productModelText } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen } from '@bussan/shared';
@@ -247,8 +247,8 @@ export default function Inventory({ me }: { me: Staff }) {
                 const soldDays = i.product_sold_on && i.purchased_at
                   ? Math.round((Date.parse(`${i.product_sold_on}T00:00:00Z`) - Date.parse(`${i.purchased_at}T00:00:00Z`)) / 86400000)
                   : i.days_in_stock ?? i.days_to_sell;
-                const modelOrAccessoryName = i.is_accessory ? i.title : i.model_no || i.title || '—';
-                const modelOrAccessoryField: InventoryField = i.is_accessory || !i.model_no ? 'title' : 'model_no';
+                const modelOrAccessoryName = i.is_accessory ? i.title : productModelText(i);
+                const modelOrAccessoryField: InventoryField = i.is_accessory || (!i.model_no && i.marketplace !== '動作品Amazon返品') ? 'title' : 'model_no';
                 return (
                 <tr key={i.id} className={rowTone} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
                   <td><button type="button" className="inventory-photo" onClick={() => setFullEditFor(sharedSaleItem)} title="クリックして商品情報を編集" aria-label={`${i.sku}の商品情報を編集`}>

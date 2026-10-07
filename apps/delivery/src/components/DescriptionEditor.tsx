@@ -1,6 +1,6 @@
 import ColoredSelect from './ColoredSelect';
 import { useEffect, useState, type FormEvent } from 'react';
-import type { DeliveryTask } from '@bussan/shared';
+import { productModelText, type DeliveryTask } from '@bussan/shared';
 import { fetchProductMaker, saveDeliveryDescription } from '../api';
 import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, type DescriptionTarget } from '../description';
 
@@ -59,7 +59,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved }: { task
   const generated = buildDescription({
     product, condition, accessories, year, target, salesChannel: task.sales_channel,
     inspected: task.inspected, cleaned: task.cleaned, sku: task.sku, listingSkus,
-    itemNumber: serial, modelNo: task.model_no || task.title, manufacturer,
+    itemNumber: serial, modelNo: productModelText(task), manufacturer,
   });
   const description = manual ?? generated;
   const generatedListing = splitMarketplaceListing(generated);

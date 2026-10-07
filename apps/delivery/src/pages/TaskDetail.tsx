@@ -24,8 +24,8 @@ function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
 }
 
 export default function TaskDetail({
-  itemId, staff, listingSkus, onClose, onChanged, onOpened,
-}: { itemId: string; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
+  itemId, latestTask, staff, listingSkus, onClose, onChanged, onOpened,
+}: { itemId: string; latestTask?: DeliveryTask; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
   const [task, setTask] = useState<DeliveryTask | null>(null);
   const openedReported = useRef(false);
   const autoOpenedMessages = useRef(false);
@@ -72,6 +72,10 @@ export default function TaskDetail({
   }, [itemId, onChanged, onOpened, staff.code, staff.role]);
 
   useEffect(() => { void reload(); }, [reload]);
+  // Keep catalog/item data current without remounting the editor or resetting drafts.
+  useEffect(() => {
+    if (latestTask) setTask(current => current ? latestTask : current);
+  }, [latestTask]);
 
 
 

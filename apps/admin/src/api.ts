@@ -490,8 +490,9 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
     return;
   }
   if (field === 'model_no') {
-    if (!item.product_id) throw new Error('商品リストに紐付いていないため型番を編集できません。');
-    let query = getSupabase().from('products').update({ model_no: text || null }).eq('id', item.product_id);
+    if (!item.product_id && !item.asin) throw new Error('商品リストに紐付いていないため型番を編集できません。');
+    let query = getSupabase().from('products').update({ model_no: text || null });
+    query = item.product_id ? query.eq('id', item.product_id) : query.eq('asin', item.asin!);
     query = item.model_no === null ? query.is('model_no', null) : query.eq('model_no', item.model_no);
     const { data, error } = await query.select('id').maybeSingle();
     if (error) throw error;
