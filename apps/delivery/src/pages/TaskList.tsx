@@ -165,7 +165,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   }, []);
   const taskById = new Map(tasks.map(task => [task.id, task]));
   const visibleNotices = notices.filter(notice => taskById.has(notice.item_id));
-  const unreadPhotoItemIds = new Set(notices.filter(notice => notice.photo_at).map(notice => notice.item_id));
+  const unreadItemIds = new Set(notices.filter(notice => notice.reply_at || notice.photo_at).map(notice => notice.item_id));
   function openReplyTask(task: DeliveryTask) {
     setFilter('all');
     setQuery(task.sku);
@@ -190,7 +190,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
         {visibleNotices.length === 0 ? null : <ul className="invoice-task-rows">
           {visibleNotices.map(notice => <li key={notice.item_id}>
             {notice.reply_at && <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
-              【{notice.lot_seq}】メッセージあり
+              【{notice.lot_seq}】メッセージが届きました
             </button>}
             {notice.photo_at && <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
               【{notice.lot_seq}】写真が承認されました。
@@ -219,7 +219,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadPhotoItemIds={unreadPhotoItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;
