@@ -1,5 +1,5 @@
 import { useState, type SyntheticEvent, type KeyboardEvent } from 'react';
-import { jpDate, yen, canViewDeliveryAssignee } from '@bussan/shared';
+import { jpDate, yen, canViewDeliveryAssignee, productModelText } from '@bussan/shared';
 import type { DeliveryTask, Staff } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
 import ColoredLabel from './ColoredLabel';
@@ -73,7 +73,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
   const productIdFor = (item: DeliveryTask) => (item.marketplace === '動作品Amazon返品' ? item.marketplace_item_id : originalMarketplaceIds.get(item.id) || item.marketplace_item_id) || '—';
-  const modelFor = (item: DeliveryTask) => item.marketplace === '動作品Amazon返品' ? item.model_no || '—' : item.model_no || item.title;
+  const modelFor = productModelText;
   const itemIdLabel = (item: DeliveryTask) => item.marketplace === '動作品Amazon返品' ? 'ENA' : '商品ID';
   const trackingLabel = (item: DeliveryTask) => item.marketplace === '動作品Amazon返品' ? 'FNSKU' : '追跡番号';
   const listingSkus = Array.from(new Set([
@@ -133,7 +133,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
         </div>)}
       </div>}
       </div>
-      {expandedId && <TaskDetail key={`${expandedId}-${detailRevision}`} itemId={expandedId} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />}
+      {expandedId && <TaskDetail key={`${expandedId}-${detailRevision}`} itemId={expandedId} latestTask={members.find(member => member.id === expandedId)} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />}
     </div>
   );
 }

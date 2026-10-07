@@ -41,21 +41,13 @@ async function hydrateDeliveryTasks(tasks: DeliveryTask[], includeAssignees: boo
     }
     return names;
   };
-  const [rows, names] = await Promise.all([resolveWorkingReturnModels(tasks), loadNames()]);
+  const [rows, names] = await Promise.all([resolveWorkingReturnTracking(tasks), loadNames()]);
   return rows.map(task => includeAssignees ? { ...task, deliverer_name: names.get(task.deliverer_id ?? '') ?? null } : task);
 }
 
-async function resolveWorkingReturnModels(tasks: DeliveryTask[]): Promise<DeliveryTask[]> {
-  const asins = [...new Set(tasks.filter(task => task.marketplace === '動作品Amazon返品').flatMap(task => task.asin?.trim() ? [task.asin.trim()] : []))];
-  const models = new Map<string, string | null>();
-  for (let offset = 0; offset < asins.length; offset += 100) {
-    const { data, error } = await getSupabase().from('products').select('asin,model_no').in('asin', asins.slice(offset, offset + 100));
-    if (error) throw error;
-    for (const product of data ?? []) models.set(product.asin.trim(), product.model_no);
-  }
+function resolveWorkingReturnTracking(tasks: DeliveryTask[]): DeliveryTask[] {
   return tasks.map(task => task.marketplace === '動作品Amazon返品' ? {
     ...task,
-    model_no: models.get(task.asin?.trim() ?? '') ?? null,
     tracking_no: task.tracking_no || (/^X[A-Z0-9]{9}$/.test(task.title.trim()) ? task.title.trim() : null),
   } : task);
 }
