@@ -6,9 +6,9 @@ import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 import SpareShippingTasks from '../components/SpareShippingTasks';
 import { useTaskViewport } from '../hooks/useTaskViewport';
+import { deliverySearchFields, deliverySearchValue, normalizeSearch, type DeliverySearchField } from '../deliverySearch';
 
 type Filter = 'all' | 'arrived' | 'shipped' | 'return-processing' | 'amazon-return' | 'working-amazon-return';
-const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'arrived', label: '作業中' },
@@ -40,6 +40,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [filter, setFilter] = useState<Filter>(() => staff.name === '長部一輝' ? 'all' : 'arrived');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
+  const [queryField, setQueryField] = useState<DeliverySearchField>('serial');
   const [error, setError] = useState<string | null>(null);
   const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
   const [notices, setNotices] = useState<DeliveryItemNotice[]>([]);
@@ -60,6 +61,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     if (!item) return;
     deepLinkHandled.current = true;
     setFilter('all');
+    setQueryField('sku');
     setQuery(item.sku);
     setExpandedId(item.id);
     if (staff.role === 'admin' && item.deliverer_id) setDelivererId(item.deliverer_id);
@@ -134,7 +136,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
-      if (q && !members.some(member => [serialNumber(member), String(member.lot_seq ?? ''), member.sku, member.model_no, member.title, member.asin, member.marketplace_item_id, originalIds.get(member.id), member.tracking_no].filter((value): value is string => typeof value === 'string').some(value => normalizeSearch(value).includes(q)))) return false;
+      if (q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
       const active = ['仕入済', '入荷済', '作業中', 'Amazon返品'].includes(t.status);
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;
@@ -146,7 +148,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       }
     });
     return { rows, originalIds };
-  }, [tasks, filter, query, staff.role, delivererId]);
+  }, [tasks, filter, query, queryField, staff.role, delivererId]);
   const shownRows = shown.rows;
   const noticeRef = useRef(notices);
   noticeRef.current = notices;
@@ -173,6 +175,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const unreadItemIds = new Set(notices.filter(notice => notice.reply_at || notice.photo_at).map(notice => notice.item_id));
   function openReplyTask(task: DeliveryTask) {
     setFilter('all');
+    setQueryField('sku');
     setQuery(task.sku);
     setExpandedId(task.id);
     setDetailRevision(current => current + 1);
@@ -183,11 +186,12 @@ export default function TaskList({ staff }: { staff: Staff }) {
   return (
     <>
       {staff.role === 'admin' && <label className="field"><span>納品担当者の在庫</span><select value={delivererId} onChange={e => { setDelivererId(e.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">すべての担当者</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select></label>}
-      <input
-        type="search" placeholder="SKU / 型番 / ASIN / 商品ID / 追跡番号で検索" aria-label="SKU・型番・ASIN・商品ID・追跡番号を部分一致で検索"
-        value={query} onChange={(e) => setQuery(e.target.value)}
-        style={{ marginTop: 12 }}
-      />
+      <div className="delivery-inventory-search" role="group" aria-label="在庫検索">
+        <select aria-label="検索項目" value={queryField} onChange={event => setQueryField(event.target.value as DeliverySearchField)}>
+          {deliverySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
+        </select>
+        <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />
+      </div>
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>
       <section ref={sectionRef} className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading" tabIndex={0} style={{ maxHeight: viewportHeight }}>

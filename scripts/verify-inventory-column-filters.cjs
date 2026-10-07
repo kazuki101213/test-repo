@@ -42,7 +42,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert.equal(selector().props.value,'serial');
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>n.props.children),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
  assert(!all(tree).some(n=>n.type==='details'&&n.props.className==='inventory-filter-dropdown'));
- for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,field.label+'で検索');}
+ for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,'検索');}
  const accessoryRow=all(tree).find(n=>n.type==='tr'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
  const saleCell=all(accessoryRow).filter(n=>n.type==='td')[11];
  const moneyButtons=all(saleCell).filter(n=>n.type==='button');

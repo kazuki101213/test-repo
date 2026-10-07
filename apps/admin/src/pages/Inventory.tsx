@@ -176,7 +176,7 @@ export default function Inventory({ me }: { me: Staff }) {
           <select aria-label="検索項目" value={queryField} onChange={event => setQueryField(event.target.value as InventorySearchField)}>
             {inventorySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
           </select>
-          <input type="search" placeholder={inventorySearchFields.find(field => field.value === queryField)!.label + 'で検索'}
+          <input type="search" placeholder="検索"
             value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
         </div>
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
