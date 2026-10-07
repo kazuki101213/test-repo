@@ -69,7 +69,7 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
   </span>;
 }
 
-export default function TaskCard({ task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadPhotoItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadPhotoItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
+export default function TaskCard({ task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const flags = STEP_FLAGS(task);
   const done = flags.filter(Boolean).length;
   const productIdFor = (item: DeliveryTask) => (item.marketplace === '動作品Amazon返品' ? item.marketplace_item_id : originalMarketplaceIds.get(item.id) || item.marketplace_item_id) || '—';
@@ -83,7 +83,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
 
   return (
     <div id={`delivery-task-${task.id}`} className="card task-card" data-expanded={!!expandedId}>
-      {members.some(member => unreadPhotoItemIds.has(member.id)) && <span className="photo-approval-mark" role="img" aria-label="未確認の写真承認があります" />}
+      {members.some(member => unreadItemIds.has(member.id)) && <span className="photo-approval-mark" role="img" aria-label="未確認のメッセージまたは写真承認があります" />}
       <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
       <div className="task-content">
       <div className="task-card-overview">
