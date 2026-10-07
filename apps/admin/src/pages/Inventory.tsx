@@ -14,6 +14,7 @@ import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { productCount, productSerial } from '../inventory';
 import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, type ColumnFilters } from '../inventoryFilters';
 import InventoryColumnFilter from '../components/InventoryColumnFilter';
+import { inventorySearchFields, type InventorySearchField } from '../inventorySearch';
 
 function inventoryError(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
@@ -55,8 +56,7 @@ function inventoryRowTone(item: InventoryItem): string {
 export default function Inventory({ me }: { me: Staff }) {
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [selectedStatuses, setSelectedStatuses] = useState<string[] | null>(null);
-  const [selectedDelivererIds, setSelectedDelivererIds] = useState<string[] | null>(null);
+  const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
@@ -92,8 +92,7 @@ export default function Inventory({ me }: { me: Staff }) {
     setError(null);
     try {
       if (purchasedFrom && purchasedTo && purchasedFrom > purchasedTo) throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
-      const delivererFilter = selectedDelivererIds ?? undefined;
-      const result = await fetchItems({ statuses: selectedStatuses ?? undefined, delivererIds: delivererFilter, query: query || undefined, purchasedFrom, purchasedTo }, active.signal);
+      const result = await fetchItems({ queryField, query: query || undefined, purchasedFrom, purchasedTo }, active.signal);
       if (current !== request.current) return;
       setItems(result.items); setCount(result.count);
     } catch (e) {
@@ -103,7 +102,7 @@ export default function Inventory({ me }: { me: Staff }) {
     } finally {
       if (current === request.current) setLoading(false);
     }
-  }, [selectedStatuses, selectedDelivererIds, query, purchasedFrom, purchasedTo]);
+  }, [queryField, query, purchasedFrom, purchasedTo]);
 
   useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
   useEffect(() => {
@@ -139,10 +138,6 @@ export default function Inventory({ me }: { me: Staff }) {
   const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
     if (source && target && target.clientWidth > 0 && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
   };
-  const deliverers = deliveryStaffOptions(staff);
-  const statusOptions = [...STATUSES.map(value => ({ value, label: value })), { value: 'marketplace:動作品Amazon返品', label: '動作品Amazon返品' }, { value: '__unsold__', label: '未販売のみ' }];
-  const allStatusValues = statusOptions.filter(option => option.value !== '__unsold__').map(option => option.value);
-  const unsoldOnly = selectedStatuses?.includes('__unsold__') ?? false;
 
   async function excludeDraft(id: string) {
     if (dismissingDraft) return;
@@ -152,15 +147,8 @@ export default function Inventory({ me }: { me: Staff }) {
     finally { setDismissingDraft(null); }
   }
 
-  function toggleStatus(value: string, checked: boolean) {
-    setSelectedStatuses(current => {
-      const selected = current ?? [];
-      const next = checked ? [...new Set([...selected, value])] : selected.filter(option => option !== value);
-      return next;
-    });
-  }
   function clearFilters() {
-    setColumnFilters({}); setOpenColumn(null); setSelectedStatuses(null); setSelectedDelivererIds(null);
+    setColumnFilters({}); setOpenColumn(null); setQueryField('serial');
     setQuery(''); setPurchasedFrom(''); setPurchasedTo('');
   }
   const filterHeading = (field: string) => <button type="button" className={`inventory-column-heading${isColumnFilterActive(columnFilters[field]) ? ' active' : ''}`}
@@ -184,32 +172,13 @@ export default function Inventory({ me }: { me: Staff }) {
 
 
       <div className="toolbar">
-        <input
-          type="search" placeholder="SKU / 商品名 / ASIN / 型番 / 商品ID / 追跡番号" value={query}
-          aria-label="在庫を検索" onChange={(e) => { setQuery(e.target.value); }} style={{ minWidth: 240 }}
-        />
-        <details className="inventory-filter-dropdown">
-          <summary>状態（{selectedStatuses === null ? 'すべて' : `${selectedStatuses.filter(value => value !== '__unsold__').length}/${allStatusValues.length}${unsoldOnly ? '・未販売のみ' : ''}`}）</summary>
-          <div className="inventory-filter-options">
-            <label><input type="checkbox" checked={selectedStatuses === null} onChange={event => setSelectedStatuses(event.target.checked ? null : [])} />すべて</label>
-            {statusOptions.map(option => <label key={option.value}>
-            <input type="checkbox" checked={selectedStatuses?.includes(option.value) ?? false} onChange={event => toggleStatus(option.value, event.target.checked)} />
-            {option.label}
-          </label>)}</div>
-        </details>
-        <details className="inventory-filter-dropdown">
-          <summary>納品担当者（{selectedDelivererIds === null ? '全員' : `${selectedDelivererIds.length}/${deliverers.length}`}）</summary>
-          <div className="inventory-filter-options">
-            <label><input type="checkbox" checked={selectedDelivererIds === null} onChange={event => setSelectedDelivererIds(event.target.checked ? null : [])} />全員</label>
-            {deliverers.map(person => <label key={person.id}>
-            <input type="checkbox" checked={selectedDelivererIds?.includes(person.id) ?? false} onChange={event => setSelectedDelivererIds(current => {
-              const selected = current ?? [];
-              const next = event.target.checked ? [...new Set([...selected, person.id])] : selected.filter(id => id !== person.id);
-              return next;
-            })} />
-            {staffDisplayName(person)}
-          </label>)}</div>
-        </details>
+        <div className="inventory-search" role="group" aria-label="在庫検索">
+          <select aria-label="検索項目" value={queryField} onChange={event => setQueryField(event.target.value as InventorySearchField)}>
+            {inventorySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
+          </select>
+          <input type="search" placeholder={inventorySearchFields.find(field => field.value === queryField)!.label + 'で検索'}
+            value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
+        </div>
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field" data-empty={!purchasedFrom}>
             <input type="date" aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />

@@ -3,6 +3,7 @@ const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOpt
 const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
 const shared={productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['作業中','販売済'],CONDITIONS:[],MARKETPLACES:[],SALES_CHANNELS:[],jpDate:s=>s||'—',yen:n=>String(n??'—')};
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
+const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);
 const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',status:'作業中',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
 const rows=[row,{...row,id:'2',sku:'2204-AAII-20260901-123',is_accessory:true,title:'remote',cost_amount:1230,sold_price:200,payout_amount:150,product_sold_price:9999,product_payout_amount:8888},{...row,id:'3',sku:'2277b-AAII-20261007-100',lot_seq:2277,cost_amount:2000,amazon_refund_amount:0,purchased_at:null}];
 const f=(values=null,from='',to='')=>({values,from,to});const apply=filters.exports.filterInventoryColumns;
@@ -30,13 +31,18 @@ const react={useState(v){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof v=
 // Hook methods are imported as standalone functions.
 react.useCallback=(fn,deps)=>react.useMemo(()=>fn,deps);
 const jsx=(type,props)=>({type,props});const api={fetchItems:async q=>{lastRequest=q;return{items:rows,count:2};},fetchStaff:async()=>[],fetchPurchaseDrafts:async()=>[]};
-const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:{default:name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
+const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:name==='../inventorySearch'?search.exports:{default:name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
 vm.runInNewContext(compile('apps/admin/src/pages/Inventory.tsx'),context);
 function render(){cursor=0;dirty=false;tree=context.exports.default({me:{role:'admin',id:'AA'}});pending.splice(0).forEach(fn=>fn());}
 async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.resolve();}}
 function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)){n.forEach(v=>all(v,out));return out;}out.push(n);all(n.props?.children,out);return out;}
 (async()=>{
  await settle();
+ const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');
+ assert.equal(selector().props.value,'serial');
+ assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>n.props.children),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
+ assert(!all(tree).some(n=>n.type==='details'&&n.props.className==='inventory-filter-dropdown'));
+ for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,field.label+'で検索');}
  const accessoryRow=all(tree).find(n=>n.type==='tr'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
  const saleCell=all(accessoryRow).filter(n=>n.type==='td')[11];
  const moneyButtons=all(saleCell).filter(n=>n.type==='button');
@@ -56,6 +62,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1,'Keep headings with zero matching rows');
  all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.onChange({target:{value:'search'}});await settle();
  all(tree).find(n=>n.type==='button'&&n.props.children==='フィルターをすべて解除').props.onClick();await settle();
+ assert.equal(lastRequest.queryField,'serial');assert.equal(selector().props.value,'serial');
  assert.equal(lastRequest.query,undefined);assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds,undefined);assert.equal(lastRequest.purchasedFrom,'');assert.equal(lastRequest.purchasedTo,'');
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
  console.log('33 headings, combined filters, signed ranges, dates, empty values, all fetched rows, zero-match recovery and clear-all UI passed');
