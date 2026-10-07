@@ -29,13 +29,19 @@ for(const app of ['admin','delivery']){
     await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'}});
     assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other','sent']);
     await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
-    assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(!button('完了'));
+    assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
+    button('発送').props.onClick();await settle();
+    all(tree).find(n=>n.type==='input').props.onChange({target:{value:'admin-tracking'}});await settle();
+    all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+    assert.equal(sent.id,'task');assert.equal(sent.tracking,'admin-tracking');assert.equal(changed,1);changed=0;
+    await mount(context.exports.ShippingRow,{task,staff:{id:'II',code:'II',role:'deliverer'},management:false,onChanged:()=>changed++});assert(!button('発送'));
+    await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:false,onChanged:()=>changed++});assert(!button('発送'));
     await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('発送済み'));assert(text(tree).includes('追跡番号：12345'));assert(!button('完了'));
   }
   await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
   for(const value of ['MM 株式会社吉光へ発送お願いします。','リモコン','Panasonic純正','メルカリ','m123','1647 / 1723'])assert(text(tree).includes(value));
-  button('完了').props.onClick();await settle();
+  button(app==='delivery'?'発送':'完了').props.onClick();await settle();
   assert(button('送信').props.disabled);
   all(tree).find(n=>n.type==='input').props.onChange({target:{value:'  12345  '}});await settle();
   failed=true;all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();

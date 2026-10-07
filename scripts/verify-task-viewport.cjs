@@ -1,0 +1,17 @@
+const fs=require('fs'),vm=require('vm'),ts=require('typescript'),assert=require('assert/strict');
+const root=process.argv[2]||require('path').resolve(__dirname,'..');
+let cursor=0,hooks=[],effects=[],resizeCallback,mutationCallback,cleanup;
+const section={scrollTop:0,getBoundingClientRect:()=>({top:100})};
+let heights=[80,110,90,100,200];
+const rows=()=>{let top=115;return heights.map(height=>{const rect={top,bottom:top+height,height};top+=height;return{getBoundingClientRect:()=>({...rect,top:rect.top-section.scrollTop,bottom:rect.bottom-section.scrollTop})};});};
+const shipping={querySelectorAll:()=>rows()};
+const react={useRef:()=>({current:cursor++===0?section:shipping}),useState:initial=>[initial,v=>{hooks[0]=typeof v==='function'?v(hooks[0]??initial):v;}],useEffect:f=>effects.push(f)};
+const context={exports:{},require:id=>react,ResizeObserver:class{constructor(fn){resizeCallback=fn;}observe(){}disconnect(){}},MutationObserver:class{constructor(fn){mutationCallback=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({paddingBottom:'14',borderBottomWidth:'1'}),window:{addEventListener(){},removeEventListener(){}}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(root+'/apps/delivery/src/hooks/useTaskViewport.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);
+context.exports.useTaskViewport();cleanup=effects[0]();assert.equal(hooks[0],410);
+section.scrollTop=130;resizeCallback();assert.equal(hooks[0],410,'scrolling must not resize the viewport');
+heights=[160,170,150,180,180];mutationCallback();assert.equal(hooks[0],690,'wrapped mobile rows fit four whole tasks');
+heights=[80,100];mutationCallback();assert.equal(hooks[0],390,'fewer than four reserve four-row capacity');
+cleanup();
+const css=fs.readFileSync(root+'/apps/delivery/src/styles.css','utf8');assert(css.includes('overflow-y: scroll'));assert(css.includes('scrollbar-width: none'));assert(css.includes('touch-action: pan-y'));assert(css.includes('overflow-y: auto'));
+console.log('Four variable-height rows, scrolled coordinates, mobile wrapping, fewer rows and mobile scrolling passed');

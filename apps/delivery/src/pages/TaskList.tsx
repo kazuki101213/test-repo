@@ -5,6 +5,7 @@ import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyT
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
 import SpareShippingTasks from '../components/SpareShippingTasks';
+import { useTaskViewport } from '../hooks/useTaskViewport';
 
 type Filter = 'all' | 'arrived' | 'shipped' | 'return-processing' | 'amazon-return' | 'working-amazon-return';
 const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
@@ -32,6 +33,7 @@ function hasSerialSuffix(task: DeliveryTask): boolean {
 }
 
 export default function TaskList({ staff }: { staff: Staff }) {
+  const { sectionRef, shippingRef, viewportHeight } = useTaskViewport();
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
@@ -188,19 +190,10 @@ export default function TaskList({ staff }: { staff: Staff }) {
       />
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>
-      <section className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading">
+      <section ref={sectionRef} className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading" tabIndex={0} style={{ maxHeight: viewportHeight }}>
+        <ul ref={shippingRef} className="invoice-task-rows" aria-label="発送関連"><SpareShippingTasks staff={staff} /></ul>
         {replyTaskError && <p className="error" role="alert">返信タスクを読み込めませんでした：{replyTaskError}</p>}
-        {visibleNotices.length === 0 ? null : <ul className="invoice-task-rows">
-          {visibleNotices.map(notice => <li key={notice.item_id}>
-            {notice.reply_at && <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
-              【{notice.lot_seq}】メッセージが届きました
-            </button>}
-            {notice.photo_at && <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
-              【{notice.lot_seq}】写真が承認されました。
-            </button>}
-          </li>)}
-        </ul>}
-        {malfunctionTasks.length > 0 && <ul className="invoice-task-rows">
+        {malfunctionTasks.length > 0 && <ul className="invoice-task-rows" aria-label="動作不良の報告">
           {malfunctionTasks.map(task => <li key={task.id}>
             <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(task)}>
               【{task.sku.split('-')[0]}】動作不良の報告が届きました
@@ -211,7 +204,20 @@ export default function TaskList({ staff }: { staff: Staff }) {
             </div>
           </li>)}
         </ul>}
-        <ul className="invoice-task-rows"><SpareShippingTasks staff={staff} /></ul>
+        {visibleNotices.some(notice => notice.reply_at) && <ul className="invoice-task-rows" aria-label="動作不良の返信">
+          {visibleNotices.filter(notice => notice.reply_at).map(notice => <li key={notice.item_id}>
+            <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
+              【{notice.lot_seq}】メッセージが届きました
+            </button>
+          </li>)}
+        </ul>}
+        {visibleNotices.some(notice => notice.photo_at) && <ul className="invoice-task-rows" aria-label="写真承認関連">
+          {visibleNotices.filter(notice => notice.photo_at).map(notice => <li key={notice.item_id}>
+            <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
+              【{notice.lot_seq}】写真が承認されました。
+            </button>
+          </li>)}
+        </ul>}
       </section>
 
       <div className="filters task-filters">

@@ -259,3 +259,12 @@ textarea { min-height: 80px; resize: vertical; }
 .spare-shipping-form { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .spare-shipping-form .field { flex: 1; min-width: 150px; }
 .spare-shipping-form .btn { width: auto; flex: none; }
+
+/* One scroll area for shipping, malfunction and photo tasks. */
+.delivery-reply-tasks { overflow-y: scroll; overflow-x: hidden; scrollbar-gutter: stable; overscroll-behavior-y: contain; box-sizing: border-box; }
+.delivery-reply-tasks .invoice-task-rows { padding: 0; margin: 0; list-style: none; }
+.delivery-reply-tasks .invoice-task-rows > li:not(.spare-shipping-row) { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+@media (max-width: 640px), (pointer: coarse) {
+  .delivery-reply-tasks { overflow-y: auto; scrollbar-width: none; scrollbar-gutter: auto; -ms-overflow-style: none; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+  .delivery-reply-tasks::-webkit-scrollbar { display: none; }
+}
