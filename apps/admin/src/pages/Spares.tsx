@@ -1,3 +1,4 @@
+import { spareSearchFields, matchesSpareSearch, type SpareSearchField } from '@bussan/shared';
 import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredLabel from '../components/ColoredLabel';
 import ColoredSelect from '../components/ColoredSelect';
@@ -17,6 +18,8 @@ export default function Spares({ me }: { me: Staff }) {
   const [rows, setRows] = useState<SpareAccessory[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [query, setQuery] = useState('');
+  const [queryField, setQueryField] = useState<SpareSearchField>('title');
+  const [ownerId, setOwnerId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -47,8 +50,8 @@ export default function Spares({ me }: { me: Staff }) {
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, [reload]);
 
-  const filtered = rows.filter(row => !row.used_for_item_id && [row.title, row.manufacturer, row.model_no, row.asin, row.source_sku, row.owner_name, row.marketplace, row.marketplace_item_id, row.tracking_no, row.usage_note]
-    .some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
+  const selectedOwner = staff.find(owner => owner.id === ownerId);
+  const filtered = rows.filter(row => !row.used_for_item_id && matchesSpareSearch(row, queryField, query, ownerId, selectedOwner?.name));
 
   function changeOwner(id: string) {
     const owner = staff.find(row => row.id === id);
@@ -153,7 +156,14 @@ export default function Spares({ me }: { me: Staff }) {
       {error && <p className="error" role="alert">{error}</p>}
       <div className="toolbar"><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '登録する'}</button><button type="button" className="btn" disabled={saving || autofillBusy} onClick={() => setAdding(false)}>閉じる</button></div>
     </form>}
-    <label className="field"><span>検索</span><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="品名・担当者・商品ID" /></label>
+    <div className="spare-search" role="group" aria-label="予備検索">
+      <select aria-label="予備の検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as SpareSearchField); setQuery(''); setOwnerId(''); }}>
+        {spareSearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
+      </select>
+      {queryField === 'owner'
+        ? <select aria-label="保管担当者で検索" value={ownerId} onChange={event => setOwnerId(event.target.value)}><option value="">全員</option>{deliveryStaffOptions(staff).map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select>
+        : <input type="search" aria-label="予備を検索" value={query} onChange={event => setQuery(event.target.value)} placeholder="検索" />}
+    </div>
     {error && !adding && <p className="error">{error}</p>}
     {loading ? <p>読み込み中…</p> : <div className="scroll"><table><thead><tr>
       <th>保管担当者</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th>操作</th>}

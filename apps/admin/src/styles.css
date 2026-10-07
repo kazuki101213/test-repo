@@ -389,3 +389,7 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .inventory-search { display:flex; align-items:center; gap:8px; flex:0 1 380px; min-width:0; max-width:100%; }
 .inventory-search select { flex:0 0 auto; width:auto; }
 .inventory-search input { flex:1 1 240px; width:240px; min-width:0; }
+
+.spare-search { display:flex; align-items:center; gap:8px; min-width:0; margin:12px 0; }
+.spare-search > select:first-child { flex:0 0 auto; width:auto; }
+.spare-search > input, .spare-search > select:last-child:not(:first-child) { flex:1; min-width:0; width:auto; }
