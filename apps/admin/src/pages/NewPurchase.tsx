@@ -1,6 +1,6 @@
 import { STAFF_DISPLAY_NAMES, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
   CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen,
   fetchSpareAccessories,
@@ -33,6 +33,25 @@ function errorMessage(cause: unknown): string {
   return String(cause);
 }
 
+function SpareOptionText({ text }: { text: string }) {
+  const line = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const element = line.current;
+    if (!element) return;
+    const fit = () => {
+      element.style.fontSize = '';
+      if (element.clientWidth > 0 && element.scrollWidth > element.clientWidth) {
+        const base = parseFloat(getComputedStyle(element).fontSize);
+        element.style.fontSize = `${Math.floor(base * element.clientWidth / element.scrollWidth * 100) / 100}px`;
+      }
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text]);
+  return <span ref={line} className="purchase-spare-line">{text}</span>;
+}
 export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved?: () => void; draft?: PurchaseDraft | null }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
@@ -381,7 +400,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                   <label><input type="radio" name="purchase-spare" value="" checked={!spareId} onChange={() => selectSpare('')} /><span>使用しない</span></label>
                   {availableSpares.map(row => <label key={row.id}>
                     <input type="radio" name="purchase-spare" value={row.id} checked={spareId === row.id} onChange={() => selectSpare(row.id)} />
-                    <span><span>{row.title}</span><span className="sub">{staffDisplayName(row.owner_name) || '担当未設定'} ／ {yen(row.cost_amount)}</span><span className="sub">{row.source_sku || row.marketplace_item_id || `シート${row.source_sheet_row}行`}</span></span>
+                    <SpareOptionText text={`${staffDisplayName(row.owner_name) || '担当未設定'}／${row.title}／${row.manufacturer || '未登録'}／${yen(row.cost_amount)}`} />
                   </label>)}
                 </div>
               </fieldset>
