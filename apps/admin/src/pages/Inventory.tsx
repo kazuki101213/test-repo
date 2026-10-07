@@ -1,6 +1,6 @@
 import { staffDisplayName, productModelText, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen } from '@bussan/shared';
 import type { PurchaseDraft, Staff } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
@@ -11,7 +11,9 @@ import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import ColoredLabel from '../components/ColoredLabel';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
-import { productSerial } from '../inventory';
+import { productCount, productSerial } from '../inventory';
+import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, type ColumnFilters } from '../inventoryFilters';
+import InventoryColumnFilter from '../components/InventoryColumnFilter';
 
 function elapsedJstDays(value: string | null | undefined): number | null {
   if (!value) return null;
@@ -48,6 +50,11 @@ export default function Inventory({ me }: { me: Staff }) {
   const [query, setQuery] = useState('');
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
+  const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
+  const [openColumn, setOpenColumn] = useState<{ field: string; anchor: HTMLElement } | null>(null);
+  const closeColumn = useCallback(() => setOpenColumn(null), []);
+  const viewItems = useMemo(() => filterInventoryColumns(items, columnFilters), [items, columnFilters]);
+  const activeColumnCount = Object.values(columnFilters).filter(isColumnFilterActive).length;
   const [count, setCount] = useState(0);
   const request = useRef(0);
   const controller = useRef<AbortController | null>(null);
@@ -107,16 +114,16 @@ export default function Inventory({ me }: { me: Staff }) {
     });
   }, []);
   useEffect(() => { loadPurchaseDrafts(); }, [loadPurchaseDrafts]);
-  useEffect(() => { setVisibleCount(80); }, [items]);
+  useEffect(() => { setVisibleCount(80); }, [viewItems]);
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el || visibleCount >= items.length) return;
+    if (!el || visibleCount >= viewItems.length) return;
     const observer = new IntersectionObserver(entries => {
-      if (entries[0]?.isIntersecting) setVisibleCount(current => Math.min(current + 80, items.length));
+      if (entries[0]?.isIntersecting) setVisibleCount(current => Math.min(current + 80, viewItems.length));
     }, { rootMargin: '400px' });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [items.length, visibleCount]);
+  }, [viewItems.length, visibleCount]);
   const trackingColumnWidth = items.reduce((width, item) => Math.max(width, Math.min(232, (Array.from(item.tracking_no ?? '').length) * 10 + 32)), 140);
   const inventoryTableWidth = Math.max(2710, 2350 + trackingColumnWidth);
   const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
@@ -142,6 +149,15 @@ export default function Inventory({ me }: { me: Staff }) {
       return next;
     });
   }
+  function clearFilters() {
+    setColumnFilters({}); setOpenColumn(null); setSelectedStatuses(null); setSelectedDelivererIds(null);
+    setQuery(''); setPurchasedFrom(''); setPurchasedTo('');
+  }
+  const filterHeading = (field: string) => <button type="button" className={`inventory-column-heading${isColumnFilterActive(columnFilters[field]) ? ' active' : ''}`}
+    aria-label={`${inventoryColumns[field]!.label}のフィルター`} aria-expanded={openColumn?.field === field}
+    onClick={event => { const anchor = event.currentTarget; setOpenColumn(current => current?.field === field ? null : { field, anchor }); }}>
+    {inventoryColumns[field]!.label}<span aria-hidden="true">{isColumnFilterActive(columnFilters[field]) ? ' ▾✓' : ' ▾'}</span>
+  </button>;
 
   if (purchaseOpen) return <section className="purchase-registration-screen" aria-label="在庫登録">
     <button type="button" className="btn" onClick={() => { setPurchaseOpen(false); setSelectedPurchaseDraft(null); }}>在庫・仕入れリストへ戻る</button>
@@ -197,8 +213,10 @@ export default function Inventory({ me }: { me: Staff }) {
         </div>
         {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
         <button className="btn" onClick={() => void load()}>再読込</button>
+        <button type="button" className="btn" onClick={clearFilters}>フィルターをすべて解除</button>
+        {activeColumnCount > 0 && <span className="sub">項目フィルター {activeColumnCount}件</span>}
         <span style={{ flex: 1 }} />
-        <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, items as unknown as Record<string, unknown>[])}>
+        <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, viewItems as unknown as Record<string, unknown>[])}>
           一覧をCSV
         </button>
         <button className="btn" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
@@ -222,7 +240,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
-      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? '読み込み中…' : `${count.toLocaleString()}商品`}</span></div>
+      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? '読み込み中…' : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
 
       {error && <div className="error">{error}</div>}
       {loading && <div className="empty">読み込み中…</div>}
@@ -234,23 +252,23 @@ export default function Inventory({ me }: { me: Staff }) {
           <div style={{ width: inventoryTableWidth, height: 1 }} />
         </div>
         <div className="scroll inventory-bottom-scroll" ref={inventoryTableScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTopScrollRef.current)}>
-          <table className="inventory-table" aria-rowcount={items.length + 1} style={{ minWidth: inventoryTableWidth, '--tracking-column-width': `${trackingColumnWidth}px` } as CSSProperties}>
+          <table className="inventory-table" aria-rowcount={viewItems.length + 1} style={{ minWidth: inventoryTableWidth, '--tracking-column-width': `${trackingColumnWidth}px` } as CSSProperties}>
             <thead>
               <tr aria-rowindex={1}>
-                <th>Amazonの写真</th><th>通番号 / 品番<br />SKU</th><th>ASIN<br />型番</th>
-                <th>仕入担当者<br />納品担当者</th><th>仕入先<br />商品ID/追跡番号</th>
-                <th>仕入日<br />仕入金額</th><th>販売先<br />商品状態</th>
-                <th>梱包日<br />出荷日</th><th>販売予定金額<br />振込予定金額</th>
-                <th>見込利益額<br />予定利益率</th><th>販売日<br />販売日数</th>
-                <th>販売金額<br />振込金額</th><th>利益額<br />利益率</th>
-                <th>在庫の払い戻し<br />Amazon以外からの返金</th><th>Amazon返金金額</th><th>納品担当者からのコメント</th><th>販売状態</th>
+                <th>{filterHeading('photo')}</th><th>{filterHeading('serial')} / {filterHeading('product_no')}<br />{filterHeading('sku')}</th><th>{filterHeading('asin')}<br />{filterHeading('model')}</th>
+                <th>{filterHeading('purchaser')}<br />{filterHeading('deliverer')}</th><th>{filterHeading('marketplace')}<br />{filterHeading('item_id')} / {filterHeading('tracking')}</th>
+                <th>{filterHeading('purchased_at')}<br />{filterHeading('cost')}</th><th>{filterHeading('sales_channel')}<br />{filterHeading('condition')}</th>
+                <th>{filterHeading('packed_on')}<br />{filterHeading('shipped_on')}</th><th>{filterHeading('planned_price')}<br />{filterHeading('planned_payout')}</th>
+                <th>{filterHeading('expected_profit')}<br />{filterHeading('expected_rate')}</th><th>{filterHeading('sold_on')}<br />{filterHeading('sold_days')}</th>
+                <th>{filterHeading('sold_price')}<br />{filterHeading('payout')}</th><th>{filterHeading('profit')}<br />{filterHeading('rate')}</th>
+                <th>{filterHeading('inventory_refund')}<br />{filterHeading('other_refund')}</th><th>{filterHeading('amazon_refund')}</th><th>{filterHeading('comment')}</th><th>{filterHeading('status')}<br />{filterHeading('registration')}</th>
               </tr>
             </thead>
             <tbody>
-              {items.slice(0, visibleCount).map((i, index) => {
+              {viewItems.slice(0, visibleCount).map((i, index) => {
                 const serial = productSerial(i.sku, i.lot_seq);
-                const previous = items[index - 1];
-                const next = items[index + 1];
+                const previous = viewItems[index - 1];
+                const next = viewItems[index + 1];
                 const previousSerial = previous ? productSerial(previous.sku, previous.lot_seq) : null;
                 const nextSerial = next ? productSerial(next.sku, next.lot_seq) : null;
                 const sharedSaleItem = i.is_accessory && !i.product_sale_conflict ? { ...i, sold_on: i.product_sold_on, sold_price: i.product_sold_price, payout_amount: i.product_payout_amount } : i;
@@ -302,8 +320,13 @@ export default function Inventory({ me }: { me: Staff }) {
         </div>
         </>
       )}
-      {visibleCount < items.length && <div ref={loadMoreRef} className="toolbar"><button className="btn" onClick={() => setVisibleCount(current => Math.min(current + 80, items.length))}>さらに表示</button></div>}
+      {!loading && items.length > 0 && viewItems.length === 0 && <p className="empty" role="status">フィルターに一致する在庫はありません。項目名から条件を変更するか、すべて解除してください。</p>}
+      {visibleCount < viewItems.length && <div ref={loadMoreRef} className="toolbar"><button className="btn" onClick={() => setVisibleCount(current => Math.min(current + 80, viewItems.length))}>さらに表示</button></div>}
       </section>
+      {openColumn && <InventoryColumnFilter key={openColumn.field} field={openColumn.field} anchor={openColumn.anchor} items={items} current={columnFilters[openColumn.field]} onClose={closeColumn} onApply={filter => {
+        setColumnFilters(current => { const next = { ...current }; if (filter && isColumnFilterActive(filter)) next[openColumn.field] = filter; else delete next[openColumn.field]; return next; });
+        setOpenColumn(null);
+      }} />}
 
 
       {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
