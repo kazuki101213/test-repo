@@ -63,7 +63,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
 
   const [purchaserId, setPurchaserId] = useState(me.id);
   const [delivererId, setDelivererId] = useState('');
-  const [workStream, setWorkStream] = useState<WorkStream | ''>('');
+  const [workStream, setWorkStream] = useState<WorkStream | ''>('ブルーレイ');
   const [lotSeq, setLotSeq] = useState<number | ''>('');
   const [purchasedAt, setPurchasedAt] = useState(today());
   const [trackingNo, setTrackingNo] = useState('');
@@ -115,7 +115,10 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setPurchaserId(current => rows.some(s => s.id === current && s.role !== 'deliverer' && purchaserNames.includes(s.name))
         ? current : rows.find(s => s.name === purchaserNames[0] && s.role !== 'deliverer')?.id ?? '');
     }).catch((e) => setError(String(e)));
-    fetchCards().then(setCards).catch(() => undefined);
+    fetchCards().then(rows => {
+      setCards(rows);
+      setCardId(current => current || rows.find(card => card.name === 'アメックスカード')?.id || '');
+    }).catch(() => undefined);
     nextLotSeq().then(setLotSeq).catch(() => undefined);
     fetchSpareAccessories().then(setSpares).catch(() => undefined);
   }, []);

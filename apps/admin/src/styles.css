@@ -376,3 +376,12 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .purchase-spare-options input { flex: none; width: auto; margin: 0; }
 .purchase-spare-options span { display: block; min-width: 0; white-space: nowrap; }
 .purchase-spare-line { flex: 1; line-height: 20px; font-size: 15px; }
+.spare-shipping-row { padding: 12px; border-bottom: 1px solid var(--border, #ddd); list-style: none; }
+.spare-shipping-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.spare-shipping-heading > span { min-width: 0; overflow-wrap: anywhere; }
+.spare-shipping-heading > .btn { flex: none; width: auto; }
+.spare-shipping-details { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12px; color: var(--muted, #666); }
+.spare-shipping-details > span { overflow-wrap: anywhere; white-space: pre-wrap; }
+.spare-shipping-form { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.spare-shipping-form .field { flex: 1; min-width: 150px; }
+.spare-shipping-form .btn { width: auto; flex: none; }

@@ -46,7 +46,7 @@ export default function Spares({ staff }: { staff: Staff }) {
     {loading ? <p>読み込み中…</p> : shown.length === 0 ? <p className="empty">予備はありません。</p> :
       <div className="spare-list">{shown.map(row => <div className="spare-row" key={row.id}>
         <div className="spare-row-heading"><div><strong>{row.title}</strong> <span className="badge">{spareState(row)}</span></div></div>
-        <div>保管担当：{staffDisplayName(row.owner_name) || '未設定'}</div>
+        <div>保管担当者：{staffDisplayName(row.owner_name) || '未設定'}</div>
         <div>購入日：{row.purchased_at || '—'}　仕入金額：{yen(row.cost_amount)}</div>
         {row.source_sku && <div>SKU：{row.source_sku}</div>}
         {row.marketplace_item_id && <div>商品ID：{row.marketplace_item_id}</div>}

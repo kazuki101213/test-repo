@@ -4,6 +4,7 @@ import { canViewDeliveryAssignee, staffDisplayName } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import { downloadTsv } from '../csv';
 import TaskCard from '../components/TaskCard';
+import SpareShippingTasks from '../components/SpareShippingTasks';
 
 type Filter = 'all' | 'arrived' | 'shipped' | 'return-processing' | 'amazon-return' | 'working-amazon-return';
 const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
@@ -197,6 +198,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
             </button>}
           </li>)}
         </ul>}
+        <ul className="invoice-task-rows"><SpareShippingTasks staff={staff} /></ul>
       </section>
 
       <div className="filters task-filters">
