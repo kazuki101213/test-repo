@@ -13,6 +13,7 @@
 --   何度流しても壊れないようには作っていません。エラーが出た場合は
 --   一度 `drop schema app cascade;` で消してから流し直してください。
 -- =============================================================================
+
 -- ▼▼▼ 20260920000100_core_schema.sql ▼▼▼
 
 -- =============================================================================
@@ -258,7 +259,7 @@ create table if not exists app.items (
 
   -- 受け取った返金（仕入れ先関連返金 / Amazon一部返金 / Amazon在庫払い戻し）。
   -- 利益を押し上げる側の金額なので、原価ではなく収入として足す。
-  refund_amount     bigint not null default 0,
+  refund_amount     bigint not null default 0 check (refund_amount >= 0),
   refund_note       text,
 
   -- 粗利（振込額 + 返金 - 仕入 - 送料 - その他）
@@ -287,9 +288,9 @@ create table if not exists app.items (
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),
 
-  -- 販売済みなら販売日が必須。販売金額は不明のまま保存できる
+  -- 販売済みなら販売日と金額が必須
   constraint items_sold_requires_date
-    check (status <> '販売済' or sold_on is not null)
+    check (status <> '販売済' or (sold_on is not null and sold_price is not null))
 );
 
 comment on table app.items is '仕入れた個体 1 点ごとのレコード。古物台帳の買受行そのものでもある。';
@@ -2678,7 +2679,7 @@ grant select on app.v_amazon_unmatched_app_sales to authenticated;
 
 -- Keep the two refund sources visible without changing the existing profit formula.
 alter table app.items
-  add column if not exists amazon_refund_amount bigint not null default 0,
+  add column if not exists amazon_refund_amount bigint not null default 0 check (amazon_refund_amount >= 0),
   add column if not exists non_amazon_refund_amount bigint not null default 0 check (non_amazon_refund_amount >= 0);
 
 update app.items
@@ -2691,9 +2692,8 @@ create or replace function app.sync_refund_sources() returns trigger
 language plpgsql security invoker set search_path = '' as $$
 begin
   if tg_op = 'INSERT' then
-    if new.refund_amount <> 0 and new.amazon_refund_amount = 0 and new.non_amazon_refund_amount = 0 then
+    if new.refund_amount > 0 and new.amazon_refund_amount = 0 and new.non_amazon_refund_amount = 0 then
       if new.refund_note ilike '%Amazon%' then new.amazon_refund_amount := new.refund_amount;
-      elsif new.refund_amount < 0 then raise exception 'Negative refund amounts must be recorded as Amazon refunds';
       else new.non_amazon_refund_amount := new.refund_amount; end if;
     else
       new.refund_amount := new.amazon_refund_amount + new.non_amazon_refund_amount;
@@ -2705,8 +2705,6 @@ begin
     if new.refund_note ilike '%Amazon%' then
       new.amazon_refund_amount := new.refund_amount;
       new.non_amazon_refund_amount := 0;
-    elsif new.refund_amount < 0 then
-      raise exception 'Negative refund amounts must be recorded as Amazon refunds';
     else
       new.amazon_refund_amount := 0;
       new.non_amazon_refund_amount := new.refund_amount;
@@ -2733,92 +2731,6 @@ left join lateral (
   order by created_at desc, id desc limit 1
 ) latest on true;
 grant select on app.v_inventory_display to authenticated;
-
-
--- ▼▼▼ 20261005140000_stop_purchase_sync_at_inventory_match.sql ▼▼▼
-
-create function app.extension_sync_purchase_drafts(
-  p_marketplace text, p_account_label text, p_purchases jsonb, p_stop_on_match boolean
-)
-returns jsonb language plpgsql security definer set search_path = '' as $$
-declare
-  row_data jsonb;
-  inserted_count integer := 0;
-  refreshed_count integer := 0;
-  matched_item_ids text[] := array[]::text[];
-  v_id text;
-  v_title text;
-  v_url text;
-  v_price bigint;
-  v_date date;
-  was_inserted boolean;
-  v_existing_item uuid;
-begin
-  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
-  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception '対象外の仕入先です'; end if;
-  if nullif(btrim(p_account_label),'') is null or length(p_account_label)>120 then raise exception 'アカウント名が不正です'; end if;
-  if jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then raise exception '購入履歴の形式または件数が不正です'; end if;
-  for row_data in select value from jsonb_array_elements(p_purchases) loop
-    v_id := nullif(btrim(row_data->>'marketplace_item_id'),'');
-    v_title := nullif(btrim(row_data->>'title'),'');
-    v_url := nullif(btrim(row_data->>'marketplace_url'),'');
-    if v_id is null or v_title is null or v_url is null or length(v_id)>200 or length(v_title)>500 or length(v_url)>2000 then continue; end if;
-    if (p_marketplace='メルカリ' and v_url !~ '^https://jp\.mercari\.com/')
-      or (p_marketplace='ヤフオク' and v_url !~ '^https://(auctions|page\.auctions|contact\.auctions|buy\.auctions)\.yahoo\.co\.jp/')
-      or (p_marketplace in ('ヤフフリ','PayPayフリマ') and v_url !~ '^https://paypayfleamarket(-sec)?\.yahoo\.co\.jp/')
-      or (p_marketplace='ラクマ' and v_url !~ '^https://(www\.)?fril\.jp/' and v_url !~ '^https://item\.fril\.jp/') then continue; end if;
-
-    select i.id into v_existing_item from app.items i
-      where i.marketplace_item_id=v_id
-        and (i.marketplace=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and i.marketplace in ('ヤフフリ','PayPayフリマ')))
-      order by i.created_at desc limit 1;
-    if v_existing_item is not null then
-      insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,state,registered_item_id)
-        values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,
-          case when coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then (row_data->>'purchased_at')::date else null end,
-          case when coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then (row_data->>'cost_amount')::bigint else null end,
-          'registered',v_existing_item)
-        on conflict(marketplace,marketplace_item_id) do nothing;
-      matched_item_ids := array_append(matched_item_ids,v_id);
-      if p_stop_on_match then exit; end if;
-      continue;
-    end if;
-
-    v_price := null;
-    if coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then v_price := (row_data->>'cost_amount')::bigint; end if;
-    v_date := null;
-    if coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then v_date := (row_data->>'purchased_at')::date; end if;
-    insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount)
-      values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,v_date,v_price)
-      on conflict(marketplace,marketplace_item_id) do update set
-        marketplace_url=excluded.marketplace_url,
-        account_label=excluded.account_label,
-        title=excluded.title,
-        purchased_at=coalesce(excluded.purchased_at,app.marketplace_purchase_drafts.purchased_at),
-        cost_amount=coalesce(excluded.cost_amount,app.marketplace_purchase_drafts.cost_amount),
-        last_seen_at=now()
-      where app.marketplace_purchase_drafts.state='draft'
-      returning (xmax=0) into was_inserted;
-    if found then
-      if was_inserted then inserted_count := inserted_count+1;
-      else refreshed_count := refreshed_count+1; end if;
-    end if;
-  end loop;
-  return jsonb_build_object('inserted',inserted_count,'refreshed',refreshed_count,'matched_item_ids',to_jsonb(matched_item_ids));
-end $$;
-
-revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) from public, anon;
-grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) to authenticated;
-create or replace function app.extension_sync_purchase_drafts(
-  p_marketplace text,p_account_label text,p_purchases jsonb
-)
-returns jsonb language sql security definer set search_path = '' as $$
-  select app.extension_sync_purchase_drafts(p_marketplace,p_account_label,p_purchases,false);
-$$;
-revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb) from public, anon;
-grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb) to authenticated;
-notify pgrst,'reload schema';
-
 
 
 -- ▼▼▼ 20260929091000_inventory_product_profit.sql ▼▼▼
@@ -3782,8 +3694,12 @@ begin
 end;
 $$;
 
--- Sale dates and prices may both be blank when an item is marked sold.
+-- Attached accessories carry the parent's sale date but never its revenue.
+-- Permit a sold status with no sale amount for those informational rows.
 alter table app.items drop constraint if exists items_sold_requires_date;
+alter table app.items add constraint items_sold_requires_date check (
+  status <> '販売済' or (sold_on is not null and (sold_price is not null or is_accessory))
+);
 
 -- Show the return source under supplier; retain the special status internally
 -- because delivery and reconciliation workflows use it as a processing marker.
@@ -4039,7 +3955,7 @@ create table app.amazon_refund_matches (
   sku text not null,
   item_id uuid not null references app.items(id),
   refund_kind text not null check (refund_kind in ('inventory','amazon_refund')),
-  amount bigint not null check ((refund_kind = 'inventory' and amount >= 0) or refund_kind = 'amazon_refund'),
+  amount bigint not null check (amount >= 0),
   applied_by uuid not null references auth.users(id),
   applied_at timestamptz not null default now(),
   primary key(account_key,marketplace_id,transaction_id,sku)
@@ -4059,7 +3975,7 @@ begin
             when lower(coalesce(txn.transaction_type,''))='refund' then 'amazon_refund' else null end;
  if kind is null then return jsonb_build_object('status','review','reason','対象外の取引種類です。'); end if;
  if (select count(*) from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku)<>1 then return jsonb_build_object('status','review','reason','SKUを取引内で一意に特定できません。'); end if;
- select case when kind='inventory' then abs((e->>'amount')::numeric)::bigint else (e->>'amount')::numeric::bigint end into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
+ select abs((e->>'amount')::numeric)::bigint into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
  if amount_value is null then return jsonb_build_object('status','review','reason','SKU別の返金額が円の整数として確認できません。'); end if;
  select * into target from app.items where sku=p_sku and not is_accessory for update;
  if not found then return jsonb_build_object('status','review','reason','SKUが在庫一覧にありません。'); end if;
@@ -4067,7 +3983,7 @@ begin
  delta:=amount_value-coalesce(prior.amount,0);
  if delta<>0 then
    if kind='inventory' then update app.items set inventory_refund_amount=greatest(inventory_refund_amount+delta,0) where id=target.id;
-   else update app.items set amazon_refund_amount=amazon_refund_amount+delta where id=target.id;
+   else update app.items set amazon_refund_amount=greatest(amazon_refund_amount+delta,0) where id=target.id;
    end if;
  end if;
  insert into app.amazon_refund_matches(account_key,marketplace_id,transaction_id,sku,item_id,refund_kind,amount,applied_by)
@@ -4605,7 +4521,7 @@ begin
             when lower(coalesce(txn.transaction_type,'')) in ('refund','返金') then 'amazon_refund' else null end;
  if kind is null then return jsonb_build_object('status','review','reason','対象外の取引種類です。'); end if;
  if (select count(*) from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku)<>1 then return jsonb_build_object('status','review','reason','SKUを取引内で一意に特定できません。'); end if;
- select case when kind='inventory' then abs((e->>'amount')::numeric)::bigint else (e->>'amount')::numeric::bigint end into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
+ select abs((e->>'amount')::numeric)::bigint into amount_value from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
  if amount_value is null then return jsonb_build_object('status','review','reason','SKU別の返金額が円の整数として確認できません。'); end if;
 
  root_serial:=(regexp_match(p_sku,'^([0-9]+)'))[1];
@@ -4646,7 +4562,7 @@ begin
  delta:=amount_value-coalesce(prior.amount,0);
  if delta<>0 then
    if kind='inventory' then update app.items set inventory_refund_amount=greatest(inventory_refund_amount+delta,0) where id=target.id;
-   else update app.items set amazon_refund_amount=amazon_refund_amount+delta where id=target.id;
+   else update app.items set amazon_refund_amount=greatest(amazon_refund_amount+delta,0) where id=target.id;
    end if;
  end if;
  insert into app.amazon_refund_matches(account_key,marketplace_id,transaction_id,sku,item_id,refund_kind,amount,applied_by)
@@ -5471,7 +5387,93 @@ left join lateral (
 grant select on app.v_inventory_display to authenticated;
 
 
+-- ▼▼▼ 20261005140000_stop_purchase_sync_at_inventory_match.sql ▼▼▼
+
+create function app.extension_sync_purchase_drafts(
+  p_marketplace text, p_account_label text, p_purchases jsonb, p_stop_on_match boolean
+)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare
+  row_data jsonb;
+  inserted_count integer := 0;
+  refreshed_count integer := 0;
+  matched_item_ids text[] := array[]::text[];
+  v_id text;
+  v_title text;
+  v_url text;
+  v_price bigint;
+  v_date date;
+  was_inserted boolean;
+  v_existing_item uuid;
+begin
+  if not app.is_admin() then raise exception '管理者権限が必要です'; end if;
+  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception '対象外の仕入先です'; end if;
+  if nullif(btrim(p_account_label),'') is null or length(p_account_label)>120 then raise exception 'アカウント名が不正です'; end if;
+  if jsonb_typeof(p_purchases)<>'array' or jsonb_array_length(p_purchases)>500 then raise exception '購入履歴の形式または件数が不正です'; end if;
+  for row_data in select value from jsonb_array_elements(p_purchases) loop
+    v_id := nullif(btrim(row_data->>'marketplace_item_id'),'');
+    v_title := nullif(btrim(row_data->>'title'),'');
+    v_url := nullif(btrim(row_data->>'marketplace_url'),'');
+    if v_id is null or v_title is null or v_url is null or length(v_id)>200 or length(v_title)>500 or length(v_url)>2000 then continue; end if;
+    if (p_marketplace='メルカリ' and v_url !~ '^https://jp\.mercari\.com/')
+      or (p_marketplace='ヤフオク' and v_url !~ '^https://(auctions|contact\.auctions|buy\.auctions)\.yahoo\.co\.jp/')
+      or (p_marketplace in ('ヤフフリ','PayPayフリマ') and v_url !~ '^https://paypayfleamarket\.yahoo\.co\.jp/')
+      or (p_marketplace='ラクマ' and v_url !~ '^https://(www\.)?fril\.jp/') then continue; end if;
+
+    select i.id into v_existing_item from app.items i
+      where i.marketplace_item_id=v_id
+        and (i.marketplace=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and i.marketplace in ('ヤフフリ','PayPayフリマ')))
+      order by i.created_at desc limit 1;
+    if v_existing_item is not null then
+      insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount,state,registered_item_id)
+        values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,
+          case when coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then (row_data->>'purchased_at')::date else null end,
+          case when coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then (row_data->>'cost_amount')::bigint else null end,
+          'registered',v_existing_item)
+        on conflict(marketplace,marketplace_item_id) do nothing;
+      matched_item_ids := array_append(matched_item_ids,v_id);
+      if p_stop_on_match then exit; end if;
+      continue;
+    end if;
+
+    v_price := null;
+    if coalesce(row_data->>'cost_amount','') ~ '^\d{1,10}$' then v_price := (row_data->>'cost_amount')::bigint; end if;
+    v_date := null;
+    if coalesce(row_data->>'purchased_at','') ~ '^\d{4}-\d{2}-\d{2}$' then v_date := (row_data->>'purchased_at')::date; end if;
+    insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title,purchased_at,cost_amount)
+      values(p_marketplace,v_id,v_url,btrim(p_account_label),v_title,v_date,v_price)
+      on conflict(marketplace,marketplace_item_id) do update set
+        marketplace_url=excluded.marketplace_url,
+        account_label=excluded.account_label,
+        title=excluded.title,
+        purchased_at=coalesce(excluded.purchased_at,app.marketplace_purchase_drafts.purchased_at),
+        cost_amount=coalesce(excluded.cost_amount,app.marketplace_purchase_drafts.cost_amount),
+        last_seen_at=now()
+      where app.marketplace_purchase_drafts.state='draft'
+      returning (xmax=0) into was_inserted;
+    if found then
+      if was_inserted then inserted_count := inserted_count+1;
+      else refreshed_count := refreshed_count+1; end if;
+    end if;
+  end loop;
+  return jsonb_build_object('inserted',inserted_count,'refreshed',refreshed_count,'matched_item_ids',to_jsonb(matched_item_ids));
+end $$;
+
+revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) from public, anon;
+grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) to authenticated;
+create or replace function app.extension_sync_purchase_drafts(
+  p_marketplace text,p_account_label text,p_purchases jsonb
+)
+returns jsonb language sql security definer set search_path = '' as $$
+  select app.extension_sync_purchase_drafts(p_marketplace,p_account_label,p_purchases,false);
+$$;
+revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb) from public, anon;
+grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb) to authenticated;
+notify pgrst,'reload schema';
+
+
 -- ▼▼▼ 20261005141543_enrich_marketplace_purchase_drafts.sql ▼▼▼
+
 alter table app.marketplace_purchase_drafts
   add column if not exists product_id uuid references app.products(id) on delete set null,
   add column if not exists model_no text,
@@ -5607,7 +5609,289 @@ revoke all on function app.extension_sync_purchase_drafts(text,text,jsonb,boolea
 grant execute on function app.extension_sync_purchase_drafts(text,text,jsonb,boolean) to authenticated;
 notify pgrst,'reload schema';
 
--- marketplace_message_button_and_retention 20261006110000
+
+-- ▼▼▼ 20261006022832_allow_sold_main_without_price.sql ▼▼▼
+
+-- A sold item must retain its sale date, but its sale amount may be unknown.
+-- This allows classifying a sold accessory row as a main item without inventing a price.
+alter table app.items drop constraint if exists items_sold_requires_date;
+alter table app.items add constraint items_sold_requires_date check (
+  status <> '販売済' or sold_on is not null
+);
+
+-- ▼▼▼ 20261006023834_allow_blank_sale_details_and_correct_1a_classification.sql ▼▼▼
+
+alter table app.items drop constraint if exists items_sold_requires_date;
+alter table app.items disable trigger items_single_product_sale;
+alter table app.items disable trigger items_sync_accessory_sale_date;
+do $$
+declare updated_count integer;
+begin
+  update app.items i
+     set is_accessory = false, sold_on = v.sold_on, sold_price = v.sold_price, payout_amount = v.payout_amount
+    from (values
+    ('c5577d24-a126-4709-a552-2b792a19b917'::uuid,'2025-02-08'::date,21980,19327),
+    ('d9cb0610-144b-4b89-9f2d-65ae224e8a1e'::uuid,'2025-04-27'::date,6680,4962),
+    ('8d006fc1-42d0-4f81-92ba-66a574ee06d9'::uuid,'2025-03-27'::date,18900,17237),
+    ('c0d0e4f9-9578-4ef2-a4f5-ddc3c81e336d'::uuid,'2025-02-10'::date,7000,5765),
+    ('b865fcb6-ff0c-49b2-9292-de27ce98c1ec'::uuid,'2025-02-13'::date,15500,13361),
+    ('035e4477-e96e-46d7-a2e5-9baaa0d2804c'::uuid,'2025-04-03'::date,6980,6212),
+    ('853c9059-e98c-4b7b-9467-0fbf0ce58e17'::uuid,'2025-02-09'::date,16980,14092),
+    ('732aca09-7014-41c6-b09c-43db77f0d15d'::uuid,'2025-02-16'::date,14500,12420),
+    ('c20a6529-3d6e-461a-8705-c0e337f6011b'::uuid,null,null,null),
+    ('bd96ec21-5417-4698-bd98-7174fdf18de7'::uuid,'2025-03-04'::date,6980,5397),
+    ('f3e7f454-d722-44b5-a8d9-7f19a7bb6b49'::uuid,'2025-02-06'::date,29907,23296),
+    ('09c62409-2ecb-4dd8-9918-bcbc01701e99'::uuid,'2025-02-26'::date,25480,22804),
+    ('ce258441-9437-4e9f-aa41-5d3d41237bcc'::uuid,null,null,null),
+    ('f163f54f-286c-47f1-9c2b-600cd173f32c'::uuid,null,null,null),
+    ('d6a9ed9a-2c53-4fb8-ad24-0b71286a22ca'::uuid,null,null,null),
+    ('3b382920-539b-41e4-b09f-be1a31eec507'::uuid,'2025-03-22'::date,3500,2300),
+    ('af669ec6-9628-4d4c-9a92-bc081741d9cc'::uuid,'2025-02-25'::date,16398,13247),
+    ('4a674b64-d915-4dd5-be11-02955f835bf8'::uuid,'2025-02-24'::date,26800,23338),
+    ('83a2476d-d15b-47c3-8890-86fc3513b1c0'::uuid,'2025-03-01'::date,7970,6803),
+    ('0c83b13b-d98f-472c-ba26-efd89ff44dbd'::uuid,'2025-02-15'::date,21980,19048),
+    ('b5221101-efbc-4331-a884-7d6d4f78308a'::uuid,'2025-04-04'::date,19480,17337),
+    ('06c89878-1e9e-439e-81ee-36c41228bd2d'::uuid,'2025-02-15'::date,9980,8287),
+    ('54edb64b-437c-4a2d-a15f-a8655f582107'::uuid,'2025-03-01'::date,16980,14092),
+    ('10c7b8e4-f96b-4d58-9d02-1554ae6f65cd'::uuid,'2025-03-01'::date,16500,13665),
+    ('b3f9f492-6ca3-4e0a-85de-b5108a5b793f'::uuid,'2025-03-06'::date,22470,19513),
+    ('2553c429-49fa-4af8-87a0-b5f2723ad9ad'::uuid,'2025-03-01'::date,22480,19522),
+    ('5bb3f471-18a4-4a0b-a2f6-b5cc54b2e804'::uuid,'2025-02-27'::date,16000,13945),
+    ('56267ca2-c3e2-4b41-8274-b56c4b9ce3f2'::uuid,'2025-03-08'::date,24380,21213),
+    ('74d2649f-9e23-43e3-a0ed-ed7a1f7a593f'::uuid,'2025-03-01'::date,24000,20875),
+    ('4a4a6d8c-5316-478f-b254-62e302ce8e82'::uuid,'2025-03-24'::date,22980,19967),
+    ('16af97e2-b07b-4497-8560-b2981390f601'::uuid,'2025-03-31'::date,20980,18187),
+    ('ff825f70-202a-4bcb-b7b4-d06cea477c00'::uuid,'2025-03-19'::date,11980,9489),
+    ('7dd45a49-f225-4ea4-89ef-cf505a017798'::uuid,'2025-03-16'::date,15127,12949),
+    ('949dc228-0e7d-4849-932c-142585813c93'::uuid,'2025-03-17'::date,19900,17306),
+    ('b80676ba-c953-4fba-9f7d-e0bea577f822'::uuid,null,null,null),
+    ('6d789bdb-7f78-4345-847b-bf3189368a71'::uuid,'2025-03-16'::date,23480,20412),
+    ('f353973b-edbd-4ee1-b24f-e7ab29aa4fd9'::uuid,null,null,null),
+    ('6676ddd7-1a42-491d-84f6-07f0c83b7f34'::uuid,'2025-03-22'::date,4300,3415),
+    ('84c3f7c9-ab33-4594-9350-0d84aeec7c1e'::uuid,'2025-03-22'::date,7044,5609),
+    ('90fe60aa-ab0e-4184-a58d-de54d6c41567'::uuid,'2025-04-17'::date,13980,12075),
+    ('c27d093b-891b-45d6-8de7-3cc42450a1a3'::uuid,null,null,null),
+    ('164384bf-8d00-4a9a-a34f-7b590b57b325'::uuid,'2025-03-14'::date,18800,16331),
+    ('df4bce2d-3401-4cd0-807e-81b3d0bba258'::uuid,'2025-03-09'::date,9280,7950),
+    ('d81a06c8-bb8d-43c4-a156-60b1cc01027a'::uuid,'2025-03-04'::date,18800,17146),
+    ('b381aed0-168d-4761-9b42-54f7341634af'::uuid,'2025-03-03'::date,18255,15328),
+    ('362306c0-bdd0-4e2d-a30a-7a92d8830939'::uuid,'2025-03-10'::date,20780,18240),
+    ('e684fedb-fa16-4b45-a347-9a52a7497e80'::uuid,'2025-04-03'::date,14980,12818)
+    ) as v(id, sold_on, sold_price, payout_amount)
+   where i.id = v.id and i.sku like '1a-%' and i.is_accessory = true;
+  get diagnostics updated_count = row_count;
+  if updated_count <> 47 then raise exception 'Expected 47 matched 1a rows; updated %', updated_count; end if;
+end;
+$$;
+alter table app.items enable trigger items_single_product_sale;
+alter table app.items enable trigger items_sync_accessory_sale_date;
+
+
+-- ▼▼▼ 20261006060009_marketplace_message_results_visibility_and_expiry.sql ▼▼▼
+
+drop policy if exists marketplace_message_outbox_read on app.marketplace_message_outbox;
+create policy marketplace_message_outbox_read on app.marketplace_message_outbox for select to authenticated
+using (exists(select 1 from app.items i where i.id=item_id and
+  (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
+drop policy if exists marketplace_message_sync_read on app.marketplace_message_sync_requests;
+create policy marketplace_message_sync_read on app.marketplace_message_sync_requests for select to authenticated
+using (exists(select 1 from app.items i where i.id=item_id and
+  (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
+
+create or replace function app.read_marketplace_messages(p_item_id uuid)
+returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare first_sent timestamptz; packed_at timestamptz;
+begin
+ if not exists(select 1 from app.items i where i.id=p_item_id and (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id()))
+ then raise exception 'この商品の取引メッセージを表示する権限がありません' using errcode='42501'; end if;
+ select min(o.sent_at) into first_sent from app.marketplace_message_outbox o where o.item_id=p_item_id and o.status='sent' and o.sent_at is not null;
+ select i.packed_completed_at into packed_at from app.items i where i.id=p_item_id;
+ if packed_at is not null and packed_at<=now()-interval '7 days' then
+  return jsonb_build_object('messages','[]'::jsonb,'outbox','[]'::jsonb,'first_app_sent_at',first_sent,'sync',null,'expired',true);
+ end if;
+ return jsonb_build_object(
+  'messages',coalesce((select jsonb_agg(jsonb_build_object('id',m.id,'author',m.author,'author_role',m.author_role,'body',m.body,'sent_at',m.sent_at) order by m.sent_at,m.id)
+   from app.marketplace_messages m where m.item_id=p_item_id and first_sent is not null and m.author_role='other' and m.sent_at>=first_sent),'[]'::jsonb),
+  'outbox',coalesce((select jsonb_agg(jsonb_build_object('id',o.id,'body',o.body,'status',o.status,'requested_at',o.requested_at,'sent_at',o.sent_at,'result_note',o.result_note) order by o.requested_at)
+   from app.marketplace_message_outbox o where o.item_id=p_item_id),'[]'::jsonb),
+  'first_app_sent_at',first_sent,
+  'sync',(select jsonb_build_object('id',r.id,'status',r.status,'requested_at',r.requested_at,'completed_at',r.completed_at,'result_note',r.result_note) from app.marketplace_message_sync_requests r where r.item_id=p_item_id order by r.requested_at desc limit 1),
+  'expired',false);
+end; $$;
+
+create or replace function app.queue_marketplace_message(p_item_id uuid,p_body text)
+returns uuid language plpgsql security invoker set search_path='' as $$
+declare v_item app.items%rowtype; v_market text; v_outbox_id uuid;
+begin
+ if auth.uid() is null then raise exception 'ログインが必要です' using errcode='42501'; end if;
+ if length(btrim(coalesce(p_body,''))) not between 1 and 2000 then raise exception 'メッセージは1〜2000文字で入力してください'; end if;
+ select * into v_item from app.items where id=p_item_id;
+ if not found or not (app.is_admin() or app.current_role()='purchaser' or v_item.deliverer_id=app.current_staff_id()) then
+  raise exception 'この商品の取引メッセージを送信する権限がありません' using errcode='42501';
+ end if;
+ if v_item.packed_completed_at is not null and v_item.packed_completed_at<=now()-interval '7 days' then raise exception '梱包完了から7日を過ぎているため、メッセージを送信できません'; end if;
+ if nullif(btrim(v_item.marketplace_item_id),'') is null then raise exception '取引IDが登録されていません'; end if;
+ v_market:=v_item.marketplace::text;
+ if v_market not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception 'この仕入先は取引メッセージ連携の対象外です'; end if;
+ if exists(select 1 from app.marketplace_message_outbox where item_id=v_item.id and status in ('queued','sending')) then
+  raise exception 'この商品の前の送信依頼が処理中です。結果を確認してから送信してください';
+ end if;
+ insert into app.marketplace_message_outbox(item_id,marketplace,marketplace_item_id,body,requested_by)
+  values(v_item.id,v_market,v_item.marketplace_item_id,btrim(p_body),auth.uid()) returning id into strict v_outbox_id;
+ return v_outbox_id;
+end; $$;
+
+-- ▼▼▼ 20261006091747_yahoo_brand_template_photos.sql ▼▼▼
+
+alter table app.item_comment_template_photos
+  drop constraint if exists item_comment_template_photos_task_kind_check;
+
+alter table app.item_comment_template_photos
+  add constraint item_comment_template_photos_task_kind_check
+  check (task_kind in (
+    'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
+    'SONY◯ヤフオク', 'SONY×ヤフオク',
+    'SHARP◯ヤフオク', 'SHARP×ヤフオク',
+    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク'
+  ));
+
+
+-- ▼▼▼ 20261006092254_allow_ten_yahoo_template_photos.sql ▼▼▼
+
+alter table app.item_comment_template_photos
+  drop constraint if exists item_comment_template_photos_sort_order_check;
+
+alter table app.item_comment_template_photos
+  add constraint item_comment_template_photos_sort_order_check
+  check (sort_order between 1 and 10);
+
+
+-- ▼▼▼ 20261006092731_yahoo_auction_other_task_kind.sql ▼▼▼
+
+alter table app.item_comments
+  drop constraint if exists item_comments_task_kind_check;
+
+alter table app.item_comments
+  add constraint item_comments_task_kind_check
+  check (
+    task_kind is null or task_kind in (
+      'Amazon販売', '仕入先確認',
+      'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
+      'SONY◯ヤフオク', 'SONY×ヤフオク',
+      'SHARP◯ヤフオク', 'SHARP×ヤフオク',
+      'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク',
+      'ヤフオク その他'
+    )
+  );
+
+
+-- ▼▼▼ 20261006100000_signed_amazon_refunds.sql ▼▼▼
+
+alter table app.items drop constraint if exists items_refund_amount_check;
+alter table app.items drop constraint if exists items_amazon_refund_amount_check;
+alter table app.amazon_refund_matches drop constraint if exists amazon_refund_matches_amount_check;
+alter table app.amazon_refund_matches
+  add constraint amazon_refund_matches_amount_check
+  check ((refund_kind = 'inventory' and amount >= 0) or refund_kind = 'amazon_refund');
+
+create or replace function app.sync_refund_sources() returns trigger
+language plpgsql security invoker set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.refund_amount <> 0 and new.amazon_refund_amount = 0 and new.non_amazon_refund_amount = 0 then
+      if new.refund_note ilike '%Amazon%' then
+        new.amazon_refund_amount := new.refund_amount;
+      elsif new.refund_amount < 0 then
+        raise exception 'Negative refund amounts must be recorded as Amazon refunds';
+      else
+        new.non_amazon_refund_amount := new.refund_amount;
+      end if;
+    else
+      new.refund_amount := new.amazon_refund_amount + new.non_amazon_refund_amount;
+    end if;
+  elsif new.amazon_refund_amount is distinct from old.amazon_refund_amount
+     or new.non_amazon_refund_amount is distinct from old.non_amazon_refund_amount then
+    new.refund_amount := new.amazon_refund_amount + new.non_amazon_refund_amount;
+  elsif new.refund_amount is distinct from old.refund_amount then
+    if new.refund_note ilike '%Amazon%' then
+      new.amazon_refund_amount := new.refund_amount;
+      new.non_amazon_refund_amount := 0;
+    elsif new.refund_amount < 0 then
+      raise exception 'Negative refund amounts must be recorded as Amazon refunds';
+    else
+      new.amazon_refund_amount := 0;
+      new.non_amazon_refund_amount := new.refund_amount;
+    end if;
+  end if;
+  return new;
+end; $$;
+
+create or replace function app.apply_amazon_refund(p_account text,p_transaction text,p_sku text,p_actor uuid)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare
+ txn app.amazon_payment_transactions%rowtype;
+ kind text;
+ amount_value bigint;
+ target app.items%rowtype;
+ prior app.amazon_refund_matches%rowtype;
+ delta bigint;
+ root_serial text;
+ matching_refunds integer;
+begin
+ if not exists(select 1 from app.profiles p join app.staff s on s.id=p.staff_id where p.user_id=p_actor and s.role='admin' and s.is_active) then raise exception 'Administrator required'; end if;
+ select * into txn from app.amazon_payment_transactions where account_key=p_account and marketplace_id='A1VC38T7YXB528' and transaction_id=p_transaction;
+ if not found or txn.status not in ('RELEASED','支払い実行済み') then return jsonb_build_object('status','review','reason','支払い実行済みのAmazon取引が見つかりません。'); end if;
+ kind:=case when lower(coalesce(txn.transaction_type,'')) in ('inventory reimbursement','inventoryreimbursement','fba inventory reimbursement','fbainventoryreimbursement','fba_inventory_reimbursement','在庫の払い戻し','在庫払い戻し') then 'inventory'
+            when lower(coalesce(txn.transaction_type,'')) in ('refund','返金') then 'amazon_refund' else null end;
+ if kind is null then return jsonb_build_object('status','review','reason','対象外の取引種類です。'); end if;
+ if (select count(*) from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku)<>1 then return jsonb_build_object('status','review','reason','SKUを取引内で一意に特定できません。'); end if;
+ select case when kind='inventory' then abs((e->>'amount')::numeric)::bigint else (e->>'amount')::numeric::bigint end into amount_value
+ from jsonb_array_elements(txn.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$';
+ if amount_value is null then return jsonb_build_object('status','review','reason','SKU別の返金額が円の整数として確認できません。'); end if;
+ if kind='inventory' and amount_value<0 then return jsonb_build_object('status','review','reason','在庫の払い戻し金額が負数のため確認が必要です。'); end if;
+ root_serial:=(regexp_match(p_sku,'^([0-9]+)'))[1];
+ if root_serial is null then return jsonb_build_object('status','review','reason','Amazon SKUから通番号を読み取れません。'); end if;
+ select count(*) into matching_refunds
+ from app.amazon_payment_transactions t
+ where t.account_key=p_account and t.marketplace_id=txn.marketplace_id
+   and lower(coalesce(t.transaction_type,'')) in ('refund','返金')
+   and t.status in ('RELEASED','支払い実行済み')
+   and (t.posted_at,t.transaction_id)<=(txn.posted_at,txn.transaction_id)
+   and exists (select 1 from jsonb_array_elements(t.item_breakdowns) e where e->>'sku'=p_sku and e->>'currency'='JPY' and e->>'amount' ~ '^-?[0-9]+(\.0+)?$');
+ if matching_refunds>1 then
+   select * into target from app.items i where not i.is_accessory and (regexp_match(i.sku,'^([0-9]+)'))[1]=root_serial
+   order by length(coalesce((regexp_match(app.product_serial(i.sku,i.lot_seq),'^[0-9]+([a-z]*)$'))[1],'')),app.product_serial(i.sku,i.lot_seq),i.sku
+   offset matching_refunds-1 limit 1;
+   if not found then return jsonb_build_object('status','review','reason','同じSKUの返品回数に対応する本体行がありません。SKU順の在庫を確認してください。'); end if;
+ else
+   select * into target from app.items where lower(sku)=lower(p_sku) and not is_accessory;
+   if not found then
+     select count(*) into matching_refunds from app.items i where not i.is_accessory and (regexp_match(i.sku,'^([0-9]+)'))[1]=root_serial;
+     if matching_refunds<>1 then return jsonb_build_object('status','review','reason','対応する在庫行を一意に特定できません。'); end if;
+     select * into target from app.items i where not i.is_accessory and (regexp_match(i.sku,'^([0-9]+)'))[1]=root_serial;
+   end if;
+ end if;
+ select * into prior from app.amazon_refund_matches where account_key=p_account and marketplace_id=txn.marketplace_id and transaction_id=p_transaction and sku=p_sku;
+ if prior.amount is not null and prior.item_id<>target.id then return jsonb_build_object('status','review','reason','以前の反映先と今回のSKU順割当が異なるため、自動で移し替えません。管理者の確認が必要です。'); end if;
+ delta:=amount_value-coalesce(prior.amount,0);
+ if delta<>0 then
+   if kind='inventory' then update app.items set inventory_refund_amount=greatest(inventory_refund_amount+delta,0) where id=target.id;
+   else update app.items set amazon_refund_amount=amazon_refund_amount+delta where id=target.id;
+   end if;
+ end if;
+ insert into app.amazon_refund_matches(account_key,marketplace_id,transaction_id,sku,item_id,refund_kind,amount,applied_by)
+ values(p_account,txn.marketplace_id,p_transaction,p_sku,target.id,kind,amount_value,p_actor)
+ on conflict(account_key,marketplace_id,transaction_id,sku) do update set item_id=excluded.item_id,refund_kind=excluded.refund_kind,amount=excluded.amount,applied_by=excluded.applied_by,applied_at=now();
+ return jsonb_build_object('status',case when prior.amount is null then 'applied' when delta=0 then 'unchanged' else 'applied' end,'reason',case when kind='inventory' then '在庫の払い戻しを反映しました。' else 'Amazon返金金額を反映しました。' end,'amount',amount_value,'sku',p_sku,'item_id',target.id);
+end $$;
+
+revoke all on function app.apply_amazon_refund(text,text,text,uuid) from public,anon,authenticated;
+grant execute on function app.apply_amazon_refund(text,text,text,uuid) to service_role;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261006110000_marketplace_message_button_and_retention.sql ▼▼▼
+
 alter table app.items add column if not exists packed_completed_at timestamptz;
 update app.items set packed_completed_at=((packed_on + 1)::timestamp at time zone 'Asia/Tokyo' - interval '1 microsecond') where packed_on is not null and packed_completed_at is null;
 create or replace function app.capture_packed_completion_time() returns trigger language plpgsql set search_path='' as $$
@@ -5749,61 +6033,42 @@ grant execute on function app.extension_claim_marketplace_message_sync(uuid,text
 grant execute on function app.extension_finish_marketplace_message_sync(uuid,text,text) to authenticated;
 grant execute on function app.extension_sync_marketplace_messages(text,text,text,jsonb) to authenticated;
 
--- marketplace_message_results_visibility_and_expiry 20261006060009
 
-drop policy if exists marketplace_message_outbox_read on app.marketplace_message_outbox;
-create policy marketplace_message_outbox_read on app.marketplace_message_outbox for select to authenticated
-using (exists(select 1 from app.items i where i.id=item_id and
-  (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
-drop policy if exists marketplace_message_sync_read on app.marketplace_message_sync_requests;
-create policy marketplace_message_sync_read on app.marketplace_message_sync_requests for select to authenticated
-using (exists(select 1 from app.items i where i.id=item_id and
-  (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id())));
 
-create or replace function app.read_marketplace_messages(p_item_id uuid)
-returns jsonb language plpgsql stable security invoker set search_path='' as $$
-declare first_sent timestamptz; packed_at timestamptz;
-begin
- if not exists(select 1 from app.items i where i.id=p_item_id and (app.is_admin() or app.current_role()='purchaser' or i.deliverer_id=app.current_staff_id()))
- then raise exception 'この商品の取引メッセージを表示する権限がありません' using errcode='42501'; end if;
- select min(o.sent_at) into first_sent from app.marketplace_message_outbox o where o.item_id=p_item_id and o.status='sent' and o.sent_at is not null;
- select i.packed_completed_at into packed_at from app.items i where i.id=p_item_id;
- if packed_at is not null and packed_at<=now()-interval '7 days' then
-  return jsonb_build_object('messages','[]'::jsonb,'outbox','[]'::jsonb,'first_app_sent_at',first_sent,'sync',null,'expired',true);
- end if;
- return jsonb_build_object(
-  'messages',coalesce((select jsonb_agg(jsonb_build_object('id',m.id,'author',m.author,'author_role',m.author_role,'body',m.body,'sent_at',m.sent_at) order by m.sent_at,m.id)
-   from app.marketplace_messages m where m.item_id=p_item_id and first_sent is not null and m.author_role='other' and m.sent_at>=first_sent),'[]'::jsonb),
-  'outbox',coalesce((select jsonb_agg(jsonb_build_object('id',o.id,'body',o.body,'status',o.status,'requested_at',o.requested_at,'sent_at',o.sent_at,'result_note',o.result_note) order by o.requested_at)
-   from app.marketplace_message_outbox o where o.item_id=p_item_id),'[]'::jsonb),
-  'first_app_sent_at',first_sent,
-  'sync',(select jsonb_build_object('id',r.id,'status',r.status,'requested_at',r.requested_at,'completed_at',r.completed_at,'result_note',r.result_note) from app.marketplace_message_sync_requests r where r.item_id=p_item_id order by r.requested_at desc limit 1),
-  'expired',false);
-end; $$;
+-- ▼▼▼ 20261006141000_move_working_return_fnsku_to_tracking.sql ▼▼▼
 
-create or replace function app.queue_marketplace_message(p_item_id uuid,p_body text)
-returns uuid language plpgsql security invoker set search_path='' as $$
-declare v_item app.items%rowtype; v_market text; v_outbox_id uuid;
-begin
- if auth.uid() is null then raise exception 'ログインが必要です' using errcode='42501'; end if;
- if length(btrim(coalesce(p_body,''))) not between 1 and 2000 then raise exception 'メッセージは1〜2000文字で入力してください'; end if;
- select * into v_item from app.items where id=p_item_id;
- if not found or not (app.is_admin() or app.current_role()='purchaser' or v_item.deliverer_id=app.current_staff_id()) then
-  raise exception 'この商品の取引メッセージを送信する権限がありません' using errcode='42501';
- end if;
- if v_item.packed_completed_at is not null and v_item.packed_completed_at<=now()-interval '7 days' then raise exception '梱包完了から7日を過ぎているため、メッセージを送信できません'; end if;
- if nullif(btrim(v_item.marketplace_item_id),'') is null then raise exception '取引IDが登録されていません'; end if;
- v_market:=v_item.marketplace::text;
- if v_market not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') then raise exception 'この仕入先は取引メッセージ連携の対象外です'; end if;
- if exists(select 1 from app.marketplace_message_outbox where item_id=v_item.id and status in ('queued','sending')) then
-  raise exception 'この商品の前の送信依頼が処理中です。結果を確認してから送信してください';
- end if;
- insert into app.marketplace_message_outbox(item_id,marketplace,marketplace_item_id,body,requested_by)
-  values(v_item.id,v_market,v_item.marketplace_item_id,btrim(p_body),auth.uid()) returning id into strict v_outbox_id;
- return v_outbox_id;
-end; $$;
+-- Older working returns stored FNSKU in title. Preserve that source for older
+-- clients while copying the identifier into its new field without overwriting
+-- existing tracking values. Safe to run against an empty database or rerun.
+update app.items
+set tracking_no = btrim(title)
+where marketplace::text = '動作品Amazon返品'
+  and nullif(btrim(tracking_no), '') is null
+  and btrim(title) ~ '^X[A-Z0-9]{9}$';
+
+
+-- ▼▼▼ 20261006153345_lot_photo_folders.sql ▼▼▼
+
+-- One canonical Google Drive folder per lot, independent of SKU/return rows.
+create table app.lot_photo_folders (
+  lot_seq bigint primary key,
+  drive_folder_id text not null
+);
+alter table app.lot_photo_folders enable row level security;
+revoke all on app.lot_photo_folders from anon, authenticated;
+grant all on app.lot_photo_folders to service_role;
+
+-- Reuse the oldest known folder. Files are consolidated on the next save;
+-- old folders and photos are not deleted by this migration.
+insert into app.lot_photo_folders (lot_seq, drive_folder_id)
+select distinct on (i.lot_seq) i.lot_seq, r.drive_folder_id
+from app.items i join app.photo_reviews r on r.item_id = i.id
+where r.drive_folder_id is not null
+order by i.lot_seq, r.submitted_at, i.id;
+
 
 -- ▼▼▼ 20261006173000_malfunction_reply_templates_and_photos.sql ▼▼▼
+
 alter table app.item_comments
   add column if not exists task_kind text,
   add column if not exists task_completed_at timestamptz,
@@ -5816,8 +6081,7 @@ alter table app.item_comments add constraint item_comments_task_kind_check check
     'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
     'SONY◯ヤフオク', 'SONY×ヤフオク',
     'SHARP◯ヤフオク', 'SHARP×ヤフオク',
-    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク',
-    'ヤフオク その他'
+    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク'
   )
 );
 
@@ -5877,13 +6141,154 @@ end;
 $$;
 revoke all on function app.complete_item_comment_task(uuid) from public, anon, authenticated;
 grant execute on function app.complete_item_comment_task(uuid) to authenticated;
--- Yahoo auction preparation on admin request, with remote reserve registration.
+
+
+-- ▼▼▼ 20261006192853_task_notices_and_malfunction_replies.sql ▼▼▼
+
+-- Reading an item acknowledges only the exact reply/approval that was displayed.
+create table app.item_notice_reads (
+  staff_id uuid not null references app.staff(id) on delete cascade,
+  item_id uuid not null references app.items(id) on delete cascade,
+  reply_read_at timestamptz,
+  photo_read_at timestamptz,
+  primary key (staff_id, item_id)
+);
+alter table app.item_notice_reads enable row level security;
+revoke all on app.item_notice_reads from public, anon, authenticated;
+grant select on app.item_notice_reads to authenticated;
+grant all on app.item_notice_reads to service_role;
+create policy item_notice_reads_self on app.item_notice_reads for select to authenticated
+  using (staff_id = app.current_staff_id());
+
+create function app.list_delivery_item_notices()
+returns table(item_id uuid, lot_seq bigint, reply_at timestamptz, photo_at timestamptz)
+language sql stable security definer set search_path = '' as $$
+  select i.id, i.lot_seq::bigint,
+    case when c.last_reply > coalesce(r.reply_read_at, '-infinity'::timestamptz) then c.last_reply end,
+    case when p.approved_at > coalesce(r.photo_read_at, '-infinity'::timestamptz) then p.approved_at end
+  from app.items i
+  left join app.item_notice_reads r on r.item_id=i.id and r.staff_id=app.current_staff_id()
+  left join app.photo_reviews p on p.item_id=i.id
+  left join lateral (
+    select max(cm.created_at) last_reply from app.item_comments cm
+    join app.staff s on s.id=cm.author_id
+    where cm.item_id=i.id and cm.created_at>i.malfunction_reported_at
+      and cm.author_id<>app.current_staff_id() and s.role in ('admin','purchaser')
+  ) c on true
+  where auth.uid() is not null and app.current_staff_id() is not null and app.current_role() is not null
+    and (app.is_admin() or i.deliverer_id=app.current_staff_id())
+    and (c.last_reply > coalesce(r.reply_read_at, '-infinity'::timestamptz)
+      or p.approved_at > coalesce(r.photo_read_at, '-infinity'::timestamptz));
+$$;
+revoke all on function app.list_delivery_item_notices() from public, anon;
+grant execute on function app.list_delivery_item_notices() to authenticated;
+
+create function app.mark_item_notices_read(p_item_id uuid, p_reply_through timestamptz default null, p_photo_through timestamptz default null)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null or app.current_staff_id() is null or app.current_role() is null then
+    raise exception 'ログインが必要です' using errcode='42501';
+  end if;
+  perform app.assert_can_work_on(p_item_id);
+  if p_reply_through is not null and not exists (
+    select 1 from app.item_comments c join app.staff s on s.id=c.author_id
+    join app.items i on i.id=c.item_id
+    where c.item_id=p_item_id and c.created_at=p_reply_through
+      and c.created_at>i.malfunction_reported_at and s.role in ('admin','purchaser')
+      and c.author_id<>app.current_staff_id()
+  ) then raise exception '返信通知が見つかりません' using errcode='22023'; end if;
+  if p_photo_through is not null and not exists (
+    select 1 from app.photo_reviews where item_id=p_item_id and approved_at=p_photo_through
+  ) then raise exception '写真承認が更新されています。再読み込みしてください' using errcode='22023'; end if;
+  insert into app.item_notice_reads(staff_id,item_id,reply_read_at,photo_read_at)
+  values(app.current_staff_id(),p_item_id,p_reply_through,p_photo_through)
+  on conflict(staff_id,item_id) do update set
+    reply_read_at=greatest(app.item_notice_reads.reply_read_at,excluded.reply_read_at),
+    photo_read_at=greatest(app.item_notice_reads.photo_read_at,excluded.photo_read_at);
+end $$;
+revoke all on function app.mark_item_notices_read(uuid,timestamptz,timestamptz) from public, anon;
+grant execute on function app.mark_item_notices_read(uuid,timestamptz,timestamptz) to authenticated;
+
+-- Own registered ID wins. Only an unambiguous original of the same returned product is a fallback.
+create function app.resolve_task_product_id(p_item_id uuid)
+returns text language sql stable security invoker set search_path='' as $$
+  select coalesce(nullif(btrim(i.marketplace_item_id),''),
+    case when i.marketplace::text='Amazon返品' and i.sku ~ '^[0-9]+[a-zA-Z]+-' and i.asin is not null then
+      (select case when count(*)=1 then min(nullif(btrim(o.marketplace_item_id),'')) end
+       from app.items o where o.lot_seq=i.lot_seq and o.asin=i.asin
+         and not o.is_accessory and o.sku ~ '^[0-9]+-' and o.id<>i.id
+         and nullif(btrim(o.marketplace_item_id),'') is not null)
+    end)
+  from app.items i where i.id=p_item_id;
+$$;
+revoke all on function app.resolve_task_product_id(uuid) from public, anon;
+grant execute on function app.resolve_task_product_id(uuid) to authenticated;
+
+create view app.v_item_action_tasks with (security_invoker=true) as
+  select c.id,c.item_id,c.task_kind,c.task_completed_at,c.created_at,
+    i.lot_seq,i.sku,app.resolve_task_product_id(i.id) as marketplace_item_id
+  from app.item_comments c join app.items i on i.id=c.item_id
+  where c.task_kind is not null;
+revoke all on app.v_item_action_tasks from public, anon;
+grant select on app.v_item_action_tasks to authenticated;
+
+-- Channel transition and resolution are in the same transaction as the reply.
+create function app.apply_malfunction_reply()
+returns trigger language plpgsql security definer set search_path='' as $$
+begin
+  if auth.uid() is null or new.author_id is distinct from app.current_staff_id()
+    or not coalesce(app.current_role() in ('admin','purchaser'),false) then return new; end if;
+  if app.current_role()='purchaser' and not exists (
+    select 1 from app.items where id=new.item_id and purchaser_id=app.current_staff_id()
+  ) then raise exception '担当外の商品には返信できません' using errcode='42501'; end if;
+  if new.task_kind like '%ヤフオク%' then perform app.prepare_yahoo_auction_item(new.item_id); end if;
+  update app.items set malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=new.author_id
+    where id=new.item_id and malfunction_reported and malfunction_resolved_at is null
+      and new.created_at>malfunction_reported_at;
+  return new;
+end $$;
+revoke all on function app.apply_malfunction_reply() from public, anon, authenticated;
+create trigger item_comments_apply_malfunction_reply after insert on app.item_comments
+  for each row execute function app.apply_malfunction_reply();
+
+create function app.send_malfunction_reply(p_comment_id uuid,p_item_id uuid,p_body text,p_task_kind text,p_photo_paths text[] default '{}')
+returns void language plpgsql security definer set search_path='' as $$
+declare v_sku text; v_existing app.item_comments%rowtype;
+begin
+  if auth.uid() is null or not coalesce(app.current_role() in ('admin','purchaser'),false) then
+    raise exception '返信する権限がありません' using errcode='42501'; end if;
+  select sku into v_sku from app.items where id=p_item_id and (app.is_admin() or purchaser_id=app.current_staff_id()) for update;
+  if not found then raise exception '対象商品が見つかりません' using errcode='42501'; end if;
+  if length(btrim(coalesce(p_body,'')))=0 or length(p_body)>2000 or coalesce(cardinality(p_photo_paths),0)>10 then
+    raise exception '返信内容・写真枚数を確認してください' using errcode='22023'; end if;
+  if exists(select 1 from unnest(p_photo_paths) p where p is null or p not like v_sku||'/reply/'||p_comment_id::text||'/%') then
+    raise exception '写真の対象商品が一致しません' using errcode='22023'; end if;
+  select * into v_existing from app.item_comments where id=p_comment_id;
+  if found then
+    if v_existing.item_id=p_item_id and v_existing.author_id=app.current_staff_id() and v_existing.body=btrim(p_body)
+      and v_existing.task_kind is not distinct from p_task_kind
+      and coalesce((select array_agg(storage_path order by sort_order) from app.item_comment_photos where item_comment_id=p_comment_id),'{}'::text[])
+        =coalesce(p_photo_paths,'{}'::text[]) then return; end if;
+    raise exception '返信IDが重複しています' using errcode='22023';
+  end if;
+  insert into app.item_comments(id,item_id,author_id,body,task_kind)
+    values(p_comment_id,p_item_id,app.current_staff_id(),btrim(p_body),p_task_kind);
+  insert into app.item_comment_photos(item_comment_id,item_id,storage_path,sort_order)
+    select p_comment_id,p_item_id,p,(n-1)::smallint from unnest(p_photo_paths) with ordinality as x(p,n);
+end $$;
+revoke all on function app.send_malfunction_reply(uuid,uuid,text,text,text[]) from public, anon;
+grant execute on function app.send_malfunction_reply(uuid,uuid,text,text,text[]) to authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261006193000_yahoo_auction_preparation.sql ▼▼▼
+
 create or replace function app.prepare_yahoo_auction_item(p_item_id uuid)
 returns void
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_body app.items%rowtype;
   v_remote app.items%rowtype;
@@ -5954,11 +6359,13 @@ begin
     );
   end if;
 end;
-$;
+$$;
 
 revoke all on function app.prepare_yahoo_auction_item(uuid) from public, anon;
 grant execute on function app.prepare_yahoo_auction_item(uuid) to authenticated;
 
+
+-- ▼▼▼ 20261006200000_panasonic_yahoo_template_photos.sql ▼▼▼
 
 create table if not exists app.item_comment_template_photos (
   id uuid primary key default gen_random_uuid(),
@@ -5966,7 +6373,7 @@ create table if not exists app.item_comment_template_photos (
   file_name text not null,
   mime_type text not null check (mime_type = 'image/jpeg'),
   photo_base64 text not null,
-  sort_order smallint not null check (sort_order between 1 and 10),
+  sort_order smallint not null check (sort_order between 1 and 9),
   created_at timestamptz not null default now(),
   unique(task_kind, sort_order),
   check (length(photo_base64) > 0)
@@ -5982,13 +6389,410 @@ create policy item_comment_template_photos_admin_select
   using (app.current_role() = 'admin');
 
 
+-- ▼▼▼ 20261006210000_panasonic_x_yahoo_template_photos.sql ▼▼▼
+
 alter table app.item_comment_template_photos
   drop constraint if exists item_comment_template_photos_task_kind_check;
 alter table app.item_comment_template_photos
   add constraint item_comment_template_photos_task_kind_check
-  check (task_kind in (
-    'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
-    'SONY◯ヤフオク', 'SONY×ヤフオク',
-    'SHARP◯ヤフオク', 'SHARP×ヤフオク',
-    'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク'
-  ));
+  check (task_kind in ('Panasonic◯ヤフオク', 'Panasonic×ヤフオク'));
+
+
+-- ▼▼▼ 20261007002034_delivery_web_push.sql ▼▼▼
+
+-- Future-only events; existing tasks are deliberately not backfilled.
+create table app.delivery_push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  staff_id uuid not null references app.staff(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  base_url text not null,
+  enabled boolean not null default true,
+  created_at timestamptz not null default clock_timestamp(),
+  updated_at timestamptz not null default clock_timestamp()
+);
+create index delivery_push_subscriptions_staff_idx on app.delivery_push_subscriptions(staff_id);
+create table app.delivery_push_events (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references app.items(id) on delete cascade,
+  staff_id uuid not null references app.staff(id) on delete cascade,
+  kind text not null check (kind in ('reply','photo','assigned')),
+  event_at timestamptz not null,
+  created_at timestamptz not null default clock_timestamp(),
+  unique (item_id, staff_id, kind, event_at)
+);
+create index delivery_push_events_staff_idx on app.delivery_push_events(staff_id,created_at);
+create table app.delivery_push_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references app.delivery_push_events(id) on delete cascade,
+  subscription_id uuid not null references app.delivery_push_subscriptions(id) on delete cascade,
+  state text not null default 'pending' check (state in ('pending','sending','sent','cancelled','failed')),
+  attempts integer not null default 0,
+  next_attempt_at timestamptz not null default now(),
+  sent_at timestamptz,
+  last_status integer,
+  unique(event_id,subscription_id)
+);
+create index delivery_push_deliveries_subscription_idx on app.delivery_push_deliveries(subscription_id);
+create index delivery_push_deliveries_pending_idx on app.delivery_push_deliveries(next_attempt_at) where state in ('pending','sending');
+alter table app.delivery_push_subscriptions enable row level security;
+alter table app.delivery_push_events enable row level security;
+alter table app.delivery_push_deliveries enable row level security;
+revoke all on app.delivery_push_subscriptions,app.delivery_push_events,app.delivery_push_deliveries from public,anon,authenticated;
+grant all on app.delivery_push_subscriptions,app.delivery_push_events,app.delivery_push_deliveries to service_role;
+
+create function app.enqueue_delivery_push(p_item_id uuid,p_kind text,p_at timestamptz,p_actor uuid)
+returns void language sql security definer set search_path='' as $$
+  insert into app.delivery_push_events(item_id,staff_id,kind,event_at)
+  select i.id,s.id,p_kind,p_at from app.items i join app.staff s
+    on s.is_active and (s.role='admin' or (s.id=i.deliverer_id and s.role='deliverer'))
+  where i.id=p_item_id and s.id is distinct from p_actor
+  on conflict(item_id,staff_id,kind,event_at) do nothing;
+$$;
+revoke all on function app.enqueue_delivery_push(uuid,text,timestamptz,uuid) from public,anon,authenticated;
+
+create function app.capture_delivery_push() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+  if tg_table_name='item_comments' then
+    if exists(select 1 from app.items i join app.staff s on s.id=new.author_id
+      where i.id=new.item_id and i.malfunction_reported_at<new.created_at and s.role in ('admin','purchaser')) then
+      perform app.enqueue_delivery_push(new.item_id,'reply',new.created_at,new.author_id);
+    end if;
+  elsif tg_table_name='photo_reviews' then
+    if new.approved_at is not null then
+      if tg_op='INSERT' then
+        perform app.enqueue_delivery_push(new.item_id,'photo',new.approved_at,new.approved_by);
+      elsif new.approved_at is distinct from old.approved_at then
+        perform app.enqueue_delivery_push(new.item_id,'photo',new.approved_at,new.approved_by);
+      end if;
+    end if;
+  else
+    if new.deliverer_id is not null and new.shipped_on is null and new.sold_on is null then
+      if tg_op='INSERT' then
+        perform app.enqueue_delivery_push(new.id,'assigned',clock_timestamp(),app.current_staff_id());
+      elsif new.deliverer_id is distinct from old.deliverer_id then
+        perform app.enqueue_delivery_push(new.id,'assigned',clock_timestamp(),app.current_staff_id());
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function app.capture_delivery_push() from public,anon,authenticated;
+create trigger item_comments_delivery_push after insert on app.item_comments for each row execute function app.capture_delivery_push();
+create trigger photo_reviews_delivery_push after insert or update of approved_at on app.photo_reviews for each row execute function app.capture_delivery_push();
+create trigger items_delivery_push after insert or update of deliverer_id on app.items for each row execute function app.capture_delivery_push();
+
+-- Only the Edge Function's service client may read/store encrypted server keys.
+create function app.delivery_push_config() returns jsonb
+language sql security definer set search_path='' as $$
+  select coalesce(jsonb_object_agg(name,decrypted_secret),'{}'::jsonb) from vault.decrypted_secrets
+  where name in ('delivery_push_vapid','delivery_push_public_key','delivery_push_dispatch_token','delivery_push_project_url');
+$$;
+create function app.initialize_delivery_push(p_vapid text,p_public_key text,p_project_url text) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+  perform pg_advisory_xact_lock(1735907184);
+  if exists(select 1 from vault.secrets where name='delivery_push_vapid') then
+    perform cron.schedule('delivery-task-web-push','* * * * *','select app.kick_delivery_push();');
+    return;
+  end if;
+  perform vault.create_secret(p_vapid,'delivery_push_vapid');
+  perform vault.create_secret(p_public_key,'delivery_push_public_key');
+  perform vault.create_secret(encode(extensions.gen_random_bytes(32),'hex'),'delivery_push_dispatch_token');
+  perform vault.create_secret(p_project_url,'delivery_push_project_url');
+  perform cron.schedule('delivery-task-web-push','* * * * *','select app.kick_delivery_push();');
+end;
+$$;
+revoke all on function app.delivery_push_config(),app.initialize_delivery_push(text,text,text) from public,anon,authenticated;
+grant execute on function app.delivery_push_config(),app.initialize_delivery_push(text,text,text) to service_role;
+
+create function app.claim_delivery_push() returns table(delivery_id uuid,subscription_id uuid,endpoint text,p256dh text,auth text,base_url text,item_id uuid,lot_seq integer,kind text,eligible boolean)
+language plpgsql security definer set search_path='' as $$
+begin
+  update app.delivery_push_deliveries set state='failed'
+    where state='sending' and attempts>=5 and next_attempt_at<=now();
+  insert into app.delivery_push_deliveries(event_id,subscription_id)
+    select e.id,s.id from app.delivery_push_events e join app.delivery_push_subscriptions s
+      on s.staff_id=e.staff_id and s.enabled and s.created_at<=e.created_at
+    where e.created_at>now()-interval '24 hours'
+    on conflict do nothing;
+  return query
+  with ready as (
+    select d.id from app.delivery_push_deliveries d where d.state in ('pending','sending')
+      and d.next_attempt_at<=now() and d.attempts<5
+    order by d.next_attempt_at limit 20 for update skip locked
+  ), claimed as (
+    update app.delivery_push_deliveries d set state='sending',attempts=d.attempts+1,next_attempt_at=now()+interval '5 minutes'
+      from ready where d.id=ready.id returning d.*
+  )
+  select d.id,s.id,s.endpoint,s.p256dh,s.auth,s.base_url,i.id,i.lot_seq,e.kind,
+    s.enabled and st.is_active and s.staff_id=e.staff_id and s.created_at<=e.created_at
+    and e.created_at>now()-interval '24 hours'
+    and (st.role='admin' or (i.deliverer_id=st.id and st.role='deliverer'))
+    and case e.kind
+      when 'reply' then i.malfunction_reported_at<e.event_at and coalesce(r.reply_read_at,'-infinity')<e.event_at
+      when 'photo' then p.approved_at=e.event_at and coalesce(r.photo_read_at,'-infinity')<e.event_at
+      else i.shipped_on is null and i.sold_on is null end
+  from claimed d join app.delivery_push_events e on e.id=d.event_id
+    join app.delivery_push_subscriptions s on s.id=d.subscription_id
+    join app.staff st on st.id=s.staff_id join app.items i on i.id=e.item_id
+    left join app.item_notice_reads r on r.item_id=i.id and r.staff_id=st.id
+    left join app.photo_reviews p on p.item_id=i.id;
+end;
+$$;
+create function app.finish_delivery_push(p_id uuid,p_state text,p_status integer) returns void
+language sql security definer set search_path='' as $$
+  update app.delivery_push_deliveries set
+    state=case when p_state='pending' and attempts>=5 then 'failed' else p_state end,
+    sent_at=case when p_state='sent' then now() else sent_at end,
+    last_status=p_status,next_attempt_at=now()+interval '1 minute'*greatest(1,attempts)
+  where id=p_id and state='sending' and p_state in ('pending','sent','cancelled','failed');
+$$;
+revoke all on function app.claim_delivery_push(),app.finish_delivery_push(uuid,text,integer) from public,anon,authenticated;
+grant execute on function app.claim_delivery_push(),app.finish_delivery_push(uuid,text,integer) to service_role;
+
+create function app.kick_delivery_push() returns bigint
+language plpgsql security definer set search_path='' as $$
+declare dispatch_token text; project_url text; request_id bigint;
+begin
+  if not exists (
+    select 1 from app.delivery_push_deliveries d where d.state in ('pending','sending') and d.next_attempt_at<=now() and (d.attempts<5 or d.state='sending')
+  ) and not exists (
+    select 1 from app.delivery_push_events e join app.delivery_push_subscriptions s
+      on s.staff_id=e.staff_id and s.enabled and s.created_at<=e.created_at
+    where e.created_at>now()-interval '24 hours' and not exists (
+      select 1 from app.delivery_push_deliveries d where d.event_id=e.id and d.subscription_id=s.id)
+  ) then return null; end if;
+  select decrypted_secret into dispatch_token from vault.decrypted_secrets where name='delivery_push_dispatch_token';
+  select decrypted_secret into project_url from vault.decrypted_secrets where name='delivery_push_project_url';
+  if dispatch_token is null or project_url is null then return null; end if;
+  select net.http_post(url:=project_url||'/functions/v1/delivery-push',
+    headers:=jsonb_build_object('Content-Type','application/json','x-delivery-dispatch',dispatch_token),
+    body:='{"action":"dispatch"}'::jsonb,timeout_milliseconds:=10000) into request_id;
+  return request_id;
+end;
+$$;
+revoke all on function app.kick_delivery_push() from public,anon,authenticated;
+grant execute on function app.kick_delivery_push() to service_role;
+-- Scheduling is performed on the production project after initializing Vault.
+
+
+-- ▼▼▼ 20261007004701_admin_task_web_push.sql ▼▼▼
+
+alter table app.delivery_push_subscriptions add column app_kind text not null default 'delivery'
+  check(app_kind in ('admin','delivery'));
+
+create table app.admin_push_events (
+  id uuid primary key default gen_random_uuid(),
+  staff_id uuid not null references app.staff(id) on delete cascade,
+  kind text not null check(kind in ('malfunction','action','photo_review','invoice','receipts')),
+  source_id uuid not null,
+  item_id uuid references app.items(id) on delete cascade,
+  invoice_staff_id uuid references app.staff(id) on delete cascade,
+  billing_month date,
+  source_version integer,
+  event_at timestamptz not null,
+  source_key text not null,
+  created_at timestamptz not null default clock_timestamp(),
+  unique(staff_id,source_key)
+);
+create index admin_push_events_staff_idx on app.admin_push_events(staff_id,created_at);
+create index admin_push_events_item_idx on app.admin_push_events(item_id);
+create index admin_push_events_invoice_staff_idx on app.admin_push_events(invoice_staff_id,billing_month,created_at);
+create table app.admin_push_deliveries (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references app.admin_push_events(id) on delete cascade,
+  subscription_id uuid not null references app.delivery_push_subscriptions(id) on delete cascade,
+  state text not null default 'pending' check(state in ('pending','sending','sent','cancelled','failed')),
+  attempts integer not null default 0,
+  next_attempt_at timestamptz not null default now(),
+  sent_at timestamptz,
+  last_status integer,
+  unique(event_id,subscription_id)
+);
+create index admin_push_deliveries_subscription_idx on app.admin_push_deliveries(subscription_id);
+create index admin_push_deliveries_pending_idx on app.admin_push_deliveries(next_attempt_at) where state in ('pending','sending');
+alter table app.admin_push_events enable row level security;
+alter table app.admin_push_deliveries enable row level security;
+revoke all on app.admin_push_events,app.admin_push_deliveries from public,anon,authenticated;
+grant all on app.admin_push_events,app.admin_push_deliveries to service_role;
+
+create function app.enqueue_admin_push(p_kind text,p_source uuid,p_item uuid,p_staff uuid,p_month date,p_version integer,p_at timestamptz)
+returns void language sql security definer set search_path='' as $$
+  insert into app.admin_push_events(staff_id,kind,source_id,item_id,invoice_staff_id,billing_month,source_version,event_at,source_key)
+  select s.id,p_kind,p_source,p_item,p_staff,p_month,p_version,p_at,
+    concat_ws(':',p_kind,p_source,p_month,p_version,extract(epoch from p_at))
+  from app.staff s where s.is_active and (s.role='admin' or (p_kind='malfunction' and s.role='purchaser'
+    and exists(select 1 from app.items i where i.id=p_item and i.purchaser_id=s.id)))
+  on conflict(staff_id,source_key) do nothing;
+$$;
+revoke all on function app.enqueue_admin_push(text,uuid,uuid,uuid,date,integer,timestamptz) from public,anon,authenticated;
+
+create function app.capture_admin_push() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare should_send boolean;
+begin
+  if tg_table_name='items' then
+    should_send:=new.malfunction_reported and new.malfunction_resolved_at is null and new.malfunction_reported_at is not null;
+    if tg_op='UPDATE' then should_send:=should_send and
+      (not old.malfunction_reported or new.malfunction_reported_at is distinct from old.malfunction_reported_at
+        or old.malfunction_resolved_at is not null); end if;
+    if should_send then perform app.enqueue_admin_push('malfunction',new.id,new.id,null,null,null,new.malfunction_reported_at); end if;
+  elsif tg_table_name='item_comments' then
+    should_send:=new.task_kind is not null and new.task_completed_at is null;
+    if tg_op='UPDATE' then should_send:=should_send and
+      (new.task_kind is distinct from old.task_kind or old.task_completed_at is not null); end if;
+    if should_send then perform app.enqueue_admin_push('action',new.id,new.item_id,null,null,null,
+      case when tg_op='INSERT' then new.created_at else clock_timestamp() end); end if;
+  elsif tg_table_name='photo_reviews' then
+    should_send:=new.submitted_at is not null and new.approved_at is null;
+    if tg_op='UPDATE' then should_send:=should_send and
+      (new.submitted_at is distinct from old.submitted_at or old.approved_at is not null); end if;
+    if should_send then perform app.enqueue_admin_push('photo_review',new.item_id,new.item_id,null,null,null,new.submitted_at); end if;
+  elsif tg_table_name='delivery_invoices' then
+    should_send:=not exists(select 1 from app.delivery_invoice_approvals where invoice_id=new.id);
+    if tg_op='UPDATE' then should_send:=should_send and new.version is distinct from old.version; end if;
+    if should_send then perform app.enqueue_admin_push('invoice',new.id,null,new.staff_id,new.billing_month,new.version,new.updated_at); end if;
+  else
+    perform app.enqueue_admin_push('receipts',new.staff_id,null,new.staff_id,new.billing_month,new.version,new.submitted_at);
+  end if;
+  return new;
+end;
+$$;
+revoke all on function app.capture_admin_push() from public,anon,authenticated;
+create trigger items_admin_push after insert or update of malfunction_reported,malfunction_reported_at,malfunction_resolved_at
+  on app.items for each row execute function app.capture_admin_push();
+create trigger item_comments_admin_push after insert or update of task_kind,task_completed_at
+  on app.item_comments for each row execute function app.capture_admin_push();
+create trigger photo_reviews_admin_push after insert or update of submitted_at,approved_at
+  on app.photo_reviews for each row execute function app.capture_admin_push();
+create trigger invoices_admin_push after insert or update of version on app.delivery_invoices for each row execute function app.capture_admin_push();
+create trigger receipts_admin_push after insert or update on app.invoice_receipt_submissions for each row execute function app.capture_admin_push();
+
+create function app.claim_admin_push()
+returns table(delivery_id uuid,subscription_id uuid,endpoint text,p256dh text,auth text,base_url text,item_id uuid,lot_seq integer,kind text,
+  task_id uuid,invoice_staff_id uuid,billing_month date,owner_name text,task_name text,eligible boolean)
+language plpgsql security definer set search_path='' as $$
+begin
+  update app.admin_push_deliveries set state='failed' where state='sending' and attempts>=5 and next_attempt_at<=now();
+  insert into app.admin_push_deliveries(event_id,subscription_id)
+    select e.id,s.id from app.admin_push_events e join app.delivery_push_subscriptions s
+      on s.staff_id=e.staff_id and s.app_kind='admin' and s.enabled and s.created_at<=e.created_at
+    where e.created_at>now()-interval '24 hours' on conflict do nothing;
+  return query
+  with ready as (
+    select d.id from app.admin_push_deliveries d where d.state in ('pending','sending') and d.next_attempt_at<=now() and d.attempts<5
+    order by d.next_attempt_at limit 20 for update skip locked
+  ), claimed as (
+    update app.admin_push_deliveries d set state='sending',attempts=d.attempts+1,next_attempt_at=now()+interval '5 minutes'
+    from ready where d.id=ready.id returning d.*
+  )
+  select d.id,s.id,s.endpoint,s.p256dh,s.auth,s.base_url,e.item_id,i.lot_seq,e.kind,
+    case when e.kind='action' then e.source_id end,e.invoice_staff_id,e.billing_month,coalesce(owner.display_name,owner.name),c.task_kind,
+    coalesce(s.enabled and s.app_kind='admin' and st.is_active and s.staff_id=e.staff_id and s.created_at<=e.created_at
+      and e.created_at>now()-interval '24 hours'
+      and (st.role='admin' or (e.kind='malfunction' and st.role='purchaser' and i.purchaser_id=st.id))
+      and case e.kind
+        when 'malfunction' then i.malfunction_reported and i.malfunction_resolved_at is null and i.malfunction_reported_at=e.event_at
+        when 'action' then c.task_kind is not null and c.task_completed_at is null
+        when 'photo_review' then p.approved_at is null and p.submitted_at=e.event_at
+        when 'invoice' then inv.version=e.source_version and not exists(select 1 from app.delivery_invoice_approvals a where a.invoice_id=inv.id)
+        else rec.version=e.source_version and not exists(select 1 from app.delivery_invoices vi join app.delivery_invoice_approvals a on a.invoice_id=vi.id
+          where vi.staff_id=e.invoice_staff_id and vi.billing_month=e.billing_month) end
+      and (e.kind not in ('invoice','receipts') or not exists(
+        select 1 from app.admin_push_events newer where newer.staff_id=e.staff_id and newer.invoice_staff_id=e.invoice_staff_id
+          and newer.billing_month=e.billing_month and newer.kind in ('invoice','receipts') and newer.created_at>e.created_at)),false)
+  from claimed d join app.admin_push_events e on e.id=d.event_id
+    join app.delivery_push_subscriptions s on s.id=d.subscription_id join app.staff st on st.id=s.staff_id
+    left join app.items i on i.id=e.item_id left join app.item_comments c on c.id=e.source_id and e.kind='action'
+    left join app.photo_reviews p on p.item_id=e.item_id
+    left join app.delivery_invoices inv on inv.id=e.source_id and e.kind='invoice'
+    left join app.invoice_receipt_submissions rec on rec.staff_id=e.invoice_staff_id and rec.billing_month=e.billing_month
+    left join app.staff owner on owner.id=e.invoice_staff_id;
+end;
+$$;
+create function app.finish_admin_push(p_id uuid,p_state text,p_status integer) returns void
+language sql security definer set search_path='' as $$
+  update app.admin_push_deliveries set state=case when p_state='pending' and attempts>=5 then 'failed' else p_state end,
+    sent_at=case when p_state='sent' then now() else sent_at end,last_status=p_status,
+    next_attempt_at=now()+interval '1 minute'*greatest(1,attempts)
+  where id=p_id and state='sending' and p_state in ('pending','sent','cancelled','failed');
+$$;
+revoke all on function app.claim_admin_push(),app.finish_admin_push(uuid,text,integer) from public,anon,authenticated;
+grant execute on function app.claim_admin_push(),app.finish_admin_push(uuid,text,integer) to service_role;
+
+create or replace function app.claim_delivery_push() returns table(delivery_id uuid,subscription_id uuid,endpoint text,p256dh text,auth text,base_url text,item_id uuid,lot_seq integer,kind text,eligible boolean)
+language plpgsql security definer set search_path='' as $$
+begin
+  update app.delivery_push_deliveries set state='failed'
+    where state='sending' and attempts>=5 and next_attempt_at<=now();
+  insert into app.delivery_push_deliveries(event_id,subscription_id)
+    select e.id,s.id from app.delivery_push_events e join app.delivery_push_subscriptions s
+      on s.staff_id=e.staff_id and s.app_kind='delivery' and s.enabled and s.created_at<=e.created_at
+    where e.created_at>now()-interval '24 hours'
+    on conflict do nothing;
+  return query
+  with ready as (
+    select d.id from app.delivery_push_deliveries d where d.state in ('pending','sending')
+      and d.next_attempt_at<=now() and d.attempts<5
+    order by d.next_attempt_at limit 20 for update skip locked
+  ), claimed as (
+    update app.delivery_push_deliveries d set state='sending',attempts=d.attempts+1,next_attempt_at=now()+interval '5 minutes'
+      from ready where d.id=ready.id returning d.*
+  )
+  select d.id,s.id,s.endpoint,s.p256dh,s.auth,s.base_url,i.id,i.lot_seq,e.kind,
+    s.enabled and s.app_kind='delivery' and st.is_active and s.staff_id=e.staff_id and s.created_at<=e.created_at
+    and e.created_at>now()-interval '24 hours'
+    and (st.role='admin' or (i.deliverer_id=st.id and st.role='deliverer'))
+    and case e.kind
+      when 'reply' then i.malfunction_reported_at<e.event_at and coalesce(r.reply_read_at,'-infinity')<e.event_at
+      when 'photo' then p.approved_at=e.event_at and coalesce(r.photo_read_at,'-infinity')<e.event_at
+      else i.shipped_on is null and i.sold_on is null end
+  from claimed d join app.delivery_push_events e on e.id=d.event_id
+    join app.delivery_push_subscriptions s on s.id=d.subscription_id
+    join app.staff st on st.id=s.staff_id join app.items i on i.id=e.item_id
+    left join app.item_notice_reads r on r.item_id=i.id and r.staff_id=st.id
+    left join app.photo_reviews p on p.item_id=i.id;
+end;
+$$;
+create or replace function app.kick_delivery_push() returns bigint
+language plpgsql security definer set search_path='' as $$
+declare dispatch_token text; project_url text; request_id bigint;
+begin
+  if not exists (
+    select 1 from app.delivery_push_deliveries d where d.state in ('pending','sending') and d.next_attempt_at<=now() and (d.attempts<5 or d.state='sending')
+  ) and not exists (
+    select 1 from app.delivery_push_events e join app.delivery_push_subscriptions s
+      on s.staff_id=e.staff_id and s.app_kind='delivery' and s.enabled and s.created_at<=e.created_at
+    where e.created_at>now()-interval '24 hours' and not exists (
+      select 1 from app.delivery_push_deliveries d where d.event_id=e.id and d.subscription_id=s.id)
+    ) and not exists (
+    select 1 from app.admin_push_deliveries d where d.state in ('pending','sending') and d.next_attempt_at<=now() and (d.attempts<5 or d.state='sending')
+  ) and not exists (
+    select 1 from app.admin_push_events e join app.delivery_push_subscriptions s
+      on s.staff_id=e.staff_id and s.app_kind='admin' and s.enabled and s.created_at<=e.created_at
+    where e.created_at>now()-interval '24 hours' and not exists (
+      select 1 from app.admin_push_deliveries d where d.event_id=e.id and d.subscription_id=s.id)
+  ) then return null; end if;
+  select decrypted_secret into dispatch_token from vault.decrypted_secrets where name='delivery_push_dispatch_token';
+  select decrypted_secret into project_url from vault.decrypted_secrets where name='delivery_push_project_url';
+  if dispatch_token is null or project_url is null then return null; end if;
+  select net.http_post(url:=project_url||'/functions/v1/delivery-push',
+    headers:=jsonb_build_object('Content-Type','application/json','x-delivery-dispatch',dispatch_token),
+    body:='{"action":"dispatch"}'::jsonb,timeout_milliseconds:=10000) into request_id;
+  return request_id;
+end;
+$$;
+
+
+-- ▼▼▼ 20261007005700_admin_invoice_push_updates.sql ▼▼▼
+
+-- Invoice versions are assigned by a BEFORE trigger even when UPDATE targets note/extras.
+drop trigger invoices_admin_push on app.delivery_invoices;
+create trigger invoices_admin_push after insert or update on app.delivery_invoices
+  for each row execute function app.capture_admin_push();
+
+

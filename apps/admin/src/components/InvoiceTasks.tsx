@@ -5,6 +5,7 @@ import type { InvoiceReceipt, Staff } from '@bussan/shared';
 import MalfunctionTasks from './MalfunctionTasks';
 import PackedSummary from './PackedSummary';
 import PhotoReviewTasks from './PhotoReviewTasks';
+import { adminTaskNotice } from '../taskNotice';
 
 interface Line { date:string|null; description:string; quantity:number; unit_price:number; lot_seq?:number }
 interface Approval { approved_at:string; expense_id:string }
@@ -78,6 +79,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
 }
 
 export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;staff:Staff}){
+ const notice=adminTaskNotice();const noticeHandled=useRef(false);
  const [rows,setRows]=useState<Task[]>([]);const [filter,setFilter]=useState<'pending'|'approved'>('pending');const [selected,setSelected]=useState<Task|null>(null);
  const [error,setError]=useState('');const [message,setMessage]=useState('');const [loading,setLoading]=useState(true);const [revision,setRevision]=useState(0);
  useEffect(()=>{
@@ -87,6 +89,13 @@ export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;sta
   return()=>{active=false;window.clearInterval(timer);};
  },[revision]);
  const pending=rows.filter(row=>!approval(row.invoice)).length;
+ useEffect(()=>{
+  if(loading||noticeHandled.current||!notice||!['invoice','receipts'].includes(notice.kind))return;
+  noticeHandled.current=true;
+  const target=rows.find(row=>row.staff_id===notice.invoiceStaffId&&row.month===notice.billingMonth);
+  if(target){setFilter(approval(target.invoice)?'approved':'pending');setSelected(target);}
+  else setMessage('通知の書類確認タスクは現在確認できません。');
+ },[loading,rows]);
  const filtered=rows.filter(row=>filter==='pending'?!approval(row.invoice):!!approval(row.invoice));
  return <section className="card invoice-tasks" aria-label="タスク"><div className="toolbar"><h3>タスク</h3><span>書類承認待ち {pending}件</span><select aria-label="書類の状態" value={filter} onChange={e=>setFilter(e.target.value as 'pending'|'approved')}><option value="pending">承認待ち</option><option value="approved">承認済み</option></select></div>
  {error&&<div className="error" role="alert">{error}<button className="btn" onClick={()=>setRevision(n=>n+1)}>再読み込み</button></div>}{message&&<p className="ok" role="status">{message}</p>}

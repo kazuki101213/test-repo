@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { adminTaskNotice } from '../taskNotice';
 import { createPortal } from 'react-dom';
 import { getSupabase, PHOTO_BUCKET } from '@bussan/shared';
 
@@ -6,6 +7,9 @@ interface Review { item_id: string; drive_folder_id: string; submitted_at: strin
 interface Item { id: string; sku: string; title: string }
 
 export default function PhotoReviewTasks() {
+  const notice = adminTaskNotice();
+  const noticeHandled = useRef(false);
+  const [noticeMessage, setNoticeMessage] = useState('');
   const [reviews, setReviews] = useState<Review[]>([]);
   const [items, setItems] = useState<Record<string, Item>>({});
   const [selected, setSelected] = useState<Review | null>(null);
@@ -30,7 +34,15 @@ export default function PhotoReviewTasks() {
         if (itemError) throw itemError;
         byId = Object.fromEntries(((found ?? []) as Item[]).map(item => [item.id, item]));
       }
-      if (active) { setReviews(rows); setItems(byId); setError(''); }
+      if (active) {
+        setReviews(rows); setItems(byId); setError('');
+        if (!noticeHandled.current && notice?.kind === 'photo_review') {
+          noticeHandled.current = true;
+          const target = rows.find(row => row.item_id === notice.itemId);
+          if (target) setSelected(target);
+          else setNoticeMessage('通知の写真確認タスクはすでに完了したか、現在は確認できません。');
+        }
+      }
     })().catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); });
     return () => { active = false; };
   }, [revision]);
@@ -64,6 +76,7 @@ export default function PhotoReviewTasks() {
   }
 
   return <>
+      {noticeMessage && <li role="status">{noticeMessage}</li>}
       {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>
         <span>{items[review.item_id]?.sku || 'SKU確認中'}<small>{items[review.item_id]?.title || ''} ／ 写真 {review.exported_photo_count}枚</small></span>
         <strong>写真確認</strong><span>確認 ›</span>

@@ -9,6 +9,8 @@ import Products from './pages/Products';
 import Ledger from './pages/Ledger';
 import ExpenseList from './components/ExpenseList';
 import Spares from './pages/Spares';
+import PushSettings from './components/PushSettings';
+import { disableDevicePush } from './push';
 
 type Page = 'dashboard' | 'inventory' | 'spares' | 'expenses' | 'products' | 'ledger';
 
@@ -26,6 +28,10 @@ export default function App() {
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<Page>('dashboard');
+  async function logout() {
+    try { await disableDevicePush(); await signOut(); await refresh(); }
+    catch { setError('通知の停止またはログアウトに失敗しました。再度お試しください。'); }
+  }
 
   async function refresh() {
     try {
@@ -75,10 +81,12 @@ export default function App() {
           </button>
         ))}
         <span style={{ flex: 1 }} />
-        <button className="nav" onClick={() => void signOut().then(refresh)}>ログアウト</button>
+        <button className="nav" onClick={() => void logout()}>ログアウト</button>
       </aside>
 
       <main>
+        {error && <p className="error" role="alert">{error}</p>}
+        <PushSettings key={session.user.id} userId={session.user.id} />
         {page === 'dashboard' && <Dashboard staff={session.staff} />}
         {page === 'inventory' && <Inventory me={session.staff} />}
         {page === 'spares' && <Spares me={session.staff} />}

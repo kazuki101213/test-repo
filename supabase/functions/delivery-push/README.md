@@ -1,4 +1,15 @@
-# 納品アプリのWeb Push
+# 管理・納品アプリのWeb Push
+
+管理アプリの配布URLは `https://bussan-admin.vercel.app/` を維持する。
+管理アプリも別のホーム画面アイコンから「通知を有効にする」で設定する。
+購読のapp_kindで管理と納品を分け、片方の停止・ログアウトが他方の設定を変更しない。
+APIのapp省略は既存納品クライアントとの互換性のためdeliveryとして扱う。
+
+管理アプリは新しい動作不良報告、販売等の作業、写真確認、請求書・領収書確認を対象にする。
+管理者には全対象、仕入担当者には自分の担当商品の動作不良報告だけを送る。
+送信直前に権限と未完了状態を再確認し、同じ担当者・請求月の書類は最新タスクにまとめる。
+通知クリックはダッシュボードの対象行、写真確認、書類確認へ移動する。すでに完了・権限変更済みの場合は画面にその旨を示す。
+管理タスク追加者自身も通知対象とする。過去タスクの一斉送信は行わない。
 
 配布URLは `https://test-repo-delivery.vercel.app/` を維持する。
 利用者はホーム画面からログインし、「通知を有効にする」でOSの許可を出す。
@@ -39,5 +50,7 @@ Pushサービスが受付した直後にプロセスが終了した場合は再�
 - Deno: `deno check --no-config --node-modules-dir=auto supabase/functions/delivery-push/index.ts`
 - Deno: `deno test --no-config supabase/functions/delivery-push/validation_test.ts`
 - Node: `node scripts/verify-delivery-push-worker.cjs`
+- Node: `node scripts/verify-admin-push-worker.cjs`
+- 管理の本番データ回帰確認: `scripts/verify-admin-push-transaction.sql` (全変更ROLLBACK、HTTP呼出しなし)。
 - 本番データを使う回帰確認: `scripts/verify-delivery-push-transaction.sql` (全変更ROLLBACK、HTTP呼出しなし)。新規DBのfixtureではない。
 - 実機の許可と受信は、各利用者が「テスト通知」で確認する。

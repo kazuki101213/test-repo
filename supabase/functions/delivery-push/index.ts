@@ -1,8 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { ApplicationServer, exportApplicationServerKey, exportVapidKeys, generateVapidKeys, importVapidKeys, PushMessageError } from 'jsr:@negrel/webpush@0.5.0';
-import { validSubscription, notificationBody } from './validation.ts';
+import { validSubscription, notificationPayload, appBaseUrls } from './validation.ts';
 
-const baseUrls = new Set(['https://test-repo-delivery.vercel.app/', 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/']);
+const baseUrls = new Set([...appBaseUrls.admin, ...appBaseUrls.delivery]);
 const origins = new Set([...baseUrls].map(url => new URL(url).origin));
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
   db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false },
@@ -38,16 +38,19 @@ Deno.serve(async req => {
       const token = req.headers.get('x-delivery-dispatch');
       if (!token || !settings.delivery_push_dispatch_token || token !== settings.delivery_push_dispatch_token) return respond(401, { error: 'Unauthorized' }, origin);
       const server = await sender(settings);
-      const { data: rows, error } = await admin.rpc('claim_delivery_push');
-      if (error) throw error;
+      const delivery = await admin.rpc('claim_delivery_push');
+      if (delivery.error) throw delivery.error;
+      const management = await admin.rpc('claim_admin_push');
+      if (management.error) throw management.error;
+      const rows = [...(delivery.data || []).map((row: Record<string, unknown>) => ({ ...row, app_kind: 'delivery' })),
+        ...(management.data || []).map((row: Record<string, unknown>) => ({ ...row, app_kind: 'admin' }))];
       let sent = 0, cancelled = 0, retry = 0;
-      for (const row of rows || []) {
+      for (const entry of rows) {
+        const row = entry as typeof entry & { eligible: boolean; base_url: string; endpoint: string; p256dh: string; auth: string; subscription_id: string; delivery_id: string; kind: string; lot_seq: number };
         let state = 'cancelled', status: number | null = null;
-        if (row.eligible && baseUrls.has(row.base_url) && validSubscription({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } })) {
+        if (row.eligible && appBaseUrls[row.app_kind as 'admin' | 'delivery'].includes(row.base_url) && validSubscription({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } })) {
           try {
-            await server.subscribe({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }).pushTextMessage(JSON.stringify({
-              body: notificationBody(row.kind, row.lot_seq), itemId: row.item_id, tag: `delivery-${row.item_id}-${row.kind}`,
-            }), { ttl: 86400 });
+            await server.subscribe({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }).pushTextMessage(JSON.stringify(notificationPayload(row)), { ttl: 86400 });
             state = 'sent'; status = 201; sent++;
           } catch (cause) {
             status = cause instanceof PushMessageError ? cause.response.status : null;
@@ -59,12 +62,16 @@ Deno.serve(async req => {
             else { state = 'pending'; retry++; }
           }
         } else { cancelled++; }
-        const result = await admin.rpc('finish_delivery_push', { p_id: row.delivery_id, p_state: state, p_status: status });
+        const result = await admin.rpc(row.app_kind === 'admin' ? 'finish_admin_push' : 'finish_delivery_push', { p_id: row.delivery_id, p_state: state, p_status: status });
         if (result.error) throw result.error;
       }
       return respond(200, { processed: (rows || []).length, sent, cancelled, retry }, origin);
     }
     if (!origin || !origins.has(origin)) return respond(403, { error: 'Origin denied' }, origin);
+    const app = payload.app ?? 'delivery';
+    if (!['admin','delivery'].includes(app)) return respond(400, { error: 'Invalid app' }, origin);
+    const appUrls = appBaseUrls[app as 'admin' | 'delivery'];
+    if (!appUrls.some(url => new URL(url).origin === origin)) return respond(403, { error: 'App origin denied' }, origin);
     const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
     if (!token) return respond(401, { error: 'Unauthorized' }, origin);
     const { data: user, error: authError } = await admin.auth.getUser(token);
@@ -73,7 +80,7 @@ Deno.serve(async req => {
     if (profileError) throw profileError;
     const { data: staff, error: staffError } = await admin.from('staff').select('id,role,is_active').eq('id', profile?.staff_id || '').maybeSingle();
     if (staffError) throw staffError;
-    if (!staff?.is_active || !['admin', 'deliverer'].includes(staff.role)) return respond(403, { error: 'Active delivery staff required' }, origin);
+    if (!staff?.is_active || !(app === 'admin' ? ['admin','purchaser'] : ['admin','deliverer']).includes(staff.role)) return respond(403, { error: 'Active app staff required' }, origin);
     if (payload.action === 'setup') {
       if (staff.role !== 'admin') return respond(403, { error: 'Admin required' }, origin);
       const keys = await generateVapidKeys({ extractable: true });
@@ -89,39 +96,39 @@ Deno.serve(async req => {
     }
     if (payload.action === 'status') {
       if (typeof payload.endpoint !== 'string') return respond(400, { error: 'Invalid endpoint' }, origin);
-      const { data: subscription, error } = await admin.from('delivery_push_subscriptions').select('enabled').eq('endpoint', payload.endpoint).eq('staff_id', staff.id).maybeSingle();
+      const { data: subscription, error } = await admin.from('delivery_push_subscriptions').select('enabled').eq('endpoint', payload.endpoint).eq('staff_id', staff.id).eq('app_kind',app).maybeSingle();
       if (error) throw error;
       return respond(200, { enabled: subscription?.enabled ?? null }, origin);
     }
     if (payload.action === 'subscribe') {
-      if (!validSubscription(payload.subscription) || !baseUrls.has(payload.baseUrl) || new URL(payload.baseUrl).origin !== origin) return respond(400, { error: 'Invalid subscription' }, origin);
+      if (!validSubscription(payload.subscription) || !appUrls.includes(payload.baseUrl) || new URL(payload.baseUrl).origin !== origin) return respond(400, { error: 'Invalid subscription' }, origin);
       // Validate that the client key is actually a point on P-256 before storing it.
       const rawKey = Uint8Array.from(atob(payload.subscription.keys.p256dh.replace(/-/g, '+').replace(/_/g, '/')), char => char.charCodeAt(0));
       try { await crypto.subtle.importKey('raw', rawKey, { name: 'ECDH', namedCurve: 'P-256' }, false, []); }
       catch { return respond(400, { error: 'Invalid subscription key' }, origin); }
-      const { data: old, error: oldError } = await admin.from('delivery_push_subscriptions').select('staff_id,enabled,created_at').eq('endpoint', payload.subscription.endpoint).maybeSingle();
+      const { data: old, error: oldError } = await admin.from('delivery_push_subscriptions').select('staff_id,app_kind,enabled,created_at').eq('endpoint', payload.subscription.endpoint).maybeSingle();
       if (oldError) throw oldError;
       const now = new Date().toISOString();
       const { error } = await admin.from('delivery_push_subscriptions').upsert({
         endpoint: payload.subscription.endpoint, staff_id: staff.id, p256dh: payload.subscription.keys.p256dh, auth: payload.subscription.keys.auth,
-        base_url: payload.baseUrl, enabled: true, updated_at: now,
-        created_at: old && old.staff_id === staff.id && old.enabled ? old.created_at : now,
+        base_url: payload.baseUrl, app_kind:app, enabled: true, updated_at: now,
+        created_at: old && old.staff_id === staff.id && old.app_kind === app && old.enabled ? old.created_at : now,
       }, { onConflict: 'endpoint' });
       if (error) throw error;
       return respond(200, { subscribed: true }, origin);
     }
     if (payload.action === 'unsubscribe') {
       if (typeof payload.endpoint !== 'string') return respond(400, { error: 'Invalid endpoint' }, origin);
-      const { error } = await admin.from('delivery_push_subscriptions').update({ enabled: false, updated_at: new Date().toISOString() }).eq('endpoint', payload.endpoint).eq('staff_id', staff.id);
+      const { error } = await admin.from('delivery_push_subscriptions').update({ enabled: false, updated_at: new Date().toISOString() }).eq('endpoint', payload.endpoint).eq('staff_id', staff.id).eq('app_kind',app);
       if (error) throw error;
       return respond(200, { unsubscribed: true }, origin);
     }
     if (payload.action === 'test') {
-      const { data: subscription, error } = await admin.from('delivery_push_subscriptions').select('endpoint,p256dh,auth').eq('endpoint', payload.endpoint).eq('staff_id', staff.id).eq('enabled', true).maybeSingle();
+      const { data: subscription, error } = await admin.from('delivery_push_subscriptions').select('endpoint,p256dh,auth').eq('endpoint', payload.endpoint).eq('staff_id', staff.id).eq('app_kind',app).eq('enabled', true).maybeSingle();
       if (error) throw error;
       if (!subscription) return respond(404, { error: 'Subscription not found' }, origin);
       const server = await sender(await config());
-      await server.subscribe({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }).pushTextMessage(JSON.stringify({ body: '通知のテストです。新しいタスクもこのように届きます。', tag: 'delivery-test' }), { ttl: 300 });
+      await server.subscribe({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }).pushTextMessage(JSON.stringify({ body: `${app==='admin'?'管理アプリ':'納品アプリ'}の通知テストです。新しいタスクもこのように届きます。`, tag: `${app}-test` }), { ttl: 300 });
       return respond(200, { sent: true }, origin);
     }
     return respond(400, { error: 'Unknown action' }, origin);

@@ -340,3 +340,5 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .inventory-date-placeholder { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:var(--inventory-placeholder-color); pointer-events:none; }
 .inventory-date-field[data-empty='true']:not(:focus-within) input { color:transparent; }
 .inventory-date-field:focus-within .inventory-date-placeholder { display:none; }
+/* A task opened from a push notification is highlighted without changing its state. */
+.malfunction-task-row:target { outline: 2px solid #71836b; outline-offset: 3px; }
