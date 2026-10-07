@@ -1,7 +1,7 @@
 import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredLabel from '../components/ColoredLabel';
 import ColoredSelect from '../components/ColoredSelect';
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { MARKETPLACES, deleteSpareAccessory, fetchSpareAccessories, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
 import { createSpareAccessory, findInventoryAccessoryForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory } from '../api';
@@ -30,13 +30,22 @@ export default function Spares({ me }: { me: Staff }) {
   const [editFor, setEditFor] = useState<{ row: SpareAccessory; field: SpareAccessoryField } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  const fetching = useRef(false);
   const reload = useCallback(async () => {
+    if (fetching.current) return;
+    fetching.current = true;
     setError('');
     try { setRows(await fetchSpareAccessories()); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setLoading(false); }
+    finally { fetching.current = false; setLoading(false); }
   }, []);
-  useEffect(() => { void reload(); fetchStaff().then(setStaff).catch(() => undefined); }, [reload]);
+  useEffect(() => {
+    void reload(); fetchStaff().then(setStaff).catch(() => undefined);
+    const refresh = () => { if (document.visibilityState === 'visible') void reload(); };
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh); document.addEventListener('visibilitychange', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [reload]);
 
   const filtered = rows.filter(row => !row.used_for_item_id && [row.title, row.manufacturer, row.model_no, row.asin, row.source_sku, row.owner_name, row.marketplace, row.marketplace_item_id, row.tracking_no, row.usage_note]
     .some(value => value?.toLocaleLowerCase().includes(query.toLocaleLowerCase())));

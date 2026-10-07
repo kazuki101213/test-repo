@@ -42,7 +42,7 @@ export interface SpareAccessory {
 export async function fetchSpareAccessories(ownerStaffId?: string): Promise<SpareAccessory[]> {
   const rows: SpareAccessory[] = [];
   for (let from = 0; ; from += 500) {
-    let query = getSupabase().from('spare_accessories').select('*')
+    let query = getSupabase().from('spare_accessories').select('*').is('used_for_item_id', null)
       .order('source_sheet_row', { ascending: false }).order('id').range(from, from + 499);
     if (ownerStaffId) query = query.eq('owner_staff_id', ownerStaffId);
     const { data, error } = await query;
