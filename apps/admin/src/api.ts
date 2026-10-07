@@ -124,19 +124,19 @@ export interface ItemFilter {
   purchasedTo?: string;
 }
 
-export type WorkloadMetric = '未完了' | '今月出荷' | '平均作業日数';
-export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'arrived_on' | 'shipped_on'>;
+export type WorkloadMetric = '作業中' | '今月出荷' | '平均作業日数';
+export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'shipped_on'>;
 
 export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric): Promise<WorkloadItem[]> {
   // Match v_deliverer_workload: row counts and the database's UTC calendar month.
   const monthStart = new Date().toISOString().slice(0, 7) + '-01';
   return readAllRows<WorkloadItem>(async (from, to) => {
     let query = getSupabase().from('items')
-      .select('id,lot_seq,sku,title,status,marketplace,purchased_at,arrived_on,shipped_on')
+      .select('id,lot_seq,sku,title,status,marketplace,purchased_at,shipped_on')
       .eq('deliverer_id', delivererId);
-    if (metric === '未完了') query = query.eq('status', '作業中');
+    if (metric === '作業中') query = query.eq('status', '作業中');
     else if (metric === '今月出荷') query = query.gte('shipped_on', monthStart);
-    else query = query.not('shipped_on', 'is', null).not('arrived_on', 'is', null);
+    else query = query.not('shipped_on', 'is', null).not('purchased_at', 'is', null);
     const { data, error } = await query.order('lot_seq', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as WorkloadItem[];
@@ -280,7 +280,7 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
       else q = q.in('marketplace', marketplaces);
     }
     if (filter.delivererIds && filter.delivererIds.length) q = q.in('deliverer_id', filter.delivererIds);
-    if (unsoldOnly) q = q.eq('sale_row_count', 0).neq('status', '返品処理').neq('status', '廃棄');
+    if (unsoldOnly) q = q.eq('sale_row_count', 0).neq('status', '返品処理');
     if (filter.purchasedFrom) q = q.gte('purchased_at', filter.purchasedFrom);
     if (filter.purchasedTo) q = q.lte('purchased_at', filter.purchasedTo);
     if (signal) q = q.abortSignal(signal);

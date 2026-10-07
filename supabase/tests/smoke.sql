@@ -48,12 +48,12 @@ select sku, lot_seq, is_accessory, status, identity_check from app.items order b
 
 \echo '--- [2] 納品担当者 (久保田/DD) から見える作業一覧 ---'
 set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
-select sku, title, status, arrived_on from app.v_delivery_tasks order by sku;
+select sku, title, status, purchased_at from app.v_delivery_tasks order by sku;
 
 \echo '--- [3] 自分の担当分は作業チェックできる ---'
-select sku, status, arrived_on, product_registered_at is not null as registered
+select sku, status, purchased_at, product_registered_at is not null as registered
 from app.set_work_progress(
-  (select id from app.items where title = 'DMR-BRZ1020'), 'arrived', true);
+  (select id from app.items where title = 'DMR-BRZ1020'), 'inspected', true);
 select sku, status from app.set_work_progress(
   (select id from app.items where title = 'DMR-BRZ1020'), 'registered', true);
 
@@ -67,7 +67,7 @@ declare v_id uuid;
 begin
   select id into v_id from other_item;
   begin
-    perform app.set_work_progress(v_id, 'arrived', true);
+    perform app.set_work_progress(v_id, 'inspected', true);
     raise exception 'FAIL: 他人の商品を更新できてしまった';
   exception
     when insufficient_privilege then raise notice 'OK: 担当外は 42501 でブロックされた';
@@ -97,7 +97,7 @@ select 取引区分, 取引年月日, 品目, 代価, 相手方, 確認方法 fr
 \echo '--- [7] 集計ビュー ---'
 select * from app.v_stock_summary;
 select month, 仕入数, 仕入金額, 販売数, 売上, 粗利益, 純利益 from app.v_monthly_summary;
-select deliverer_name, 未完了, 作業中 from app.v_deliverer_workload;
+select deliverer_name, 作業中 from app.v_deliverer_workload;
 
 \echo '--- [8] SKU の往復変換 ---'
 select * from app.parse_sku('2400-AADD-20260916-1296');

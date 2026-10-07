@@ -14,7 +14,7 @@ export type ItemCondition =
 
 export type ItemStatus =
   | '作業中' | '出荷済' | '出品中'
-  | '販売済' | '返品処理' | '保留' | '廃棄';
+  | '販売済' | '返品処理';
 
 export type WorkStream = 'テレビ' | 'ブルーレイ' | '付属品' | 'その他';
 
@@ -22,7 +22,7 @@ export type TurnoverClass = '高' | '中' | '低';
 
 export type ExpenseCategory = '固定費' | '変動費' | '給与' | '外注費' | '諸経費';
 
-export type WorkStep = 'arrived' | 'registered' | 'inspected' | 'cleaned' | 'photo' | 'listing' | 'packed' | 'shipped' | 'inspection_cleaning';
+export type WorkStep = 'registered' | 'inspected' | 'cleaned' | 'photo' | 'listing' | 'packed' | 'shipped' | 'inspection_cleaning';
 
 export interface Staff {
   id: string;
@@ -139,7 +139,6 @@ export interface ItemView {
   planned_price: number | null;
   planned_payout: number | null;
   sales_channel: SalesChannel | null;
-  arrived_on: string | null;
   product_registered: boolean;
   inspected: boolean;
   photo_uploaded: boolean;
@@ -188,7 +187,6 @@ export interface DeliveryTask {
   planned_price: number | null;
   deliverer_id: string | null;
   purchaser_name: string | null;
-  arrived_on: string | null;
   deliverer_name?: string | null;
   product_registered: boolean;
   inspected: boolean;
@@ -245,7 +243,6 @@ export interface StockSummary {
 export interface DelivererWorkload {
   deliverer_id: string;
   deliverer_name: string;
-  未完了: number;
   作業中: number;
   今月出荷: number;
   手元在庫: number;

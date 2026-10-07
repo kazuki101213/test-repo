@@ -34,6 +34,9 @@ jobs:
       - name: ビルド
         run: pnpm -r build
 
+      - name: 作業中の集計と稼働詳細の確認
+        run: node scripts/verify-workload-arrival-removal.cjs
+
       - name: 移行スクリプトの文法チェック
         run: node --check scripts/import-sheets.mjs
 
