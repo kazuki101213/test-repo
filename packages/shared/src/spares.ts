@@ -1,4 +1,23 @@
 import { getSupabase } from './supabase';
+import { DELIVERY_STAFF_CODES, staffDisplayName } from './staffNames';
+
+const spareCollator = new Intl.Collator('ja', { numeric: true });
+export function sortSpareAccessories(rows: SpareAccessory[], owners: {id: string; code?: string; name: string}[]): SpareAccessory[] {
+  const codes = new Map(owners.map(owner => [owner.id, owner.code || '']));
+  const ownerKey = (row: SpareAccessory) => {
+    const label = staffDisplayName(row.owner_name?.replace(/^\([^)]*\)/, '')).trim();
+    const code = (row.owner_staff_id && codes.get(row.owner_staff_id)) || label.split(' ')[0];
+    const rank = DELIVERY_STAFF_CODES.findIndex(value => value === code);
+    return {rank: rank < 0 ? (label ? DELIVERY_STAFF_CODES.length : DELIVERY_STAFF_CODES.length + 1) : rank, label};
+  };
+  return [...rows].sort((a, b) => {
+    const x = ownerKey(a), y = ownerKey(b);
+    return x.rank - y.rank
+      || (x.rank >= DELIVERY_STAFF_CODES.length ? spareCollator.compare(x.label, y.label) : 0)
+      || Number(!a.manufacturer?.trim()) - Number(!b.manufacturer?.trim())
+      || spareCollator.compare(a.manufacturer?.trim() || '', b.manufacturer?.trim() || '');
+  });
+}
 
 export interface SpareAccessory {
   id: string;
@@ -24,12 +43,21 @@ export async function fetchSpareAccessories(ownerStaffId?: string): Promise<Spar
   const rows: SpareAccessory[] = [];
   for (let from = 0; ; from += 500) {
     let query = getSupabase().from('spare_accessories').select('*')
-      .order('source_sheet_row', { ascending: false }).range(from, from + 499);
+      .order('source_sheet_row', { ascending: false }).order('id').range(from, from + 499);
     if (ownerStaffId) query = query.eq('owner_staff_id', ownerStaffId);
     const { data, error } = await query;
     if (error) throw error;
     rows.push(...(data ?? []) as SpareAccessory[]);
-    if ((data?.length ?? 0) < 500) return rows;
+    if ((data?.length ?? 0) < 500) {
+      const ids = [...new Set(rows.flatMap(row => row.owner_staff_id ? [row.owner_staff_id] : []))];
+      const owners: {id: string; code: string; name: string}[] = [];
+      for (let offset = 0; offset < ids.length; offset += 100) {
+        const result = await getSupabase().from('staff').select('id,code,name').in('id', ids.slice(offset, offset + 100));
+        if (result.error) throw result.error;
+        owners.push(...(result.data ?? []));
+      }
+      return sortSpareAccessories(rows, owners);
+    }
   }
 }
 

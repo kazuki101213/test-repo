@@ -1,0 +1,29 @@
+const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
+const repo=require('node:path').resolve(__dirname,'..')+'/';
+const compile=f=>ts.transpileModule(fs.readFileSync(repo+f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const names={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNames.ts'),names);
+const spares={exports:{},Intl,require:id=>id==='./staffNames'?names.exports:{}};vm.runInNewContext(compile('packages/shared/src/spares.ts'),spares);
+const owners=['MM','LL','KK','II','HH','EE','DD','AA'].map(code=>({id:code,code,name:code}));
+const rows=owners.flatMap(o=>['TOSHIBA','Panasonic',null].map((manufacturer,n)=>({id:o.id+n,owner_staff_id:o.id,owner_name:'old',manufacturer}))).concat([{id:'unset',owner_name:null},{id:'legacy',owner_name:'前担当'}]);
+const sorted=spares.exports.sortSpareAccessories(rows,owners);
+assert.equal(rows[0].id,'MM0');
+assert.deepEqual(Array.from(sorted.slice(0,24),r=>r.id),['AA','DD','EE','HH','II','KK','LL','MM'].flatMap(c=>[c+'1',c+'0',c+'2']));
+assert.deepEqual(Array.from(sorted.slice(24),r=>r.id),['legacy','unset']);
+let cursor=0,hooks=[],dirty=true,tree,pending=[],opened=[],acknowledged=[];
+const react={useState(initial){const n=cursor++;if(!hooks[n])hooks[n]={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useMemo(fn){cursor++;return fn();},useCallback(fn){cursor++;return fn;},useEffect(fn,deps){const n=cursor++;if(!hooks[n]){hooks[n]={deps};pending.push(fn);}}};
+const jsx=(type,props)=>({type,props});
+const tasks=[{id:'II-item',sku:'100a-AAII-20260901-0',lot_seq:100,title:'model',status:'Amazon返品',marketplace:'Amazon返品',deliverer_id:'II',deliverer_name:'II 久保田 真由',malfunction_reported:true,malfunction_resolved_at:null,malfunction_comment:'故障',is_accessory:false,shipped_on:null},{id:'LL-item',sku:'101-AALL-20260901-0',lot_seq:101,title:'other',status:'作業中',deliverer_id:'LL',malfunction_reported:true,malfunction_resolved_at:'now',shipped_on:null}];
+const notices=[{item_id:'II-item',lot_seq:100,photo_at:'today',reply_at:'today'}];
+const api={fetchMyTasks:async()=>tasks,fetchDeliveryItemNotices:async()=>notices,fetchDeliveryStaff:async()=>[],markDeliveryItemNoticesRead:async n=>acknowledged.push(n.item_id)};
+const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?names.exports:id==='../api'?api:{default:'placeholder'},URLSearchParams,window:{location:{search:''},setInterval(){},clearInterval(){},setTimeout(fn){fn();},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){},getElementById:id=>({scrollIntoView:()=>opened.push(id)})}};
+vm.runInNewContext(compile('apps/delivery/src/pages/TaskList.tsx'),context);
+function all(n,result=[]){if(!n||typeof n!=='object')return result;if(Array.isArray(n)){n.forEach(x=>all(x,result));return result;}result.push(n);all(n.props?.children,result);return result;}
+function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
+let staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};
+async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({staff});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
+(async()=>{await settle();const section=all(tree).find(n=>n.type==='section');assert(text(section).includes('写真が承認されました'));assert(text(section).includes('メッセージが届きました'));assert(text(section).includes('動作不良の報告が届きました'));assert(!text(section).includes('101'));
+ all(section).find(n=>n.type==='button'&&text(n).includes('動作不良の報告')).props.onClick();await settle();assert.deepEqual(opened,['delivery-task-II-item']);assert.deepEqual(acknowledged,[]);
+ const card=all(tree).find(n=>n.props?.task?.id==='II-item');card.props.onDetailOpened('II-item');await settle();assert.deepEqual(acknowledged,['II-item']);assert(!text(all(tree).find(n=>n.type==='section')).includes('写真が承認されました'));
+ hooks=[];pending=[];staff={id:'II',code:'II',role:'deliverer',name:'久保田真由'};dirty=true;await settle();assert(!text(all(tree).find(n=>n.type==='section')).includes('動作不良の報告が届きました'));
+ console.log('Ordered owners/manufacturers, unset last, AA all notice/report display, resolved exclusion, detail routing/acknowledgement and II scope passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -164,6 +164,8 @@ export default function TaskList({ staff }: { staff: Staff }) {
     }).catch(cause => setReplyTaskError(cause instanceof Error ? cause.message : String(cause)))
       .finally(() => openingReads.current.delete(itemId));
   }, []);
+  const malfunctionTasks = canViewDeliveryAssignee(staff)
+    ? tasks.filter(task => task.malfunction_reported && !task.malfunction_resolved_at) : [];
   const taskById = new Map(tasks.map(task => [task.id, task]));
   const visibleNotices = notices.filter(notice => taskById.has(notice.item_id));
   const unreadItemIds = new Set(notices.filter(notice => notice.reply_at || notice.photo_at).map(notice => notice.item_id));
@@ -196,6 +198,17 @@ export default function TaskList({ staff }: { staff: Staff }) {
             {notice.photo_at && <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
               【{notice.lot_seq}】写真が承認されました。
             </button>}
+          </li>)}
+        </ul>}
+        {malfunctionTasks.length > 0 && <ul className="invoice-task-rows">
+          {malfunctionTasks.map(task => <li key={task.id}>
+            <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(task)}>
+              【{task.sku.split('-')[0]}】動作不良の報告が届きました
+            </button>
+            <div className="spare-shipping-details">
+              <span>納品担当者：{task.deliverer_name || '未設定'}</span><span>品名：{task.title}</span>
+              <span>{task.malfunction_comment || '報告内容未登録'}</span>
+            </div>
           </li>)}
         </ul>}
         <ul className="invoice-task-rows"><SpareShippingTasks staff={staff} /></ul>
