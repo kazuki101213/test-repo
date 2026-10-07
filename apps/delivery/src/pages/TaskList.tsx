@@ -137,12 +137,12 @@ export default function TaskList({ staff }: { staff: Staff }) {
       members,
     })).filter(({ task: t, members }) => {
       if (queryField !== 'deliverer' && q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
-      const active = ['作業中', 'Amazon返品'].includes(t.status);
+      const active = t.status === '作業中';
       switch (filter) {
         case 'arrived': return active && t.shipped_on === null;
         case 'shipped': return t.shipped_on !== null;
         case 'return-processing': return members.some(member => member.status === '返品処理');
-        case 'amazon-return': return members.some(member => member.status === 'Amazon返品');
+        case 'amazon-return': return members.some(member => member.marketplace === 'Amazon返品');
         case 'working-amazon-return': return members.some(member => member.marketplace === '動作品Amazon返品');
         case 'all':     return true;
       }
