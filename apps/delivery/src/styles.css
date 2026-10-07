@@ -268,3 +268,7 @@ textarea { min-height: 80px; resize: vertical; }
   .delivery-reply-tasks { overflow-y: auto; scrollbar-width: none; scrollbar-gutter: auto; -ms-overflow-style: none; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
   .delivery-reply-tasks::-webkit-scrollbar { display: none; }
 }
+
+.delivery-inventory-search { display: flex; align-items: center; gap: 8px; margin-top: 12px; min-width: 0; }
+.delivery-inventory-search select { flex: 0 0 auto; width: auto; }
+.delivery-inventory-search input { flex: 1; min-width: 0; width: auto; }
