@@ -95,5 +95,6 @@ export async function signIn(email: string): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
-  await getSupabase().auth.signOut();
+  // 管理画面のログアウトで、独立したChrome拡張機能の認証を失効させない。
+  await getSupabase().auth.signOut({ scope: 'local' });
 }
