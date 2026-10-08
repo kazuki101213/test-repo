@@ -35,7 +35,7 @@ jobs:
         run: pnpm -r build
 
       - name: 稼働と写真登録の確認
-        run: node scripts/verify-workload-arrival-removal.cjs && node scripts/verify-listing-photo-integration.cjs && node scripts/verify-delivery-load-error.cjs && node scripts/verify-spare-shipping-ui.cjs && node scripts/verify-usage-maker.cjs && node scripts/verify-inventory-column-filters.cjs && node scripts/verify-delivery-purchaser-comment.cjs && node scripts/verify-return-purchase-reference.cjs
+        run: node scripts/verify-workload-arrival-removal.cjs && node scripts/verify-listing-photo-integration.cjs && node scripts/verify-delivery-load-error.cjs && node scripts/verify-spare-shipping-ui.cjs && node scripts/verify-usage-maker.cjs && node scripts/verify-inventory-column-filters.cjs && node scripts/verify-delivery-purchaser-comment.cjs && node scripts/verify-return-purchase-reference.cjs && node scripts/verify-delivery-search.cjs && node scripts/verify-delivery-overview-spare-order.cjs
 
       - name: 移行スクリプトの文法チェック
         run: node --check scripts/import-sheets.mjs

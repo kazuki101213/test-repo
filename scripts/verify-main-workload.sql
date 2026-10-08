@@ -9,8 +9,8 @@ begin
  for w in select * from app.v_deliverer_workload loop
   select count(*) into actual_count from app.items where deliverer_id=w.deliverer_id and not is_accessory and status='作業中';
   if actual_count<>w."作業中" then raise exception 'Working count mismatch'; end if;
-  select count(*) into actual_count from app.items where deliverer_id=w.deliverer_id and not is_accessory and packed_on>=month_start and packed_on<=today;
-  if actual_count<>w."梱包済" then raise exception 'Packed detail count mismatch'; end if;
+  select count(*) into actual_count from app.items where deliverer_id=w.deliverer_id and not is_accessory and packed_on is null;
+  if actual_count<>w."梱包前" then raise exception 'Packed detail count mismatch'; end if;
   select count(*) into actual_count from app.items where deliverer_id=w.deliverer_id and not is_accessory and shipped_on>=month_start and shipped_on<=today;
   if actual_count<>w."出荷済" then raise exception 'Shipped detail count mismatch'; end if;
   select round(avg(packed_on-purchased_at),1) into actual_average from app.items where deliverer_id=w.deliverer_id and not is_accessory and purchased_at is not null and packed_on>=(today-interval '3 months')::date and packed_on<=today;

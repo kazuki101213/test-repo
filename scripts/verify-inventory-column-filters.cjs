@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
-const shared={productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['作業中','販売済'],CONDITIONS:[],MARKETPLACES:[],SALES_CHANNELS:[],jpDate:s=>s||'—',yen:n=>String(n??'—')};
+const shared={productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['作業中','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
 const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);
 const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',memo:'購入者コメント\n続き',latest_comment:'納品者コメント',status:'作業中',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
@@ -16,6 +16,10 @@ assert.equal(apply(rows,{status:f([])}).length,0);
 assert.equal(apply(rows,{}),rows);
 assert.equal(apply(Array.from({length:1001},(_,i)=>({...row,id:String(i),sku:`${i}-AAII-20261007-100`,lot_seq:i})),{serial:f(['1000'])}).length,1);
 assert.equal(Object.keys(filters.exports.inventoryColumns).length,34);
+assert.equal(search.exports.matchesInventorySearch({...row,marketplace:'動作品Amazon返品'},'marketplace','Amazon返品'),false);
+assert.equal(search.exports.matchesInventorySearch({...row,marketplace:'Amazon返品'},'marketplace','Amazon返品'),true);
+assert.equal(search.exports.matchesInventorySearch({...row,sales_channel:'FBA'},'sales_channel','FBA'),true);
+assert.equal(search.exports.matchesInventorySearch({...row,sales_channel:'自己発送'},'sales_channel','FBA'),false);
 const accessory=rows[1];
 assert.equal(filters.exports.inventoryColumns.sold_price.value(accessory),200);
 assert.equal(filters.exports.inventoryColumns.payout.value(accessory),150);
@@ -46,9 +50,9 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  all(tree).find(n=>n.type==='button'&&n.props.children==='閉じる').props.onClick();await settle();
  const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');
  assert.equal(selector().props.value,'serial');
- assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>n.props.children),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
+ assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>n.props.children),['通番号','SKU','型番','ASIN','商品ID','追跡番号','仕入先','販売先']);
  assert(!all(tree).some(n=>n.type==='details'&&n.props.className==='inventory-filter-dropdown'));
- for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,'検索');}
+ for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);if(field.value==='marketplace'||field.value==='sales_channel'){const target=all(tree).find(n=>n.props?.['aria-label']===(field.value==='marketplace'?'仕入先で検索':'販売先で検索'));assert(target);target.props.onChange({target:{value:field.value==='marketplace'?'Amazon返品':'FBA'}});await settle();assert.equal(lastRequest.query,field.value==='marketplace'?'Amazon返品':'FBA');}else assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,'検索');}
  const accessoryRow=all(tree).find(n=>n.type==='tr'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
  const saleCell=all(accessoryRow).filter(n=>n.type==='td')[11];
  const moneyButtons=all(saleCell).filter(n=>n.type==='button');
@@ -66,6 +70,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],3);
  all(tree).find(n=>n.props?.['aria-label']==='Amazon返金金額のフィルター').props.onClick({currentTarget:{}});await settle();all(tree).find(n=>n.type==='popup').props.onApply(f([]));await settle();
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1,'Keep headings with zero matching rows');
+ selector().props.onChange({target:{value:'serial'}});await settle();
  all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.onChange({target:{value:'search'}});await settle();
  all(tree).find(n=>n.type==='button'&&n.props.children==='フィルターをすべて解除').props.onClick();await settle();
  assert.equal(lastRequest.queryField,'serial');assert.equal(selector().props.value,'serial');

@@ -9,6 +9,8 @@ export const inventorySearchFields = [
   { value: 'asin', label: 'ASIN' },
   { value: 'marketplace_item_id', label: '商品ID' },
   { value: 'tracking_no', label: '追跡番号' },
+  { value: 'marketplace', label: '仕入先' },
+  { value: 'sales_channel', label: '販売先' },
 ] as const;
 export type InventorySearchField = typeof inventorySearchFields[number]['value'];
 
@@ -18,5 +20,7 @@ export function matchesInventorySearch(item: InventoryItem, field: InventorySear
   const value = field === 'serial' ? productSerial(item.sku, item.lot_seq)
     : field === 'model' ? (item.is_accessory ? item.title : productModelText(item))
     : item[field];
-  return String(value ?? '').toLocaleLowerCase().includes(needle);
+  return field === 'marketplace' || field === 'sales_channel'
+    ? String(value ?? '').toLocaleLowerCase() === needle
+    : String(value ?? '').toLocaleLowerCase().includes(needle);
 }
