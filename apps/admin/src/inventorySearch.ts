@@ -1,4 +1,4 @@
-import { productModelText } from '@bussan/shared';
+import { productModelText, matchesStateSearch } from '@bussan/shared';
 import type { InventoryItem } from './api';
 import { productSerial } from './inventory';
 
@@ -9,18 +9,16 @@ export const inventorySearchFields = [
   { value: 'asin', label: 'ASIN' },
   { value: 'marketplace_item_id', label: '商品ID' },
   { value: 'tracking_no', label: '追跡番号' },
-  { value: 'marketplace', label: '仕入先' },
-  { value: 'sales_channel', label: '販売先' },
+  { value: 'state', label: '状態' },
 ] as const;
 export type InventorySearchField = typeof inventorySearchFields[number]['value'];
 
 export function matchesInventorySearch(item: InventoryItem, field: InventorySearchField, query: string): boolean {
+  if (field === 'state') return matchesStateSearch(item, query);
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return true;
   const value = field === 'serial' ? productSerial(item.sku, item.lot_seq)
     : field === 'model' ? (item.is_accessory ? item.title : productModelText(item))
     : item[field];
-  return field === 'marketplace' || field === 'sales_channel'
-    ? String(value ?? '').toLocaleLowerCase() === needle
-    : String(value ?? '').toLocaleLowerCase().includes(needle);
+  return String(value ?? '').toLocaleLowerCase().includes(needle);
 }

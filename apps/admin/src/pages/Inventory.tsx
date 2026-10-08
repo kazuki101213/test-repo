@@ -1,7 +1,7 @@
 import { staffDisplayName, productModelText, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen } from '@bussan/shared';
+import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, STATE_SEARCH_GROUPS } from '@bussan/shared';
 import type { PurchaseDraft, Staff } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchItems, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
@@ -175,8 +175,8 @@ export default function Inventory({ me }: { me: Staff }) {
           <select aria-label="検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as InventorySearchField); setQuery(''); }}>
             {inventorySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
           </select>
-          {queryField === 'marketplace' || queryField === 'sales_channel'
-            ? <select aria-label={queryField === 'marketplace' ? '仕入先で検索' : '販売先で検索'} value={query} onChange={event => setQuery(event.target.value)}><option value="">すべて</option>{(queryField === 'marketplace' ? MARKETPLACES : SALES_CHANNELS).map(value => <option key={value} value={value}>{value}</option>)}</select>
+          {queryField === 'state'
+            ? <select aria-label="状態で検索" value={query} onChange={event => setQuery(event.target.value)}><option value="">すべて</option>{STATE_SEARCH_GROUPS.map(group => <optgroup key={group.field} label={group.label}>{group.values.map(value => <option key={value} value={`${group.field}:${value}`}>{group.label}：{value}</option>)}</optgroup>)}</select>
             : <input type="search" placeholder="検索"
             value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />}
         </div>
