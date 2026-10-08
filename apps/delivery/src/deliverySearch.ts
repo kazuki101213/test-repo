@@ -8,6 +8,8 @@ export const deliverySearchFields = [
   { value: 'asin', label: 'ASIN' },
   { value: 'marketplace_item_id', label: '商品ID' },
   { value: 'tracking_no', label: '追跡番号' },
+  { value: 'marketplace', label: '仕入先' },
+  { value: 'sales_channel', label: '販売先' },
 ] as const;
 export type DeliverySearchField = typeof deliverySearchFields[number]['value'];
 export const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');

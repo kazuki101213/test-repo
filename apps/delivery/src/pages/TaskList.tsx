@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff } from '@bussan/shared';
-import { canViewDeliveryAssignee, staffDisplayName } from '@bussan/shared';
+import { canViewDeliveryAssignee, staffDisplayName, MARKETPLACES, SALES_CHANNELS } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import { downloadTsv } from '../csv';
 import { deliveryErrorMessage } from '../errors';
@@ -137,7 +137,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
-      if (queryField !== 'deliverer' && q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
+      if (queryField !== 'deliverer' && q && !members.some(member => (queryField === 'marketplace' || queryField === 'sales_channel' ? normalizeSearch(deliverySearchValue(member, queryField, originalIds)) === q : normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q)))) return false;
       const active = t.status === '作業中';
       switch (filter) {
         case 'working': return active && t.shipped_on === null;
@@ -193,6 +193,8 @@ export default function TaskList({ staff }: { staff: Staff }) {
         </select>
         {queryField === 'deliverer' && canViewDeliveryAssignee(staff)
           ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
+          : queryField === 'marketplace' || queryField === 'sales_channel'
+            ? <select aria-label={queryField === 'marketplace' ? '仕入先で検索' : '販売先で検索'} value={query} onChange={event => { setQuery(event.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">すべて</option>{(queryField === 'marketplace' ? MARKETPLACES : SALES_CHANNELS).map(value => <option key={value} value={value}>{value}</option>)}</select>
           : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
       </div>
 

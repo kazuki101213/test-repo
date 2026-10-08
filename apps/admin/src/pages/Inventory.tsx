@@ -172,11 +172,13 @@ export default function Inventory({ me }: { me: Staff }) {
 
       <div className="toolbar">
         <div className="inventory-search" role="group" aria-label="在庫検索">
-          <select aria-label="検索項目" value={queryField} onChange={event => setQueryField(event.target.value as InventorySearchField)}>
+          <select aria-label="検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as InventorySearchField); setQuery(''); }}>
             {inventorySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
           </select>
-          <input type="search" placeholder="検索"
-            value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
+          {queryField === 'marketplace' || queryField === 'sales_channel'
+            ? <select aria-label={queryField === 'marketplace' ? '仕入先で検索' : '販売先で検索'} value={query} onChange={event => setQuery(event.target.value)}><option value="">すべて</option>{(queryField === 'marketplace' ? MARKETPLACES : SALES_CHANNELS).map(value => <option key={value} value={value}>{value}</option>)}</select>
+            : <input type="search" placeholder="検索"
+            value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />}
         </div>
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field" data-empty={!purchasedFrom}>
