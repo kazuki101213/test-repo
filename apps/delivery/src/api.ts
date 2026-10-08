@@ -1,5 +1,5 @@
 import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
-import type { DeliveryTask, ItemComment, ItemCondition, WorkStep } from '@bussan/shared';
+import type { DeliveryTask, ItemComment, ItemCondition } from '@bussan/shared';
 
 export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
@@ -100,13 +100,12 @@ export async function findBySku(sku: string): Promise<{ id: string } | null> {
   return (row as { id: string }) ?? null;
 }
 
-export async function setWorkProgress(itemId: string, step: WorkStep, done: boolean) {
-  const { error } = await getSupabase().rpc('set_work_progress', {
+export async function recordListingPhotoUpload(itemId: string) {
+  const { error } = await getSupabase().rpc('set_delivery_listing_progress', {
     p_item_id: itemId,
-    p_step: step,
-    p_done: done,
+    p_done: null,
   });
-  if (error) throw error;
+  if (error) throw new Error(error.message);
 }
 
 export async function setDeliveryProgress(itemId: string, step: 'inspection_cleaning' | 'listing' | 'packed' | 'shipped', done: boolean, date?: string) {

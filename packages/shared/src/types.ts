@@ -13,7 +13,7 @@ export type ItemCondition =
   | '新品' | '再生品' | 'ほぼ新品' | '非常に良い' | '良い' | '可' | 'ジャンク';
 
 export type ItemStatus =
-  | '作業中' | '出荷済' | '出品中'
+  | '作業中' | '出品中'
   | '販売済' | '返品処理';
 
 export type WorkStream = 'テレビ' | 'ブルーレイ' | '付属品' | 'その他';
@@ -22,7 +22,7 @@ export type TurnoverClass = '高' | '中' | '低';
 
 export type ExpenseCategory = '固定費' | '変動費' | '給与' | '外注費' | '諸経費';
 
-export type WorkStep = 'registered' | 'inspected' | 'cleaned' | 'photo' | 'listing' | 'packed' | 'shipped' | 'inspection_cleaning';
+export type WorkStep = 'listing' | 'packed' | 'shipped' | 'inspection_cleaning';
 
 export interface Staff {
   id: string;
