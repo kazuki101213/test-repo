@@ -286,8 +286,13 @@ textarea { min-height: 80px; resize: vertical; }
 
 .task-card-info > .purchaser-comment, .task-member-row > .purchaser-comment { white-space: pre-wrap; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
 
-.inventory-search-filters { display:flex; flex-wrap:wrap; gap:8px; min-width:0; max-width:100%; }
-.inventory-search-filters select { width:auto; max-width:100%; }
 
 .delivery-inventory-search { flex-wrap:wrap; }
 .delivery-inventory-search input { flex:1 1 160px; }
+
+.inventory-multi-filter { position:relative; flex:0 0 auto; }
+.inventory-multi-filter summary { cursor:pointer; padding:10px 12px; border:1px solid var(--border); border-radius:8px; }
+.inventory-multi-filter-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:30; width:min(300px, calc(100vw - 32px)); max-height:60dvh; overflow:auto; padding:12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 6px 20px #0002; }
+.inventory-multi-filter-panel fieldset { margin:12px 0 0; padding:8px; border:1px solid var(--border); min-width:0; }
+.inventory-multi-filter-panel label { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; }
+.inventory-multi-filter-panel input[type=checkbox] { width:18px; height:18px; margin:0; flex:0 0 18px; }

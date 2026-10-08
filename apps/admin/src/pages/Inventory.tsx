@@ -1,7 +1,7 @@
 import { staffDisplayName, productModelText, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, INVENTORY_FILTER_GROUPS, matchesInventoryFilters } from '@bussan/shared';
+import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, matchesInventoryFilters } from '@bussan/shared';
 import type { PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchItems, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
@@ -13,6 +13,7 @@ import ColoredLabel from '../components/ColoredLabel';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { productCount, productSerial } from '../inventory';
 import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, type ColumnFilters } from '../inventoryFilters';
+import InventoryStateFilter from '../components/InventoryStateFilter';
 import InventoryColumnFilter from '../components/InventoryColumnFilter';
 import { inventorySearchFields, type InventorySearchField } from '../inventorySearch';
 
@@ -58,7 +59,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
-  const hasInventoryFilters = Object.values(inventoryFilters).some(Boolean);
+  const hasInventoryFilters = Object.values(inventoryFilters).some(values => !!values?.length);
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
@@ -179,7 +180,7 @@ export default function Inventory({ me }: { me: Staff }) {
           </select>
           <input type="search" placeholder="検索" value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
         </div>
-        <div className="inventory-search-filters" role="group" aria-label="在庫フィルター">{INVENTORY_FILTER_GROUPS.map(group => <select key={group.field} aria-label={`${group.label}フィルター`} value={inventoryFilters[group.field] || ''} onChange={event => setInventoryFilters(current => ({ ...current, [group.field]: event.target.value }))}><option value="">{group.label}：すべて</option>{group.values.map(value => <option key={value} value={value}>{value}</option>)}</select>)}</div>
+        <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} />
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field" data-empty={!purchasedFrom}>
             <input type="date" aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
