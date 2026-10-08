@@ -244,7 +244,8 @@ export interface DelivererWorkload {
   deliverer_id: string;
   deliverer_name: string;
   作業中: number;
-  今月出荷: number;
+  梱包済: number;
+  出荷済: number;
   手元在庫: number;
   平均作業日数: number | null;
 }

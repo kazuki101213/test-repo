@@ -97,7 +97,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
             <thead>
               <tr>
                 <th>担当者</th><th className="num">作業中</th>
-                <th className="num">今月出荷</th><th className="num">平均作業日数</th>
+                <th className="num">梱包済</th><th className="num">出荷済</th><th className="num">平均作業日数</th>
               </tr>
             </thead>
             <tbody>
@@ -106,7 +106,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
                   <td>
                     {staffDisplayName(w.deliverer_name)}
                   </td>
-                  {(['作業中', '今月出荷', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
+                  {(['作業中', '梱包済', '出荷済', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
                     <button className="metric-link" aria-label={`${staffDisplayName(w.deliverer_name)} ${metric}の詳細`} onClick={() => setWorkloadDetail({ delivererId: w.deliverer_id, name: staffDisplayName(w.deliverer_name), metric })}>{w[metric] ?? '—'}</button>
                   </td>)}
                 </tr>
