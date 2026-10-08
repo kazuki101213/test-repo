@@ -401,3 +401,6 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .spare-shipping-confirmation input { width: auto; flex: none; margin-top: 3px; }
 
 .inventory-comment-panel > p { white-space: pre-wrap; }
+
+.inventory-search-filters { display:flex; flex-wrap:wrap; gap:8px; min-width:0; max-width:100%; }
+.inventory-search-filters select { width:auto; max-width:100%; }
