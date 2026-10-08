@@ -10,6 +10,7 @@ function ShippingRow({task,staff,management,onChanged}:{
 }) {
   const [editing,setEditing]=useState(false);
   const [tracking,setTracking]=useState('');
+  const [serialMarked,setSerialMarked]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const owner=staffDisplayName({code:task.owner_code,name:task.owner_name});
@@ -18,7 +19,7 @@ function ShippingRow({task,staff,management,onChanged}:{
   const overview=management || canViewDeliveryAssignee(staff);
   const canComplete=management && staff.role==='admin' && !!task.sent_at;
   async function act(send:boolean) {
-    if(busy) return;
+    if(busy || (send && (!canShip || !tracking.trim() || !serialMarked))) return;
     setBusy(true);setError('');
     try {
       if(send) await sendSpareShipping(task.id,tracking.trim());
@@ -33,12 +34,12 @@ function ShippingRow({task,staff,management,onChanged}:{
         ? `${owner}→${recipient}の${task.sent_at ? '発送済み' : '発送準備中'}`
         : `${recipient}へ発送お願いします。`}</span>
       {canComplete && <button className="btn" disabled={busy} onClick={()=>void act(false)}>完了</button>}
-      {canShip && !editing && <button className="btn" onClick={()=>setEditing(true)}>発送</button>}
+      {canShip && !editing && <button className="btn" onClick={()=>{setSerialMarked(false);setEditing(true);}}>発送</button>}
     </div>
     <div className="spare-shipping-details">
-      <span>品名：{task.title}</span>
+      <span>通番号：{task.lot_seq}</span><span>品名：{task.title}</span>
       {overview && task.sent_at ? <>
-        <span>通番号：{task.lot_seq}</span><span>追跡番号：{task.tracking_no}</span>
+        <span>追跡番号：{task.tracking_no}</span>
       </> : <>
         <span>メーカー：{task.manufacturer || '未登録'}</span>
         <span>仕入先：{task.marketplace || '未登録'}</span>
@@ -49,7 +50,11 @@ function ShippingRow({task,staff,management,onChanged}:{
     {editing && canShip && <form className="spare-shipping-form" onSubmit={event=>{event.preventDefault();void act(true);}}>
       <label className="field"><span>追跡番号</span><input value={tracking} autoFocus required maxLength={200}
         disabled={busy} onChange={event=>setTracking(event.target.value)} /></label>
-      <button className="btn primary" disabled={busy || !tracking.trim()}>送信</button>
+      <div className="spare-shipping-reference">通番号/利用記録：{task.lot_seq} / {task.usage_note || '—'}</div>
+      <label className="spare-shipping-confirmation"><input type="checkbox" required checked={serialMarked}
+        disabled={busy} onChange={event=>setSerialMarked(event.target.checked)} />
+        <span>「通番号/利用記録」を記載し、通番号に◯をつけましたか？</span></label>
+      <button className="btn primary" disabled={busy || !tracking.trim() || !serialMarked}>送信</button>
       <button type="button" className="btn" disabled={busy} onClick={()=>setEditing(false)}>キャンセル</button>
     </form>}
     {error && <p className="error" role="alert">{error}</p>}
