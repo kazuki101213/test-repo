@@ -208,9 +208,9 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setPurchaserId(current => source.purchaser_id ?? current);
       setDelivererId(current => source.deliverer_id ?? current);
       setWorkStream(source.work_stream ?? '');
-      setPurchasedAt(source.purchased_at ?? today());
+      if (isWorkingAmazonReturn) setPurchasedAt(source.purchased_at ?? today());
       setTitle(isWorkingAmazonReturn ? source.model_no || '' : source.title);
-      setCost(source.cost_amount);
+      setCost(isAmazonReturn ? 0 : source.cost_amount);
       setProductId(isWorkingAmazonReturn ? '' : source.product_id ?? '');
       setProductSearch(isWorkingAmazonReturn ? '' : source.model_no || source.title);
       setAsin(source.asin ?? '');
