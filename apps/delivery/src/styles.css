@@ -278,3 +278,8 @@ textarea { min-height: 80px; resize: vertical; }
 .spare-search > input, .spare-search > select:last-child:not(:first-child) { flex:1; min-width:0; width:auto; }
 
 .delivery-inventory-search > select:last-child:not(:first-child) { flex:1; min-width:0; width:auto; }
+
+.spare-shipping-reference, .spare-shipping-confirmation { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
+.spare-shipping-reference { font-size: 12px; color: var(--muted, #666); }
+.spare-shipping-confirmation { display: flex; align-items: flex-start; gap: 8px; }
+.spare-shipping-confirmation input { width: auto; flex: none; margin-top: 3px; }

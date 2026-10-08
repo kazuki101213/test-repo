@@ -32,6 +32,7 @@ for(const app of ['admin','delivery']){
     assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
     button('発送').props.onClick();await settle();
     all(tree).find(n=>n.type==='input').props.onChange({target:{value:'admin-tracking'}});await settle();
+    all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();
     all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
     assert.equal(sent.id,'task');assert.equal(sent.tracking,'admin-tracking');assert.equal(changed,1);changed=0;
     await mount(context.exports.ShippingRow,{task,staff:{id:'II',code:'II',role:'deliverer'},management:false,onChanged:()=>changed++});assert(!button('発送'));
@@ -44,15 +45,26 @@ for(const app of ['admin','delivery']){
   button(app==='delivery'?'発送':'完了').props.onClick();await settle();
   assert(button('送信').props.disabled);
   all(tree).find(n=>n.type==='input').props.onChange({target:{value:'  12345  '}});await settle();
+  assert(button('送信').props.disabled);sent=undefined;
+  all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(sent,undefined);assert.equal(changed,0);
+  assert(text(tree).includes('通番号/利用記録：2392 / 1647 / 1723'));
+  assert(text(tree).includes('通番号に◯をつけましたか？'));
+  assert(text(tree).indexOf('通番号：2392')<text(tree).indexOf('品名：リモコン'));
+  all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();assert(!button('送信').props.disabled);
   failed=true;all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
   assert(text(tree).includes('送信に失敗しました'));assert.equal(changed,0);
   failed=false;all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
   assert.equal(sent.id,'task');assert.equal(sent.tracking,'12345');assert.equal(changed,1);
+  await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
+  button(app==='delivery'?'発送':'完了').props.onClick();await settle();
+  all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();
+  button('キャンセル').props.onClick();await settle();button(app==='delivery'?'発送':'完了').props.onClick();await settle();
+  assert.equal(all(tree).find(n=>n.props?.type==='checkbox').props.checked,false);assert(button('送信').props.disabled);
   await mount(context.exports.ShippingRow,{task,staff:{id:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(!button('完了'));
   await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('発送済み'));assert(text(tree).includes('通番号：2392'));assert(text(tree).includes('追跡番号：12345'));assert(!text(tree).includes('利用記録'));
   button('完了').props.onClick();await settle();assert.equal(completed,'task');assert.equal(changed,2);
 }
-console.log('Both apps: holder scope, requested details, completion/input/send, error retry, admin pending/sent/completion passed');
+console.log('Both apps: holder scope, requested details, serial-before-title, unchecked-submit rejection, checked send, cancel reset, error retry, admin pending/sent/completion passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
