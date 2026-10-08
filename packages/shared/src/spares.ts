@@ -19,6 +19,11 @@ export function sortSpareAccessories(rows: SpareAccessory[], owners: {id: string
   });
 }
 
+/** Keep serials and suffixes; hide the legacy accessory word in usage records. */
+export function usageRecordText(value: string | null | undefined): string | null {
+  return value?.replace(/リモコン/g, '').trim() || null;
+}
+
 export interface SpareAccessory {
   id: string;
   source_sheet_row: number | null;
@@ -47,7 +52,7 @@ export async function fetchSpareAccessories(ownerStaffId?: string): Promise<Spar
     if (ownerStaffId) query = query.eq('owner_staff_id', ownerStaffId);
     const { data, error } = await query;
     if (error) throw error;
-    rows.push(...(data ?? []) as SpareAccessory[]);
+    rows.push(...((data ?? []) as SpareAccessory[]).map(row => ({ ...row, usage_note: usageRecordText(row.usage_note) })));
     if ((data?.length ?? 0) < 500) {
       const ids = [...new Set(rows.flatMap(row => row.owner_staff_id ? [row.owner_staff_id] : []))];
       const owners: {id: string; code: string; name: string}[] = [];

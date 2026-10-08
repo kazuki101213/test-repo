@@ -1,3 +1,4 @@
+import { usageRecordText } from './spares';
 import { getSupabase } from './supabase';
 
 export interface SpareShippingTask {
@@ -14,7 +15,7 @@ export async function fetchSpareShippingTasks(): Promise<SpareShippingTask[]> {
     const {data,error}=await getSupabase().from('v_spare_shipping_tasks').select('*')
       .is('completed_at',null).order('created_at').order('id').range(start,start+499);
     if(error) throw error;
-    rows.push(...(data ?? []) as SpareShippingTask[]);
+    rows.push(...((data ?? []) as SpareShippingTask[]).map(row => ({ ...row, usage_note: usageRecordText(row.usage_note) })));
     if((data?.length ?? 0)<500) return rows;
   }
 }

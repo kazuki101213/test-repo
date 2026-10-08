@@ -1,5 +1,5 @@
 import { workloadPeriod } from './workloadPeriod';
-import { getSupabase } from '@bussan/shared';
+import { getSupabase, usageRecordText } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
@@ -26,7 +26,7 @@ export type SpareAccessoryField = keyof Pick<SpareAccessory,
 >;
 
 export async function createSpareAccessory(input: SpareAccessoryInput): Promise<void> {
-  const { error } = await getSupabase().from('spare_accessories').insert(input);
+  const { error } = await getSupabase().from('spare_accessories').insert({ ...input, usage_note: usageRecordText(input.usage_note) });
   if (error) throw error;
 }
 
@@ -80,7 +80,7 @@ export async function findInventoryForAmazonReturn(lotSeq: number): Promise<Amaz
 }
 
 export async function updateSpareAccessory(id: string, field: SpareAccessoryField, value: string | number | null): Promise<void> {
-  const { data, error } = await getSupabase().from('spare_accessories').update({ [field]: value }).eq('id', id).select('id').maybeSingle();
+  const { data, error } = await getSupabase().from('spare_accessories').update({ [field]: field === 'usage_note' ? usageRecordText(value == null ? null : String(value)) : value }).eq('id', id).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('予備付属品が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
