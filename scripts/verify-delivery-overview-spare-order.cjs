@@ -19,7 +19,7 @@ tasks.push({...tasks[0],id:'II-accessory',sku:'100a-AAII-20260901-1',is_accessor
 const notices=[{item_id:'II-item',lot_seq:100,photo_at:'today',reply_at:'today'}];
 const api={fetchMyTasks:async()=>tasks,fetchDeliveryItemNotices:async()=>notices,fetchDeliveryStaff:async()=>[{id:'II',name:'久保田真由'},{id:'LL',name:'土井花菜'}],markDeliveryItemNoticesRead:async n=>acknowledged.push(n.item_id)};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);
-const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{...names.exports,...stateSearch.exports}:id==='../api'?api:id==='../deliverySearch'?search.exports:id==='../hooks/useTaskViewport'?{useTaskViewport:()=>({sectionRef:{current:null},shippingRef:{current:null},viewportHeight:400})}:{default:'placeholder'},URLSearchParams,window:{location:{search:''},setInterval(){},clearInterval(){},setTimeout(fn){fn();},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){},getElementById:id=>({scrollIntoView:()=>opened.push(id)})}};
+const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{...names.exports,...stateSearch.exports}:id==='../api'?api:id==='../deliverySearch'?search.exports:id==='../hooks/useTaskViewport'?{useTaskViewport:()=>({sectionRef:{current:null},shippingRef:{current:null},viewportHeight:400})}:{default:id.includes('InventoryStateFilter')?'state-filter':'placeholder'},URLSearchParams,window:{location:{search:''},setInterval(){},clearInterval(){},setTimeout(fn){fn();},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){},getElementById:id=>({scrollIntoView:()=>opened.push(id)})}};
 vm.runInNewContext(compile('apps/delivery/src/pages/TaskList.tsx'),context);
 function all(n,result=[]){if(!n||typeof n!=='object')return result;if(Array.isArray(n)){n.forEach(x=>all(x,result));return result;}result.push(n);all(n.props?.children,result);return result;}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
@@ -34,12 +34,12 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  const input=()=>all(tree).find(n=>n.props?.['aria-label']==='在庫を検索');
  assert.equal(input().props.placeholder,'検索');assert.equal(selector().props.value,'serial');
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['納品担当者','通番号','SKU','型番','ASIN','商品ID','追跡番号']);
- const filterSelect=label=>all(tree).find(n=>n.props?.['aria-label']===label+'フィルター');
- for(const label of ['仕入先','販売先','販売状態'])assert(filterSelect(label));
- filterSelect('仕入先').props.onChange({target:{value:'Amazon返品'}});filterSelect('販売先').props.onChange({target:{value:'FBA'}});filterSelect('販売状態').props.onChange({target:{value:'作業中'}});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['II-item']);assert(input());
- filterSelect('販売先').props.onChange({target:{value:'自己発送'}});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,0);
- for(const label of ['仕入先','販売先','販売状態'])filterSelect(label).props.onChange({target:{value:''}});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
- tasks[1].status='販売済';filterSelect('販売状態').props.onChange({target:{value:'販売済'}});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['LL-item']);tasks[1].status='作業中';filterSelect('販売状態').props.onChange({target:{value:''}});await settle();
+ const stateFilter=()=>all(tree).find(n=>n.type==='state-filter');assert(stateFilter());
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['作業中']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['II-item']);assert(input());
+ stateFilter().props.onChange({marketplace:['Amazon返品','動作品Amazon返品'],sales_channel:['FBA','自己発送']});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送']});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,0);
+ stateFilter().props.onChange({});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
+ tasks[1].status='販売済';stateFilter().props.onChange({status:['販売済']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['LL-item']);tasks[1].status='作業中';stateFilter().props.onChange({});await settle();
  selector().props.onChange({target:{value:'deliverer'}});await settle();assert(!input());
  all(tree).find(n=>n.props?.['aria-label']==='納品担当者で検索').props.onChange({target:{value:'LL'}});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['LL-item']);
  selector().props.onChange({target:{value:'serial'}});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2,'Changing fields clears hidden owner filtering');
@@ -49,9 +49,9 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  assert.equal(all(tree).filter(n=>n.props?.task).length,1);assert.equal(all(tree).find(n=>n.props?.task).props.members.length,2,'Accessory search retains the complete product group');
  selector().props.onChange({target:{value:'asin'}});input().props.onChange({target:{value:'100a'}});await settle();
  assert.equal(all(tree).filter(n=>n.props?.task).length,0,'Selected-field search must not match serial while ASIN is selected');
- filterSelect('仕入先').props.onChange({target:{value:'動作品Amazon返品'}});await settle();
+ stateFilter().props.onChange({marketplace:['動作品Amazon返品']});await settle();
  all(section).find(n=>n.type==='button'&&text(n).includes('動作不良の報告')).props.onClick();await settle();assert.deepEqual(opened,['delivery-task-II-item']);assert.deepEqual(acknowledged,[]);assert.equal(selector().props.value,'sku');assert.equal(input().props.value,tasks[0].sku);
- for(const label of ['仕入先','販売先','販売状態'])assert.equal(filterSelect(label).props.value,'');
+ assert.equal(Object.keys(stateFilter().props.value).length,0);
  const card=all(tree).find(n=>n.props?.task?.id==='II-item');card.props.onDetailOpened('II-item');await settle();assert.deepEqual(acknowledged,['II-item']);assert(!text(all(tree).find(n=>n.type==='section')).includes('写真が承認されました'));
  hooks=[];pending=[];staff={id:'II',code:'II',role:'deliverer',name:'久保田真由'};dirty=true;await settle();assert(!text(all(tree).find(n=>n.type==='section')).includes('動作不良の報告が届きました'));
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);

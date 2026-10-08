@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff, InventoryFilters } from '@bussan/shared';
-import { canViewDeliveryAssignee, staffDisplayName, INVENTORY_FILTER_GROUPS, matchesInventoryFilters } from '@bussan/shared';
+import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import { downloadTsv } from '../csv';
 import { deliveryErrorMessage } from '../errors';
+import InventoryStateFilter from '../components/InventoryStateFilter';
 import TaskCard from '../components/TaskCard';
 import SpareShippingTasks from '../components/SpareShippingTasks';
 import { useTaskViewport } from '../hooks/useTaskViewport';
@@ -197,7 +198,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
         {queryField === 'deliverer' && canViewDeliveryAssignee(staff)
           ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
           : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
-        <div className="inventory-search-filters" role="group" aria-label="在庫フィルター">{INVENTORY_FILTER_GROUPS.map(group => <select key={group.field} aria-label={`${group.label}フィルター`} value={inventoryFilters[group.field] || ''} onChange={event => { setInventoryFilters(current => ({ ...current, [group.field]: event.target.value })); setFilter('all'); setExpandedId(null); setSelected(new Set()); }}><option value="">{group.label}：すべて</option>{group.values.map(value => <option key={value} value={value}>{value}</option>)}</select>)}</div>
+        <InventoryStateFilter value={inventoryFilters} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); setSelected(new Set()); }} />
       </div>
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>
