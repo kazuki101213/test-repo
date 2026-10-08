@@ -1,3 +1,4 @@
+import { workloadPeriod } from './workloadPeriod';
 import { getSupabase } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
@@ -124,19 +125,19 @@ export interface ItemFilter {
   purchasedTo?: string;
 }
 
-export type WorkloadMetric = '作業中' | '今月出荷' | '平均作業日数';
-export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'shipped_on'>;
+export type WorkloadMetric = '作業中' | '梱包済' | '出荷済' | '平均作業日数';
+export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'packed_on' | 'shipped_on'>;
 
 export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric): Promise<WorkloadItem[]> {
-  // Match v_deliverer_workload: row counts and the database's UTC calendar month.
-  const monthStart = new Date().toISOString().slice(0, 7) + '-01';
+  const { today, monthStart, averageStart } = workloadPeriod();
   return readAllRows<WorkloadItem>(async (from, to) => {
     let query = getSupabase().from('items')
-      .select('id,lot_seq,sku,title,status,marketplace,purchased_at,shipped_on')
-      .eq('deliverer_id', delivererId);
+      .select('id,lot_seq,sku,title,status,marketplace,purchased_at,packed_on,shipped_on')
+      .eq('deliverer_id', delivererId).eq('is_accessory', false);
     if (metric === '作業中') query = query.eq('status', '作業中');
-    else if (metric === '今月出荷') query = query.gte('shipped_on', monthStart);
-    else query = query.not('shipped_on', 'is', null).not('purchased_at', 'is', null);
+    else if (metric === '梱包済') query = query.gte('packed_on', monthStart).lte('packed_on', today);
+    else if (metric === '出荷済') query = query.gte('shipped_on', monthStart).lte('shipped_on', today);
+    else query = query.gte('packed_on', averageStart).lte('packed_on', today).not('purchased_at', 'is', null);
     const { data, error } = await query.order('lot_seq', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as WorkloadItem[];
