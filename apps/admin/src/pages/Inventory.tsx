@@ -76,7 +76,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [dismissingDraft, setDismissingDraft] = useState<string | null>(null);
   const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
   const [fullEditFor, setFullEditFor] = useState<InventoryItem | null>(null);
-  const [expandedComment, setExpandedComment] = useState<InventoryItem | null>(null);
+  const [expandedComment, setExpandedComment] = useState<{ sku: string; label: string; text: string } | null>(null);
   const [visibleCount, setVisibleCount] = useState(80);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const inventoryTopScrollRef = useRef<HTMLDivElement>(null);
@@ -133,7 +133,7 @@ export default function Inventory({ me }: { me: Staff }) {
     return () => observer.disconnect();
   }, [viewItems.length, visibleCount]);
   const trackingColumnWidth = items.reduce((width, item) => Math.max(width, Math.min(232, (Array.from(item.tracking_no ?? '').length) * 10 + 32)), 140);
-  const inventoryTableWidth = Math.max(2710, 2350 + trackingColumnWidth);
+  const inventoryTableWidth = Math.max(2890, 2530 + trackingColumnWidth);
   const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
     if (source && target && target.clientWidth > 0 && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
   };
@@ -239,7 +239,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 <th>{filterHeading('packed_on')}<br />{filterHeading('shipped_on')}</th><th>{filterHeading('planned_price')}<br />{filterHeading('planned_payout')}</th>
                 <th>{filterHeading('expected_profit')}<br />{filterHeading('expected_rate')}</th><th>{filterHeading('sold_on')}<br />{filterHeading('sold_days')}</th>
                 <th>{filterHeading('sold_price')}<br />{filterHeading('payout')}</th><th>{filterHeading('profit')}<br />{filterHeading('rate')}</th>
-                <th>{filterHeading('inventory_refund')}<br />{filterHeading('other_refund')}</th><th>{filterHeading('amazon_refund')}</th><th>{filterHeading('comment')}</th><th>{filterHeading('status')}<br />{filterHeading('registration')}</th>
+                <th>{filterHeading('inventory_refund')}<br />{filterHeading('other_refund')}</th><th>{filterHeading('amazon_refund')}</th><th>{filterHeading('purchaser_comment')}</th><th>{filterHeading('comment')}</th><th>{filterHeading('status')}<br />{filterHeading('registration')}</th>
               </tr>
             </thead>
             <tbody>
@@ -289,7 +289,8 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
                   <td>{stacked(yen(i.inventory_refund_amount), 'inventory_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td><button type="button" className="inventory-cell-edit" onClick={() => edit('amazon_refund_amount')} title="Amazon返金金額をクリックして編集">{yen(i.amazon_refund_amount)}</button></td>
-                  <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment(i)} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
+                  <td>{i.memo ? (() => { const chars = Array.from(i.memo); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment({ sku: i.sku, label: '仕入担当者からのコメント', text: i.memo! })} title="仕入担当者からのコメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
+                  <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment({ sku: i.sku, label: '納品担当者からのコメント', text: i.latest_comment! })} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
                   <td><div className="inventory-cell-stack inventory-sale-status"><span>{i.status || '—'}</span><span className="muted">{i.is_accessory ? '付属品' : '本体'}</span></div></td>
                 </tr>
               ); })}
@@ -309,7 +310,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
       {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
       {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} canDelete={me.role === 'admin'} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}
-      {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} のコメント</h3><p>{expandedComment.latest_comment}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
+      {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} {expandedComment.label}</h3><p>{expandedComment.text}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
     </div>
   );
 }

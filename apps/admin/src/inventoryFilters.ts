@@ -39,6 +39,7 @@ export const inventoryColumns: Record<string, InventoryColumn> = {
   inventory_refund: { label: '在庫の払い戻し', kind: 'number', value: i => i.inventory_refund_amount },
   other_refund: { label: 'Amazon以外からの返金', kind: 'number', value: i => i.non_amazon_refund_amount },
   amazon_refund: { label: 'Amazon返金金額', kind: 'number', value: i => i.amazon_refund_amount },
+  purchaser_comment: { label: '仕入担当者からのコメント', value: i => i.memo },
   comment: { label: '納品担当者からのコメント', value: i => i.latest_comment },
   status: { label: '販売状態', value: i => i.status },
   registration: { label: '登録区分', value: i => i.is_accessory ? '付属品' : '本体' },

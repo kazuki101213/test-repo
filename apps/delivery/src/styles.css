@@ -283,3 +283,5 @@ textarea { min-height: 80px; resize: vertical; }
 .spare-shipping-reference { font-size: 12px; color: var(--muted, #666); }
 .spare-shipping-confirmation { display: flex; align-items: flex-start; gap: 8px; }
 .spare-shipping-confirmation input { width: auto; flex: none; margin-top: 3px; }
+
+.task-card-info > .purchaser-comment, .task-member-row > .purchaser-comment { white-space: pre-wrap; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }

@@ -208,9 +208,9 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setPurchaserId(current => source.purchaser_id ?? current);
       setDelivererId(current => source.deliverer_id ?? current);
       setWorkStream(source.work_stream ?? '');
-      setPurchasedAt(source.purchased_at ?? today());
+      if (isWorkingAmazonReturn) setPurchasedAt(source.purchased_at ?? today());
       setTitle(isWorkingAmazonReturn ? source.model_no || '' : source.title);
-      setCost(source.cost_amount);
+      setCost(isAmazonReturn ? 0 : source.cost_amount);
       setProductId(isWorkingAmazonReturn ? '' : source.product_id ?? '');
       setProductSearch(isWorkingAmazonReturn ? '' : source.model_no || source.title);
       setAsin(source.asin ?? '');
@@ -218,10 +218,10 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setPlannedPrice(source.planned_price ?? '');
       setPlannedPayout(source.planned_payout ?? '');
       setSalesChannel(source.sales_channel ?? 'FBA');
-      setMarketplaceItemId(isWorkingAmazonReturn ? source.marketplace_item_id ?? '' : '');
+      setMarketplaceItemId(source.marketplace_item_id ?? '');
       setTrackingNo('');
       setCardId('');
-      setUrlOverride(null);
+      setUrlOverride(source.marketplace_url ?? null);
       setReturnLookup(isWorkingAmazonReturn
         ? `元商品 ${source.original_sku} の情報を反映しました。新しいSKU: ${specialSku}（通番号の直後にb）`
         : `元商品 ${source.original_sku} の情報を反映しました。新しい返品SKU: ${source.sku}`);

@@ -1,0 +1,9 @@
+const fs=require('fs'),ts=require('typescript'),vm=require('vm'),assert=require('node:assert/strict');
+const jsx=(type,props)=>({type,props}), shared={jpDate:v=>v,yen:v=>v,canViewDeliveryAssignee:s=>s.code==='AA',productModelText:t=>t.title};
+const mod={exports:{},require:n=>n==='react'?{useState:v=>[v,()=>{}]}:n==='react/jsx-runtime'?{jsx,jsxs:jsx}:n==='@bussan/shared'?shared:{default:'component'}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/delivery/src/components/TaskCard.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,mod);
+function all(n,out=[]){if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);}return out;}
+const task={id:'body',sku:'2392-test',title:'model',purchased_at:'2026-10-01',memo:'購入者のコメント\n改行あり',deliverer_name:'MM',is_accessory:false},member={...task,id:'other',memo:'付属品のコメント',is_accessory:true};
+for(const code of ['AA','MM']){const nodes=all(mod.exports.default({task,members:[task,member],originalMarketplaceIds:new Map(),staff:{code},unreadItemIds:new Set()}));const comments=nodes.filter(n=>n.props?.className==='purchaser-comment');assert.equal(comments.length,2);assert.equal(comments[0].props.children[1],task.memo);assert.equal(comments[1].props.children[1],member.memo);if(code==='AA'){const assignee=nodes.findIndex(n=>n.type==='span'&&Array.isArray(n.props.children)&&n.props.children[0]==='納品担当者 ');assert.equal(nodes[assignee+1],comments[0]);}}
+const blank=all(mod.exports.default({task:{...task,memo:' '},members:[{...task,memo:' '}],originalMarketplaceIds:new Map(),staff:{code:'MM'},unreadItemIds:new Set()}));assert(!blank.some(n=>n.props?.className==='purchaser-comment'));
+console.log('AA/general staff comment display, assignee placement, per-item source and blank comments passed');
