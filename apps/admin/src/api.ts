@@ -1,3 +1,4 @@
+import { purchaseItemUrl } from './purchaseUrl';
 import { workloadPeriod } from './workloadPeriod';
 import { getSupabase, usageRecordText } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
@@ -50,7 +51,7 @@ export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemV
 
 export type AmazonReturnSource = Pick<ItemInsert,
   'purchaser_id' | 'deliverer_id' | 'work_stream' | 'purchased_at' | 'title' | 'cost_amount' |
-  'product_id' | 'asin' | 'condition' | 'planned_price' | 'planned_payout' | 'sales_channel' | 'marketplace_item_id'
+  'product_id' | 'asin' | 'condition' | 'planned_price' | 'planned_payout' | 'sales_channel' | 'marketplace_item_id' | 'marketplace_url'
 > & { original_sku: string; sku: string; model_no: string | null };
 
 export async function findInventoryForAmazonReturn(lotSeq: number): Promise<AmazonReturnSource | null> {
@@ -65,7 +66,7 @@ export async function findInventoryForAmazonReturn(lotSeq: number): Promise<Amaz
   const source = rows.find(row => rootSku.test(row.sku)) ?? rows[0];
   if (!source) return null;
   const { data: reference, error: referenceError } = await getSupabase()
-    .from('items').select('marketplace_item_id').eq('id', source.id).maybeSingle();
+    .from('items').select('marketplace_item_id,marketplace_url,marketplace').eq('id', source.id).maybeSingle();
   if (referenceError) throw referenceError;
   const nextSuffixLength = Math.max(0, ...rows.map(row => {
     const match = row.sku.match(/^\d+([a-z]*)-/i);
@@ -74,6 +75,7 @@ export async function findInventoryForAmazonReturn(lotSeq: number): Promise<Amaz
   return {
     ...source,
     marketplace_item_id: reference?.marketplace_item_id ?? null,
+    marketplace_url: purchaseItemUrl(reference?.marketplace ?? null, reference?.marketplace_item_id ?? null, reference?.marketplace_url ?? null),
     original_sku: source.sku,
     sku: source.sku.replace(/^\d+[a-z]*(?=-)/i, `${lotSeq}${'a'.repeat(nextSuffixLength)}`),
   };

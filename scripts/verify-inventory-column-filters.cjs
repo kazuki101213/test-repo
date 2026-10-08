@@ -4,7 +4,7 @@ const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventor
 const shared={productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['作業中','販売済'],CONDITIONS:[],MARKETPLACES:[],SALES_CHANNELS:[],jpDate:s=>s||'—',yen:n=>String(n??'—')};
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
 const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);
-const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',status:'作業中',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
+const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',memo:'購入者コメント\n続き',latest_comment:'納品者コメント',status:'作業中',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
 const rows=[row,{...row,id:'2',sku:'2204-AAII-20260901-123',is_accessory:true,title:'remote',cost_amount:1230,sold_price:200,payout_amount:150,product_sold_price:9999,product_payout_amount:8888},{...row,id:'3',sku:'2277b-AAII-20261007-100',lot_seq:2277,cost_amount:2000,amazon_refund_amount:0,purchased_at:null}];
 const f=(values=null,from='',to='')=>({values,from,to});const apply=filters.exports.filterInventoryColumns;
 assert.equal(apply(rows,{amazon_refund:f(null,'-2000','-1')}).length,2);
@@ -15,7 +15,7 @@ assert.equal(apply(rows,{purchased_at:f([''])}).length,1);
 assert.equal(apply(rows,{status:f([])}).length,0);
 assert.equal(apply(rows,{}),rows);
 assert.equal(apply(Array.from({length:1001},(_,i)=>({...row,id:String(i),sku:`${i}-AAII-20261007-100`,lot_seq:i})),{serial:f(['1000'])}).length,1);
-assert.equal(Object.keys(filters.exports.inventoryColumns).length,33);
+assert.equal(Object.keys(filters.exports.inventoryColumns).length,34);
 const accessory=rows[1];
 assert.equal(filters.exports.inventoryColumns.sold_price.value(accessory),200);
 assert.equal(filters.exports.inventoryColumns.payout.value(accessory),150);
@@ -38,6 +38,12 @@ async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.re
 function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)){n.forEach(v=>all(v,out));return out;}out.push(n);all(n.props?.children,out);return out;}
 (async()=>{
  await settle();
+ const commentHeadings=all(tree).filter(n=>n.type==='button'&&['仕入担当者からのコメントのフィルター','納品担当者からのコメントのフィルター'].includes(n.props['aria-label']));assert.equal(commentHeadings[0].props['aria-label'],'仕入担当者からのコメントのフィルター');
+ const commentButtons=all(tree).filter(n=>n.type==='button'&&n.props.className==='inventory-comment');assert.equal(commentButtons.length,6);
+ commentButtons[0].props.onClick();await settle();assert(all(tree).some(n=>n.type==='p'&&n.props.children===row.memo));
+ all(tree).find(n=>n.type==='button'&&n.props.children==='閉じる').props.onClick();await settle();
+ commentButtons[1].props.onClick();await settle();assert(all(tree).some(n=>n.type==='p'&&n.props.children===row.latest_comment));
+ all(tree).find(n=>n.type==='button'&&n.props.children==='閉じる').props.onClick();await settle();
  const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');
  assert.equal(selector().props.value,'serial');
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>n.props.children),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
@@ -65,5 +71,5 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert.equal(lastRequest.queryField,'serial');assert.equal(selector().props.value,'serial');
  assert.equal(lastRequest.query,undefined);assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds,undefined);assert.equal(lastRequest.purchasedFrom,'');assert.equal(lastRequest.purchasedTo,'');
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
- console.log('33 headings, combined filters, signed ranges, dates, empty values, all fetched rows, zero-match recovery and clear-all UI passed');
+ console.log('34 headings, combined filters, signed ranges, dates, empty values, all fetched rows, zero-match recovery and clear-all UI passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

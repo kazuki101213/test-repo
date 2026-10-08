@@ -169,7 +169,8 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .inventory-table th:nth-child(3) { width: 190px; }
 .inventory-table th:nth-child(5) { width: var(--tracking-column-width, 360px); }
 .inventory-table th:nth-child(16) { width: 180px; }
-.inventory-table th:nth-child(17) { width: 160px; }
+.inventory-table th:nth-child(17) { width: 180px; }
+.inventory-table th:nth-child(18) { width: 160px; }
 .inventory-table tr[data-lot] > td { height: 64px; max-height: 64px; overflow: hidden; vertical-align: middle; }
 .inventory-cell-edit, .inventory-comment { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
 .inventory-cell-stack { min-width: 0; }
@@ -398,3 +399,5 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .spare-shipping-reference { font-size: 12px; color: var(--muted, #666); }
 .spare-shipping-confirmation { display: flex; align-items: flex-start; gap: 8px; }
 .spare-shipping-confirmation input { width: auto; flex: none; margin-top: 3px; }
+
+.inventory-comment-panel > p { white-space: pre-wrap; }
