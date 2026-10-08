@@ -3,6 +3,7 @@ import type { DeliveryTask, Staff } from '@bussan/shared';
 import { canViewDeliveryAssignee, staffDisplayName } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import { downloadTsv } from '../csv';
+import { deliveryErrorMessage } from '../errors';
 import TaskCard from '../components/TaskCard';
 import SpareShippingTasks from '../components/SpareShippingTasks';
 import { useTaskViewport } from '../hooks/useTaskViewport';
@@ -76,7 +77,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       const cleaned = chosen.map(({ item_id: _id, status: _status, deliverer_id: _deliverer, ...rest }) => rest);
       if (!cleaned.length) throw new Error('出品対象（写真登録まで完了した商品）がありません。');
       downloadTsv(`amazon-listing-${new Date().toISOString().slice(0, 10)}.txt`, cleaned);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setError(deliveryErrorMessage(e)); }
     finally { setExporting(false); }
   }
 
@@ -90,10 +91,10 @@ export default function TaskList({ staff }: { staff: Staff }) {
           const latestNotices = await fetchDeliveryItemNotices();
           if (active) { setNotices(latestNotices); setReplyTaskError(null); }
         } catch (replyError) {
-          if (active) setReplyTaskError(replyError instanceof Error ? replyError.message : String(replyError));
+          if (active) setReplyTaskError(deliveryErrorMessage(replyError));
         }
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : String(e));
+        if (active) setError(deliveryErrorMessage(e));
       } finally {
         if (active && initial) setLoading(false);
       }
@@ -111,7 +112,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     };
   }, []);
   useEffect(() => {
-    if (staff.role === 'admin') void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(e instanceof Error ? e.message : String(e)));
+    if (staff.role === 'admin') void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(deliveryErrorMessage(e)));
   }, [staff.role]);
 
   const shown = useMemo(() => {
@@ -165,7 +166,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
         return next.reply_at || next.photo_at ? [next] : [];
       }));
       setReplyTaskError(null);
-    }).catch(cause => setReplyTaskError(cause instanceof Error ? cause.message : String(cause)))
+    }).catch(cause => setReplyTaskError(deliveryErrorMessage(cause)))
       .finally(() => openingReads.current.delete(itemId));
   }, []);
   const malfunctionTasks = canViewDeliveryAssignee(staff)
