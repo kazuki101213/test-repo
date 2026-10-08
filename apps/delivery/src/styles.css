@@ -285,3 +285,9 @@ textarea { min-height: 80px; resize: vertical; }
 .spare-shipping-confirmation input { width: auto; flex: none; margin-top: 3px; }
 
 .task-card-info > .purchaser-comment, .task-member-row > .purchaser-comment { white-space: pre-wrap; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
+
+.inventory-search-filters { display:flex; flex-wrap:wrap; gap:8px; min-width:0; max-width:100%; }
+.inventory-search-filters select { width:auto; max-width:100%; }
+
+.delivery-inventory-search { flex-wrap:wrap; }
+.delivery-inventory-search input { flex:1 1 160px; }

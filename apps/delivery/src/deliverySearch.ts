@@ -8,14 +8,12 @@ export const deliverySearchFields = [
   { value: 'asin', label: 'ASIN' },
   { value: 'marketplace_item_id', label: '商品ID' },
   { value: 'tracking_no', label: '追跡番号' },
-  { value: 'state', label: '状態' },
 ] as const;
 export type DeliverySearchField = typeof deliverySearchFields[number]['value'];
 export const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
 
 /** Search the same model and product ID that the delivery card displays. */
 export function deliverySearchValue(task: DeliveryTask, field: DeliverySearchField, originalIds: Map<string, string>): string {
-  if (field === 'state') return '';
   if (field === 'serial') return task.sku.match(/^(\d+[a-z]*)-/i)?.[1] ?? String(task.lot_seq ?? '');
   if (field === 'model') return productModelText(task);
   if (field === 'marketplace_item_id') return (task.marketplace === '動作品Amazon返品'

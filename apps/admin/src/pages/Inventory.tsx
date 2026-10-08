@@ -1,8 +1,8 @@
 import { staffDisplayName, productModelText, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, STATE_SEARCH_GROUPS } from '@bussan/shared';
-import type { PurchaseDraft, Staff } from '@bussan/shared';
+import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, INVENTORY_FILTER_GROUPS, matchesInventoryFilters } from '@bussan/shared';
+import type { PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchItems, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
@@ -57,12 +57,14 @@ export default function Inventory({ me }: { me: Staff }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
+  const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
+  const hasInventoryFilters = Object.values(inventoryFilters).some(Boolean);
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
   const [openColumn, setOpenColumn] = useState<{ field: string; anchor: HTMLElement } | null>(null);
   const closeColumn = useCallback(() => setOpenColumn(null), []);
-  const viewItems = useMemo(() => filterInventoryColumns(items, columnFilters), [items, columnFilters]);
+  const viewItems = useMemo(() => filterInventoryColumns(items.filter(item => matchesInventoryFilters(item, inventoryFilters)), columnFilters), [items, columnFilters, inventoryFilters]);
   const activeColumnCount = Object.values(columnFilters).filter(isColumnFilterActive).length;
   const [count, setCount] = useState(0);
   const request = useRef(0);
@@ -147,7 +149,7 @@ export default function Inventory({ me }: { me: Staff }) {
   }
 
   function clearFilters() {
-    setColumnFilters({}); setOpenColumn(null); setQueryField('serial');
+    setInventoryFilters({}); setColumnFilters({}); setOpenColumn(null); setQueryField('serial');
     setQuery(''); setPurchasedFrom(''); setPurchasedTo('');
   }
   const filterHeading = (field: string) => <button type="button" className={`inventory-column-heading${isColumnFilterActive(columnFilters[field]) ? ' active' : ''}`}
@@ -175,11 +177,9 @@ export default function Inventory({ me }: { me: Staff }) {
           <select aria-label="検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as InventorySearchField); setQuery(''); }}>
             {inventorySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
           </select>
-          {queryField === 'state'
-            ? <select aria-label="状態で検索" value={query} onChange={event => setQuery(event.target.value)}><option value="">すべて</option>{STATE_SEARCH_GROUPS.map(group => <optgroup key={group.field} label={group.label}>{group.values.map(value => <option key={value} value={`${group.field}:${value}`}>{group.label}：{value}</option>)}</optgroup>)}</select>
-            : <input type="search" placeholder="検索"
-            value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />}
+          <input type="search" placeholder="検索" value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
         </div>
+        <div className="inventory-search-filters" role="group" aria-label="在庫フィルター">{INVENTORY_FILTER_GROUPS.map(group => <select key={group.field} aria-label={`${group.label}フィルター`} value={inventoryFilters[group.field] || ''} onChange={event => setInventoryFilters(current => ({ ...current, [group.field]: event.target.value }))}><option value="">{group.label}：すべて</option>{group.values.map(value => <option key={value} value={value}>{value}</option>)}</select>)}</div>
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field" data-empty={!purchasedFrom}>
             <input type="date" aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
@@ -220,7 +220,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
-      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? '読み込み中…' : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
+      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? '読み込み中…' : `${(activeColumnCount || hasInventoryFilters ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
 
       {error && <div className="error">{error}</div>}
       {loading && <div className="empty">読み込み中…</div>}
@@ -301,7 +301,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </div>
         </>
       )}
-      {!loading && items.length > 0 && viewItems.length === 0 && <p className="empty" role="status">フィルターに一致する在庫はありません。項目名から条件を変更するか、すべて解除してください。</p>}
+      {!loading && items.length > 0 && viewItems.length === 0 && <p className="empty" role="status">フィルターに一致する在庫はありません。フィルターの条件を変更するか、すべて解除してください。</p>}
       {visibleCount < viewItems.length && <div ref={loadMoreRef} className="toolbar"><button className="btn" onClick={() => setVisibleCount(current => Math.min(current + 80, viewItems.length))}>さらに表示</button></div>}
       </section>
       {openColumn && <InventoryColumnFilter key={openColumn.field} field={openColumn.field} anchor={openColumn.anchor} items={items} current={columnFilters[openColumn.field]} onClose={closeColumn} onApply={filter => {

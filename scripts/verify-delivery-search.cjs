@@ -8,7 +8,7 @@ const collision={...task,id:'other',sku:'100-AAII-20261007-1',lot_seq:100,title:
 const ids=new Map();
 const matches=(row,field,query)=>normalizeSearch(deliverySearchValue(row,field,ids)).includes(normalizeSearch(query));
 const checks=[['serial',' ２１９８ＡＡ '],['sku',task.sku.toLowerCase()],['model','bdz-fbw1000'],['asin','b07wzk3rjr'],['marketplace_item_id','ena998'],['tracking_no','x001track']];
-assert.deepEqual(Array.from(deliverySearchFields,f=>f.label),['通番号','SKU','型番','ASIN','商品ID','追跡番号','状態']);
+assert.deepEqual(Array.from(deliverySearchFields,f=>f.label),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
 for(const [field,query] of checks){assert(matches(task,field,query));assert(!matches(collision,field,query),'Other fields must not match '+field);}
 assert.equal(deliverySearchValue({...task,model_no:null},'model',ids),'未登録');assert(!matches({...task,model_no:null},'model','X000FNSKU'));
 ids.set(task.id,'ORIGINAL-ID');assert.equal(deliverySearchValue(task,'marketplace_item_id',ids),'ENA998');

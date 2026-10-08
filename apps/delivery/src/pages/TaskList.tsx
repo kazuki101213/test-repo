@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DeliveryTask, Staff } from '@bussan/shared';
-import { canViewDeliveryAssignee, staffDisplayName, STATE_SEARCH_GROUPS, matchesStateSearch } from '@bussan/shared';
+import type { DeliveryTask, Staff, InventoryFilters } from '@bussan/shared';
+import { canViewDeliveryAssignee, staffDisplayName, INVENTORY_FILTER_GROUPS, matchesInventoryFilters } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import { downloadTsv } from '../csv';
 import { deliveryErrorMessage } from '../errors';
@@ -41,6 +41,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [filter, setFilter] = useState<Filter>(() => staff.name === '長部一輝' ? 'all' : 'working');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
+  const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
   const [queryField, setQueryField] = useState<DeliverySearchField | 'deliverer'>('serial');
   const [error, setError] = useState<string | null>(null);
   const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
@@ -62,7 +63,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     if (!item) return;
     deepLinkHandled.current = true;
     setFilter('all');
-    setQueryField('sku');
+    setInventoryFilters({}); setQueryField('sku');
     setQuery(item.sku);
     setExpandedId(item.id);
     if (staff.role === 'admin' && item.deliverer_id) setDelivererId(item.deliverer_id);
@@ -137,7 +138,8 @@ export default function TaskList({ staff }: { staff: Staff }) {
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
-      if (queryField !== 'deliverer' && q && !members.some(member => (queryField === 'state' ? matchesStateSearch(member, query) : normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q)))) return false;
+      if (queryField !== 'deliverer' && q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
+      if (!members.some(member => matchesInventoryFilters(member, inventoryFilters))) return false;
       const active = t.status === '作業中';
       switch (filter) {
         case 'working': return active && t.shipped_on === null;
@@ -149,7 +151,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       }
     });
     return { rows, originalIds };
-  }, [tasks, filter, query, queryField, staff.role, delivererId]);
+  }, [tasks, filter, query, queryField, staff.role, delivererId, inventoryFilters]);
   const shownRows = shown.rows;
   const noticeRef = useRef(notices);
   noticeRef.current = notices;
@@ -175,6 +177,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const visibleNotices = notices.filter(notice => taskById.has(notice.item_id));
   const unreadItemIds = new Set(notices.filter(notice => notice.reply_at || notice.photo_at).map(notice => notice.item_id));
   function openReplyTask(task: DeliveryTask) {
+    setInventoryFilters({});
     setFilter('all');
     setQueryField('sku');
     setQuery(task.sku);
@@ -193,9 +196,8 @@ export default function TaskList({ staff }: { staff: Staff }) {
         </select>
         {queryField === 'deliverer' && canViewDeliveryAssignee(staff)
           ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setExpandedId(null); setSelected(new Set()); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
-          : queryField === 'state'
-            ? <select aria-label="状態で検索" value={query} onChange={event => { setQuery(event.target.value); setFilter('all'); setExpandedId(null); setSelected(new Set()); }}><option value="">すべて</option>{STATE_SEARCH_GROUPS.map(group => <optgroup key={group.field} label={group.label}>{group.values.map(value => <option key={value} value={`${group.field}:${value}`}>{group.label}：{value}</option>)}</optgroup>)}</select>
           : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
+        <div className="inventory-search-filters" role="group" aria-label="在庫フィルター">{INVENTORY_FILTER_GROUPS.map(group => <select key={group.field} aria-label={`${group.label}フィルター`} value={inventoryFilters[group.field] || ''} onChange={event => { setInventoryFilters(current => ({ ...current, [group.field]: event.target.value })); setFilter('all'); setExpandedId(null); setSelected(new Set()); }}><option value="">{group.label}：すべて</option>{group.values.map(value => <option key={value} value={value}>{value}</option>)}</select>)}</div>
       </div>
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>
