@@ -23,7 +23,6 @@ export const STATUSES: ItemStatus[] = [
 
 export const STATUS_COLORS: Record<ItemStatus, string> = {
   作業中: '#fbbf24',
-  出荷済: '#a78bfa',
   出品中: '#34d399',
   販売済: '#22c55e',
   返品処理: '#f87171',

@@ -52,10 +52,10 @@ select sku, title, status, purchased_at from app.v_delivery_tasks order by sku;
 
 \echo '--- [3] 自分の担当分は作業チェックできる ---'
 select sku, status, purchased_at, product_registered_at is not null as registered
-from app.set_work_progress(
-  (select id from app.items where title = 'DMR-BRZ1020'), 'inspected', true);
-select sku, status from app.set_work_progress(
-  (select id from app.items where title = 'DMR-BRZ1020'), 'registered', true);
+from app.set_delivery_progress(
+  (select id from app.items where title = 'DMR-BRZ1020'), 'inspection_cleaning', true);
+select sku, status from app.set_delivery_progress(
+  (select id from app.items where title = 'DMR-BRZ1020'), 'listing', true);
 
 \echo '--- [4] 他人の担当分は更新できない（エラーになるのが正しい） ---'
 -- 管理者として他人の商品の id を控えてから、納品担当者に戻って試す
@@ -67,7 +67,7 @@ declare v_id uuid;
 begin
   select id into v_id from other_item;
   begin
-    perform app.set_work_progress(v_id, 'inspected', true);
+    perform app.set_delivery_progress(v_id, 'inspection_cleaning', true);
     raise exception 'FAIL: 他人の商品を更新できてしまった';
   exception
     when insufficient_privilege then raise notice 'OK: 担当外は 42501 でブロックされた';
@@ -129,7 +129,7 @@ end $$;
 select sku, status from app.v_delivery_tasks where sku = '2402a-DD-20260801-0';
 
 -- 再出荷したら通常の流れに戻る
-select sku, status from app.set_work_progress(
+select sku, status from app.set_delivery_progress(
   (select id from app.items where sku = '2402a-DD-20260801-0'), 'shipped', true);
 
 do $$

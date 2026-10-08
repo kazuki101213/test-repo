@@ -4,7 +4,7 @@ import { WORK_STEPS, jpDate, canViewDeliveryAssignee, staffDisplayName } from '@
 import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
 import {
   addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
-  queueMarketplaceMessage, requestMarketplaceMessageSync, reportItemMalfunction, setDeliveryProgress, setWorkProgress, uploadPhoto,
+  queueMarketplaceMessage, requestMarketplaceMessageSync, reportItemMalfunction, setDeliveryProgress, recordListingPhotoUpload, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
@@ -12,11 +12,7 @@ import DescriptionEditor from '../components/DescriptionEditor';
 function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
   switch (step) {
     case 'inspection_cleaning': return task.inspected && task.cleaned;
-    case 'registered': return task.product_registered;
-    case 'inspected':  return task.inspected;
-    case 'cleaned':    return task.cleaned;
     case 'listing':    return task.product_registered && (task.marketplace === '動作品Amazon返品' || task.photo_uploaded);
-    case 'photo':      return task.photo_uploaded;
     case 'packed':     return task.packed_on !== null;
     case 'shipped':    return task.shipped_on !== null;
   }
@@ -109,7 +105,7 @@ export default function TaskDetail({
         const date = step === 'packed' ? task.packed_on : step === 'shipped' ? task.shipped_on : null;
         const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
         await setDeliveryProgress(task.id, step, !isStepDone(task, step), date ?? today);
-      } else await setWorkProgress(task.id, step, !isStepDone(task, step));
+      }
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -137,7 +133,6 @@ export default function TaskDetail({
         uploadedCount++;
       }
       setDriveMessage('新しい写真があります。Googleドライブ追加してください。');
-      if (!task.photo_uploaded) await setWorkProgress(task.id, 'photo', true);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setError(/Failed to fetch|NetworkError|Load failed/i.test(message)
@@ -145,7 +140,11 @@ export default function TaskDetail({
         : message);
     } finally {
       // Reflect successfully saved photos even if a later progress update failed.
-      if (uploadedCount > 0) await reload();
+      if (uploadedCount > 0) {
+        try { if (!task.photo_uploaded) await recordListingPhotoUpload(task.id); }
+        catch (cause) { setError(current => current ?? (cause instanceof Error ? cause.message : String(cause))); }
+        await reload();
+      }
       setUploading(false);
     }
   }
