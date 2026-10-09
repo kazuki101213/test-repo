@@ -4,12 +4,12 @@ alter table app.items
 
 create index if not exists items_parent_item_id_idx on app.items(parent_item_id);
 
+
 create or replace function app.is_standalone_accessory_serial(p_sku text, p_lot_seq integer)
 returns boolean
 language sql immutable set search_path=''
 as $
-  select coalesce(app.product_serial(p_sku,p_lot_seq) ~* 'c
-create or replace function app.accessory_sku_for_parent(p_parent_sku text, p_accessory_sku text)
+  select coalesce(app.product_serial(p_sku,p_lot_seq) ~* 'c(p_parent_sku text, p_accessory_sku text)
 returns text
 language plpgsql immutable set search_path=''
 as $$
@@ -208,7 +208,6 @@ begin
       status = new.status,
       packed_on = new.packed_on,
       shipped_on = new.shipped_on,
-      returned_on = new.returned_on,
       sales_channel = new.sales_channel,
       condition = new.condition,
       sold_on = new.sold_on,
@@ -260,7 +259,6 @@ begin
     status = new.status,
     packed_on = new.packed_on,
     shipped_on = new.shipped_on,
-    returned_on = new.returned_on,
     sales_channel = new.sales_channel,
     condition = new.condition,
     sold_on = new.sold_on,
@@ -276,7 +274,6 @@ begin
   new.status := parent.status;
   new.packed_on := parent.packed_on;
   new.shipped_on := parent.shipped_on;
-  new.returned_on := parent.returned_on;
   new.sales_channel := parent.sales_channel;
   new.condition := parent.condition;
   new.sold_on := parent.sold_on;
@@ -291,7 +288,7 @@ $$;
 
 drop trigger if exists items_redirect_accessory_shared_edits on app.items;
 create trigger items_redirect_accessory_shared_edits
-  before update of status,packed_on,shipped_on,returned_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
+  before update of status,packed_on,shipped_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
   on app.items for each row execute function app.redirect_accessory_shared_edits();
 
 drop trigger if exists items_sync_accessory_sale_date on app.items;
@@ -399,13 +396,9 @@ declare serial_key text;
 begin
   if tg_op='UPDATE' and new.sold_on is not distinct from old.sold_on
     and new.sold_price is not distinct from old.sold_price
-    and new.payout_amount is not distinct from old.payout_amount then
-    return new;
-  end if;
+    and new.payout_amount is not distinct from old.payout_amount then return new; end if;
   if new.sold_on is null then return new; end if;
-  if new.is_accessory and app.is_standalone_accessory_serial(new.sku,new.lot_seq) then
-    return new;
-  end if;
+  if new.is_accessory and app.is_standalone_accessory_serial(new.sku,new.lot_seq) then return new; end if;
   if new.is_accessory and coalesce(new.sold_price,0)=0 and coalesce(new.payout_amount,0)=0 then return new; end if;
   serial_key:=app.product_serial(new.sku,new.lot_seq);
   perform pg_advisory_xact_lock(hashtextextended(serial_key,179049));
@@ -463,7 +456,6 @@ begin
    'title',title,'quantity',1,'unit_price',unit_price,'amount',unit_price
  ) order by purchased_at nulls last,lot_seq,id),'[]'::jsonb),
  count(*)*p.unit_price into lines,subtotal from selected;
- -- Recalculate subtotal from line amounts so C rows use half price.
  select coalesce(sum((value->>'amount')::bigint),0) into subtotal from jsonb_array_elements(lines);
  return jsonb_build_object('profile',p.details,'lines',lines,'subtotal',subtotal,'tax_percent',p.tax_percent);
 end $;
@@ -473,7 +465,6 @@ grant execute on function app.prepare_delivery_invoice(uuid,date) to authenticat
 notify pgrst, 'reload schema';
 , false)
 $;
-
 
 create or replace function app.accessory_sku_for_parent(p_parent_sku text, p_accessory_sku text)
 returns text
@@ -673,7 +664,6 @@ begin
       status = new.status,
       packed_on = new.packed_on,
       shipped_on = new.shipped_on,
-      returned_on = new.returned_on,
       sales_channel = new.sales_channel,
       condition = new.condition,
       sold_on = new.sold_on,
@@ -724,7 +714,6 @@ begin
     status = new.status,
     packed_on = new.packed_on,
     shipped_on = new.shipped_on,
-    returned_on = new.returned_on,
     sales_channel = new.sales_channel,
     condition = new.condition,
     sold_on = new.sold_on,
@@ -740,7 +729,6 @@ begin
   new.status := parent.status;
   new.packed_on := parent.packed_on;
   new.shipped_on := parent.shipped_on;
-  new.returned_on := parent.returned_on;
   new.sales_channel := parent.sales_channel;
   new.condition := parent.condition;
   new.sold_on := parent.sold_on;
@@ -755,7 +743,7 @@ $$;
 
 drop trigger if exists items_redirect_accessory_shared_edits on app.items;
 create trigger items_redirect_accessory_shared_edits
-  before update of status,packed_on,shipped_on,returned_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
+  before update of status,packed_on,shipped_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
   on app.items for each row execute function app.redirect_accessory_shared_edits();
 
 drop trigger if exists items_sync_accessory_sale_date on app.items;
