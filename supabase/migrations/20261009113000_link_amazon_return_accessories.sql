@@ -202,6 +202,7 @@ begin
       status = new.status,
       packed_on = new.packed_on,
       shipped_on = new.shipped_on,
+      returned_on = new.returned_on,
       sales_channel = new.sales_channel,
       condition = new.condition,
       sold_on = new.sold_on,
@@ -252,6 +253,7 @@ begin
     status = new.status,
     packed_on = new.packed_on,
     shipped_on = new.shipped_on,
+    returned_on = new.returned_on,
     sales_channel = new.sales_channel,
     condition = new.condition,
     sold_on = new.sold_on,
@@ -267,6 +269,7 @@ begin
   new.status := parent.status;
   new.packed_on := parent.packed_on;
   new.shipped_on := parent.shipped_on;
+  new.returned_on := parent.returned_on;
   new.sales_channel := parent.sales_channel;
   new.condition := parent.condition;
   new.sold_on := parent.sold_on;
@@ -281,7 +284,7 @@ $$;
 
 drop trigger if exists items_redirect_accessory_shared_edits on app.items;
 create trigger items_redirect_accessory_shared_edits
-  before update of status,packed_on,shipped_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
+  before update of status,packed_on,shipped_on,returned_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
   on app.items for each row execute function app.redirect_accessory_shared_edits();
 
 drop trigger if exists items_sync_accessory_sale_date on app.items;
