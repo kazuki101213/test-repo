@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getSupabase, yen } from '@bussan/shared';
+import { getSupabase, normalizeSearchText, yen } from '@bussan/shared';
 
 type Row = {
   order_item_id: string;
@@ -110,11 +110,12 @@ export default function AmazonOrderHistory() {
     for (const row of eligible) result[row.reconciliation_status] = (result[row.reconciliation_status] ?? 0) + 1;
     return result;
   }, [rows]);
+  const searchNeedle = normalizeSearchText(search);
   const filtered = rows.filter(row => {
     if (status === '要確認' && ['対象外', '一致', '日付差'].includes(row.reconciliation_status)) return false;
     if (status !== '要確認' && status && row.reconciliation_status !== status) return false;
     if (month && !row.order_on.startsWith(month)) return false;
-    if (search && !(row.sku ?? '').toLowerCase().includes(search.toLowerCase()) && !(row.canonical_sku ?? '').toLowerCase().includes(search.toLowerCase())) return false;
+    if (searchNeedle && !normalizeSearchText(row.sku).includes(searchNeedle) && !normalizeSearchText(row.canonical_sku).includes(searchNeedle)) return false;
     return true;
   });
   const first = batches[0]?.starts_on;

@@ -10,7 +10,7 @@ export const deliverySearchFields = [
   { value: 'tracking_no', label: '追跡番号' },
 ] as const;
 export type DeliverySearchField = typeof deliverySearchFields[number]['value'];
-export const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
+export const normalizeSearch = (value: string | null | undefined) => (value ?? '').normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
 
 /** Search the same model and product ID that the delivery card displays. */
 export function deliverySearchValue(task: DeliveryTask, field: DeliverySearchField, originalIds: Map<string, string>): string {
