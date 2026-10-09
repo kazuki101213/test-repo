@@ -20,3 +20,11 @@ export function deliverySearchValue(task: DeliveryTask, field: DeliverySearchFie
     ? task.marketplace_item_id : originalIds.get(task.id) || task.marketplace_item_id) ?? '';
   return task[field] ?? '';
 }
+
+/** 通番号だけは部分一致による別商品の混入を避け、完全一致で検索する。 */
+export function matchesDeliverySearch(value: string, field: DeliverySearchField, query: string): boolean {
+  const candidate = normalizeSearch(value);
+  const needle = normalizeSearch(query);
+  if (!needle) return true;
+  return field === 'serial' ? candidate === needle : candidate.includes(needle);
+}
