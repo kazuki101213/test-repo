@@ -296,3 +296,8 @@ textarea { min-height: 80px; resize: vertical; }
 .inventory-multi-filter-panel fieldset { margin:12px 0 0; padding:8px; border:1px solid var(--border); min-width:0; }
 .inventory-multi-filter-panel label { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; }
 .inventory-multi-filter-panel input[type=checkbox] { width:18px; height:18px; margin:0; flex:0 0 18px; }
+
+@media (max-width: 640px), (pointer: coarse) {
+  .inventory-multi-filter-panel { position: fixed; z-index: 1200; left: 8px; right: 8px; top: 8px; width: auto; max-width: none; max-height: calc(100dvh - 16px); box-sizing: border-box; }
+}
+
