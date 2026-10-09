@@ -329,10 +329,14 @@ export async function createItem(input: ItemInsert, spareId?: string): Promise<{
   }
   if (normalizedInput.is_accessory) {
     if (!normalizedInput.lot_seq) throw new Error('付属品には本体と同じ通番号を入力してください。');
-    const { data: parent, error: parentError } = await getSupabase()
-      .from('items').select('id').eq('lot_seq', normalizedInput.lot_seq).eq('is_accessory', false).limit(1);
+    const { data: parents, error: parentError } = await getSupabase()
+      .from('items').select('id,sku,lot_seq').eq('lot_seq', normalizedInput.lot_seq).eq('is_accessory', false);
     if (parentError) throw parentError;
-    if (!parent?.length) throw new Error('この通番号の本体が見つかりません。本体を先に登録してください。');
+    if (!parents?.length) throw new Error('この通番号の本体が見つかりません。本体を先に登録してください。');
+    const exact = parents.filter(parent => productSerial(parent.sku, parent.lot_seq) === productSerial(normalizedInput.sku ?? '', normalizedInput.lot_seq));
+    if (parents.length > 1 && exact.length !== 1) {
+      throw new Error('同じ通番号の本体が複数あるため、SKUまたは商品ID・仕入先URLで対象を一意にしてください。');
+    }
   }
   if (spareId) {
     const { data, error } = await getSupabase().rpc('register_item_with_spare', { p_item: normalizedInput, p_spare_id: spareId });
