@@ -259,6 +259,13 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setDone(null);
     try {
       if (!purchaser || purchaser.role === 'deliverer' || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
+      if (workStream !== '付属品') {
+        if (!delivererId) throw new Error('納品担当者を選択してください。');
+        if (!marketplace) throw new Error('仕入先を選択してください。');
+        if (cost === '') throw new Error('仕入金額を入力してください。');
+        if (!title.trim() && !isWorkingAmazonReturn) throw new Error('型番を入力してください。');
+        if (!salesChannel) throw new Error('販売先を選択してください。');
+      }
       if ((isAmazonReturn || isWorkingAmazonReturn) && !returnSku) throw new Error('返品商品は、元商品の通番号を入力して情報を読み込んでください。');
       if (isWorkingAmazonReturn && (!asin.trim() || !trackingNo.trim() || !marketplaceItemId.trim())) throw new Error('動作品Amazon返品は、ASIN・FNSKU（追跡番号欄）・ENA（商品ID欄）を入力してください。');
       if (marketplaceUrl.trim()) {
@@ -280,7 +287,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       const payload: ItemInsert = {
         ...((isAmazonReturn || isWorkingAmazonReturn) && assignedReturnSku ? { sku: assignedReturnSku } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
-        is_accessory: !isAmazonReturn && !isWorkingAmazonReturn && workStream === '付属品',
+        is_accessory: !isWorkingAmazonReturn && workStream === '付属品',
         purchaser_id: purchaserId,
         deliverer_id: delivererId || null,
         work_stream: workStream || null,
@@ -414,7 +421,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 </select>
               </label>
               <label className="field"><span>納品担当者</span>
-                <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)}>
+                <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)} required={workStream !== '付属品'}>
                   <option value="">— 未定 —</option>
                   {deliveryStaffOptions(staff).map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code]}</option>)}
                 </select>
