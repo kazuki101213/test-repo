@@ -18,5 +18,6 @@ export function matchesInventorySearch(item: InventoryItem, field: InventorySear
   const value = field === 'serial' ? productSerial(item.sku, item.lot_seq)
     : field === 'model' ? (item.is_accessory ? item.title : productModelText(item))
     : item[field];
-  return String(value ?? '').toLocaleLowerCase().includes(needle);
+  const candidate = String(value ?? '').toLocaleLowerCase();
+  return field === 'serial' ? candidate === needle : candidate.includes(needle);
 }
