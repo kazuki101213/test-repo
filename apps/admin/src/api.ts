@@ -1,7 +1,7 @@
 import { purchaseItemUrl } from './purchaseUrl';
 import { workloadPeriod } from './workloadPeriod';
 import { getSupabase, usageRecordText } from '@bussan/shared';
-import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
+import { matchesInventorySearch, normalizeSearchText, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
@@ -292,12 +292,12 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     return (data ?? []) as InventoryItem[];
   });
   const references = new Map((await fetchPurchaseReferences()).map(row => [row.id, row]));
-  const needle = filter.query?.trim().toLocaleLowerCase();
+  const needle = normalizeSearchText(filter.query);
   const filteredItems = needle ? items.filter(item => {
     const reference = references.get(item.id);
     if (filter.queryField) return matchesInventorySearch({ ...item, marketplace_item_id: reference?.marketplace_item_id ?? null }, filter.queryField, filter.query!);
     return [item.sku, item.title, item.asin, item.model_no, item.tracking_no, reference?.marketplace_item_id]
-      .some(value => value?.toLocaleLowerCase().includes(needle));
+      .some(value => normalizeSearchText(value).includes(needle));
   }) : items;
   const groupedItems = [...filteredItems].sort((a, b) =>
     b.lot_seq - a.lot_seq ||

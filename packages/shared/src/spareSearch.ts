@@ -1,4 +1,5 @@
 import type { SpareAccessory } from './spares';
+import { normalizeSearchText } from './search';
 export const spareSearchFields = [
   { value: 'owner', label: '保管担当者' },
   { value: 'title', label: '品名' },
@@ -10,6 +11,5 @@ export const spareSearchFields = [
 export type SpareSearchField = typeof spareSearchFields[number]['value'];
 export function matchesSpareSearch(row: SpareAccessory, field: SpareSearchField, query: string, ownerId: string, ownerName?: string): boolean {
   if (field === 'owner') return !ownerId || row.owner_staff_id === ownerId || (!row.owner_staff_id && !!ownerName && row.owner_name === ownerName);
-  const normalize = (value: string | null | undefined) => (value || '').normalize('NFKC').toLocaleLowerCase().trim();
-  return normalize(row[field]).includes(normalize(query));
+  return normalizeSearchText(row[field]).includes(normalizeSearchText(query));
 }

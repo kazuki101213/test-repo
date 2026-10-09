@@ -11,12 +11,13 @@ export const inventorySearchFields = [
   { value: 'tracking_no', label: '追跡番号' },
 ] as const;
 export type InventorySearchField = typeof inventorySearchFields[number]['value'];
+export const normalizeSearchText = (value: string | null | undefined) => (value ?? '').normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
 
 export function matchesInventorySearch(item: InventoryItem, field: InventorySearchField, query: string): boolean {
-  const needle = query.trim().toLocaleLowerCase();
+  const needle = normalizeSearchText(query);
   if (!needle) return true;
   const value = field === 'serial' ? productSerial(item.sku, item.lot_seq)
     : field === 'model' ? (item.is_accessory ? item.title : productModelText(item))
     : item[field];
-  return String(value ?? '').toLocaleLowerCase().includes(needle);
+  return normalizeSearchText(String(value ?? '')).includes(needle);
 }
