@@ -8,7 +8,7 @@ import InventoryStateFilter from '../components/InventoryStateFilter';
 import TaskCard from '../components/TaskCard';
 import SpareShippingTasks from '../components/SpareShippingTasks';
 import { useTaskViewport } from '../hooks/useTaskViewport';
-import { deliverySearchFields, deliverySearchValue, normalizeSearch, type DeliverySearchField } from '../deliverySearch';
+import { deliverySearchFields, deliverySearchValue, matchesDeliverySearch, normalizeSearch, type DeliverySearchField } from '../deliverySearch';
 
 type Filter = 'all' | 'working' | 'shipped' | 'return-processing' | 'amazon-return' | 'working-amazon-return';
 
@@ -139,7 +139,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
-      if (queryField !== 'deliverer' && q && !members.some(member => normalizeSearch(deliverySearchValue(member, queryField, originalIds)).includes(q))) return false;
+      if (queryField !== 'deliverer' && q && !members.some(member => matchesDeliverySearch(deliverySearchValue(member, queryField, originalIds), queryField, query))) return false;
       if (!members.some(member => matchesInventoryFilters(member, inventoryFilters))) return false;
       const active = t.status === '作業中';
       switch (filter) {
