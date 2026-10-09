@@ -75,27 +75,27 @@ begin
       end if;
     end if;
     if parent_id is null and new.product_id is not null then
-      select count(*), min(p.id) into parent_count, parent_id
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
        from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq
          and p.product_id = new.product_id;
     end if;
     if parent_id is null and nullif(new.marketplace_item_id,'') is not null then
-      select count(*), min(p.id) into parent_count, parent_id
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
        from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq
          and p.marketplace_item_id = new.marketplace_item_id;
     end if;
     if parent_id is null and nullif(new.marketplace_url,'') is not null then
-      select count(*), min(p.id) into parent_count, parent_id
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
        from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq
          and p.marketplace_url = new.marketplace_url;
     end if;
     if parent_id is null and nullif(new.asin,'') is not null then
-      select count(*), min(p.id) into parent_count, parent_id
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
        from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq
          and p.asin = new.asin and p.title = new.title;
     end if;
     if parent_id is null then
-      select count(*), min(p.id) into parent_count, parent_id
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
        from app.items p
        where not p.is_accessory and p.lot_seq = new.lot_seq;
     end if;
@@ -150,12 +150,12 @@ declare
   parent_count integer;
 begin
   if not new.is_accessory or new.parent_item_id is not null then return new; end if;
-  select count(*), min(p.id) into parent_count, parent_id
+  select count(*), (array_agg(p.id))[1] into parent_count, parent_id
   from app.items p
   where not p.is_accessory and p.lot_seq = new.lot_seq
     and app.product_serial(p.sku,p.lot_seq) = app.product_serial(new.sku,new.lot_seq);
   if parent_count = 0 then
-    select count(*), min(p.id) into parent_count, parent_id
+    select count(*), (array_agg(p.id))[1] into parent_count, parent_id
     from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq;
   end if;
   if parent_count > 1 then
@@ -343,11 +343,11 @@ begin
   end if;
   v_input := jsonb_populate_record(null::app.items,p_item);
   if coalesce(v_input.is_accessory,false) then
-    select count(*),min(p.id) into v_parent_count,v_parent_id
+    select count(*),(array_agg(p.id))[1] into v_parent_count,v_parent_id
       from app.items p where not p.is_accessory and p.lot_seq=v_input.lot_seq
         and app.product_serial(p.sku,p.lot_seq)=app.product_serial(v_input.sku,v_input.lot_seq);
     if v_parent_count=0 then
-      select count(*),min(p.id) into v_parent_count,v_parent_id
+      select count(*),(array_agg(p.id))[1] into v_parent_count,v_parent_id
         from app.items p where not p.is_accessory and p.lot_seq=v_input.lot_seq;
     end if;
     if v_parent_count<>1 then
