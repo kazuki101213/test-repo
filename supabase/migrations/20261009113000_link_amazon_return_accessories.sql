@@ -428,10 +428,10 @@ begin
  select * into p from app.delivery_invoice_profiles where staff_id=p_staff;
  if not found or not p.enabled or p.unit_price is null then raise exception ''請求単価の設定を管理者に確認してください''; end if;
  with invoice_items as (
-   select distinct on (lot_seq) id,lot_seq,purchased_at,packed_on,work_stream,marketplace,title,p.unit_price as unit_price
+   (select distinct on (lot_seq) id,lot_seq,purchased_at,packed_on,work_stream,marketplace,title,p.unit_price as unit_price
    from app.items
    where deliverer_id=p_staff and not is_accessory and packed_on is not null
-   order by lot_seq,packed_on,id
+   order by lot_seq,packed_on,id)
    union all
    select id,lot_seq,purchased_at,packed_on,work_stream,marketplace,title,floor(p.unit_price/2.0)::bigint
    from app.items
