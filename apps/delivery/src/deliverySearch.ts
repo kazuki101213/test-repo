@@ -12,7 +12,6 @@ export const deliverySearchFields = [
 export type DeliverySearchField = typeof deliverySearchFields[number]['value'];
 export const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
 
-/** Search the same model and product ID that the delivery card displays. */
 export function deliverySearchValue(task: DeliveryTask, field: DeliverySearchField, originalIds: Map<string, string>): string {
   if (field === 'serial') return task.sku.match(/^(\d+[a-z]*)-/i)?.[1] ?? String(task.lot_seq ?? '');
   if (field === 'model') return productModelText(task);
@@ -21,10 +20,16 @@ export function deliverySearchValue(task: DeliveryTask, field: DeliverySearchFie
   return task[field] ?? '';
 }
 
-/** 通番号だけは部分一致による別商品の混入を避け、完全一致で検索する。 */
+/**
+ * 数字だけの通番号は、同じ本体から派生した a/aa/aaa・b・c などの
+ * 文字サフィックスをまとめて検索する。サフィックスを入力した場合は
+ * これまでどおり、その通番号だけを完全一致で検索する。
+ */
 export function matchesDeliverySearch(value: string, field: DeliverySearchField, query: string): boolean {
   const candidate = normalizeSearch(value);
   const needle = normalizeSearch(query);
   if (!needle) return true;
-  return field === 'serial' ? candidate === needle : candidate.includes(needle);
+  if (field !== 'serial') return candidate.includes(needle);
+  if (!/^\d+$/.test(needle)) return candidate === needle;
+  return new RegExp(`^${needle}[a-z]*$`, 'i').test(candidate);
 }
