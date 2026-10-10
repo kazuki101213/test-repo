@@ -1,9 +1,17 @@
 import { productCount, readAllRows, inventoryWindow } from '../src/inventory.ts';
+import { matchesSerialFamily } from '../src/inventorySearch.ts';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../src/purchaseUrl.ts';
 
 function equal(actual: unknown, expected: unknown) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(JSON.stringify({ actual, expected }));
 }
+
+Deno.test('serial search groups a/aa/aaa, b and c under a numeric base', () => {
+  for (const serial of ['2349', '2349a', '2349aa', '2349aaa', '2349b', '2349c']) equal(matchesSerialFamily(serial, '2349'), true);
+  equal(matchesSerialFamily('23490', '2349'), false);
+  equal(matchesSerialFamily('2349a', '2349a'), true);
+  equal(matchesSerialFamily('2349aa', '2349a'), false);
+});
 
 Deno.test('scroll window reaches the final record with no 100-row limit', () => {
   const first = inventoryWindow(3160, 0, 600);
