@@ -12,6 +12,23 @@ export const inventorySearchFields = [
 ] as const;
 export type InventorySearchField = typeof inventorySearchFields[number]['value'];
 
+function normalizeSerialSearch(value: string): string {
+  return value.normalize('NFKC').trim().toLocaleLowerCase();
+}
+
+/**
+ * 数字だけの通番号は、同じ本体から派生した a/aa/aaa・b・c などの
+ * 文字サフィックスをまとめて検索する。サフィックスを入力した場合は
+ * これまでどおり、その通番号だけを完全一致で検索する。
+ */
+export function matchesSerialFamily(candidate: string, query: string): boolean {
+  const normalizedCandidate = normalizeSerialSearch(candidate);
+  const normalizedQuery = normalizeSerialSearch(query);
+  if (!normalizedQuery) return true;
+  if (!/^\d+$/.test(normalizedQuery)) return normalizedCandidate === normalizedQuery;
+  return new RegExp(`^${normalizedQuery}[a-z]*$`, 'i').test(normalizedCandidate);
+}
+
 export function matchesInventorySearch(item: InventoryItem, field: InventorySearchField, query: string): boolean {
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return true;
@@ -19,5 +36,5 @@ export function matchesInventorySearch(item: InventoryItem, field: InventorySear
     : field === 'model' ? (item.is_accessory ? item.title : productModelText(item))
     : item[field];
   const candidate = String(value ?? '').toLocaleLowerCase();
-  return field === 'serial' ? candidate === needle : candidate.includes(needle);
+  return field === 'serial' ? matchesSerialFamily(candidate, query) : candidate.includes(needle);
 }
