@@ -6,12 +6,14 @@ import { preparePhotoFiles, savePhotoFiles } from '../photoSave';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
 interface Item { id: string; sku: string; title: string; lot_seq: number }
+interface ListingTask { id: string; sku: string; lot_seq: number; sales_channel: string }
 
 export default function PhotoReviewTasks() {
   const notice = adminTaskNotice();
   const noticeHandled = useRef(false);
   const [noticeMessage, setNoticeMessage] = useState('');
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [listingTasks, setListingTasks] = useState<ListingTask[]>([]);
   const [items, setItems] = useState<Record<string, Item>>({});
   const [selected, setSelected] = useState<Review | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -40,8 +42,20 @@ export default function PhotoReviewTasks() {
         if (itemError) throw itemError;
         byId = Object.fromEntries(((found ?? []) as Item[]).map(item => [item.id, item]));
       }
+      const { data: approved, error: approvedError } = await getSupabase().from('photo_reviews')
+        .select('item_id').not('approved_at', 'is', null);
+      if (approvedError) throw approvedError;
+      const approvedIds = (approved ?? []).map(row => row.item_id as string);
+      let nextListingTasks: ListingTask[] = [];
+      if (approvedIds.length) {
+        const { data: candidates, error: candidateError } = await getSupabase().from('items')
+          .select('id,sku,lot_seq,sales_channel').in('id', approvedIds)
+          .in('sales_channel', ['メルカリ', 'ヤフオク']).is('listed_on', null);
+        if (candidateError) throw candidateError;
+        nextListingTasks = (candidates ?? []) as ListingTask[];
+      }
       if (active) {
-        setReviews(rows); setItems(byId); setError('');
+        setReviews(rows); setListingTasks(nextListingTasks); setItems(byId); setError('');
         if (!noticeHandled.current && notice?.kind === 'photo_review') {
           noticeHandled.current = true;
           const target = rows.find(row => row.item_id === notice.itemId);
@@ -119,8 +133,26 @@ export default function PhotoReviewTasks() {
     finally { setBusy(false); }
   }
 
+  async function completeListing(task: ListingTask) {
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+      const { error: updateError } = await getSupabase().from('items')
+        .update({ status: '出品中', listed_on: today })
+        .eq('id', task.id);
+      if (updateError) throw updateError;
+      setListingTasks(current => current.filter(row => row.id !== task.id));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
+  }
+
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
+      {listingTasks.map(task => <li key={`listing-${task.id}`} className="malfunction-task-row">
+        <div className="task-action-details"><strong>出品する</strong><small>{task.sku} ／ {task.sales_channel}</small></div>
+        <button type="button" className="btn" disabled={busy !== false && busy !== null} onClick={() => void completeListing(task)}>完了</button>
+      </li>)}
       {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>
         <span>{items[review.item_id]?.sku || 'SKU確認中'}<small>{items[review.item_id]?.title || ''} ／ 写真 {review.exported_photo_count}枚</small></span>
         <strong>写真確認</strong><span>確認 ›</span>
