@@ -39,12 +39,10 @@ export default function BidCalculator() {
     };
   }, [deliver]);
 
-  return <section aria-label="入札計算ツール">
-    <h2>入札計算ツール</h2>
-    <p className="sub">このページのURLをスタッフに共有できます。納品アプリのログインで利用できます。</p>
+  return <section className="bid-calculator-page" aria-label="入札計算ツール">
     {error && <p role="alert" className="error">{error}</p>}
     <iframe ref={frame} title="ブルーレイ・モニター入札計算ツール" srcDoc={calculatorHtml}
       onLoad={deliver} onError={() => setError('計算ツールを開けませんでした。ページを再読み込みしてください。')}
-      style={{ width: '100%', height: 'calc(100dvh - 180px)', minHeight: 600, border: 0, borderRadius: 8 }} />
+      className="bid-calculator-frame" />
   </section>;
 }
