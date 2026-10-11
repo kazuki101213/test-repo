@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ヤフオク入札ツール｜ブルーレイレコーダー</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: inherit; background: #f0f2f5; color: #333; font-size: 14px; }
+
+.tab-header { display: flex; background: #1a252f; position: sticky; top: 0; z-index: 100; }
+.tab-btn { padding: 15px 36px; color: #7f8c8d; border: none; background: none; cursor: pointer; font-size: 15px; font-family: inherit; font-weight: 600; border-bottom: 3px solid transparent; transition: all 0.2s; }
+.tab-btn.active { color: #fff; border-bottom-color: #3498db; }
+.tab-btn:hover:not(.active) { color: #bdc3c7; }
+
+.tab-content { display: none; padding: 20px; max-width: 820px; margin: 0 auto; }
+.tab-content.active { display: block; }
+
+.card { background: #fff; border-radius: 10px; padding: 22px; margin-bottom: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+.card-title { font-size: 15px; font-weight: 700; color: #1a252f; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+.step-badge { background: #3498db; color: #fff; border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+.step-badge.red { background: #e74c3c; }
+
+.sep { height: 1px; background: #ecf0f1; margin: 14px 0; }
+
+/* Data load card */
+.load-card { background: #eaf4fd; border: 1px solid #aed6f1; border-radius: 10px; padding: 16px 22px; margin-bottom: 18px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.load-btn { padding: 8px 20px; background: #2980b9; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-family: inherit; font-weight: 600; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
+.load-btn:hover { background: #1a6fa0; }
+.load-status { font-size: 13px; color: #7f8c8d; }
+.load-status.ok { color: #27ae60; font-weight: 600; }
+.load-status.err { color: #e74c3c; }
+
+/* Model input */
+.model-select { width: 320px; padding: 11px 14px; border: 2px solid #dde1e7; border-radius: 6px; font-size: 15px; font-family: inherit; background: #fff; cursor: pointer; transition: border-color 0.2s; }
+.model-select:focus { outline: none; border-color: #3498db; }
+.price-info-box { margin-top: 14px; padding: 14px 16px; background: #f4f6f8; border-radius: 8px; display: none; }
+.price-info-box .amazon-price { font-size: 22px; font-weight: 700; color: #1a252f; }
+.price-info-box .stock-info { font-size: 13px; margin-top: 6px; }
+.price-info-box .not-found { font-size: 13px; color: #e74c3c; }
+.ng-ex { display: block; color: #888; font-size: 12px; margin-top: 4px; line-height: 1.9; }
+.adj-group-title { font-size: 12px; font-weight: 700; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; margin: 14px 0 6px; }
+.price-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.ptag { padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.ptag-red    { background: #fdecea; color: #c0392b; border: 1px solid #f5c6c6; }
+.ptag-blue   { background: #eaf4fd; color: #1a5276; border: 1px solid #aed6f1; }
+.ptag-green  { background: #d5f5e3; color: #1e8449; border: 1px solid #a9dfbf; }
+.ptag-orange { background: #fef9e7; color: #9a6a00; border: 1px solid #f9e4a0; }
+
+/* NG checks */
+.check-grid { display: flex; flex-direction: column; gap: 7px; }
+.check-label { display: flex; align-items: flex-start; gap: 9px; cursor: pointer; padding: 7px 10px; border-radius: 6px; transition: background 0.15s; }
+.check-label:hover { background: #fef9f9; }
+.check-label input[type="checkbox"] { width: 17px; height: 17px; margin-top: 1px; accent-color: #e74c3c; cursor: pointer; flex-shrink: 0; }
+
+/* Rate selector */
+.rate-list { display: flex; flex-direction: column; gap: 8px; }
+.rate-label { display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border: 2px solid #e8ecf0; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+.rate-label:hover { border-color: #85c1e9; background: #f4faff; }
+.rate-label.selected { border-color: #3498db; background: #eaf4fd; }
+.rate-label input[type="radio"] { margin-top: 2px; width: 16px; height: 16px; accent-color: #3498db; cursor: pointer; flex-shrink: 0; }
+.rate-badge { background: #2980b9; color: #fff; padding: 2px 10px; border-radius: 4px; font-weight: 700; font-size: 14px; white-space: nowrap; flex-shrink: 0; }
+.rate-desc { line-height: 1.6; }
+
+/* Adjustments */
+.adj-list { display: flex; flex-direction: column; gap: 7px; }
+.adj-label { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 7px 10px; border-radius: 6px; transition: background 0.15s; }
+.adj-label:hover { background: #f8f9fa; }
+.adj-label input[type="checkbox"] { width: 17px; height: 17px; accent-color: #555; cursor: pointer; flex-shrink: 0; }
+.badge-plus  { background: #d5f5e3; color: #1e8449; padding: 2px 8px; border-radius: 4px; font-weight: 700; white-space: nowrap; }
+.badge-minus { background: #fdecea; color: #c0392b; padding: 2px 8px; border-radius: 4px; font-weight: 700; white-space: nowrap; }
+.badge-neutral { background: #f0f0f0; color: #555; padding: 2px 8px; border-radius: 4px; font-weight: 700; white-space: nowrap; }
+
+.shipping-row { display: flex; align-items: center; gap: 10px; }
+.shipping-row input { width: 140px; padding: 8px 10px; border: 2px solid #dde1e7; border-radius: 6px; font-size: 14px; font-family: inherit; }
+.shipping-row input:focus { outline: none; border-color: #3498db; }
+
+.note { font-size: 12px; color: #7f8c8d; margin-top: 10px; padding: 10px 12px; background: #f8f9fa; border-left: 3px solid #bdc3c7; border-radius: 0 4px 4px 0; line-height: 1.8; }
+
+.calc-btn { width: 100%; padding: 17px; background: #1a252f; color: #fff; border: none; border-radius: 10px; font-size: 17px; font-weight: 700; cursor: pointer; font-family: inherit; transition: background 0.2s; margin-bottom: 18px; }
+.calc-btn:hover { background: #2c3e50; }
+
+.result-card { background: #fff; border-radius: 10px; padding: 28px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); text-align: center; }
+.result-ng-title { font-size: 28px; font-weight: 700; color: #e74c3c; }
+.result-ng-reasons { text-align: left; margin-top: 14px; background: #fef9f9; border-radius: 8px; padding: 14px 18px; font-size: 13px; line-height: 2; color: #555; }
+.result-amount { font-size: 48px; font-weight: 700; color: #1a252f; letter-spacing: -1px; }
+.result-amount small { font-size: 22px; font-weight: 400; }
+.result-sub { font-size: 13px; color: #95a5a6; margin-top: 6px; }
+.result-detail { text-align: left; margin-top: 18px; background: #f8f9fa; border-radius: 8px; padding: 14px 18px; font-size: 13px; line-height: 1.9; color: #555; }
+.result-detail .total-line { border-top: 1px solid #dee2e6; margin-top: 8px; padding-top: 8px; font-weight: 700; color: #1a252f; }
+
+/* Manual */
+.manual-card { background: #fff; border-radius: 10px; padding: 22px; margin-bottom: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+.manual-card h2 { font-size: 16px; color: #1a252f; border-left: 4px solid #e74c3c; padding-left: 12px; margin-bottom: 16px; }
+.manual-card h2.green { border-left-color: #27ae60; }
+.manual-card h2.blue  { border-left-color: #2980b9; }
+.manual-card h2.orange{ border-left-color: #e67e22; }
+.manual-card h3 { font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px; }
+.ng-ul { list-style: none; }
+.ng-ul li { padding: 7px 0 7px 22px; position: relative; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+.ng-ul li:last-child { border-bottom: none; }
+.ng-ul li::before { content: '✗'; color: #e74c3c; position: absolute; left: 0; font-weight: 700; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.data-table th, .data-table td { border: 1px solid #e8ecf0; padding: 10px 14px; text-align: left; vertical-align: top; }
+.data-table th { background: #f4f6f8; font-weight: 700; color: #555; }
+.step-list { counter-reset: step; list-style: none; }
+.step-list li { counter-increment: step; padding: 10px 0 10px 42px; position: relative; border-bottom: 1px solid #f0f0f0; }
+.step-list li:last-child { border-bottom: none; }
+.step-list li::before { content: counter(step); background: #3498db; color: #fff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; position: absolute; left: 0; top: 8px; }
+body, button, input, select, textarea, pre, code { font-family: inherit; }
+</style>
+</head>
+<body>
+
+<div class="tab-header">
+  <button class="tab-btn active" onclick="showTab('calc', this)">ブルーレイレコーダー計算ツール</button>
+  <button class="tab-btn" onclick="showTab('manual', this)">マニュアル(ブルーレイレコーダー)</button>
+  <button class="tab-btn" onclick="showTab('calc_m', this)">モニター計算ツール</button>
+  <button class="tab-btn" onclick="showTab('manual_m', this)">マニュアル(モニター)</button>
+</div>
+
+<section style="max-width:820px;margin:18px auto;padding:18px;background:#fff;border-radius:10px;">
+  <strong>商品データ参照元：物販管理アプリ</strong>
+  <p id="bussanStatus" role="status" style="margin-top:8px;">商品・在庫を読み込みます…</p>
+  <p style="font-size:12px;margin-top:8px;">型番が同じ場合は品番・メーカー・ASINで選択してください。在庫は管理アプリの未販売在庫と同じ通番号単位です。</p>
+  <pre id="bussanIssues" style="white-space:pre-wrap;max-height:200px;overflow:auto;color:#c0392b;"></pre>
+</section>
+<!-- ===== CALCULATOR ===== -->
+<div id="calc" class="tab-content active">
+
+  <!-- Data load -->
+  <div class="load-card">
+    <div style="font-size:13px; color:#5d8aa8; margin-bottom:8px;">価格・在庫を更新するときは商品データを再読み込みしてください</div>
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <button class="load-btn" onclick="loadData()">🔄 商品データを読み込む</button>
+      <span id="loadStatus" class="load-status"></span>
+    </div>
+    <div style="font-size:12px; color:#5d8aa8; margin-top:7px;">作業開始時に読み込み、価格・在庫の更新時は再読み込みしてください</div>
+  </div>
+
+  <!-- STEP 1: Model Number -->
+  <div class="card">
+    <div class="card-title"><span class="step-badge">1</span>型番を入力</div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <input type="text" id="modelNumber" class="model-select" list="modelList" placeholder="型番を入力または選択" autocomplete="off" oninput="onModelSelect()">
+      <datalist id="modelList"></datalist>
+      <button onclick="resetAll()" style="padding:10px 16px; background:#95a5a6; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; font-family: inherit; cursor:pointer; white-space:nowrap;" onmouseover="this.style.background='#7f8c8d'" onmouseout="this.style.background='#95a5a6'">リセット</button>
+      <button onclick="resetConditions()" style="padding:10px 16px; background:#e67e22; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; font-family: inherit; cursor:pointer; white-space:nowrap;" onmouseover="this.style.background='#ca6f1e'" onmouseout="this.style.background='#e67e22'">条件リセット</button>
+    </div>
+    <div class="price-info-box" id="priceInfoBox">
+      <div id="priceInfoContent"></div>
+    </div>
+  </div>
+
+  <!-- STEP 2: NG Conditions -->
+  <div class="card">
+    <div class="card-title"><span class="step-badge red">2</span>入札NG確認（1つでもチェック → NG）</div>
+    <div class="check-grid">
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_year"> 製造年が2016年以前のもの</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_serial"> 製造年・製造番号が読み取れない（シールがない）</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_hdd"> ギガ増量のHDDに換装</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_no_parts"> HDDなどの部品がない</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_smell"> ペットやタバコの臭いがある</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_price_junk"> ジャンク品のもので即落札金額が<span id="junkHalfPrice">Amazon販売価格の半額</span></label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_amazon60k"> Amazon販売価格¥60,000以上のジャンク品</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_exterior"><span>外装の破損あり<span class="ng-ex">ex.<br>前面カバーなし<br>前面カバー閉まらない<br>前面カバーピン割れ<br>角欠け（SONY製）<br>ディスクトレイカバーなし（SONY製）<br>凹みが極めて多い<br>サビ<br>製造番号シールなし</span></span></label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_definitive"><span>断定した不具合表現あり<span class="ng-ex">ex.<br>B-CAS/BD/DVD読込不可<br>通電不可、通電確認なし<br>error表示<br>トレイ開閉不可<br>HDD異常あり（写真添付も）<br>ファンが回らない<br>動作が止まる、進まない<br>動作音/ファンの音が大きい</span></span></label>
+      <label class="check-label"><input type="checkbox" class="ng-flag" id="ng_seller"><span>ジャンク品で入札NG出品者<span class="ng-ex">ex.<br>三笠<br>チョウケイエイ<br>ユーズドネット<br>ユーズドネット福岡<br>Itp＊＊＊＊＊＊＊＊<br>chuko_mono<br>富士<br>宏商<br>オークション代行クイックドゥ<br>shi＊＊＊＊＊＊＊＊</span></span></label>
+    </div>
+  </div>
+
+  <!-- STEP 3: Multiplier -->
+  <div class="card">
+    <div class="card-title"><span class="step-badge">3</span>掛け率を選択</div>
+    <div class="rate-list">
+      <label class="rate-label"><input type="radio" name="rate" value="0.55" onchange="onRateChange()">
+        <span class="rate-badge">×0.55</span>
+        <span class="rate-desc">・BD or DVD再生確認<br>・写真上でトレイが開いている(ジャンク品・通電品)<br>・BD・DVDどちらとも再生<br>・BD or DVD再生　＋　地上波受信 or HDD再生 or 初期化（フォーマット）済み<br>・BD or DVD再生　＋　窓表示 (※1)<br>・写真上でトレイが開いている(ジャンク品・通電品)　＋　窓表示 (※1)</span>
+      </label>
+      <label class="rate-label"><input type="radio" name="rate" value="0.65" onchange="onRateChange()">
+        <span class="rate-badge">×0.65</span>
+        <span class="rate-desc">・BD・DVDどちらとも再生　＋　初期化（フォーマット）済み<br>・BD・DVD・HDD再生<br>・完動作品<br>・BD・DVD・HDD再生、地上波録画<br><small style="color:#95a5a6">（Amazon販売価格 ¥55,000未満）</small></span>
+      </label>
+      <label class="rate-label"><input type="radio" name="rate" value="0.70" onchange="onRateChange()">
+        <span class="rate-badge">×0.70</span>
+        <span class="rate-desc">・BD・DVDどちらとも再生　＋　初期化（フォーマット）済み<br>・BD・DVD・HDD再生<br>・完動作品<br>・BD・DVD・HDD再生、地上波録画<br><small style="color:#95a5a6">（Amazon販売価格 ¥55,000以上）</small></span>
+      </label>
+    </div>
+    <div class="note">
+      ※1 窓表示の確認<br>
+      <strong>Panasonic</strong>　　「D〇〇〇」または「CS〇〇〇」、「BS〇〇〇」<br>
+      <strong>SONY</strong>　　　　「〇〇〇CH」<br>
+      <strong>SHARP</strong>　　　　BDランプ（青）点灯<br>
+      <strong>TOSHIBA</strong>　　電源ボタン（緑）・HDD（青）・DISC（緑）ランプ点灯
+    </div>
+  </div>
+
+  <!-- STEP 4: Adjustments -->
+  <div class="card">
+    <div class="card-title"><span class="step-badge">4</span>加算・減算</div>
+
+    <div class="adj-group-title">① 配送料関連</div>
+    <div class="shipping-row" style="margin-bottom:8px;">
+      <label style="font-weight:600; white-space:nowrap;">配送料</label>
+      <input type="number" id="shippingCost" placeholder="例: 1200" step="100" min="0">
+      <span style="color:#777;">円</span>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;" id="shippingBtns">
+      <div id="shippingRow1" style="display:flex; gap:5px;"></div>
+      <div id="shippingRow2" style="display:flex; gap:5px;"></div>
+      <div id="shippingRow3" style="display:flex; gap:5px;"></div>
+    </div>
+    <script>
+      (function(){
+        var rows = [[900], [], []];
+        for(var s=1000; s<=1900; s+=100) rows[1].push(s);
+        for(var s=2000; s<=2500; s+=100) rows[2].push(s);
+        rows.forEach(function(vals, ri){
+          var row = document.getElementById('shippingRow'+(ri+1));
+          vals.forEach(function(v){
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = v.toLocaleString('ja-JP');
+            b.style.cssText = 'padding:3px 8px;font-size:12px;border:1px solid #bbb;border-radius:4px;background:#f5f5f5;cursor:pointer;';
+            b.onclick = function(){ document.getElementById('shippingCost').value = v; };
+            row.appendChild(b);
+          });
+        });
+      })();
+    </script>
+    <div class="adj-list">
+      <label class="adj-label"><input type="checkbox" id="adj_cash"> <span class="badge-minus">-1,500円</span> 着払い　／　配送料不明</label>
+    </div>
+
+    <div class="adj-group-title">② 付属品関連</div>
+    <div class="adj-list">
+      <label class="adj-label"><input type="checkbox" id="adj_box"> <span class="badge-plus">+500円</span> 外箱がある</label>
+      <label class="adj-label"><input type="checkbox" id="adj_no_bcas"> <span class="badge-minus">-1,500円</span> mini B-CASカードがない（TOSHIBA）</label>
+      <label class="adj-label"><input type="checkbox" id="adj_no_ac"> <span class="badge-minus">-3,000円</span> ACアダプターがない(DVD　／　BD　プレーヤー　のみ)</label>
+    </div>
+
+    <div class="adj-group-title">③ リモコン関連</div>
+    <div class="adj-list">
+      <label class="adj-label"><input type="checkbox" id="adj_remocon_lid"> <span class="badge-minus">-800円</span> リモコン蓋がない（Panasonic　／　SHARP　のみ）</label>
+      <label class="adj-label"><input type="checkbox" id="adj_rc_broken"> <span class="badge-minus">-1,000円</span> リモコン使えないボタンがある</label>
+      <label class="adj-label"><input type="checkbox" id="adj_pana_wireless"> <span class="badge-minus">-5,500円</span> Panasonic 無線+赤外線リモコンがない</label>
+      <label class="adj-label"><input type="checkbox" id="adj_pana_ir"> <span class="badge-minus">-2,000円</span> Panasonic赤外線のみリモコン(黒)がない</label>
+      <label class="adj-label"><input type="checkbox" id="adj_pana_ir_white"> <span class="badge-minus">-3,000円</span> Panasonic赤外線のみリモコン(白)がない</label>
+      <label class="adj-label"><input type="checkbox" id="adj_sony_rc"> <span class="badge-minus">-2,000円</span> SONYリモコンがない</label>
+      <label class="adj-label"><input type="checkbox" id="adj_sharp_rc"> <span class="badge-minus">-1,500円</span> SHARPリモコン(黒)がない</label>
+      <label class="adj-label"><input type="checkbox" id="adj_sharp_rc_white"> <span class="badge-minus">-3,000円</span> SHARPリモコン(白)がない</label>
+      <label class="adj-label"><input type="checkbox" id="adj_toshiba_rc"> <span class="badge-minus">-2,000円</span> TOSHIBAリモコンがない</label>
+    </div>
+
+  </div>
+
+  <button class="calc-btn" onclick="calculate()">入札金額を計算する</button>
+
+  <div id="resultBox" style="display:none;">
+    <div class="result-card"><div id="resultContent"></div></div>
+  </div>
+
+  <div style="height:40px;"></div>
+</div>
+
+<!-- ===== MANUAL ===== -->
+<div id="manual" class="tab-content">
+
+  <div class="manual-card">
+    <h2>❌ 入札NG条件</h2>
+    <h3>製品・状態</h3>
+    <ul class="ng-ul">
+      <li>製造年が2016年以前のもの</li>
+      <li>製造年・製造番号が読み取れない（シールがない）</li>
+      <li>ギガ増量のHDDに換装</li>
+      <li>HDDなどの部品がない</li>
+      <li>ペットやタバコの臭いがある</li>
+      <li>ジャンク品のもので即落札金額がAmazon販売価格の半額</li>
+      <li>Amazon販売価格¥60,000以上のジャンク品</li>
+    </ul>
+    <h3>外装の破損あり</h3>
+    <ul class="ng-ul">
+      <li>前面カバーなし</li>
+      <li>前面カバー閉まらない</li>
+      <li>前面カバーピン割れ</li>
+      <li>角欠け（SONY製）</li>
+      <li>ディスクトレイカバーなし（SONY製）</li>
+      <li>凹みが極めて多い</li>
+      <li>サビ</li>
+      <li>製造番号シールなし</li>
+    </ul>
+    <h3>断定した不具合表現あり</h3>
+    <ul class="ng-ul">
+      <li>B-CAS/BD/DVD読込不可</li>
+      <li>通電不可、通電確認なし</li>
+      <li>error表示</li>
+      <li>トレイ開閉不可</li>
+      <li>HDD異常あり（写真添付も）</li>
+      <li>ファンが回らない</li>
+      <li>動作が止まる、進まない</li>
+      <li>動作音/ファンの音が大きい</li>
+    </ul>
+    <h3>在庫過多（回転別）</h3>
+    <ul class="ng-ul">
+      <li>低回転：現在庫が5個以上</li>
+      <li>中回転：現在庫が7個以上</li>
+      <li>高回転：現在庫が10個以上</li>
+    </ul>
+    <h3>ジャンク品で入札NG出品者</h3>
+    <ul class="ng-ul">
+      <li>三笠</li><li>チョウケイエイ</li><li>ユーズドネット</li><li>ユーズドネット福岡</li>
+      <li>Itp＊＊＊＊＊＊＊＊</li><li>chuko_mono</li><li>富士</li><li>宏商</li><li>オークション代行クイックドゥ</li><li>shi＊＊＊＊＊＊＊＊</li>
+    </ul>
+  </div>
+
+  <div class="manual-card">
+    <h2 class="blue">📊 掛け率</h2>
+    <table class="data-table">
+      <thead><tr><th>掛け率</th><th>適用条件</th></tr></thead>
+      <tbody>
+        <tr><td>×0.55</td><td>・BD or DVD再生確認<br>・写真上でトレイが開いている(ジャンク品・通電品)<br>・BD・DVDどちらとも再生<br>・BD or DVD再生＋地上波受信 or HDD再生 or 初期化（フォーマット）済み<br>・BD or DVD再生＋窓表示（※1）<br>・写真上でトレイが開いている(ジャンク品・通電品)＋窓表示（※1）</td></tr>
+        <tr><td>×0.65</td><td>・BD・DVDどちらとも再生＋初期化（フォーマット）済み<br>・BD・DVD・HDD再生<br>・完動作品<br>・BD・DVD・HDD再生、地上波録画<br><small style="color:#95a5a6">（Amazon販売価格 ¥55,000未満）</small></td></tr>
+        <tr><td>×0.70</td><td>・BD・DVDどちらとも再生＋初期化（フォーマット）済み<br>・BD・DVD・HDD再生<br>・完動作品<br>・BD・DVD・HDD再生、地上波録画<br><small style="color:#95a5a6">（Amazon販売価格 ¥55,000以上）</small></td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      ※1 窓表示の確認<br>
+      <strong>Panasonic</strong>　　「D〇〇〇」または「CS〇〇〇」、「BS〇〇〇」<br>
+      <strong>SONY</strong>　　　　「〇〇〇CH」<br>
+      <strong>SHARP</strong>　　　　BDランプ（青）点灯<br>
+      <strong>TOSHIBA</strong>　　電源ボタン（緑）・HDD（青）・DISC（緑）ランプ点灯
+    </div>
+  </div>
+
+  <div class="manual-card">
+    <h2 class="green">➕➖ 加算・減算一覧</h2>
+    <table class="data-table">
+      <thead><tr><th>金額</th><th>条件</th></tr></thead>
+      <tbody>
+        <tr><td colspan="2" style="background:#f4f6f8; font-weight:700; color:#555;">① 配送料関連</td></tr>
+        <tr><td style="color:#c0392b">−配送料</td><td>送料を引く</td></tr>
+        <tr><td style="color:#c0392b">−1,500円</td><td>着払い　／　配送料不明</td></tr>
+        <tr><td colspan="2" style="background:#f4f6f8; font-weight:700; color:#555;">② 付属品関連</td></tr>
+        <tr><td style="color:#1e8449">+500円</td><td>外箱がある</td></tr>
+        <tr><td style="color:#c0392b">−1,500円</td><td>mini B-CASカードがない（TOSHIBA）</td></tr>
+        <tr><td style="color:#c0392b">−3,000円</td><td>ACアダプターがない(DVD　／　BD　プレーヤー　のみ)</td></tr>
+        <tr><td colspan="2" style="background:#f4f6f8; font-weight:700; color:#555;">③ リモコン関連</td></tr>
+        <tr><td style="color:#c0392b">−800円</td><td>リモコン蓋がない（Panasonic　／　SHARP　のみ）</td></tr>
+        <tr><td style="color:#c0392b">−1,000円</td><td>リモコン使えないボタンがある</td></tr>
+        <tr><td style="color:#c0392b">−5,500円</td><td>Panasonic 無線+赤外線リモコンがない</td></tr>
+        <tr><td style="color:#c0392b">−2,000円</td><td>Panasonic赤外線のみリモコン(黒)がない</td></tr>
+        <tr><td style="color:#c0392b">−3,000円</td><td>Panasonic赤外線のみリモコン(白)がない</td></tr>
+        <tr><td style="color:#c0392b">−2,000円</td><td>SONYリモコンがない</td></tr>
+        <tr><td style="color:#c0392b">−1,500円</td><td>SHARPリモコン(黒)がない</td></tr>
+        <tr><td style="color:#c0392b">−3,000円</td><td>SHARPリモコン(白)がない</td></tr>
+        <tr><td style="color:#c0392b">−2,000円</td><td>TOSHIBAリモコンがない</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="manual-card">
+    <h2 class="orange">🔢 最終調整</h2>
+    <ul style="list-style:none; font-size:14px; line-height:2.4; padding-left:4px;">
+      <li>📌 販売価格×掛け率＋加算−減算−送料を計算し、消費税10%が必要な場合は ÷1.1 する</li>
+      <li>📌 税調整後に10円単位で切り上げ → 300円加算 → 100円単位で切り上げ → 10円加算（自動計算）</li>
+    </ul>
+  </div>
+
+  <div class="manual-card">
+    <h2 class="blue">📝 計算手順</h2>
+    <ol class="step-list">
+      <li>「商品データを読み込む」ボタンを押す</li>
+      <li>型番を入力してAmazon価格・在庫情報を確認する</li>
+      <li>商品の状態・動作確認状況を確認する</li>
+      <li>NG条件に該当しないか確認する</li>
+      <li>掛け率・加算・減算項目を適用する</li>
+      <li>表示された金額でそのまま入札する（端数調整は自動計算済み）</li>
+    </ol>
+  </div>
+
+  <div style="height:40px;"></div>
+</div>
+
+<!-- ===== MONITOR CALCULATOR ===== -->
+<div id="calc_m" class="tab-content">
+
+  <div class="load-card">
+    <div style="font-size:13px; color:#5d8aa8; margin-bottom:8px;">価格・在庫を更新するときは商品データを再読み込みしてください</div>
+    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <button class="load-btn" onclick="loadData_m()">🔄 商品データを読み込む</button>
+      <span id="loadStatus_m" class="load-status"></span>
+    </div>
+    <div style="font-size:12px; color:#5d8aa8; margin-top:7px;">作業開始時に読み込み、価格・在庫の更新時は再読み込みしてください</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="step-badge">1</span>型番を入力</div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <input type="text" id="modelNumber_m" class="model-select" list="modelList_m" placeholder="型番を入力または選択" autocomplete="off" oninput="onModelSelect_m()">
+      <datalist id="modelList_m"></datalist>
+      <button onclick="resetAll_m()" style="padding:10px 16px; background:#95a5a6; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; font-family: inherit; cursor:pointer; white-space:nowrap;" onmouseover="this.style.background='#7f8c8d'" onmouseout="this.style.background='#95a5a6'">リセット</button>
+      <button onclick="resetConditions_m()" style="padding:10px 16px; background:#e67e22; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; font-family: inherit; cursor:pointer; white-space:nowrap;" onmouseover="this.style.background='#ca6f1e'" onmouseout="this.style.background='#e67e22'">条件リセット</button>
+    </div>
+    <div class="price-info-box" id="priceInfoBox_m">
+      <div id="priceInfoContent_m"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="step-badge red">2</span>入札NG確認（1つでもチェック → NG）</div>
+    <div class="check-grid">
+      <label class="check-label"><input type="checkbox" class="ng-flag-m" id="ng_m_junk"> 「訳アリ」、「難アリ」、「動作不良」、「通電確認のみ」と記載ある</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag-m" id="ng_m_condition"> 状態が「傷や汚れあり」「全体的に状態が悪い」</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag-m" id="ng_m_screen"> 画面に「キズがある」、「ドット抜け」、「ラインが入っている」、「色ムラがある」</label>
+      <label class="check-label"><input type="checkbox" class="ng-flag-m" id="ng_m_screw"> 「ネジ」、「ビス」がない</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="step-badge">3</span>掛け率を選択</div>
+    <div class="rate-list">
+      <label class="rate-label"><input type="radio" name="rate_m" value="0.55" onchange="onRateChange_m()">
+        <span class="rate-badge">×0.55</span>
+        <span class="rate-desc">・やや傷や汚れあり</span>
+      </label>
+      <label class="rate-label"><input type="radio" name="rate_m" value="0.65" onchange="onRateChange_m()">
+        <span class="rate-badge">×0.65</span>
+        <span class="rate-desc">・未使用<br>・未使用に近い<br>・目立った傷や汚れなし<br><small style="color:#95a5a6">（Amazon販売価格 ¥55,000未満）</small></span>
+      </label>
+      <label class="rate-label"><input type="radio" name="rate_m" value="0.70" onchange="onRateChange_m()">
+        <span class="rate-badge">×0.70</span>
+        <span class="rate-desc">・未使用<br>・未使用に近い<br>・目立った傷や汚れなし<br><small style="color:#95a5a6">（Amazon販売価格 ¥55,000以上）</small></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="step-badge">4</span>加算・減算</div>
+    <div class="adj-group-title">① 配送料関連</div>
+    <div class="shipping-row" style="margin-bottom:8px;">
+      <label style="font-weight:600; white-space:nowrap;">配送料</label>
+      <input type="number" id="shippingCost_m" placeholder="例: 1200" step="100" min="0">
+      <span style="color:#777;">円</span>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;" id="shippingBtns_m">
+      <div id="shippingRow1_m" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
+      <div id="shippingRow2_m" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
+      <div id="shippingRow3_m" style="display:flex; gap:5px; flex-wrap:wrap;"></div>
+    </div>
+    <script>
+      (function(){
+        var rows = [[], [], []];
+        for(var s=1500; s<=1900; s+=100) rows[0].push(s);
+        for(var s=2000; s<=2900; s+=100) rows[1].push(s);
+        for(var s=3000; s<=3900; s+=100) rows[2].push(s);
+        rows.forEach(function(vals, ri){
+          var row = document.getElementById('shippingRow'+(ri+1)+'_m');
+          vals.forEach(function(v){
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = v.toLocaleString('ja-JP');
+            b.style.cssText = 'padding:3px 8px;font-size:12px;border:1px solid #bbb;border-radius:4px;background:#f5f5f5;cursor:pointer;';
+            b.onclick = function(){ document.getElementById('shippingCost_m').value = v; };
+            row.appendChild(b);
+          });
+        });
+      })();
+    </script>
+    <div class="adj-list">
+      <label class="adj-label"><input type="checkbox" id="adj_cash_m"> <span class="badge-minus">-2,500円</span> 着払い　／　配送料不明</label>
+    </div>
+    <div class="adj-group-title">② 加算</div>
+    <div class="adj-list">
+      <label class="adj-label"><input type="checkbox" id="adj_box_m"> <span class="badge-plus">+500円</span> 外箱がある</label>
+    </div>
+  </div>
+
+  <button class="calc-btn" onclick="calculate_m()">入札金額を計算する</button>
+
+  <div id="resultBox_m" style="display:none;">
+    <div class="result-card"><div id="resultContent_m"></div></div>
+  </div>
+
+  <div style="height:40px;"></div>
+</div>
+
+<!-- ===== MONITOR MANUAL ===== -->
+<div id="manual_m" class="tab-content">
+
+  <div class="manual-card">
+    <h2>❌ 入札NG条件</h2>
+    <h3>製品・状態</h3>
+    <ul class="ng-ul">
+      <li>「訳アリ」、「難アリ」、「動作不良」、「通電確認のみ」と記載ある</li>
+      <li>状態が「傷や汚れあり」「全体的に状態が悪い」</li>
+      <li>画面に「キズがある」、「ドット抜け」、「ラインが入っている」、「色ムラがある」</li>
+      <li>「ネジ」、「ビス」がない</li>
+    </ul>
+    <h3>在庫過多（回転別）</h3>
+    <ul class="ng-ul">
+      <li>低回転：現在庫が2個以上</li>
+      <li>中回転：現在庫が3個以上</li>
+      <li>高回転：現在庫が3個以上</li>
+    </ul>
+  </div>
+
+  <div class="manual-card">
+    <h2 class="blue">📊 掛け率</h2>
+    <table class="data-table">
+      <thead><tr><th>掛け率</th><th>適用条件</th></tr></thead>
+      <tbody>
+        <tr><td>×0.55</td><td>・やや傷や汚れあり</td></tr>
+        <tr><td>×0.65</td><td>・未使用<br>・未使用に近い<br>・目立った傷や汚れなし<br><small style="color:#95a5a6">（Amazon販売価格 ¥55,000未満）</small></td></tr>
+        <tr><td>×0.70</td><td>・未使用<br>・未使用に近い<br>・目立った傷や汚れなし<br><small style="color:#95a5a6">（Amazon販売価格 ¥55,000以上）</small></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="manual-card">
+    <h2 class="green">➕➖ 加算・減算一覧</h2>
+    <table class="data-table">
+      <thead><tr><th>金額</th><th>条件</th></tr></thead>
+      <tbody>
+        <tr><td colspan="2" style="background:#f4f6f8; font-weight:700; color:#555;">① 配送料関連</td></tr>
+        <tr><td style="color:#c0392b">−配送料</td><td>送料を引く</td></tr>
+        <tr><td style="color:#c0392b">−2,500円</td><td>着払い　／　配送料不明</td></tr>
+        <tr><td colspan="2" style="background:#f4f6f8; font-weight:700; color:#555;">② 加算</td></tr>
+        <tr><td style="color:#27ae60">＋500円</td><td>外箱がある</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="manual-card">
+    <h2 class="orange">🔢 最終調整</h2>
+    <ul style="list-style:none; font-size:14px; line-height:2.4; padding-left:4px;">
+      <li>📌 販売価格×掛け率＋加算−減算−送料を計算し、消費税10%が必要な場合は ÷1.1 する</li>
+      <li>📌 税調整後に10円単位で切り上げ → 300円加算 → 100円単位で切り上げ → 10円加算（自動計算）</li>
+    </ul>
+  </div>
+
+  <div class="manual-card">
+    <h2 class="blue">📝 計算手順</h2>
+    <ol class="step-list">
+      <li>「商品データを読み込む」ボタンを押す</li>
+      <li>型番を入力してAmazon価格・在庫情報を確認する</li>
+      <li>商品の状態を確認する</li>
+      <li>NG条件に該当しないか確認する</li>
+      <li>掛け率・加算・減算項目を適用する</li>
+      <li>表示された金額で入札する（端数調整は自動計算済み）</li>
+    </ol>
+  </div>
+
+  <div style="height:40px;"></div>
+</div>
+
+<script>
+// ---- Config ----
+
+// ---- State ----
+let productMap   = {};   // 型番 -> { maker, amazonPrice, rotation, stock }
+let productOrder = [];   // [{ maker, model }] in spreadsheet order
+let currentProduct = null;
+const VALID_MAKERS = ['Panasonic', 'SONY', 'SHARP', 'TOSHIBA', 'Panasonic リモコン有', 'TOSHIBA リモコン有'];
+
+// ---- Tab ----
+function showTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(tab).classList.add('active');
+  btn.classList.add('active');
+}
+
+
+// Management app catalogue: read-only, per-user session held in memory only.
+const BUSSAN_API = 'https://xgoppuqoqeppckyunnvx.supabase.co';
+const BUSSAN_PUBLIC_KEY = 'sb_publishable_OU4Hc6ayg0m8Xe8bhV7Ofw_SKjj7bTx';
+let bussanSession = null;
+let bussanBusy = false;
+let bussanGeneration = 0;
+function escapeText(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function sourceStatus(message, error=false) {
+  const el=document.getElementById('bussanStatus'); el.textContent=message; el.style.color=error?'#c0392b':'#246b45';
+}
+function invalidateSource(message='未取得：商品データを読み込んでください。') {
+  productMap=Object.create(null); productMap_m=Object.create(null); productOrder=[]; productOrder_m=[];
+  currentProduct=null; currentProduct_m=null;
+  for(const suffix of ['', '_m']) {
+    document.getElementById('modelList'+suffix).replaceChildren();
+    document.getElementById('priceInfoBox'+suffix).style.display='none';
+    document.getElementById('resultBox'+suffix).style.display='none';
+    document.getElementById('loadStatus'+suffix).textContent=message;
+    document.getElementById('loadStatus'+suffix).className='load-status';
+  }
+  document.getElementById('bussanIssues').textContent='';
+}
+async function bussanRequest(path, options={}) {
+  const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),30000);
+  try {
+    const headers={apikey:BUSSAN_PUBLIC_KEY,...options.headers};
+    const res=await fetch(BUSSAN_API+path,{...options,headers,signal:ctl.signal,cache:'no-store',credentials:'omit'});
+    if(!res.ok) {
+      if(res.status===401) throw Error('認証期限が切れたか、ログインが無効です。ログインし直してください。');
+      if(res.status===403) throw Error('閲覧権限がないか、登録メール／起動方法が許可されていません。管理者に確認してください。');
+      throw Error('管理アプリの取得に失敗しました（HTTP '+res.status+'）。再試行してください。');
+    }
+    if(res.status===204)return null;
+    return await res.json();
+  } catch(e) {
+    if(e.name==='AbortError')throw Error('30秒以内に応答がありません。ネット接続を確認して再試行してください。');
+    if(e instanceof TypeError)throw Error('管理アプリに接続できません。ネット接続と起動方法を確認してください。');
+    throw e;
+  } finally {clearTimeout(timer);}
+}
+function authHeaders() {
+  if(!bussanSession || Date.now()>=bussanSession.expiresAt)throw Error('ログインが必要です。登録メールアドレスでログインしてください。');
+  return {Authorization:'Bearer '+bussanSession.token,'Accept-Profile':'app'};
+}
+async function verifyStockAccess() {
+  const h=authHeaders();
+  const profiles=await bussanRequest('/rest/v1/profiles?select=staff_id&user_id=eq.'+encodeURIComponent(bussanSession.userId),{headers:h});
+  if(!Array.isArray(profiles)||profiles.length!==1||!profiles[0].staff_id)throw Error('担当者のログイン設定を確認してください。');
+  const staff=await bussanRequest('/rest/v1/staff?select=role,is_active&id=eq.'+encodeURIComponent(profiles[0].staff_id),{headers:h});
+  if(!Array.isArray(staff)||staff.length!==1||staff[0].is_active!==true||!['admin','purchaser'].includes(staff[0].role))
+    throw Error('全在庫を確認できる管理者／仕入れ担当者の権限が必要です。一部の在庫だけで計算することはできません。');
+}
+// The host owns login and token refresh. This document never stores credentials.
+window.setBussanHostSession = function(session) {
+  const changed = bussanSession?.userId !== session?.userId;
+  if (!session || !session.token || !session.userId || session.expiresAt <= Date.now()) {
+    bussanGeneration++; bussanSession=null;
+    invalidateSource('ログインが必要です。管理アプリにログインし直してください。');
+    sourceStatus('ログインが必要です。管理アプリにログインし直してください。',true);return;
+  }
+  bussanSession=session;
+  if(changed) {
+    bussanGeneration++; invalidateSource();
+    // A previous account request may still be finishing; generation prevents reuse.
+    const generation=bussanGeneration;
+    const start=()=>{if(generation!==bussanGeneration)return;if(bussanBusy){setTimeout(start,100);return;}void loadBussanData();};
+    start();
+  }
+};
+async function readAllBussan(table,select,filters={}) {
+  const rows=[],seen=new Set();
+  for(let page=0;page<250;page++) {
+    const query=new URLSearchParams({select,order:table==='products'?'product_no.asc,id.asc':'id.asc',offset:String(rows.length),limit:'200',...filters});
+    const batch=await bussanRequest('/rest/v1/'+table+'?'+query,{headers:authHeaders()});
+    if(!Array.isArray(batch))throw Error('商品・在庫の応答形式が不正です。');
+    for(const row of batch){if(!row?.id||seen.has(row.id))throw Error('取得中にデータが変わりました。再読み込みしてください。');seen.add(row.id);}
+    rows.push(...batch); if(batch.length===0)return rows;
+  }
+  throw Error('取得上限を超えました。管理者に確認してください。');
+}
+function buildBussanCatalog(products,inventory) {
+  const counts=new Map();
+  for(const row of inventory) {
+    if(!Number.isInteger(row.sale_row_count)||typeof row.status!=='string')throw Error('在庫の販売状態が欠けています。');
+    if(row.sale_row_count!==0||row.status==='返品処理')continue;
+    const asin=String(row.asin??'').trim(); if(!asin)continue;
+    const serial=String(row.sku??'').match(/^([0-9]+[a-z]*)[-_]/i)?.[1]?.toLowerCase() ?? (row.lot_seq==null?'':String(row.lot_seq));
+    if(!serial)throw Error('在庫の通番号が欠けています。管理アプリで確認してください。');
+    if(!counts.has(asin))counts.set(asin,new Set()); counts.get(asin).add(serial);
+  }
+  const asinCounts=new Map(); for(const p of products){const a=String(p.asin??'').trim();if(a)asinCounts.set(a,(asinCounts.get(a)||0)+1);}
+  const catalog={bd:[],monitor:[],issues:[]};
+  for(const p of products) {
+    const maker=String(p.maker??'').trim(),model=String(p.model_no??'').trim(),asin=String(p.asin??'').trim();
+    const base=VALID_MAKERS_M.find(m=>maker.includes(m));
+    const isBd=VALID_MAKERS.includes(maker);
+    if(!isBd&&!base){if(!maker)catalog.issues.push('品番 '+(p.product_no??p.id)+'：メーカーが未設定（分類できません）。');continue;}
+    const errors=[];
+    if(!model)errors.push('型番未設定');
+    if(!asin)errors.push('ASIN未設定（在庫照合不可）');
+    if(asinCounts.get(asin)>1)errors.push('同じASINの商品が複数あります（在庫の対応確認が必要）');
+    if(p.list_price===null||p.list_price===''||!Number.isSafeInteger(Number(p.list_price))||Number(p.list_price)<=0)errors.push('販売価格未設定／不正');
+    const rotation=String(p.turnover??'').trim();
+    if(!['低','中','高','低回転','中回転','高回転'].includes(rotation))errors.push('回転未設定／不正');
+    const item={id:p.id,productNo:p.product_no,asin,model,maker,amazonPrice:Number(p.list_price),rotation,stock:counts.get(asin)?.size??0,errors};
+    item.selection=model+' 【品番 '+(p.product_no??p.id)+'／'+maker+'／'+asin+'】';
+    if(errors.length)catalog.issues.push(item.selection+'：'+errors.join('、'));
+    if(isBd)catalog.bd.push({...item});
+    if(base) {
+      const extra=maker.replace(base,'').trim();
+      catalog.monitor.push({...item,maker:base,makerFull:maker,accessories:new Set(extra?extra.split(/\s+/):[]),noStand:maker.includes('スタンドなし')||model.includes('スタンドなし')});
+    }
+  }
+  return catalog;
+}
+function installCatalog(catalog) {
+  productMap=Object.create(null);productMap_m=Object.create(null);
+  productOrder=catalog.bd;productOrder_m=catalog.monitor;
+  for(const [rows,map,suffix,makers] of [[catalog.bd,productMap,'',VALID_MAKERS],[catalog.monitor,productMap_m,'_m',VALID_MAKERS_M]]) {
+    const dl=document.getElementById('modelList'+suffix);dl.replaceChildren();
+    for(const maker of makers) for(const row of rows.filter(p=>p.maker===maker)) {
+      map[row.selection]=row;
+      const opt=document.createElement('option');opt.value=row.selection;opt.label=row.errors.length?'要確認：'+row.errors.join('、'):row.makerFull||row.maker;dl.appendChild(opt);
+    }
+    const status=document.getElementById('loadStatus'+suffix);
+    status.className='load-status '+(rows.length?'ok':'err');
+    status.textContent=rows.length?'✓ '+rows.length+'件取得（計算不可 '+rows.filter(p=>p.errors.length).length+'件） '+new Date().toLocaleString('ja-JP'):'対象の商品がありません。管理アプリのメーカー・商品登録を確認してください。';
+  }
+  document.getElementById('bussanIssues').textContent=catalog.issues.length?'要確認データ（不足分は計算できません）\n'+catalog.issues.join('\n'):'';
+  onModelSelect();onModelSelect_m();
+}
+function resolveBussanProduct(value,monitor=false) {
+  const map=monitor?productMap_m:productMap,rows=monitor?productOrder_m:productOrder;
+  const exact=map[value];if(exact)return exact;
+  const hits=rows.filter(p=>p.model===value.trim());
+  if(hits.length>1)return {errors:['同じ型番が複数あります。候補の品番・メーカー・ASINを確認して選択してください。']};
+  return hits[0];
+}
+async function loadBussanData() {
+  if(bussanBusy){sourceStatus('取得中です。完了までお待ちください。');return;}
+  bussanBusy=true;const generation=++bussanGeneration;invalidateSource('取得中…');
+  try {
+    await verifyStockAccess();
+    const [products,inventory]=await Promise.all([
+      readAllBussan('products','id,product_no,asin,model_no,maker,list_price,turnover',{is_active:'eq.true'}),
+      readAllBussan('v_inventory_display','id,asin,sku,lot_seq,status,sale_row_count',{sale_row_count:'eq.0',status:'neq.返品処理'})
+    ]);
+    if(generation!==bussanGeneration)return;
+    if(!products.length)throw Error('商品データが0件でした。閲覧権限と商品登録を確認してください。');
+    installCatalog(buildBussanCatalog(products,inventory));sourceStatus('管理アプリから両方の商品・在庫を取得しました。');
+  } catch(e) {if(generation===bussanGeneration){invalidateSource('取得失敗：'+e.message);sourceStatus(e.message,true);}}
+  finally{bussanBusy=false;}
+}
+function loadData(){return loadBussanData();}
+function loadData_m(){return loadBussanData();}
+
+// ---- Model select ----
+function onModelSelect() {
+  document.getElementById('resultBox').style.display='none';
+  currentProduct=null;
+  const model   = document.getElementById('modelNumber').value;
+  const box     = document.getElementById('priceInfoBox');
+  const content = document.getElementById('priceInfoContent');
+
+  if (!model) {
+    box.style.display = 'none';
+    currentProduct = null;
+    resetFilter();
+    return;
+  }
+
+  const data = resolveBussanProduct(model);
+  box.style.display = 'block';
+
+  if (!data) {
+    currentProduct = null;
+    content.innerHTML = '<div class="not-found">型番が見つかりません。データを読み込み直してください。</div>';
+    resetFilter();
+    return;
+  }
+
+  if(data.errors?.length){content.innerHTML='<div class="not-found">'+escapeText(data.errors.join('、'))+'</div>';resetFilter();return;}
+  currentProduct = data;
+  const price = data.amazonPrice;
+  const maker = data.maker;
+
+  // Stock NG
+  const rot = data.rotation;
+  const stk = data.stock;
+  const threshold  = getThreshold(rot);
+  const isOverStock = threshold !== null && stk >= threshold;
+  const stockColor  = isOverStock ? '#e74c3c' : '#27ae60';
+  const stockStatus = isOverStock
+    ? `<span style="background:#e74c3c;color:#fff;padding:2px 10px;border-radius:4px;font-weight:700;margin-left:8px;">仕入れNG（在庫過多）</span>`
+    : `<span style="background:#27ae60;color:#fff;padding:2px 10px;border-radius:4px;font-weight:700;margin-left:8px;">仕入れOK</span>`;
+
+  // Price range tags
+  let tags = '';
+  if (price >= 60000)
+    tags += '<span class="ptag ptag-red">¥60,000以上 → ジャンク品はNG</span>';
+  if (price < 55000)
+    tags += '<span class="ptag ptag-green">¥55,000未満 → ×0.65 適用</span>';
+  else
+    tags += '<span class="ptag ptag-orange">¥55,000以上 → ×0.70 適用</span>';
+
+  content.innerHTML =
+    `<div style="font-size:12px;margin-bottom:8px;">${escapeText(data.model)}／${escapeText(data.makerFull||data.maker)}／品番 ${escapeText(data.productNo)}／ASIN ${escapeText(data.asin)}</div><div>Amazon販売価格　<span class="amazon-price">¥${fmt(price)}</span></div>` +
+    `<div class="stock-info" style="color:${stockColor}; margin-top:6px; display:flex; align-items:center; flex-wrap:wrap; gap:4px;">` +
+      `回転：${rot || '不明'}　／　在庫数：${stk}個${stockStatus}` +
+    `</div>` +
+    `<div class="price-tags">${tags}</div>`;
+
+  // 即落金額の半額表示
+  const halfEl = document.getElementById('junkHalfPrice');
+  if (halfEl) halfEl.innerHTML = `<strong style="color:#e74c3c;">¥${fmt(Math.floor(price / 2))}</strong>以下`;
+
+  filterByModel(price, maker);
+}
+
+// ---- Filter options by price & maker ----
+function filterByModel(price, maker) {
+  // 掛け率：価格帯に合わないものを非表示
+  const rateRules = {
+    '0.55': true,
+    '0.65': price < 55000,
+    '0.70': price >= 55000,
+  };
+  Object.entries(rateRules).forEach(([val, show]) => {
+    const radio = document.querySelector(`input[name="rate"][value="${val}"]`);
+    if (!radio) return;
+    const label = radio.closest('.rate-label');
+    label.style.display = show ? '' : 'none';
+    if (!show && radio.checked) { radio.checked = false; label.classList.remove('selected'); }
+  });
+
+  // NG条件：価格に合わないものを非表示
+  const ng60k = document.getElementById('ng_amazon60k');
+  if (ng60k) {
+    const label = ng60k.closest('.check-label');
+    const show = price >= 60000;
+    label.style.display = show ? '' : 'none';
+    if (!show) ng60k.checked = false;
+  }
+
+  // リモコン：メーカーに合わないものを非表示
+  const adjRules = {
+    'adj_remocon_lid':   ['Panasonic', 'SHARP'],
+    'adj_no_bcas':       ['TOSHIBA'],
+    'adj_pana_wireless': ['Panasonic'],
+    'adj_pana_ir':       ['Panasonic'],
+    'adj_pana_ir_white': ['Panasonic'],
+    'adj_sony_rc':       ['SONY'],
+    'adj_sharp_rc':      ['SHARP'],
+    'adj_sharp_rc_white':['SHARP'],
+    'adj_toshiba_rc':    ['TOSHIBA'],
+  };
+  Object.entries(adjRules).forEach(([id, makers]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const label = el.closest('.adj-label');
+    const show = makers.includes(maker);
+    label.style.display = show ? '' : 'none';
+    if (!show) el.checked = false;
+  });
+}
+
+// ---- Reset filter (型番未選択時) ----
+function resetFilter() {
+  document.querySelectorAll('.rate-label').forEach(el => el.style.display = '');
+  const halfEl2 = document.getElementById('junkHalfPrice');
+  if (halfEl2) halfEl2.innerHTML = 'Amazon販売価格の半額';
+  const ng60kEl = document.getElementById('ng_amazon60k');
+  if (ng60kEl) ng60kEl.closest('.check-label').style.display = '';
+  ['adj_remocon_lid','adj_no_bcas','adj_pana_wireless','adj_pana_ir','adj_pana_ir_white','adj_sony_rc','adj_sharp_rc','adj_sharp_rc_white','adj_toshiba_rc']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.closest('.adj-label').style.display = '';
+    });
+}
+
+// ---- Rate change ----
+function onRateChange() {
+  document.querySelectorAll('.rate-label').forEach(el => el.classList.remove('selected'));
+  const checked = document.querySelector('input[name="rate"]:checked');
+  if (checked) checked.closest('.rate-label').classList.add('selected');
+}
+
+// ---- Calculate ----
+function calculate() {
+  const resultBox     = document.getElementById('resultBox');
+  const resultContent = document.getElementById('resultContent');
+  resultBox.style.display = 'block';
+
+  // --- NG checks ---
+  const ngReasons = [];
+
+  // Manual flags
+  document.querySelectorAll('.ng-flag').forEach(flag => {
+    if (flag.checked) ngReasons.push(flag.closest('label').textContent.trim());
+  });
+
+  // Stock NG from sheet data
+  if (currentProduct) {
+    const rot = currentProduct.rotation;
+    const stk = currentProduct.stock;
+    const threshold = getThreshold(rot);
+    if (threshold !== null && stk >= threshold) {
+      ngReasons.push(`在庫過多：${rot} ${stk}個（${threshold}個以上）`);
+    }
+  }
+
+  const ngBlock = ngReasons.length > 0
+    ? '<div class="result-ng-title">❌ 入札NG</div>' +
+      '<div class="result-ng-reasons"><strong>NG理由：</strong><br>' +
+      ngReasons.map(r => '・' + r).join('<br>') + '</div>'
+    : '';
+
+  // --- Validation ---
+  if (!currentProduct || currentProduct.amazonPrice <= 0) {
+    alert('型番を入力してAmazon販売価格を取得してください');
+    resultBox.style.display = 'none';
+    return;
+  }
+  const rateInput = document.querySelector('input[name="rate"]:checked');
+  if (!rateInput) {
+    alert('掛け率を選択してください');
+    resultBox.style.display = 'none';
+    return;
+  }
+
+  const amazonPrice = currentProduct.amazonPrice;
+  const rate = parseFloat(rateInput.value);
+  let amount = amazonPrice * rate;
+  const details = [`Amazon価格 ¥${fmt(amazonPrice)} × ${rate} = ¥${fmt(Math.round(amount))}`];
+
+  // Adjustments
+  const adjList = [
+    ['adj_box', +500, '外箱がある'],
+  ];
+  adjList.forEach(([id, val, label]) => {
+    if (document.getElementById(id).checked) {
+      amount += val;
+      details.push(`${label}: ${val > 0 ? '+' : ''}¥${fmt(Math.abs(val))}`);
+    }
+  });
+
+  const shipping = parseFloat(document.getElementById('shippingCost').value) || 0;
+  if (shipping > 0) { amount -= shipping; details.push(`配送料: -¥${fmt(shipping)}`); }
+
+  const adjList2 = [
+    ['adj_cash',         -1500, '着払い/配送料不明'],
+    ['adj_no_bcas',      -1500, 'mini B-CASカードなし'],
+    ['adj_no_ac',        -3000, 'ACアダプターがない(DVD　／　BD　プレーヤー　のみ)'],
+    ['adj_remocon_lid',  -800,  'リモコン蓋なし（Panasonic/SHARP）'],
+    ['adj_rc_broken',    -1000, 'リモコン使えないボタンあり'],
+    ['adj_pana_wireless',-5500, 'Panasonic無線+赤外線リモコンがない'],
+    ['adj_pana_ir',      -2000, 'Panasonic赤外線リモコンがない'],
+    ['adj_pana_ir_white',-3000, 'Panasonic赤外線リモコン(白)がない'],
+    ['adj_sony_rc',      -2000, 'SONYリモコンなし'],
+    ['adj_sharp_rc',     -1500, 'SHARPリモコン(黒)なし'],
+    ['adj_sharp_rc_white',-3000,'SHARPリモコン(白)なし'],
+    ['adj_toshiba_rc',   -2000, 'TOSHIBAリモコンなし'],
+  ];
+  adjList2.forEach(([id, val, label]) => {
+    if (document.getElementById(id).checked) {
+      amount += val;
+      details.push(`${label}: -¥${fmt(Math.abs(val))}`);
+    }
+  });
+
+  const rounded_excl_base = Math.ceil(amount / 10) * 10;
+  const rounded_incl_base = Math.ceil((amount / 1.1) / 10) * 10;
+
+  if (rounded_excl_base <= 0) {
+    resultContent.innerHTML =
+      '<div class="result-ng-title">⚠️ 計算結果が0円以下</div>' +
+      '<div style="color:#777;margin-top:8px;">入札は推奨しません</div>';
+    resultBox.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+
+  const rounded_excl = roundToEnding10(rounded_excl_base);
+  const rounded_incl = roundToEnding10(rounded_incl_base);
+
+  const detailsHtml = details.join('<br>');
+  const detailStyle = 'text-align:left;margin-top:12px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.9;color:#555;';
+
+  resultContent.innerHTML =
+    ngBlock +
+    '<div style="font-size:13px;color:#95a5a6;margin-bottom:14px;">入札金額</div>' +
+    '<div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:18px;">' +
+
+      '<div style="background:#eaf4fd;border-radius:10px;padding:16px 20px;flex:1;min-width:180px;">' +
+        '<div style="font-size:12px;color:#555;margin-bottom:6px;text-align:center;">消費税が不要の場合</div>' +
+        '<div style="font-size:34px;font-weight:700;color:#1a252f;text-align:center;">¥' + fmt(rounded_excl) + '</div>' +
+        '<div style="' + detailStyle + 'background:#d6eaf8;">' +
+          '<strong>計算内訳</strong><br>' + detailsHtml + '<br>' +
+          '10円単位で切り上げ：¥' + fmt(rounded_excl_base) + ' + 300円 → 100円単位で切り上げ → +10円 = ¥' + fmt(rounded_excl) +
+        '</div>' +
+      '</div>' +
+
+      '<div style="background:#fef9e7;border-radius:10px;padding:16px 20px;flex:1;min-width:180px;">' +
+        '<div style="font-size:12px;color:#555;margin-bottom:6px;text-align:center;">消費税10%が必要な場合</div>' +
+        '<div style="font-size:34px;font-weight:700;color:#1a252f;text-align:center;">¥' + fmt(rounded_incl) + '</div>' +
+        '<div style="' + detailStyle + 'background:#fdebd0;">' +
+          '<strong>計算内訳</strong><br>' + detailsHtml + '<br>' +
+          '¥' + fmt(Math.round(amount)) + ' ÷ 1.1 → 10円単位で切り上げ：¥' + fmt(rounded_incl_base) + '<br>' +
+          '¥' + fmt(rounded_incl_base) + ' + 300円 → 100円単位で切り上げ → +10円 = ¥' + fmt(rounded_incl) +
+        '</div>' +
+      '</div>' +
+
+    '</div>';
+  resultBox.scrollIntoView({ behavior: 'smooth' });
+}
+
+function fmt(n) { return Math.round(n).toLocaleString('ja-JP'); }
+
+function roundToEnding10(value) { return Math.ceil((value + 300) / 100) * 100 + 10; }
+
+function resetConditions() {
+  // ② NG チェック
+  document.querySelectorAll('.ng-flag').forEach(el => el.checked = false);
+
+  // ③ 掛け率
+  document.querySelectorAll('input[name="rate"]').forEach(el => { el.checked = false; });
+  document.querySelectorAll('.rate-label').forEach(el => el.classList.remove('selected'));
+
+  // ④ 加算・減算
+  ['adj_box','adj_remocon_lid','adj_rc_broken','adj_cash','adj_no_bcas','adj_no_ac',
+   'adj_pana_wireless','adj_pana_ir','adj_pana_ir_white','adj_sony_rc','adj_sharp_rc','adj_sharp_rc_white','adj_toshiba_rc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = false;
+  });
+  document.getElementById('shippingCost').value = '';
+
+  // 結果を非表示
+  document.getElementById('resultBox').style.display = 'none';
+
+  // 型番に合わせてフィルターを再適用
+  if (currentProduct) {
+    filterByModel(currentProduct.amazonPrice, currentProduct.maker);
+  } else {
+    resetFilter();
+  }
+}
+
+function resetAll() {
+  // ① 型番
+  document.getElementById('modelNumber').value = '';
+  currentProduct = null;
+  document.getElementById('priceInfoBox').style.display = 'none';
+
+  // ② NG チェック
+  document.querySelectorAll('.ng-flag').forEach(el => el.checked = false);
+
+  // ③ 掛け率
+  document.querySelectorAll('input[name="rate"]').forEach(el => { el.checked = false; });
+  document.querySelectorAll('.rate-label').forEach(el => el.classList.remove('selected'));
+
+  // ④ 加算・減算
+  ['adj_box','adj_remocon_lid','adj_rc_broken','adj_cash','adj_no_bcas','adj_no_ac',
+   'adj_pana_wireless','adj_pana_ir','adj_pana_ir_white','adj_sony_rc','adj_sharp_rc','adj_sharp_rc_white','adj_toshiba_rc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = false;
+  });
+  document.getElementById('shippingCost').value = '';
+
+  // 結果を非表示
+  document.getElementById('resultBox').style.display = 'none';
+
+  // フィルターをリセット
+  resetFilter();
+}
+
+function getThreshold(rot) {
+  if (!rot) return null;
+  if (rot === '低' || rot === '低回転') return 5;
+  if (rot === '中' || rot === '中回転') return 7;
+  if (rot === '高' || rot === '高回転') return 10;
+  return null;
+}
+
+// ============================================================
+// MONITOR TOOL
+// ============================================================
+const VALID_MAKERS_M = ['ASUS', 'BenQ', 'DELL', 'LG'];
+let productMap_m   = {};
+let productOrder_m = [];
+let currentProduct_m = null;
+
+function onModelSelect_m() {
+  document.getElementById('resultBox_m').style.display='none';
+  currentProduct_m=null;
+  const model   = document.getElementById('modelNumber_m').value;
+  const box     = document.getElementById('priceInfoBox_m');
+  const content = document.getElementById('priceInfoContent_m');
+  if (!model) { box.style.display = 'none'; currentProduct_m = null; resetFilter_m(); return; }
+  const data = resolveBussanProduct(model,true);
+  box.style.display = 'block';
+  if (!data) {
+    currentProduct_m = null;
+    content.innerHTML = '<div class="not-found">型番が見つかりません。データを読み込み直してください。</div>';
+    resetFilter_m();
+    return;
+  }
+  if(data.errors?.length){content.innerHTML='<div class="not-found">'+escapeText(data.errors.join('、'))+'</div>';resetFilter_m();return;}
+  currentProduct_m = data;
+  const price = data.amazonPrice;
+  const rot = data.rotation;
+  const stk = data.stock;
+  const threshold   = getThreshold_m(rot);
+  const isOverStock = threshold !== null && stk >= threshold;
+  const stockColor  = isOverStock ? '#e74c3c' : '#27ae60';
+  const stockStatus = isOverStock
+    ? `<span style="background:#e74c3c;color:#fff;padding:2px 10px;border-radius:4px;font-weight:700;margin-left:8px;">仕入れNG（在庫過多）</span>`
+    : `<span style="background:#27ae60;color:#fff;padding:2px 10px;border-radius:4px;font-weight:700;margin-left:8px;">仕入れOK</span>`;
+  const tags = price < 55000
+    ? '<span class="ptag ptag-green">¥55,000未満 → ×0.65 適用</span>'
+    : '<span class="ptag ptag-orange">¥55,000以上 → ×0.70 適用</span>';
+  const accSet = [...(data.accessories || [])];
+  if (!data.noStand) accSet.unshift('スタンド');
+  accSet.push('電源ケーブル');
+  const accHtml = accSet.length > 0
+    ? `<div style="margin-top:8px; font-size:13px; color:#555;"><strong>付属品：</strong>${escapeText(accSet.join('、'))}</div>`
+    : '';
+  content.innerHTML =
+    `<div style="font-size:12px;margin-bottom:8px;">${escapeText(data.model)}／${escapeText(data.makerFull||data.maker)}／品番 ${escapeText(data.productNo)}／ASIN ${escapeText(data.asin)}</div><div>Amazon販売価格　<span class="amazon-price">¥${fmt(price)}</span></div>` +
+    `<div class="stock-info" style="color:${stockColor}; margin-top:6px; display:flex; align-items:center; flex-wrap:wrap; gap:4px;">回転：${rot || '不明'}　／　在庫数：${stk}個${stockStatus}</div>` +
+    accHtml +
+    `<div class="price-tags">${tags}</div>`;
+  filterByModel_m(price);
+}
+
+function filterByModel_m(price) {
+  const rateRules = { '0.55': true, '0.65': price < 55000, '0.70': price >= 55000 };
+  Object.entries(rateRules).forEach(([val, show]) => {
+    const radio = document.querySelector(`input[name="rate_m"][value="${val}"]`);
+    if (!radio) return;
+    const label = radio.closest('.rate-label');
+    label.style.display = show ? '' : 'none';
+    if (!show && radio.checked) { radio.checked = false; label.classList.remove('selected'); }
+  });
+}
+
+function resetFilter_m() {
+  document.querySelectorAll('input[name="rate_m"]').forEach(el => { el.closest('.rate-label').style.display = ''; });
+}
+
+function onRateChange_m() {
+  document.querySelectorAll('input[name="rate_m"]').forEach(el => { el.closest('.rate-label').classList.remove('selected'); });
+  const checked = document.querySelector('input[name="rate_m"]:checked');
+  if (checked) checked.closest('.rate-label').classList.add('selected');
+}
+
+function calculate_m() {
+  const resultBox     = document.getElementById('resultBox_m');
+  const resultContent = document.getElementById('resultContent_m');
+  resultBox.style.display = 'block';
+  const ngReasons = [];
+  document.querySelectorAll('.ng-flag-m').forEach(flag => {
+    if (flag.checked) ngReasons.push(flag.closest('label').textContent.trim());
+  });
+  if (currentProduct_m) {
+    const threshold = getThreshold_m(currentProduct_m.rotation);
+    if (threshold !== null && currentProduct_m.stock >= threshold)
+      ngReasons.push(`在庫過多：${currentProduct_m.rotation} ${currentProduct_m.stock}個（${threshold}個以上）`);
+  }
+  const ngBlock = ngReasons.length > 0
+    ? '<div class="result-ng-title">❌ 入札NG</div><div class="result-ng-reasons"><strong>NG理由：</strong><br>' +
+      ngReasons.map(r => '・' + r).join('<br>') + '</div>'
+    : '';
+  if (!currentProduct_m || currentProduct_m.amazonPrice <= 0) {
+    alert('型番を入力してAmazon販売価格を取得してください'); resultBox.style.display = 'none'; return;
+  }
+  const rateInput = document.querySelector('input[name="rate_m"]:checked');
+  if (!rateInput) { alert('掛け率を選択してください'); resultBox.style.display = 'none'; return; }
+  const amazonPrice = currentProduct_m.amazonPrice;
+  const rate = parseFloat(rateInput.value);
+  let amount = amazonPrice * rate;
+  const details = [`Amazon価格 ¥${fmt(amazonPrice)} × ${rate} = ¥${fmt(Math.round(amount))}`];
+  const boxEl_m = document.getElementById('adj_box_m');
+  if (boxEl_m && boxEl_m.checked) { amount += 500; details.push('外箱がある: +¥500'); }
+  const shipping = parseFloat(document.getElementById('shippingCost_m').value) || 0;
+  if (shipping > 0) { amount -= shipping; details.push(`配送料: -¥${fmt(shipping)}`); }
+  const cashEl = document.getElementById('adj_cash_m');
+  if (cashEl && cashEl.checked) { amount -= 2500; details.push('着払い/配送料不明: -¥2,500'); }
+  const rounded_excl_base = Math.ceil(amount / 10) * 10;
+  const rounded_incl_base = Math.ceil((amount / 1.1) / 10) * 10;
+  if (rounded_excl_base <= 0) {
+    resultContent.innerHTML = '<div class="result-ng-title">⚠️ 計算結果が0円以下</div><div style="color:#777;margin-top:8px;">入札は推奨しません</div>';
+    resultBox.scrollIntoView({ behavior: 'smooth' }); return;
+  }
+  const rounded_excl = roundToEnding10(rounded_excl_base);
+  const rounded_incl = roundToEnding10(rounded_incl_base);
+  const detailsHtml = details.join('<br>');
+  const detailStyle = 'text-align:left;margin-top:12px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:1.9;color:#555;';
+  resultContent.innerHTML =
+    ngBlock +
+    '<div style="font-size:13px;color:#95a5a6;margin-bottom:14px;">入札金額</div>' +
+    '<div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:18px;">' +
+      '<div style="background:#eaf4fd;border-radius:10px;padding:16px 20px;flex:1;min-width:180px;">' +
+        '<div style="font-size:12px;color:#555;margin-bottom:6px;text-align:center;">消費税が不要の場合</div>' +
+        '<div style="font-size:34px;font-weight:700;color:#1a252f;text-align:center;">¥' + fmt(rounded_excl) + '</div>' +
+        '<div style="' + detailStyle + 'background:#d6eaf8;">' +
+          '<strong>計算内訳</strong><br>' + detailsHtml + '<br>' +
+          '10円単位で切り上げ：¥' + fmt(rounded_excl_base) + ' + 300円 → 100円単位で切り上げ → +10円 = ¥' + fmt(rounded_excl) +
+        '</div>' +
+      '</div>' +
+      '<div style="background:#fef9e7;border-radius:10px;padding:16px 20px;flex:1;min-width:180px;">' +
+        '<div style="font-size:12px;color:#555;margin-bottom:6px;text-align:center;">消費税10%が必要な場合</div>' +
+        '<div style="font-size:34px;font-weight:700;color:#1a252f;text-align:center;">¥' + fmt(rounded_incl) + '</div>' +
+        '<div style="' + detailStyle + 'background:#fdebd0;">' +
+          '<strong>計算内訳</strong><br>' + detailsHtml + '<br>' +
+          '¥' + fmt(Math.round(amount)) + ' ÷ 1.1 → 10円単位で切り上げ：¥' + fmt(rounded_incl_base) + '<br>' +
+          '¥' + fmt(rounded_incl_base) + ' + 300円 → 100円単位で切り上げ → +10円 = ¥' + fmt(rounded_incl) +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  resultBox.scrollIntoView({ behavior: 'smooth' });
+}
+
+function resetConditions_m() {
+  document.querySelectorAll('.ng-flag-m').forEach(el => el.checked = false);
+  document.querySelectorAll('input[name="rate_m"]').forEach(el => { el.checked = false; el.closest('.rate-label').classList.remove('selected'); });
+  ['adj_box_m','adj_cash_m'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
+  document.getElementById('shippingCost_m').value = '';
+  document.getElementById('resultBox_m').style.display = 'none';
+  if (currentProduct_m) filterByModel_m(currentProduct_m.amazonPrice); else resetFilter_m();
+}
+
+function resetAll_m() {
+  document.getElementById('modelNumber_m').value = '';
+  currentProduct_m = null;
+  document.getElementById('priceInfoBox_m').style.display = 'none';
+  document.querySelectorAll('.ng-flag-m').forEach(el => el.checked = false);
+  document.querySelectorAll('input[name="rate_m"]').forEach(el => { el.checked = false; el.closest('.rate-label').classList.remove('selected'); });
+  ['adj_box_m','adj_cash_m'].forEach(id => { const el = document.getElementById(id); if (el) el.checked = false; });
+  document.getElementById('shippingCost_m').value = '';
+  document.getElementById('resultBox_m').style.display = 'none';
+  resetFilter_m();
+}
+
+function getThreshold_m(rot) {
+  if (!rot) return null;
+  if (rot === '低' || rot === '低回転') return 2;
+  if (rot === '中' || rot === '中回転') return 3;
+  if (rot === '高' || rot === '高回転') return 3;
+  return null;
+}
+</script>
+</body>
+</html>
