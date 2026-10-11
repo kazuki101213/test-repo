@@ -69,7 +69,7 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className={tab === 'bid-calculator' ? 'app app-bid-calculator' : 'app'}>
       <div className="topbar">
         <div>
           <h1>納品アプリ</h1>
