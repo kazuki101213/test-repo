@@ -54,7 +54,13 @@ export type AmazonReturnSource = Pick<ItemInsert,
   'product_id' | 'asin' | 'condition' | 'planned_price' | 'planned_payout' | 'sales_channel' | 'marketplace_item_id' | 'marketplace_url'
 > & { original_sku: string; sku: string; model_no: string | null };
 
-export async function findInventoryForAmazonReturn(lotSeq: number): Promise<AmazonReturnSource | null> {
+export async function findInventoryForAmazonReturn(serial: string | number): Promise<AmazonReturnSource | null> {
+  const key = String(serial).trim().toLowerCase();
+  const match = key.match(/^([0-9]+[a-z]*)$/);
+  if (!match) return null;
+  const serialKey = match[1];
+  if (!serialKey) return null;
+  const lotSeq = Number(serialKey.match(/^\d+/)?.[0] ?? '');
   if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return null;
   const { data, error } = await getSupabase().from('v_inventory_display')
     .select('id,sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,cost_amount,product_id,asin,model_no,condition,planned_price,planned_payout,sales_channel')
@@ -62,8 +68,9 @@ export async function findInventoryForAmazonReturn(lotSeq: number): Promise<Amaz
   if (error) throw error;
   const rows = (data ?? []) as Array<AmazonReturnSource & { id: string; lot_seq: number; is_accessory: boolean }>;
   if (!rows.length) return null;
-  const rootSku = new RegExp(`^${lotSeq}-`, 'i');
-  const source = rows.find(row => rootSku.test(row.sku)) ?? rows[0];
+  // 通番号の派生系列（例: 1z / 1za / 1zb）を数字だけの通番号と混同しない。
+  // 入力された系列を完全一致で選び、z系統も元商品として読み込めるようにする。
+  const source = rows.find(row => productSerial(row.sku, row.lot_seq).toLowerCase() === key);
   if (!source) return null;
   const { data: reference, error: referenceError } = await getSupabase()
     .from('items').select('marketplace_item_id,marketplace_url,marketplace').eq('id', source.id).maybeSingle();
