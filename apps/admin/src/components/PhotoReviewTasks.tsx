@@ -50,7 +50,7 @@ export default function PhotoReviewTasks() {
       if (approvedIds.length) {
         const { data: candidates, error: candidateError } = await getSupabase().from('items')
           .select('id,sku,lot_seq,sales_channel').in('id', approvedIds)
-          .in('sales_channel', ['メルカリ', 'ヤフオク']).is('listed_on', null);
+          .in('sales_channel', ['メルカリ', 'ヤフオク']).neq('status', '出品中');
         if (candidateError) throw candidateError;
         nextListingTasks = (candidates ?? []) as ListingTask[];
       }
@@ -137,9 +137,8 @@ export default function PhotoReviewTasks() {
     if (busy) return;
     setBusy(true); setError('');
     try {
-      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
       const { error: updateError } = await getSupabase().from('items')
-        .update({ status: '出品中', listed_on: today })
+        .update({ status: '出品中' })
         .eq('id', task.id);
       if (updateError) throw updateError;
       setListingTasks(current => current.filter(row => row.id !== task.id));
