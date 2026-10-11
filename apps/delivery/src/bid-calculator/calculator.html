@@ -628,8 +628,8 @@ window.setBussanHostSession = function(session) {
   const changed = bussanSession?.userId !== session?.userId;
   if (!session || !session.token || !session.userId || session.expiresAt <= Date.now()) {
     bussanGeneration++; bussanSession=null;
-    invalidateSource('ログインが必要です。管理アプリにログインし直してください。');
-    sourceStatus('ログインが必要です。管理アプリにログインし直してください。',true);return;
+    invalidateSource('ログインが必要です。納品アプリにログインし直してください。');
+    sourceStatus('ログインが必要です。納品アプリにログインし直してください。',true);return;
   }
   bussanSession=session;
   if(changed) {

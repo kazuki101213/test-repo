@@ -41,7 +41,7 @@ export default function BidCalculator() {
 
   return <section aria-label="入札計算ツール">
     <h2>入札計算ツール</h2>
-    <p className="sub">このページのURLをスタッフに共有できます。管理アプリのログインで利用できます。</p>
+    <p className="sub">このページのURLをスタッフに共有できます。納品アプリのログインで利用できます。</p>
     {error && <p role="alert" className="error">{error}</p>}
     <iframe ref={frame} title="ブルーレイ・モニター入札計算ツール" srcDoc={calculatorHtml}
       onLoad={deliver} onError={() => setError('計算ツールを開けませんでした。ページを再読み込みしてください。')}

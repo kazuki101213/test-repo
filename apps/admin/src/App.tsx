@@ -1,5 +1,5 @@
 import { staffDisplayName } from '@bussan/shared';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { loadSession, signOut } from '@bussan/shared';
 import type { Session } from '@bussan/shared';
 import Login from './components/Login';
@@ -11,9 +11,7 @@ import ExpenseList from './components/ExpenseList';
 import Spares from './pages/Spares';
 import { disableDevicePush } from './push';
 
-const BidCalculator = lazy(() => import('./pages/BidCalculator'));
-
-type Page = 'dashboard' | 'inventory' | 'spares' | 'expenses' | 'products' | 'ledger' | 'bid-calculator';
+type Page = 'dashboard' | 'inventory' | 'spares' | 'expenses' | 'products' | 'ledger';
 
 const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
@@ -21,7 +19,6 @@ const NAV: { key: Page; label: string }[] = [
   { key: 'spares', label: '予備' },
   { key: 'expenses', label: '経費' },
   { key: 'products',  label: '商品リスト' },
-  { key: 'bid-calculator', label: '入札計算ツール' },
   { key: 'ledger',    label: '古物台帳' },
 ];
 
@@ -29,17 +26,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState<Page>(() => window.location.hash === '#bid-calculator' ? 'bid-calculator' : 'dashboard');
-  function navigate(next: Page) {
-    setPage(next);
-    if(next === 'bid-calculator') window.location.hash='bid-calculator';
-    else if(window.location.hash === '#bid-calculator') history.replaceState(null,'',window.location.pathname+window.location.search);
-  }
-  useEffect(() => {
-    const sync=()=>setPage(window.location.hash === '#bid-calculator' ? 'bid-calculator' : 'dashboard');
-    window.addEventListener('hashchange',sync);
-    return ()=>window.removeEventListener('hashchange',sync);
-  },[]);
+  const [page, setPage] = useState<Page>('dashboard');
   async function logout() {
     try { await disableDevicePush(); await signOut(); await refresh(); }
     catch { setError('通知の停止またはログアウトに失敗しました。再度お試しください。'); }
@@ -88,7 +75,7 @@ export default function App() {
         <h1>物販管理</h1>
         <p className="who">{staffDisplayName(session.staff)}（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</p>
         {NAV.filter(n => n.key !== 'expenses' || session.staff.role === 'admin').map((n) => (
-          <button key={n.key} className="nav" data-active={page === n.key} onClick={() => navigate(n.key)}>
+          <button key={n.key} className="nav" data-active={page === n.key} onClick={() => setPage(n.key)}>
             {n.label}
           </button>
         ))}
@@ -103,7 +90,6 @@ export default function App() {
         {page === 'spares' && <Spares me={session.staff} />}
         {page === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
         {page === 'products'  && <Products />}
-        {page === 'bid-calculator' && <Suspense fallback={<p>計算ツールを読み込み中…</p>}><BidCalculator /></Suspense>}
         {page === 'ledger'    && <Ledger />}
       </main>
     </div>
