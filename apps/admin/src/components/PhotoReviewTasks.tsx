@@ -151,7 +151,7 @@ export default function PhotoReviewTasks() {
       {noticeMessage && <li role="status">{noticeMessage}</li>}
       {listingTasks.map(task => <li key={`listing-${task.id}`} className="malfunction-task-row">
         <div className="task-action-details"><strong>出品する</strong><small>{task.sku} ／ {task.sales_channel}</small></div>
-        <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeListing(task)}>完了</button>
+        <button type="button" className="btn" disabled={busy} onClick={() => void completeListing(task)}>完了</button>
       </li>)}
       {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>
         <span>{items[review.item_id]?.sku || 'SKU確認中'}<small>{items[review.item_id]?.title || ''} ／ 写真 {review.exported_photo_count}枚</small></span>
