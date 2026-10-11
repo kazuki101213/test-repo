@@ -7,7 +7,7 @@ function equal(actual: unknown, expected: unknown) {
 }
 
 Deno.test('serial search groups a/aa/aaa, b and c under a numeric base', () => {
-  for (const serial of ['2349', '2349a', '2349aa', '2349aaa', '2349b', '2349c']) equal(matchesSerialFamily(serial, '2349'), true);
+  for (const serial of ['2349', '2349a', '2349aa', '2349aaa', '2349b', '2349c', '2349z', '2349za', '2349zb']) equal(matchesSerialFamily(serial, '2349'), true);
   equal(matchesSerialFamily('23490', '2349'), false);
   equal(matchesSerialFamily('2349a', '2349a'), true);
   equal(matchesSerialFamily('2349aa', '2349a'), false);

@@ -64,7 +64,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const [purchaserId, setPurchaserId] = useState(me.id);
   const [delivererId, setDelivererId] = useState('');
   const [workStream, setWorkStream] = useState<WorkStream | ''>('ブルーレイ');
-  const [lotSeq, setLotSeq] = useState<number | ''>('');
+  const [lotSeq, setLotSeq] = useState<string>('');
   const [purchasedAt, setPurchasedAt] = useState(today());
   const [trackingNo, setTrackingNo] = useState('');
   const [productId, setProductId] = useState('');
@@ -146,7 +146,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setCards(rows);
       setCardId(current => current || rows.find(card => card.name === 'アメックスカード')?.id || '');
     }).catch(() => undefined);
-    nextLotSeq().then(setLotSeq).catch(() => undefined);
+    nextLotSeq().then(value => setLotSeq(String(value))).catch(() => undefined);
   }, []);
   useEffect(() => {
     if (productId && !isWorkingAmazonReturn) return;
@@ -196,14 +196,15 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     }
     let active = true;
     setReturnLookup('読み込み中…');
-    void findInventoryForAmazonReturn(Number(lotSeq)).then(source => {
+    void findInventoryForAmazonReturn(lotSeq).then(source => {
       if (!active) return;
       if (!source) {
         setReturnSku(null);
         setReturnLookup(`通番号 ${lotSeq} の本体が見つかりません。通番号を確認してください。`);
         return;
       }
-      const specialSku = source.sku.replace(/^\d+[a-z]*(?=-)/i, `${lotSeq}b`);
+      const serial = lotSeq.trim().toLowerCase();
+      const specialSku = source.sku.replace(/^\d+[a-z]*(?=-)/i, `${serial}b`);
       setReturnSku(isWorkingAmazonReturn ? specialSku : source.sku);
       setPurchaserId(current => source.purchaser_id ?? current);
       setDelivererId(current => source.deliverer_id ?? current);
@@ -286,7 +287,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
 
       const payload: ItemInsert = {
         ...((isAmazonReturn || isWorkingAmazonReturn) && assignedReturnSku ? { sku: assignedReturnSku } : {}),
-        lot_seq: lotSeq === '' ? undefined : Number(lotSeq),
+        lot_seq: lotSeq === '' ? undefined : Number(lotSeq.match(/^\d+/)?.[0] ?? ''),
         is_accessory: !isWorkingAmazonReturn && workStream === '付属品',
         purchaser_id: purchaserId,
         deliverer_id: delivererId || null,
@@ -433,7 +434,14 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 </select>
               </label>
               <label className="field"><span>{isAmazonReturn || isWorkingAmazonReturn ? '元商品の通番号' : '通番号'}</span>
-                <input type="number" min={1} value={lotSeq} onChange={(e) => setLotSeq(e.target.value === '' ? '' : Number(e.target.value))} />
+                <input
+                  type={isAmazonReturn || isWorkingAmazonReturn ? 'text' : 'number'}
+                  min={isAmazonReturn || isWorkingAmazonReturn ? undefined : 1}
+                  inputMode={isAmazonReturn || isWorkingAmazonReturn ? 'text' : 'numeric'}
+                  placeholder={isAmazonReturn || isWorkingAmazonReturn ? '例：1z、1za' : undefined}
+                  value={lotSeq}
+                  onChange={(e) => setLotSeq(e.target.value)}
+                />
               </label>
               {(isAmazonReturn || isWorkingAmazonReturn) && <p className="sub" role="status" style={{ gridColumn: '1 / -1', margin: 0 }}>{returnLookup || '元商品の通番号を入力すると、商品情報を読み込みます。'}</p>}
               <fieldset className="purchase-spare-picker">
