@@ -687,6 +687,7 @@ function buildBussanCatalog(products,inventory) {
   return catalog;
 }
 function installCatalog(catalog) {
+  const fetchedAt = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
   productMap=Object.create(null);productMap_m=Object.create(null);
   productOrder=catalog.bd;productOrder_m=catalog.monitor;
   for(const [rows,map,suffix,makers] of [[catalog.bd,productMap,'',VALID_MAKERS],[catalog.monitor,productMap_m,'_m',VALID_MAKERS_M]]) {
@@ -697,7 +698,7 @@ function installCatalog(catalog) {
     }
     const status=document.getElementById('loadStatus'+suffix);
     status.className='load-status '+(rows.length?'ok':'err');
-    status.textContent=rows.length?'✓ '+rows.length+'件取得（計算不可 '+rows.filter(p=>p.errors.length).length+'件） '+new Date().toLocaleString('ja-JP'):'対象の商品がありません。管理アプリのメーカー・商品登録を確認してください。';
+    status.textContent=rows.length?'✓ '+rows.length+'件取得（計算不可 '+rows.filter(p=>p.errors.length).length+'件） 最終取得日時（日本時間）：'+fetchedAt:'対象の商品がありません。管理アプリのメーカー・商品登録を確認してください。';
   }
   document.getElementById('bussanIssues').textContent=catalog.issues.length?'要確認データ（不足分は計算できません）\n'+catalog.issues.join('\n'):'';
   onModelSelect();onModelSelect_m();
@@ -709,9 +710,16 @@ function resolveBussanProduct(value,monitor=false) {
   if(hits.length>1)return {errors:['同じ型番が複数あります。候補の品番・メーカー・ASINを確認して選択してください。']};
   return hits[0];
 }
+function setBussanLoading(loading) {
+  for(const button of document.querySelectorAll('button[onclick="loadData()"], button[onclick="loadData_m()"]')) {
+    button.disabled=loading;
+    button.textContent=loading?'読み込み中…':'🔄 商品データを読み込む';
+    button.setAttribute('aria-busy',String(loading));
+  }
+}
 async function loadBussanData() {
   if(bussanBusy){sourceStatus('取得中です。完了までお待ちください。');return;}
-  bussanBusy=true;const generation=++bussanGeneration;invalidateSource('取得中…');
+  bussanBusy=true;setBussanLoading(true);const generation=++bussanGeneration;invalidateSource('商品・在庫を取得中…');
   try {
     await verifyStockAccess();
     const [products,inventory]=await Promise.all([
@@ -722,7 +730,7 @@ async function loadBussanData() {
     if(!products.length)throw Error('商品データが0件でした。閲覧権限と商品登録を確認してください。');
     installCatalog(buildBussanCatalog(products,inventory));sourceStatus('');
   } catch(e) {if(generation===bussanGeneration){invalidateSource('取得失敗：'+e.message);sourceStatus(e.message,true);}}
-  finally{bussanBusy=false;}
+  finally{bussanBusy=false;setBussanLoading(false);}
 }
 function loadData(){return loadBussanData();}
 function loadData_m(){return loadBussanData();}
