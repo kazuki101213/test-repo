@@ -8,6 +8,8 @@ import {
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
+import DateInput from '../components/DateInput';
+
 
 function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
   switch (step) {
@@ -346,8 +348,8 @@ export default function TaskDetail({
                 </span>
               </button>
               {(s.key === 'packed' || s.key === 'shipped') &&
-                <input className="step-date" aria-label={s.key === 'packed' ? '梱包の日付' : '出荷の日付'}
-                  type="date" value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading || (!isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && !done)}
+                <DateInput className="step-date" aria-label={s.key === 'packed' ? '梱包の日付' : '出荷の日付'}
+                  value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading || (!isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && !done)}
                   onChange={e => void setStepDate(s.key as 'packed' | 'shipped', e.target.value)} />}
               </div>
             );

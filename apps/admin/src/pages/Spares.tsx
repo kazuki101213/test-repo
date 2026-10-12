@@ -2,6 +2,7 @@ import { spareSearchFields, matchesSpareSearch, type SpareSearchField } from '@b
 import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredLabel from '../components/ColoredLabel';
 import ColoredSelect from '../components/ColoredSelect';
+import DateInput from '../components/DateInput';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { MARKETPLACES, deleteSpareAccessory, fetchSpareAccessories, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
@@ -144,7 +145,7 @@ export default function Spares({ me }: { me: Staff }) {
         <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>
         <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
         <label className="field"><span>ASIN</span><input value={form.asin ?? ''} onChange={event => setForm(current => ({ ...current, asin: event.target.value || null }))} /></label>
-        <label className="field"><span>購入日</span><input type="date" value={form.purchased_at ?? ''} onChange={event => setForm(current => ({ ...current, purchased_at: event.target.value || null }))} /></label>
+        <label className="field"><span>購入日</span><DateInput value={form.purchased_at ?? ''} onChange={event => setForm(current => ({ ...current, purchased_at: event.target.value || null }))} /></label>
         <label className="field"><span>仕入金額</span><input type="number" min={0} step={1} value={form.cost_amount} onChange={event => setForm(current => ({ ...current, cost_amount: Number(event.target.value) }))} /></label>
         <label className="field"><span>仕入先</span><ColoredSelect value={form.marketplace ?? ''} onChange={event => setForm(current => ({ ...current, marketplace: event.target.value || null }))}><option value="">未設定</option>{MARKETPLACES.map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
         <label className="field"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
@@ -212,7 +213,8 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
     <div className="card inventory-comment-panel"><h3>{labels[field]}を編集</h3>
       <label className="field"><span>{labels[field]}</span>
         {field === 'marketplace' ? <ColoredSelect autoFocus value={value} onChange={event => setValue(event.target.value)}><option value="">未設定</option>{MARKETPLACES.map(option => <option key={option}>{option}</option>)}</ColoredSelect>
-          : <input autoFocus type={date ? 'date' : numeric ? 'number' : 'text'} min={numeric ? 0 : undefined} step={numeric ? 1 : undefined} value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />}
+          : date ? <DateInput autoFocus value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />
+            : <input autoFocus type={numeric ? 'number' : 'text'} min={numeric ? 0 : undefined} step={numeric ? 1 : undefined} value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />}
       </label>
       {error && <div className="error" role="alert">{error}</div>}
       <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>

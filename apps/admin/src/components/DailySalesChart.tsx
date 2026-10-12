@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { yen } from '@bussan/shared';
 import { fetchSaleRows } from '../api';
 import { dailySalesRange, groupProducts } from '../sales';
+import DateInput from './DateInput';
 import type { ProductGroup } from '../sales';
 
 export default function DailySalesChart() {
@@ -41,8 +42,8 @@ export default function DailySalesChart() {
       <h3>{range ? '日別売上' : '日別売上（直近7日間）'}</h3>
     </div>
     <div className="toolbar">
-      <label className="field"><span>開始日</span><input type="date" value={from} max={to || undefined} onChange={e => { setRange({ from: e.target.value, to }); setSelected(null); }} /></label>
-      <label className="field"><span>終了日</span><input type="date" value={to} min={from || undefined} onChange={e => { setRange({ from, to: e.target.value }); setSelected(null); }} /></label>
+      <label className="field"><span>開始日</span><DateInput value={from} max={to || undefined} onChange={e => { setRange({ from: e.target.value, to }); setSelected(null); }} /></label>
+      <label className="field"><span>終了日</span><DateInput value={to} min={from || undefined} onChange={e => { setRange({ from, to: e.target.value }); setSelected(null); }} /></label>
       <button className="btn" onClick={() => { setRange(null); setSelected(null); }}>直近7日間</button>
     </div>
     {loading ? <p role="status">売上を読み込み中…</p> : error || rangeError ? <div className="error" role="alert">{error || rangeError}</div> : <>
