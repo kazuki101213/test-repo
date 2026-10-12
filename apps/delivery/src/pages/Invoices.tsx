@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Staff } from '@bussan/shared';
 import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
+import DateInput from '../components/DateInput';
 import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday, monthlyGrossProfit } from '../invoices';
 import PackedSummary from '../components/PackedSummary';
 import GrossProfitSummary from '../components/GrossProfitSummary';
@@ -186,17 +187,17 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
       <form className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save((e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'both' ? 'both' : 'invoice'); }}>
         <h3>請求書</h3>
-        <div className="row"><label>請求日<input type="date" required value={issued} disabled={busy} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label><span className="muted">{invoice ? '承認待ち' : '未提出'}・通常作業 {snapshot.lines.filter(line => line.description !== '動作品Amazon返品対応').reduce((n, line) => n + line.quantity, 0)}点・動作品Amazon返品 {snapshot.lines.filter(line => line.description === '動作品Amazon返品対応').reduce((n, line) => n + line.quantity, 0)}点</span></div>
+        <div className="row"><label>請求日<DateInput required value={issued} disabled={busy} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label><span className="muted">{invoice ? '承認待ち' : '未提出'}・通常作業 {snapshot.lines.filter(line => line.description !== '動作品Amazon返品対応').reduce((n, line) => n + line.quantity, 0)}点・動作品Amazon返品 {snapshot.lines.filter(line => line.description === '動作品Amazon返品対応').reduce((n, line) => n + line.quantity, 0)}点</span></div>
         {isIshikawa && <section className="invoice-auction-workdays">
           <h3>ヤフオク入札作業日</h3><p className="muted">対象月の月・水・金を初期設定しています。作業した日を個別に追加・削除できます。</p>
-          <div className="row"><input aria-label="作業日を追加" type="date" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.includes(newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
+          <div className="row"><DateInput aria-label="作業日を追加" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.includes(newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
           {workdays.map(date => <div className="row" key={date}><span>{date}　¥4,500</span><button type="button" className="btn ghost" disabled={busy} onClick={() => { setWorkdays(rows => rows.filter(row => row !== date)); setDirty(true); }}>削除</button></div>)}
           <p>作業日分：¥{auctionBasePay.toLocaleString('ja-JP')}　粗利益の10%：{grossProfitLoading ? '計算中…' : `¥${auctionProfitPay.toLocaleString('ja-JP')}`}</p>
           {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
         </section>}
         <h3>送料・資材費・手当など</h3>
         {extras.map((line, i) => <div className="invoice-extra" key={i}>
-          <label>日付<input type="date" value={line.date ?? ''} disabled={busy} onChange={e => changeExtra(i, { date: e.target.value || null })} /></label>
+          <label>日付<DateInput value={line.date ?? ''} disabled={busy} onChange={e => changeExtra(i, { date: e.target.value || null })} /></label>
           <label>内容<input required maxLength={200} value={line.description} disabled={busy} list="invoice-extra-descriptions" onChange={e => changeExtra(i, { description: e.target.value })} /></label>
           <label>数量<input required type="number" min="1" max="100000" step="1" value={line.quantity} disabled={busy} onChange={e => changeExtra(i, { quantity: e.target.valueAsNumber })} /></label>
           <label>単価（円）<input required type="number" min="0" max="10000000" step="1" value={line.unit_price} disabled={busy} onChange={e => changeExtra(i, { unit_price: e.target.valueAsNumber })} /></label>

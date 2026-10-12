@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { yen } from '@bussan/shared';
 import { fetchCards, saveExpense, updateExpense } from '../api';
 import { expenseCategories, type ExpenseInput } from '../expenses';
+import DateInput from './DateInput';
+
 
 export default function ExpensePanel({ onSaved, onBusyChange, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; initial?: ExpenseInput; template?: { id: string; category: '固定費' | '外注費'; name: string; card_id: string | null; month: string } }) {
   const [date, setDate] = useState(() => initial?.incurred_on ?? (template ? '' : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)));
@@ -53,7 +55,7 @@ export default function ExpensePanel({ onSaved, onBusyChange, initial, template 
     <form onSubmit={submit}>
       <fieldset disabled={busy} className="expense-fields">
         <label className="field"><span>経費の区分</span><select value={category} onChange={e => setCategory(e.target.value as ExpenseInput['category'])}>{expenseCategories.map(c => <option key={c}>{c}</option>)}</select></label>
-        <label className="field"><span>経費の日付</span><input type="date" required value={date} onChange={e => setDate(e.target.value)} /></label>
+        <label className="field"><span>経費の日付</span><DateInput required value={date} onChange={e => setDate(e.target.value)} /></label>
         <label className="field expense-wide"><span>経費の内容</span><input type="text" required maxLength={200} value={name} onChange={e => setName(e.target.value)} placeholder="梱包資材、家賃など" /></label>
         <label className="field"><span>金額（円・返金はマイナス）</span><input type="number" required step={1} value={amount} onChange={e => setAmount(e.target.value)} /></label>
         <label className="field"><span>支払い方法</span><select value={card} onChange={e => setCard(e.target.value)}><option value="">未指定</option>{cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>

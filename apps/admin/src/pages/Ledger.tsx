@@ -4,6 +4,8 @@ import { fetchLedger } from '../api';
 import type { LedgerDisplayRow } from '../api';
 import { downloadCsv } from '../csv';
 import { purchaseItemUrl } from '../purchaseUrl';
+import DateInput from '../components/DateInput';
+
 
 function firstOfYear(): string {
   return `${new Date().getFullYear()}-01-01`;
@@ -36,9 +38,9 @@ export default function Ledger() {
       </p>
 
       <div className="toolbar">
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
         <span className="sub" style={{ margin: 0 }}>〜</span>
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
         <button className="btn" onClick={load}>表示</button>
         <span className="sub" style={{ margin: 0 }}>{rows.length} 件</span>
         <span style={{ flex: 1 }} />

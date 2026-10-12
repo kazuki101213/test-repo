@@ -7,6 +7,8 @@ import SpareShippingTasks from './SpareShippingTasks';
 import PackedSummary from './PackedSummary';
 import PhotoReviewTasks from './PhotoReviewTasks';
 import { adminTaskNotice } from '../taskNotice';
+import DateInput from './DateInput';
+
 
 interface Line { date:string|null; description:string; quantity:number; unit_price:number; lot_seq?:number }
 interface Approval { approved_at:string; expense_id:string }
@@ -74,7 +76,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
  <div className="review-receipts">{images.map((image,i)=><a key={image.id} href={image.url} target="_blank" rel="noreferrer" title="クリックして開く">{image.mime_type.startsWith('image/')?<img src={image.url} alt={image.original_name}/>:<span className="receipt-pdf-link">PDFを開く</span>}<span>{image.document_type==='invoice'?'請求書':image.document_type==='receipt'?'領収書':'領収書の写真'}：{image.original_name}</span></a>)}</div></section></div>
  <PackedSummary staffId={task.staff_id} initialMonth={task.month.slice(0,7)} billedCount={invoice?.snapshot.lines.reduce((n,l)=>n+l.quantity,0)}/>
  {error&&<div className="error" role="alert">{error}</div>}
- {invoice&&!approved&&<form onSubmit={e=>{e.preventDefault();void approve();}}><div className="toolbar"><label className="field"><span>経費の計上日</span><input type="date" required value={date} disabled={busy} onChange={e=>setDate(e.target.value)}/></label><button className="btn primary" disabled={busy||imagesLoading||!!imageError||invoice.total<=0}>{busy?'承認中…':'承認して外注費に追加'}</button></div></form>}
+ {invoice&&!approved&&<form onSubmit={e=>{e.preventDefault();void approve();}}><div className="toolbar"><label className="field"><span>経費の計上日</span><DateInput required value={date} disabled={busy} onChange={e=>setDate(e.target.value)}/></label><button className="btn primary" disabled={busy||imagesLoading||!!imageError||invoice.total<=0}>{busy?'承認中…':'承認して外注費に追加'}</button></div></form>}
  {approved&&<p className="ok">承認済み・経費に追加済みです。</p>}
  </dialog>;
 }

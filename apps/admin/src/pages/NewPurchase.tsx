@@ -1,5 +1,6 @@
 import { STAFF_DISPLAY_NAMES, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
+import DateInput from '../components/DateInput';
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
   CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen,
@@ -339,7 +340,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
           <div className="grid cols2">
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <label className="field"><span>購入日</span>
-                <input type="date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} required />
+                <DateInput value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} required />
               </label>
               <label className="field"><span>仕入金額（円）</span>
                 <input type="number" min={0} value={cost} onChange={(e) => setCost(e.target.value === '' ? '' : Number(e.target.value))} required />

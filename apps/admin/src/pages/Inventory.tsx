@@ -1,5 +1,6 @@
 import { staffDisplayName, productModelText, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
+import DateInput from '../components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, matchesInventoryFilters } from '@bussan/shared';
 import type { PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
@@ -183,12 +184,12 @@ export default function Inventory({ me }: { me: Staff }) {
         <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} />
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field" data-empty={!purchasedFrom}>
-            <input type="date" aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
+            <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
             {!purchasedFrom && <span className="inventory-date-placeholder" aria-hidden="true">仕入日</span>}
           </label>
           <span aria-hidden="true">〜</span>
           <label className="inventory-date-field" data-empty={!purchasedTo}>
-            <input type="date" aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
+            <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
             {!purchasedTo && <span className="inventory-date-placeholder" aria-hidden="true">仕入日</span>}
           </label>
         </div>
@@ -394,7 +395,9 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         return <label className="field" key={field}><span>{fieldLabels[field]}</span>
           {options ? <ColoredSelect value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
-            : <input type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) && field !== 'amazon_refund_amount' ? 0 : undefined} step={numberFields.has(field) ? 1 : undefined} value={String(current)} onChange={event => set(field, event.target.value)} />}
+            : dateFields.has(field)
+              ? <DateInput value={String(current)} onChange={event => set(field, event.target.value)} />
+              : <input type={numberFields.has(field) ? 'number' : 'text'} min={numberFields.has(field) && field !== 'amazon_refund_amount' ? 0 : undefined} step={numberFields.has(field) ? 1 : undefined} value={String(current)} onChange={event => set(field, event.target.value)} />}
         </label>;
       })}</div>
       {error && <div className="error" role="alert">{error}</div>}
@@ -440,7 +443,9 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
       <label className="field"><span>{fieldLabels[field]}</span>
         {options ? <ColoredSelect value={value} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
           : field === 'memo' ? <textarea value={value} onChange={e => setValue(e.target.value)} />
-            : <input autoFocus type={dateFields.has(field) ? 'date' : numberFields.has(field) ? 'number' : 'text'} min={field === 'lot_seq' || field === 'product_no' ? '1' : numberFields.has(field) && field !== 'amazon_refund_amount' ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
+            : dateFields.has(field)
+              ? <DateInput autoFocus value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />
+              : <input autoFocus type={numberFields.has(field) ? 'number' : 'text'} min={field === 'lot_seq' || field === 'product_no' ? '1' : numberFields.has(field) && field !== 'amazon_refund_amount' ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
       </label>
       {field === 'is_accessory' && value === 'true' && !item.is_accessory && <p className="muted">付属品に変更すると、販売金額と振込金額は自動で空欄になります。</p>}
       {error && <div className="error" role="alert">{error}</div>}
