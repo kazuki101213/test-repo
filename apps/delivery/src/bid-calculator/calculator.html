@@ -108,6 +108,8 @@ body { font-family: inherit; background: #f0f2f5; color: #333; font-size: 14px; 
 .step-list li:last-child { border-bottom: none; }
 .step-list li::before { content: counter(step); background: #3498db; color: #fff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; position: absolute; left: 0; top: 8px; }
 body, button, input, select, textarea, pre, code { font-family: inherit; }
+#sourceFeedback { display:none; max-width:820px; margin:18px auto; padding:18px; background:#fff; border-radius:10px; }
+#sourceFeedback:has(#bussanStatus:not(:empty)), #sourceFeedback:has(#bussanIssues:not(:empty)) { display:block; }
 </style>
 </head>
 <body>
@@ -119,10 +121,8 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
   <button class="tab-btn" onclick="showTab('manual_m', this)">マニュアル(モニター)</button>
 </div>
 
-<section style="max-width:820px;margin:18px auto;padding:18px;background:#fff;border-radius:10px;">
-  <strong>商品データ参照元：物販管理アプリ</strong>
-  <p id="bussanStatus" role="status" style="margin-top:8px;">商品・在庫を読み込みます…</p>
-  <p style="font-size:12px;margin-top:8px;">型番が同じ場合は品番・メーカー・ASINで選択してください。在庫は管理アプリの未販売在庫と同じ通番号単位です。</p>
+<section id="sourceFeedback" aria-label="データ取得の確認事項">
+  <p id="bussanStatus" role="alert"></p>
   <pre id="bussanIssues" style="white-space:pre-wrap;max-height:200px;overflow:auto;color:#c0392b;"></pre>
 </section>
 <!-- ===== CALCULATOR ===== -->
@@ -579,7 +579,7 @@ let bussanBusy = false;
 let bussanGeneration = 0;
 function escapeText(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function sourceStatus(message, error=false) {
-  const el=document.getElementById('bussanStatus'); el.textContent=message; el.style.color=error?'#c0392b':'#246b45';
+  const el=document.getElementById('bussanStatus'); el.textContent=error?message:''; el.style.color='#c0392b';
 }
 function invalidateSource(message='未取得：商品データを読み込んでください。') {
   productMap=Object.create(null); productMap_m=Object.create(null); productOrder=[]; productOrder_m=[];
@@ -720,7 +720,7 @@ async function loadBussanData() {
     ]);
     if(generation!==bussanGeneration)return;
     if(!products.length)throw Error('商品データが0件でした。閲覧権限と商品登録を確認してください。');
-    installCatalog(buildBussanCatalog(products,inventory));sourceStatus('管理アプリから両方の商品・在庫を取得しました。');
+    installCatalog(buildBussanCatalog(products,inventory));sourceStatus('');
   } catch(e) {if(generation===bussanGeneration){invalidateSource('取得失敗：'+e.message);sourceStatus(e.message,true);}}
   finally{bussanBusy=false;}
 }
