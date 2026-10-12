@@ -302,11 +302,11 @@ textarea { min-height: 80px; resize: vertical; }
 }
 
 
-/* Keep only the calculator document scrollable, at any browser zoom. */
+/* The default layout must remain scrollable at other zoom levels. */
+.bid-calculator-frame { display: block; width: 100%; height: calc(100dvh - 145px); min-height: 600px; border: 0; border-radius: 8px; }
 .app.app-bid-calculator { height: 100dvh; padding-bottom: 8px; display: flex; flex-direction: column; overflow: hidden; }
 .app-bid-calculator > .topbar, .app-bid-calculator > nav { flex-shrink: 0; }
 .app-bid-calculator > .invoice-tabs { margin: 8px 0; }
-.app-bid-calculator > #notification-settings:not([hidden]) { flex: 0 1 auto; max-height: 30dvh; overflow-y: auto; }
-.bid-calculator-page { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
-.bid-calculator-page > .error { flex-shrink: 0; margin: 4px 0; }
-.bid-calculator-frame { display: block; flex: 1 1 0; width: 100%; min-height: 0; height: 100%; border: 0; border-radius: 8px; }
+.app-bid-calculator .bid-calculator-page { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.app-bid-calculator .bid-calculator-page > .error { flex-shrink: 0; margin: 4px 0; }
+.app-bid-calculator .bid-calculator-frame { flex: 1 1 0; min-height: 0; height: 100%; }
