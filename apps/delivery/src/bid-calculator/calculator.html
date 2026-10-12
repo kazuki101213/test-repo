@@ -27,6 +27,9 @@ body { font-family: inherit; background: #f0f2f5; color: #333; font-size: 14px; 
 .load-card { background: #eaf4fd; border: 1px solid #aed6f1; border-radius: 10px; padding: 16px 22px; margin-bottom: 18px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .load-btn { padding: 8px 20px; background: #2980b9; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-family: inherit; font-weight: 600; cursor: pointer; transition: background 0.2s; white-space: nowrap; }
 .load-btn:hover { background: #1a6fa0; }
+.load-row { display:flex; align-items:center; gap:12px; width:100%; }
+.load-row .load-btn { flex-shrink:0; }
+.load-row .load-status { flex:1; min-width:0; }
 .load-status { font-size: 13px; color: #7f8c8d; }
 .load-status.ok { color: #27ae60; font-weight: 600; }
 .load-status.err { color: #e74c3c; }
@@ -131,8 +134,8 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
   <!-- Data load -->
   <div class="load-card">
     <div style="font-size:13px; color:#5d8aa8; margin-bottom:8px;">価格・在庫を更新するときは商品データを再読み込みしてください</div>
-    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-      <button class="load-btn" onclick="loadData()">🔄 商品データを読み込む</button>
+    <div class="load-row">
+      <button class="load-btn" onclick="loadData()">🔄 商品データ読込</button>
       <span id="loadStatus" class="load-status"></span>
     </div>
     <div style="font-size:12px; color:#5d8aa8; margin-top:7px;">作業開始時に読み込み、価格・在庫の更新時は再読み込みしてください</div>
@@ -369,7 +372,7 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
   <div class="manual-card">
     <h2 class="blue">📝 計算手順</h2>
     <ol class="step-list">
-      <li>「商品データを読み込む」ボタンを押す</li>
+      <li>「商品データ読込」ボタンを押す</li>
       <li>型番を入力してAmazon価格・在庫情報を確認する</li>
       <li>商品の状態・動作確認状況を確認する</li>
       <li>NG条件に該当しないか確認する</li>
@@ -386,8 +389,8 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
 
   <div class="load-card">
     <div style="font-size:13px; color:#5d8aa8; margin-bottom:8px;">価格・在庫を更新するときは商品データを再読み込みしてください</div>
-    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-      <button class="load-btn" onclick="loadData_m()">🔄 商品データを読み込む</button>
+    <div class="load-row">
+      <button class="load-btn" onclick="loadData_m()">🔄 商品データ読込</button>
       <span id="loadStatus_m" class="load-status"></span>
     </div>
     <div style="font-size:12px; color:#5d8aa8; margin-top:7px;">作業開始時に読み込み、価格・在庫の更新時は再読み込みしてください</div>
@@ -541,7 +544,7 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
   <div class="manual-card">
     <h2 class="blue">📝 計算手順</h2>
     <ol class="step-list">
-      <li>「商品データを読み込む」ボタンを押す</li>
+      <li>「商品データ読込」ボタンを押す</li>
       <li>型番を入力してAmazon価格・在庫情報を確認する</li>
       <li>商品の状態を確認する</li>
       <li>NG条件に該当しないか確認する</li>
@@ -687,7 +690,7 @@ function buildBussanCatalog(products,inventory) {
   return catalog;
 }
 function installCatalog(catalog) {
-  const fetchedAt = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+  const fetchedAt = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
   productMap=Object.create(null);productMap_m=Object.create(null);
   productOrder=catalog.bd;productOrder_m=catalog.monitor;
   for(const [rows,map,suffix,makers] of [[catalog.bd,productMap,'',VALID_MAKERS],[catalog.monitor,productMap_m,'_m',VALID_MAKERS_M]]) {
@@ -698,7 +701,7 @@ function installCatalog(catalog) {
     }
     const status=document.getElementById('loadStatus'+suffix);
     status.className='load-status '+(rows.length?'ok':'err');
-    status.textContent=rows.length?'✓ '+rows.length+'件取得（計算不可 '+rows.filter(p=>p.errors.length).length+'件） 最終取得日時（日本時間）：'+fetchedAt:'対象の商品がありません。管理アプリのメーカー・商品登録を確認してください。';
+    status.textContent=rows.length?'✓ '+rows.length+'件取得（計算不可 '+rows.filter(p=>p.errors.length).length+'件） 最終取得日時　'+fetchedAt:'対象の商品がありません。管理アプリのメーカー・商品登録を確認してください。';
   }
   document.getElementById('bussanIssues').textContent=catalog.issues.length?'要確認データ（不足分は計算できません）\n'+catalog.issues.join('\n'):'';
   onModelSelect();onModelSelect_m();
@@ -713,7 +716,7 @@ function resolveBussanProduct(value,monitor=false) {
 function setBussanLoading(loading) {
   for(const button of document.querySelectorAll('button[onclick="loadData()"], button[onclick="loadData_m()"]')) {
     button.disabled=loading;
-    button.textContent=loading?'読み込み中…':'🔄 商品データを読み込む';
+    button.textContent=loading?'読み込み中…':'🔄 商品データ読込';
     button.setAttribute('aria-busy',String(loading));
   }
 }
