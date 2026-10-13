@@ -15,6 +15,7 @@ function normalizeDate(value: string, finalize = false) {
     const month = monthAndDay.slice(0, 2);
     const day = `${monthAndDay.slice(2)}${(parts[2] ?? '').replace(/\D/g, '')}`.slice(0, 2);
     if (year.length < 4) return year;
+    if (month.length === 1 && /^[2-9]$/.test(month) && !day) return `${year}-0${month}-`;
     const paddedMonth = month.length === 1 && finalize ? `0${month}` : month;
     const paddedDay = day.length === 1 && finalize ? `0${day}` : day;
     let result = `${year}-${paddedMonth}`;
