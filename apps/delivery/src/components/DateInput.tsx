@@ -15,8 +15,8 @@ function normalizeDate(value: string, finalize = false) {
     const month = monthAndDay.slice(0, 2);
     const day = `${monthAndDay.slice(2)}${(parts[2] ?? '').replace(/\D/g, '')}`.slice(0, 2);
     if (year.length < 4) return year;
-    const paddedMonth = month.length === 1 && (parts.length > 2 || finalize) ? `0${month}` : month;
-    const paddedDay = day.length === 1 && (parts.length > 2 || finalize) ? `0${day}` : day;
+    const paddedMonth = month.length === 1 && finalize ? `0${month}` : month;
+    const paddedDay = day.length === 1 && finalize ? `0${day}` : day;
     let result = `${year}-${paddedMonth}`;
     if (parts.length > 2 || day) result += `-${paddedDay}`;
     return result;
@@ -40,7 +40,7 @@ function withValue(event: ChangeEvent<HTMLInputElement>, value: string) {
 export default function DateInput({ onChange, onBlur, value, disabled, min, max, className, style, ...props }: DateInputProps) {
   const pickerRef = useRef<HTMLInputElement>(null);
   const rawValue = value == null ? '' : String(value);
-  const textValue = normalizeDate(rawValue, rawValue.length >= 5);
+  const textValue = normalizeDate(rawValue);
 
   const handleTextChange = (event: ChangeEvent<HTMLInputElement>) => {
     const raw = event.currentTarget.value;
