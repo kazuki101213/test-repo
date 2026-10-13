@@ -259,6 +259,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
                 const rowTone = inventoryRowTone(i);
                 const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
+                const attachedAccessory = i.is_accessory && !i.product_sale_conflict;
                 const soldDays = i.product_sold_on && i.purchased_at
                   ? Math.round((Date.parse(`${i.product_sold_on}T00:00:00Z`) - Date.parse(`${i.purchased_at}T00:00:00Z`)) / 86400000)
                   : i.days_in_stock ?? i.days_to_sell;
@@ -289,8 +290,8 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(yen(i.planned_price), 'planned_price', yen(i.planned_payout), 'planned_payout')}</td>
                   <td>{stacked(yen(i.expected_profit), 'planned_payout', expectedRate, 'planned_price')}</td>
                   <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
-                  <td>{stacked(yen(salePrice(i)), 'sold_price', yen(salePayout(i)), 'payout_amount')}</td>
-                  <td>{stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
+                  <td>{attachedAccessory ? <div className="inventory-cell-stack"><span>—</span><span>—</span></div> : stacked(yen(salePrice(i)), 'sold_price', yen(salePayout(i)), 'payout_amount')}</td>
+                  <td>{attachedAccessory ? <div className="inventory-cell-stack"><span>—</span><span>—</span></div> : stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
                   <td>{stacked(yen(i.inventory_refund_amount), 'inventory_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td><button type="button" className="inventory-cell-edit" onClick={() => edit('amazon_refund_amount')} title="Amazon返金金額をクリックして編集">{yen(i.amazon_refund_amount)}</button></td>
                   <td>{i.memo ? (() => { const chars = Array.from(i.memo); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment({ sku: i.sku, label: '仕入担当者からのコメント', text: i.memo! })} title="仕入担当者からのコメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
