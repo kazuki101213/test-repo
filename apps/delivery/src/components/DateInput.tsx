@@ -25,7 +25,11 @@ function normalizeDate(value: string, finalize = false) {
   const digits = value.replace(/\D/g, '').slice(0, 8);
   if (digits.length < 4) return digits;
   if (digits.length === 4) return `${digits}-`;
-  if (digits.length === 5) return `${digits.slice(0, 4)}-${finalize ? `0${digits.slice(4)}` : digits.slice(4)}`;
+  if (digits.length === 5) {
+    const monthDigit = digits.slice(4);
+    if (monthDigit === '1') return `${digits.slice(0, 4)}-1`;
+    return `${digits.slice(0, 4)}-0${monthDigit}-`;
+  }
   if (digits.length === 6) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-`;
   const month = digits.slice(4, 6);
   const day = digits.slice(6);
@@ -47,7 +51,7 @@ export default function DateInput({ onChange, onBlur, value, disabled, min, max,
     const formatted = normalizeDate(raw);
     const caret = event.currentTarget.selectionStart ?? raw.length;
     const digitsBeforeCaret = raw.slice(0, caret).replace(/\D/g, '').length;
-    const nextCaret = Math.min(formatted.length, digitsBeforeCaret + (digitsBeforeCaret > 4 ? 1 : 0) + (digitsBeforeCaret > 6 ? 1 : 0));
+    const nextCaret = formatted.endsWith('-') ? formatted.length : Math.min(formatted.length, digitsBeforeCaret + (digitsBeforeCaret > 4 ? 1 : 0) + (digitsBeforeCaret > 6 ? 1 : 0));
     withValue(event, formatted);
     onChange?.(event);
     requestAnimationFrame(() => event.currentTarget?.setSelectionRange(nextCaret, nextCaret));
