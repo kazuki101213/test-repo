@@ -11,8 +11,9 @@ function normalizeDate(value: string, finalize = false) {
   const hasSeparator = parts.length > 1;
   if (hasSeparator) {
     const year = (parts[0] ?? '').replace(/\D/g, '').slice(0, 4);
-    const month = (parts[1] ?? '').replace(/\D/g, '').slice(0, 2);
-    const day = (parts[2] ?? '').replace(/\D/g, '').slice(0, 2);
+    const monthAndDay = (parts[1] ?? '').replace(/\D/g, '');
+    const month = monthAndDay.slice(0, 2);
+    const day = `${monthAndDay.slice(2)}${(parts[2] ?? '').replace(/\D/g, '')}`.slice(0, 2);
     if (year.length < 4) return year;
     const paddedMonth = month.length === 1 && (parts.length > 2 || finalize) ? `0${month}` : month;
     const paddedDay = day.length === 1 && (parts.length > 2 || finalize) ? `0${day}` : day;
