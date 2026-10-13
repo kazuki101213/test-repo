@@ -27,7 +27,7 @@ let staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};
 async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({staff});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
 (async()=>{await settle();const section=all(tree).find(n=>n.type==='section');assert(text(section).includes('写真が承認されました'));assert(text(section).includes('メッセージが届きました'));assert(text(section).includes('動作不良の報告が届きました'));assert(!text(section).includes('101'));
  const groups=all(section).filter(n=>n.type==='ul').map(n=>n.props['aria-label']);
- assert.deepEqual(groups,['発送関連','動作不良の報告','動作不良の返信','写真承認関連']);
+ assert.deepEqual(groups,['発送関連','返送依頼作成','動作不良の報告','動作不良の返信','写真承認関連']);
  assert(text(section).indexOf('メッセージが届きました')<text(section).indexOf('写真が承認されました'));
  assert.equal(section.props.tabIndex,0);assert.equal(section.props.style.maxHeight,400);
  const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');

@@ -74,7 +74,7 @@ export default function DateInput({ onChange, onBlur, value, disabled, min, max,
       <input
         {...props}
         className={className}
-        style={style}
+        style={{ font: 'inherit', fontSize: 'inherit', ...style }}
         type="text"
         inputMode="numeric"
         pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"

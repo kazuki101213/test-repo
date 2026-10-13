@@ -183,14 +183,12 @@ export default function Inventory({ me }: { me: Staff }) {
         </div>
         <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} />
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
-          <label className="inventory-date-field" data-empty={!purchasedFrom}>
-            <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
-            {!purchasedFrom && <span className="inventory-date-placeholder" aria-hidden="true">仕入日</span>}
+          <label className="inventory-date-field">
+            <DateInput aria-label="仕入日・開始日" placeholder="YY-MM-DD" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
           </label>
           <span aria-hidden="true">〜</span>
-          <label className="inventory-date-field" data-empty={!purchasedTo}>
-            <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
-            {!purchasedTo && <span className="inventory-date-placeholder" aria-hidden="true">仕入日</span>}
+          <label className="inventory-date-field">
+            <DateInput aria-label="仕入日・終了日" placeholder="YY-MM-DD" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
           </label>
         </div>
         {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
