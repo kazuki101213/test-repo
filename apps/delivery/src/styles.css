@@ -250,7 +250,8 @@ textarea { min-height: 80px; resize: vertical; }
 .photo-approval-mark { position: absolute; top: 8px; right: 8px; width: 10px; height: 10px; border-radius: 50%; background: #d83b3b; }
 .delivery-notice-message { text-align: left; font: inherit; }
 
-.spare-shipping-row { padding: 12px; border-bottom: 1px solid var(--border, #ddd); list-style: none; }
+  .spare-shipping-row { padding: 12px; border-bottom: 1px solid var(--border, #ddd); list-style: none; }
+  .return-request-task-row { padding: 12px; border-bottom: 1px solid var(--border, #ddd); list-style: none; }
 .spare-shipping-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .spare-shipping-heading > span { min-width: 0; overflow-wrap: anywhere; }
 .spare-shipping-heading > .btn { flex: none; width: auto; }

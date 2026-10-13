@@ -204,6 +204,19 @@ export interface DeliveryTask {
   malfunction_resolved_at: string | null;
 }
 
+export interface DeliveryReturnRequestTask {
+  id: string;
+  item_id: string;
+  sku: string;
+  lot_seq: number;
+  title: string;
+  model_no: string | null;
+  asin: string | null;
+  deliverer_id: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
 export interface ItemComment {
   id: string;
   item_id: string;

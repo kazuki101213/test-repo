@@ -1,5 +1,5 @@
 import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
-import type { DeliveryTask, ItemComment, ItemCondition } from '@bussan/shared';
+import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition } from '@bussan/shared';
 
 export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
@@ -27,6 +27,18 @@ export async function fetchMyTasks(includeAssignees = false): Promise<DeliveryTa
     rows.push(...(data ?? []) as DeliveryTask[]);
     if ((data?.length ?? 0) < 500) return hydrateDeliveryTasks(rows, includeAssignees);
   }
+}
+
+export async function fetchReturnRequestTasks(): Promise<DeliveryReturnRequestTask[]> {
+  const { data, error } = await getSupabase().from('v_delivery_return_request_tasks').select('*')
+    .order('lot_seq', { ascending: true }).order('sku', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as DeliveryReturnRequestTask[];
+}
+
+export async function completeReturnRequestTask(taskId: string): Promise<void> {
+  const { error } = await getSupabase().rpc('complete_delivery_return_request_task', { p_task_id: taskId });
+  if (error) throw error;
 }
 
 async function hydrateDeliveryTasks(tasks: DeliveryTask[], includeAssignees: boolean): Promise<DeliveryTask[]> {

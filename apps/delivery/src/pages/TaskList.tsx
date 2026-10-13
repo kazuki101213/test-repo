@@ -7,6 +7,7 @@ import { deliveryErrorMessage } from '../errors';
 import InventoryStateFilter from '../components/InventoryStateFilter';
 import TaskCard from '../components/TaskCard';
 import SpareShippingTasks from '../components/SpareShippingTasks';
+import ReturnRequestTasks from '../components/ReturnRequestTasks';
 import { useTaskViewport } from '../hooks/useTaskViewport';
 import { deliverySearchFields, deliverySearchValue, matchesDeliverySearch, normalizeSearch, type DeliverySearchField } from '../deliverySearch';
 
@@ -204,6 +205,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>
       <section ref={sectionRef} className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading" tabIndex={0} style={{ maxHeight: viewportHeight }}>
         <ul ref={shippingRef} className="invoice-task-rows" aria-label="発送関連"><SpareShippingTasks staff={staff} /></ul>
+        <ReturnRequestTasks />
         {replyTaskError && <p className="error" role="alert">返信タスクを読み込めませんでした：{replyTaskError}</p>}
         {malfunctionTasks.length > 0 && <ul className="invoice-task-rows" aria-label="動作不良の報告">
           {malfunctionTasks.map(task => <li key={task.id}>
