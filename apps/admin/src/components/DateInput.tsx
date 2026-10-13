@@ -15,7 +15,7 @@ function normalizeDate(value: string, finalize = false) {
     const day = (parts[2] ?? '').replace(/\D/g, '').slice(0, 2);
     if (year.length < 4) return year;
     const paddedMonth = month.length === 1 && (parts.length > 2 || finalize) ? `0${month}` : month;
-    const paddedDay = day.length === 1 && finalize ? `0${day}` : day;
+    const paddedDay = day.length === 1 && (parts.length > 2 || finalize) ? `0${day}` : day;
     let result = `${year}-${paddedMonth}`;
     if (parts.length > 2 || day) result += `-${paddedDay}`;
     return result;
@@ -38,7 +38,8 @@ function withValue(event: ChangeEvent<HTMLInputElement>, value: string) {
 
 export default function DateInput({ onChange, onBlur, value, disabled, min, max, className, style, ...props }: DateInputProps) {
   const pickerRef = useRef<HTMLInputElement>(null);
-  const textValue = value == null ? '' : String(value);
+  const rawValue = value == null ? '' : String(value);
+  const textValue = normalizeDate(rawValue, rawValue.length >= 5);
 
   const handleTextChange = (event: ChangeEvent<HTMLInputElement>) => {
     const raw = event.currentTarget.value;
@@ -82,8 +83,8 @@ export default function DateInput({ onChange, onBlur, value, disabled, min, max,
         onChange={handleTextChange}
         onBlur={handleTextBlur}
       />
-      <button type="button" aria-label="カレンダーを開く" title="カレンダーを開く" disabled={disabled} onClick={openPicker} style={{ flex: '0 0 auto', padding: '0.25rem 0.4rem', lineHeight: 1, cursor: disabled ? 'default' : 'pointer' }}>
-        📅
+      <button type="button" aria-label="カレンダーを開く" title="カレンダーを開く" disabled={disabled} onClick={openPicker} style={{ flex: '0 0 auto', padding: '0.25rem 0.4rem', lineHeight: 1, color: 'currentColor', cursor: disabled ? 'default' : 'pointer' }}>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
       </button>
       <input ref={pickerRef} type="date" value={textValue} min={min} max={max} tabIndex={-1} aria-hidden="true" onChange={onChange} style={{ position: 'fixed', opacity: 0, width: 1, height: 1, pointerEvents: 'none' }} />
     </span>
