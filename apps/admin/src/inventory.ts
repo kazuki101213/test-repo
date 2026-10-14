@@ -30,3 +30,7 @@ export function inventoryWindow(total: number, scrollTop: number, height: number
   const end = Math.min(total, start + Math.ceil(height / inventoryRowHeight) + 17);
   return { start, end, top: start * inventoryRowHeight, bottom: Math.max(0, total - end) * inventoryRowHeight };
 }
+
+export function financialProductSerial(sku: string | null | undefined, lotSeq?: number): string {
+  return productSerial(sku, lotSeq).replace(/^([0-9]+)[ab]+$/, '$1');
+}

@@ -1,13 +1,13 @@
 export type SaleRow = {
   id: string; lot_seq: number; sku: string; is_accessory: boolean; cost_amount: number;
-  sold_on: string | null; sold_price: number | null; payout_amount: number | null;
+  sold_on: string | null; sold_price: number | null; payout_amount: number | null; family_key?: string;
 };
 export type ProductGroup = {
   lot: string; ids: string[]; cost: number; sale: SaleRow | null;
-  conflict: boolean; saleDates: string[];
+  conflict: boolean; saleDates: string[]; familyKey?: string;
 };
 
-// Supplier purchase rows stay separate. Each SKU serial, including a/aa suffixes, is a product.
+// Rows are genuine sale stages from v_financial_sales; return stages share one financial family.
 export function groupProducts(rows: SaleRow[]): Map<string, ProductGroup> {
   const members = new Map<string, SaleRow[]>();
   for (const row of rows) {
@@ -18,11 +18,11 @@ export function groupProducts(rows: SaleRow[]): Map<string, ProductGroup> {
   const groups = new Map<string, ProductGroup>();
   for (const [lot, group] of members) {
     // Zero-value accessory rows record cost, not a second sale.
-    const sales = group.filter(r => r.sold_on && !(r.is_accessory && (r.sold_price ?? 0) === 0 && (r.payout_amount ?? 0) === 0));
+    const sales = group.filter(r => r.sold_on && (r.family_key || !(r.is_accessory && (r.sold_price ?? 0) === 0 && (r.payout_amount ?? 0) === 0)));
     const signatures = new Set(sales.map(r => `${r.sold_on}|${r.sold_price}|${r.payout_amount}`));
     const conflict = signatures.size > 1 || sales.some(r => r.sold_price === null);
     const sale = conflict ? null : [...sales].sort((a, b) => Number(a.is_accessory) - Number(b.is_accessory) || a.id.localeCompare(b.id))[0] ?? null;
-    groups.set(lot, { lot, ids: group.map(r => r.id), cost: group.reduce((sum, r) => sum + r.cost_amount, 0), sale, conflict,
+    groups.set(lot, { lot, familyKey: group[0]?.family_key ?? lot, ids: group.map(r => r.id), cost: group.reduce((sum, r) => sum + r.cost_amount, 0), sale, conflict,
       saleDates: [...new Set(sales.map(r => r.sold_on!))] });
   }
   return groups;
@@ -35,11 +35,14 @@ export function dailySales(groups: Iterable<ProductGroup>, month: string) {
     date: `${month}-${String(i + 1).padStart(2, '0')}`, amount: 0, count: 0,
   }));
   const conflicts: string[] = [];
+  const counted = new Map<string, Set<string>>();
   for (const group of groups) {
     if (group.conflict && group.saleDates.some(date => date.startsWith(month + '-'))) { conflicts.push(group.lot); continue; }
     if (!group.sale?.sold_on?.startsWith(month + '-')) continue;
     const day = days[Number(group.sale.sold_on.slice(8, 10)) - 1];
-    if (day) { day.amount += group.sale.sold_price ?? 0; day.count++; }
+    if (day) { day.amount += group.sale.sold_price ?? 0;
+      const families = counted.get(day.date) ?? new Set<string>(); families.add(group.familyKey ?? group.lot);
+      counted.set(day.date, families); day.count = families.size; }
   }
   return { days, conflicts };
 }
@@ -61,10 +64,13 @@ export function dailySalesRange(groups: Iterable<ProductGroup>, startDate: strin
   }));
   const byDate = new Map(days.map(day => [day.date, day]));
   const conflicts: string[] = [];
+  const counted = new Map<string, Set<string>>();
   for (const group of groups) {
     if (group.conflict && group.saleDates.some(date => byDate.has(date))) { conflicts.push(group.lot); continue; }
     const day = group.sale?.sold_on ? byDate.get(group.sale.sold_on) : undefined;
-    if (day) { day.amount += group.sale?.sold_price ?? 0; day.count++; }
+    if (day) { day.amount += group.sale?.sold_price ?? 0;
+      const families = counted.get(day.date) ?? new Set<string>(); families.add(group.familyKey ?? group.lot);
+      counted.set(day.date, families); day.count = families.size; }
   }
   return { days, conflicts };
 }
