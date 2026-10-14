@@ -22,7 +22,17 @@ begin
  if v<>7000 then raise exception 'First resale profit incorrect: %',v; end if;
  update app.items set amazon_refund_amount=-18000 where lot_seq=899991 and lower(app.product_serial(sku,lot_seq))='899991b';
  insert into app.items(sku,lot_seq,title,cost_amount,marketplace,purchased_at,sold_on,sold_price,payout_amount,purchaser_id,deliverer_id,sales_channel)
- values('899991aa-AAII-20261004-0',899991,'accounting test second return',0,'Amazon返品','2026-10-04','2026-10-05',25000,22500,test_purchaser,test_deliverer,'メルカリ');
+ values('899991aa-AAII-20261004-0',899991,'accounting test second return',0,'Amazon返品','2026-10-04',null,null,null,test_purchaser,test_deliverer,'メルカリ');
+ select sum(cost_amount) into v from app.v_financial_sales where family_key='899991';
+ if v<>0 then raise exception 'Unsold latest return still charges purchase cost: %',v; end if;
+ select sum(profit) into v from app.v_financial_sales where family_key='899991';
+ if v<>0 then raise exception 'Refunded sale should retain only actual cash result: %',v; end if;
+ update app.items set sold_on='2026-11-05',sold_price=25000,payout_amount=22500
+ where lot_seq=899991 and lower(app.product_serial(sku,lot_seq))='899991aa';
+ select sum(cost_amount) into v from app.v_financial_sales where family_key='899991' and sold_on<'2026-11-01';
+ if v<>0 then raise exception 'Earlier month still carries family cost: %',v; end if;
+ select cost_amount into v from app.v_financial_sales where family_key='899991' and sold_on='2026-11-05';
+ if v<>11000 then raise exception 'Final sale did not carry full family cost: %',v; end if;
  select sum(cost_amount) into v from app.v_financial_sales where family_key='899991';
  if v<>11000 then raise exception 'Purchase cost charged twice: %',v; end if;
  select sum(profit) into v from app.v_financial_sales where family_key='899991';

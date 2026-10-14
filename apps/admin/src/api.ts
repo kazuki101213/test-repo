@@ -283,6 +283,14 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
       .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
       .range(from, to);
 
+    // Narrow exact serial searches before reading the expensive display view.
+    // The existing client matcher still decides which suffixes are shown.
+    if (filter.queryField === 'serial') {
+      const serial = filter.query?.normalize('NFKC').trim().toLowerCase();
+      const numericPart = serial?.match(/^([0-9]+)[a-z]*$/)?.[1];
+      const lot = numericPart ? Number(numericPart) : NaN;
+      if (Number.isSafeInteger(lot) && lot >= 0 && lot <= 2147483647) q = q.eq('lot_seq', lot);
+    }
     if (hasStatusFilter) {
       if (statusValues.length && marketplaces.length) {
         q = q.or(`status.in.(${statusValues.join(',')}),marketplace.in.(${marketplaces.join(',')})`);

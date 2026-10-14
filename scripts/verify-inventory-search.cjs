@@ -12,10 +12,12 @@ assert(!search.matchesInventorySearch({...target,tracking_no:null},'tracking_no'
 assert(search.matchesInventorySearch(target,'serial','  '));
 const filler=Array.from({length:1001},(_,n)=>({...base,id:String(n),sku:`${n+5000}-AAII-20261007-1`,lot_seq:n+5000,title:'filler',model_no:null,asin:null,tracking_no:null,marketplace_item_id:null}));
 const rows=[...filler,base,collision],refs=[...filler.map(x=>({id:x.id,marketplace_item_id:null})),{id:base.id,marketplace_item_id:'ENA998'},{id:collision.id,marketplace_item_id:collision.marketplace_item_id}];
-let fail=false;
-const supabase={from(table){let start=0,end=499;const filters=[];const q={select(){return q},order(){return q},range(a,b){start=a;end=b;return q},gte(f,v){filters.push(x=>x[f]>=v);return q},lte(f,v){filters.push(x=>x[f]<=v);return q},abortSignal(){return q},then(resolve){return Promise.resolve(fail&&start>=500?{data:null,error:new Error('cancelled')}: {data:(table==='items'?refs:rows).filter(x=>filters.every(f=>f(x))).slice(start,end+1),error:null}).then(resolve)}};return q;}};
+let fail=false;const serialFilters=[];
+const supabase={from(table){let start=0,end=499;const filters=[];const q={select(){return q},order(){return q},range(a,b){start=a;end=b;return q},eq(f,v){serialFilters.push([table,f,v]);filters.push(x=>x[f]===v);return q},gte(f,v){filters.push(x=>x[f]>=v);return q},lte(f,v){filters.push(x=>x[f]<=v);return q},abortSignal(){return q},then(resolve){return Promise.resolve(fail&&start>=500?{data:null,error:new Error('cancelled')}: {data:(table==='items'?refs:rows).filter(x=>filters.every(f=>f(x))).slice(start,end+1),error:null}).then(resolve)}};return q;}};
 const api=load('apps/admin/src/api.ts',{'@bussan/shared':{getSupabase:()=>supabase},'./inventory':inventory,'./inventorySearch':search});
 (async()=>{for(const [field,value]of checks){const r=await api.fetchItems({queryField:field,query:value});assert.equal(r.count,1);assert.equal(r.items.length,1);assert.equal(r.items[0].id,base.id);assert.equal(r.items[0].marketplace_item_id,'ENA998');}
+assert(serialFilters.some(([table,field,value])=>table==='v_inventory_display'&&field==='lot_seq'&&value===2198),'Serial search must constrain the DB query before pagination');
+assert.equal((await api.fetchItems({queryField:'serial',query:'２１９８Ｂ'})).items[0].id,base.id);
 const range=await api.fetchItems({queryField:'serial',query:'2198b',purchasedFrom:'2026-10-01'});assert.equal(range.items.length,0);
 assert.equal((await api.fetchItems({queryField:'serial',query:''})).items.length,1003);
 fail=true;await assert.rejects(api.fetchItems({queryField:'serial',query:'2198b'}),/cancelled/);
