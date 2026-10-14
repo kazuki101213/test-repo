@@ -12,4 +12,3 @@ assert.equal(result.days[0].count,2);assert.equal(result.days[0].amount,500);
 result=dailySalesRange(groupProducts([row('6','100',null)]).values(),'2026-10-01','2026-10-01');
 assert.deepEqual(result.conflicts,['100']);assert.equal(result.days[0].count,0);
 console.log('Product family daily sales: all checks passed');
-

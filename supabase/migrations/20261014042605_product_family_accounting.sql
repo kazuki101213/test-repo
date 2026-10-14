@@ -248,4 +248,3 @@ begin
 end $$;
 revoke all on function app.monthly_gross_profit_by_purchaser(uuid,date) from public,anon,authenticated;
 grant execute on function app.monthly_gross_profit_by_purchaser(uuid,date) to authenticated;
-

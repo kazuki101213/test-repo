@@ -1,3 +1,6 @@
+-- The check is replayed before the later reply-template migration.
+alter table app.item_comments add column if not exists task_kind text;
+
 alter table app.item_comments
   drop constraint if exists item_comments_task_kind_check;
 

@@ -5793,6 +5793,9 @@ alter table app.item_comment_template_photos
 
 -- ▼▼▼ 20261006092731_yahoo_auction_other_task_kind.sql ▼▼▼
 
+-- The check is replayed before the later reply-template migration.
+alter table app.item_comments add column if not exists task_kind text;
+
 alter table app.item_comments
   drop constraint if exists item_comments_task_kind_check;
 
@@ -10007,6 +10010,5 @@ begin
 end $$;
 revoke all on function app.monthly_gross_profit_by_purchaser(uuid,date) from public,anon,authenticated;
 grant execute on function app.monthly_gross_profit_by_purchaser(uuid,date) to authenticated;
-
 
 
