@@ -1,8 +1,9 @@
 begin;
 do $test$
-declare buyer uuid; worker uuid; receipt uuid:=gen_random_uuid(); inv app.delivery_invoices; result jsonb; n bigint; fail boolean;
+declare other_login text; buyer uuid; worker uuid; receipt uuid:=gen_random_uuid(); inv app.delivery_invoices; result jsonb; n bigint; fail boolean;
 begin
  select id into buyer from app.staff where code='AA'; select id into worker from app.staff where code='DD';
+ select user_id::text into other_login from app.profiles where staff_id=(select id from app.staff where code='HH') limit 1;
  perform set_config('request.jwt.claim.sub',(select user_id::text from app.profiles where staff_id=buyer limit 1),true);
  insert into app.delivery_invoice_profiles(staff_id,details,enabled,unit_price,tax_percent) values(worker,'{"issuer_name":"検証担当者"}',true,500,10) on conflict(staff_id) do update set enabled=true,unit_price=500,tax_percent=10;
  insert into app.invoice_receipts(id,staff_id,billing_month,storage_path,original_name,spent_on,description,amount,payee,include_in_invoice)
@@ -38,7 +39,7 @@ begin
  if n<>2 then raise exception 'Owner update/version did not work'; end if;
  select count(*) into n from app.invoice_receipts where staff_id=worker and billing_month='2099-01-01';
  if n<>2 then raise exception 'Own receipts unavailable through RLS'; end if;
- perform set_config('request.jwt.claim.sub',(select user_id::text from app.profiles where staff_id=(select id from app.staff where code='HH') limit 1),true);
+ perform set_config('request.jwt.claim.sub',other_login,true);
  select count(*) into n from app.invoice_receipts where staff_id=worker;
  if n<>0 then raise exception 'Other staff receipts leaked through RLS'; end if;
  execute 'reset role';

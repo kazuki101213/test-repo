@@ -189,6 +189,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       </div>
       {snapshot && <div className="row"><button type="button" className="btn" disabled={busy || receiptBusy || pdfBusy} onClick={() => void printDocument('invoice')}>請求書・明細表・領収書PDF保存</button></div>}
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に単価・振込先の登録を依頼してください。</p>}
+      {pdfBusy && <p role="status">PDFを作成中…添付が多い場合は少し時間がかかります。</p>}
       {message && <p role="status">{message}</p>}
       {error && <div className="error" role="alert">{error}<button className="btn ghost" disabled={busy} onClick={() => { if (leave()) setReload(n => n + 1); }}>再読み込み</button></div>}
     </div>

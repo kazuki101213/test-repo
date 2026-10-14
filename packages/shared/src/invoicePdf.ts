@@ -46,7 +46,8 @@ export async function buildInvoicePdf(elements: HTMLElement[], files: InvoiceRec
     page.drawImage(image, { x: (595.28 - width) / 2, y: 841.89 - 28.35 - height, width, height });
     canvas.width = 0; canvas.height = 0;
   }
-  for (const file of files.filter(row => row.mime_type === 'application/pdf')) {
+  for (const [index, file] of files.entries()) {
+    if (file.mime_type !== 'application/pdf') continue;
     let source; let original: ArrayBuffer;
     try {
       const response = await fetch(file.url);
@@ -57,7 +58,7 @@ export async function buildInvoicePdf(elements: HTMLElement[], files: InvoiceRec
     } catch { throw new Error(`「${file.original_name}」をPDFとして開けません。破損していない、パスワードのないPDFを選び直してください。`); }
     const pages = await pdf.copyPages(source, source.getPageIndices());
     pages.forEach(page => pdf.addPage(page));
-    await pdf.attach(original!, file.original_name, { mimeType: 'application/pdf', description: file.description || file.original_name });
+    await pdf.attach(original!, String(index + 1) + '_' + file.original_name, { mimeType: 'application/pdf', description: file.description || file.original_name });
   }
   return pdf.save();
 }
