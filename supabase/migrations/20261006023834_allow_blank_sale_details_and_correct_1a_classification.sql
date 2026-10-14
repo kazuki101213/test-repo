@@ -4,6 +4,8 @@ alter table app.items disable trigger items_sync_accessory_sale_date;
 do $$
 declare updated_count integer;
 begin
+  -- Fresh installations have no historical rows to correct.
+  if not exists (select 1 from app.items) then return; end if;
   update app.items i
      set is_accessory = false, sold_on = v.sold_on, sold_price = v.sold_price, payout_amount = v.payout_amount
     from (values

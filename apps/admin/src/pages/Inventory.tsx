@@ -251,13 +251,14 @@ export default function Inventory({ me }: { me: Staff }) {
                 const next = viewItems[index + 1];
                 const previousSerial = previous ? productSerial(previous.sku, previous.lot_seq) : null;
                 const nextSerial = next ? productSerial(next.sku, next.lot_seq) : null;
-                const sharedSaleItem = i.is_accessory && !i.product_sale_conflict ? { ...i, sold_on: i.product_sold_on } : i;
+                const attachedAccessory = i.is_accessory && !/^[0-9]+c+$/i.test(productSerial(i.sku, i.lot_seq)) && !i.product_sale_conflict;
+                const sharedSaleItem = attachedAccessory ? { ...i, sold_on: i.product_sold_on } : i;
                 const edit = (field: InventoryField) => setEditFor({ item: ['sold_on','sold_price','payout_amount','sales_channel'].includes(field) ? sharedSaleItem : i, field });
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
                 const rowTone = inventoryRowTone(i);
                 const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
-                const attachedAccessory = i.is_accessory && !i.product_sale_conflict;
+
                 const soldDays = i.product_sold_on && i.purchased_at
                   ? Math.round((Date.parse(`${i.product_sold_on}T00:00:00Z`) - Date.parse(`${i.purchased_at}T00:00:00Z`)) / 86400000)
                   : i.days_in_stock ?? i.days_to_sell;
