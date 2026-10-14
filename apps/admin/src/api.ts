@@ -31,7 +31,7 @@ export async function createSpareAccessory(input: SpareAccessoryInput): Promise<
   if (error) throw error;
 }
 
-export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'> & { marketplace_item_id: string | null }) | null> {
+export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'deliverer_id' | 'deliverer_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'> & { marketplace_item_id: string | null }) | null> {
   const match = serial.trim().match(/^([0-9]+[a-z]*)$/i);
   if (!match) return null;
   const key = match[1]?.toUpperCase();
@@ -39,14 +39,14 @@ export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemV
   const lot = Number(key.match(/^\d+/)?.[0]);
   if (!Number.isSafeInteger(lot)) return null;
   const { data, error } = await getSupabase().from('v_items')
-    .select('id,sku,title,purchaser_id,purchaser_name,purchased_at,cost_amount,marketplace,tracking_no,asin,model_no,maker,lot_seq,is_accessory')
+    .select('id,sku,title,purchaser_id,purchaser_name,deliverer_id,deliverer_name,purchased_at,cost_amount,marketplace,tracking_no,asin,model_no,maker,lot_seq,is_accessory')
     .eq('lot_seq', lot).eq('is_accessory', false).limit(100);
   if (error) throw error;
   const row = (data ?? []).find(item => item.sku.toUpperCase().startsWith(`${key}-`) || item.sku.toUpperCase().startsWith(`${key}_`));
   if (!row) return null;
   const { data: reference, error: refError } = await getSupabase().from('items').select('marketplace_item_id').eq('id', row.id).single();
   if (refError) throw refError;
-  return { ...row, marketplace_item_id: reference.marketplace_item_id } as Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'> & { marketplace_item_id: string | null };
+  return { ...row, marketplace_item_id: reference.marketplace_item_id } as Pick<ItemView, 'id' | 'sku' | 'title' | 'purchaser_id' | 'purchaser_name' | 'deliverer_id' | 'deliverer_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'> & { marketplace_item_id: string | null };
 }
 
 export type AmazonReturnSource = Pick<ItemInsert,
@@ -270,14 +270,14 @@ export async function fetchSaleRows(): Promise<SaleRow[]> {
   }
 }
 
-export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal): Promise<{ items: InventoryItem[]; count: number }> {
+export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal, onProgress?: (result: { items: InventoryItem[]; count: number }) => void): Promise<{ items: InventoryItem[]; count: number }> {
   const selectedStatuses = filter.statuses;
   const hasStatusFilter = selectedStatuses !== undefined;
   const unsoldOnly = selectedStatuses?.includes('__unsold__') ?? filter.unsoldOnly ?? false;
   const statusValues = selectedStatuses?.filter(value => value !== '__unsold__' && !value.startsWith('marketplace:')) ?? [];
   const marketplaces = selectedStatuses?.filter(value => value.startsWith('marketplace:')).map(value => value.slice('marketplace:'.length)) ?? [];
   if ((hasStatusFilter && statusValues.length === 0 && marketplaces.length === 0) || filter.delivererIds?.length === 0) return { items: [], count: 0 };
-  const items = await readAllRows<InventoryItem>(async (from, to) => {
+  const read = async (from: number, to: number): Promise<InventoryItem[]> => {
     let q = getSupabase().from('v_inventory_display').select('*')
       .order('lot_seq', { ascending: false }).order('is_accessory').order('sku')
       .order('purchased_at', { ascending: false, nullsFirst: false }).order('id')
@@ -305,13 +305,23 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
     const { data, error } = await q;
     if (error) throw error;
     return (data ?? []) as InventoryItem[];
-  });
-  const references = new Map((await fetchPurchaseReferences()).map(row => [row.id, row]));
+  };
+  const items: InventoryItem[] = [];
+  for (let from = 0; ; ) {
+    const pageSize = onProgress && from === 0 ? 80 : 1000;
+    const batch = await read(from, from + pageSize - 1);
+    items.push(...batch);
+    onProgress?.(inventoryResult(items, filter));
+    if (batch.length < pageSize) return inventoryResult(items, filter);
+    from += pageSize;
+  }
+}
+
+function inventoryResult(items: InventoryItem[], filter: ItemFilter): { items: InventoryItem[]; count: number } {
   const needle = filter.query?.trim().toLocaleLowerCase();
   const filteredItems = needle ? items.filter(item => {
-    const reference = references.get(item.id);
-    if (filter.queryField) return matchesInventorySearch({ ...item, marketplace_item_id: reference?.marketplace_item_id ?? null }, filter.queryField, filter.query!);
-    return [item.sku, item.title, item.asin, item.model_no, item.tracking_no, reference?.marketplace_item_id]
+    if (filter.queryField) return matchesInventorySearch(item, filter.queryField, filter.query!);
+    return [item.sku, item.title, item.asin, item.model_no, item.tracking_no, item.marketplace_item_id]
       .some(value => value?.toLocaleLowerCase().includes(needle));
   }) : items;
   const groupedItems = [...filteredItems].sort((a, b) =>
@@ -325,7 +335,7 @@ export async function fetchItems(filter: ItemFilter = {}, signal?: AbortSignal):
   return {
     items: groupedItems.map(item => ({
       ...item,
-      marketplace_item_id: references.get(item.id)?.marketplace_item_id ?? null,
+      marketplace_item_id: item.marketplace_item_id ?? null,
     })),
     count: productCount(filteredItems),
   };
@@ -448,23 +458,27 @@ export async function moveInventoryAccessoryToSpares(itemId: string, input: Spar
 }
 
 export async function findInventoryAccessoryForSpare(serial: string): Promise<(Pick<ItemView,
-  'id' | 'sku' | 'lot_seq' | 'is_accessory' | 'title' | 'purchaser_id' | 'purchaser_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'
+  'id' | 'sku' | 'lot_seq' | 'is_accessory' | 'title' | 'purchaser_id' | 'purchaser_name' | 'deliverer_id' | 'deliverer_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'
 > & { marketplace_item_id: string | null }) | null> {
   const match = serial.trim().match(/^(\d+)[a-z]*$/i);
   if (!match) return null;
   const lotSeq = Number(match[1]);
   if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return null;
   const { data, error } = await getSupabase().from('v_items')
-    .select('id,sku,lot_seq,is_accessory,title,purchaser_id,purchaser_name,purchased_at,cost_amount,marketplace,tracking_no,asin,model_no,maker')
+    .select('id,sku,lot_seq,is_accessory,title,purchaser_id,purchaser_name,deliverer_id,deliverer_name,purchased_at,cost_amount,marketplace,tracking_no,asin,model_no,maker')
     .eq('lot_seq', lotSeq).eq('is_accessory', true);
   if (error) throw error;
-  const remotes = (data ?? []).filter(row => row.title.toLocaleLowerCase().includes('リモコン'));
+  const remotes = (data ?? []).filter(row => row.title.toLocaleLowerCase().includes('リモコン') && productSerial(row.sku,row.lot_seq) === serial.trim().toLowerCase());
   if (remotes.length > 1) throw new Error(`通番号 ${lotSeq} にリモコン行が複数あります。対象を1件に特定できないため、在庫を確認してください。`);
   const item = remotes[0];
   if (!item) return null;
   const { data: reference, error: refError } = await getSupabase().from('items').select('marketplace_item_id').eq('id', item.id).single();
   if (refError) throw refError;
-  return { ...item, marketplace_item_id: reference.marketplace_item_id };
+  const body = await findInventoryForSpare(serial);
+  return { ...item, maker: item.maker?.trim() || body?.maker || null,
+    deliverer_id: body?.deliverer_id ?? item.deliverer_id,
+    deliverer_name: body?.deliverer_name ?? item.deliverer_name,
+    marketplace_item_id: reference.marketplace_item_id };
 }
 
 export async function deleteInventoryItem(item: InventoryItem): Promise<void> {

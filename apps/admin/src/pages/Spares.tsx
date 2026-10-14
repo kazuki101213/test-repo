@@ -80,8 +80,8 @@ export default function Spares({ me }: { me: Staff }) {
       setForm(current => ({
         ...current,
         source_sku: mode === 'remote' ? item.sku : null,
-        owner_staff_id: item.purchaser_id ?? current.owner_staff_id,
-        owner_name: item.purchaser_name ?? current.owner_name,
+        owner_staff_id: item.deliverer_id ?? current.owner_staff_id,
+        owner_name: item.deliverer_name ?? current.owner_name,
         purchased_at: item.purchased_at,
         title: mode === 'remote' ? item.title : 'リモコン',
         cost_amount: mode === 'remote' ? item.cost_amount : 0,
