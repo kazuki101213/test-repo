@@ -91,11 +91,14 @@ export default function Inventory({ me }: { me: Staff }) {
     controller.current?.abort();
     const active = new AbortController();
     controller.current = active;
-    if (!quiet) setLoading(true);
+    if (!quiet) { setItems([]); setCount(0); setLoading(true); }
     setError(null);
     try {
       if (purchasedFrom && purchasedTo && purchasedFrom > purchasedTo) throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
-      const result = await fetchItems({ queryField, query: query || undefined, purchasedFrom, purchasedTo }, active.signal);
+      const result = await fetchItems({ queryField, query: query || undefined, purchasedFrom, purchasedTo }, active.signal, quiet ? undefined : progress => {
+        if (current !== request.current) return;
+        setItems(progress.items); setCount(progress.count);
+      });
       if (current !== request.current) return;
       setItems(result.items); setCount(result.count);
     } catch (e) {
@@ -126,7 +129,7 @@ export default function Inventory({ me }: { me: Staff }) {
     });
   }, []);
   useEffect(() => { loadPurchaseDrafts(); }, [loadPurchaseDrafts]);
-  useEffect(() => { setVisibleCount(80); }, [viewItems]);
+  useEffect(() => { setVisibleCount(80); }, [queryField, query, purchasedFrom, purchasedTo, inventoryFilters, columnFilters]);
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el || visibleCount >= viewItems.length) return;
@@ -196,7 +199,7 @@ export default function Inventory({ me }: { me: Staff }) {
         <button type="button" className="btn" onClick={clearFilters}>フィルターをすべて解除</button>
         {activeColumnCount > 0 && <span className="sub">項目フィルター {activeColumnCount}件</span>}
         <span style={{ flex: 1 }} />
-        <button className="btn" onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, viewItems as unknown as Record<string, unknown>[])}>
+        <button className="btn" disabled={loading} onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, viewItems as unknown as Record<string, unknown>[])}>
           一覧をCSV
         </button>
         <button className="btn" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
@@ -220,13 +223,13 @@ export default function Inventory({ me }: { me: Staff }) {
         </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
-      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? '読み込み中…' : `${(activeColumnCount || hasInventoryFilters ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
+      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount || hasInventoryFilters ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount || hasInventoryFilters ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
 
       {error && <div className="error">{error}</div>}
-      {loading && <div className="empty">読み込み中…</div>}
+      {loading && items.length === 0 && <div className="empty">読み込み中…</div>}
       {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {!loading && items.length > 0 && (
+      {items.length > 0 && (
         <>
         <div className="inventory-top-scroll" aria-label="在庫を左右にスクロール" ref={inventoryTopScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTableScrollRef.current)}>
           <div style={{ width: inventoryTableWidth, height: 1 }} />

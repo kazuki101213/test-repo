@@ -34,7 +34,8 @@ let cursor=0,dirty=true,pending=[],tree,lastRequest;const hooks=[];
 const react={useState(v){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof v==='function'?v():v};return[hooks[i].value,n=>{hooks[i].value=typeof n==='function'?n(hooks[i].value):n;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useMemo(fn,deps){const i=cursor++,h=hooks[i];if(!h||deps.some((d,j)=>d!==h.deps[j]))hooks[i]={value:fn(),deps};return hooks[i].value;},useCallback(fn,deps){return this.useMemo(()=>fn,deps);},useEffect(fn,deps){const i=cursor++,h=hooks[i];if(!h||deps.some((d,j)=>d!==h.deps[j])){h?.cleanup?.();const next=hooks[i]={deps};pending.push(()=>{next.cleanup=fn();});}}};
 // Hook methods are imported as standalone functions.
 react.useCallback=(fn,deps)=>react.useMemo(()=>fn,deps);
-const jsx=(type,props)=>({type,props});const api={fetchItems:async q=>{lastRequest=q;return{items:rows,count:2};},fetchStaff:async()=>[],fetchPurchaseDrafts:async()=>[]};
+let initialRead=true, finishInitial;
+const jsx=(type,props)=>({type,props});const api={fetchItems:async (q,signal,progress)=>{lastRequest=q;if(initialRead){initialRead=false;progress?.({items:rows,count:2});return new Promise(resolve=>{finishInitial=()=>resolve({items:rows,count:2})});}return{items:rows,count:2};},fetchStaff:async()=>[],fetchPurchaseDrafts:async()=>[]};
 const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:name==='../inventorySearch'?search.exports:{default:name.includes('InventoryStateFilter')?'state-filter':name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
 vm.runInNewContext(compile('apps/admin/src/pages/Inventory.tsx'),context);
 function render(){cursor=0;dirty=false;tree=context.exports.default({me:{role:'admin',id:'AA'}});pending.splice(0).forEach(fn=>fn());}
@@ -42,6 +43,9 @@ async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.re
 function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)){n.forEach(v=>all(v,out));return out;}out.push(n);all(n.props?.children,out);return out;}
 (async()=>{
  await settle();
+ assert(all(tree).some(n=>n.type==='table'&&n.props.className==='inventory-table'),'Show first batch while remaining rows load');
+ assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='一覧をCSV').props.disabled,true,'Do not export an incomplete result');
+ finishInitial();await settle();
  const commentHeadings=all(tree).filter(n=>n.type==='button'&&['仕入担当者からのコメントのフィルター','納品担当者からのコメントのフィルター'].includes(n.props['aria-label']));assert.equal(commentHeadings[0].props['aria-label'],'仕入担当者からのコメントのフィルター');
  const commentButtons=all(tree).filter(n=>n.type==='button'&&n.props.className==='inventory-comment');assert.equal(commentButtons.length,6);
  commentButtons[0].props.onClick();await settle();assert(all(tree).some(n=>n.type==='p'&&n.props.children===row.memo));
