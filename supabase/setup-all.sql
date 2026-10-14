@@ -9891,7 +9891,7 @@ create or replace view app.v_inventory_display as
     inventory.profit,
     inventory.days_to_sell,
     inventory.days_in_stock,
-    (inventory.planned_payout-coalesce(family.family_cost,inventory.product_cost))::bigint AS expected_profit,
+    (inventory.planned_payout+coalesce(financial_totals.profit,-family.family_cost,-inventory.product_cost))::bigint AS expected_profit,
     inventory.accessories,
     inventory.memo,
     inventory.updated_at,
@@ -9929,18 +9929,19 @@ create or replace view app.v_stock_summary as
 with current_items as (
  select distinct on (app.financial_product_serial(i.sku,i.lot_seq)) i.*,
  app.financial_product_serial(i.sku,i.lot_seq) as family_key
- from app.items i where not i.is_accessory and i.status not in ('販売済','返品処理')
+ from app.items i where not i.is_accessory and i.status not in ('販売済','返品処理') and i.sold_on is null
  order by app.financial_product_serial(i.sku,i.lot_seq),i.purchased_at desc nulls last,i.created_at desc,i.id
 )
 select count(*) as "現在庫数",coalesce(sum(f.family_cost),0)::numeric as "仕入金額合計",
  coalesce(sum(coalesce(i.planned_payout,0)),0)::numeric as "売上見込み合計",
- coalesce(sum(coalesce(i.planned_payout,0)-f.family_cost),0)::numeric as "見込み利益合計",
+ coalesce(sum(coalesce(i.planned_payout,0)+coalesce(realized.profit,-f.family_cost)),0)::numeric as "見込み利益合計",
  count(*) filter(where current_date-i.purchased_at<=7) as "高回転",
  count(*) filter(where current_date-i.purchased_at between 8 and 14) as "中回転",
  count(*) filter(where current_date-i.purchased_at>=15) as "低回転",
  count(*) filter(where i.status='作業中') as "作業中",
  count(*) filter(where false) as "入荷待ち"
-from current_items i join app.v_financial_families f using(family_key);
+from current_items i join app.v_financial_families f using(family_key)
+left join (select family_key,sum(profit) as profit from app.v_financial_sales group by family_key) realized using(family_key);
 notify pgrst,'reload schema';
 
 
