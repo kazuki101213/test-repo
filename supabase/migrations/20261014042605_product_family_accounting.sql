@@ -210,3 +210,42 @@ from current_items i join app.v_financial_families f using(family_key)
 left join (select family_key,sum(profit) as profit from app.v_financial_sales group by family_key) realized using(family_key);
 notify pgrst,'reload schema';
 
+
+-- Use the same sale events and original purchaser in staff profit reports.
+create or replace function app.monthly_gross_profit_by_purchaser(p_purchaser_id uuid,p_month date)
+returns jsonb language plpgsql stable security invoker set search_path=pg_catalog,app as $$
+declare current_id uuid:=app.current_staff_id(); current_user_role text:=app.current_role(); result jsonb;
+begin
+ if auth.uid() is null or current_id is null or p_month is null or extract(day from p_month)<>1 then
+  raise exception '対象月またはログイン情報が不正です' using errcode='22023';
+ end if;
+ if current_user_role='admin' then
+  if p_purchaser_id is null or not exists(select 1 from app.staff where id=p_purchaser_id and is_active and role in ('admin','purchaser')) then
+   raise exception '仕入担当者を選択してください' using errcode='22023';
+  end if;
+ elsif current_user_role='purchaser' then
+  if p_purchaser_id is distinct from current_id then raise exception '閲覧する権限がありません' using errcode='42501'; end if;
+ elsif current_user_role='deliverer' then
+  if p_purchaser_id is not null then raise exception '閲覧する権限がありません' using errcode='42501'; end if;
+ else raise exception '閲覧する権限がありません' using errcode='42501'; end if;
+
+ with products as (
+  select s.serial_key,s.sku,s.sold_on,owner.name as purchaser_name,s.profit as gross_profit
+  from app.v_financial_sales s
+  join app.items event_item on event_item.id=s.id
+  join app.items origin on origin.id=s.origin_item_id
+  left join app.staff owner on owner.id=origin.purchaser_id
+  where s.sold_on>=p_month and s.sold_on<p_month+interval '1 month'
+    and ((current_user_role='admin' and origin.purchaser_id=p_purchaser_id)
+      or (current_user_role='purchaser' and origin.purchaser_id=current_id)
+      or (current_user_role='deliverer' and event_item.deliverer_id=current_id))
+ )
+ select jsonb_build_object(
+  'rows',coalesce(jsonb_agg(jsonb_build_object('sku',sku,'sold_on',sold_on,'purchaser_name',purchaser_name,'gross_profit',gross_profit) order by sold_on,sku),'[]'::jsonb),
+  'total',coalesce(sum(gross_profit),0)
+ ) into result from products;
+ return result;
+end $$;
+revoke all on function app.monthly_gross_profit_by_purchaser(uuid,date) from public,anon,authenticated;
+grant execute on function app.monthly_gross_profit_by_purchaser(uuid,date) to authenticated;
+

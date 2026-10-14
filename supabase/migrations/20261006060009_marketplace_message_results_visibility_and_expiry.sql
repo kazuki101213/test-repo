@@ -1,3 +1,12 @@
+-- Ensure the policy target exists when replaying migrations on a fresh database.
+create table if not exists app.marketplace_message_sync_requests (
+ id uuid primary key default gen_random_uuid(), item_id uuid not null references app.items(id) on delete cascade,
+ marketplace text not null, marketplace_item_id text not null, requested_by uuid not null references auth.users(id),
+ status text not null default 'queued' check(status in ('queued','processing','completed','failed')),
+ requested_at timestamptz not null default now(), claimed_at timestamptz, claimed_by text, completed_at timestamptz, result_note text
+);
+alter table app.marketplace_message_sync_requests enable row level security;
+
 drop policy if exists marketplace_message_outbox_read on app.marketplace_message_outbox;
 create policy marketplace_message_outbox_read on app.marketplace_message_outbox for select to authenticated
 using (exists(select 1 from app.items i where i.id=item_id and

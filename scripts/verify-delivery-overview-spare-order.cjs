@@ -19,15 +19,16 @@ tasks.push({...tasks[0],id:'II-accessory',sku:'100a-AAII-20260901-1',is_accessor
 const notices=[{item_id:'II-item',lot_seq:100,photo_at:'today',reply_at:'today'}];
 const api={fetchMyTasks:async()=>tasks,fetchDeliveryItemNotices:async()=>notices,fetchDeliveryStaff:async()=>[{id:'II',name:'久保田真由'},{id:'LL',name:'土井花菜'}],markDeliveryItemNoticesRead:async n=>acknowledged.push(n.item_id)};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);
-const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{...names.exports,...stateSearch.exports}:id==='../api'?api:id==='../deliverySearch'?search.exports:id==='../hooks/useTaskViewport'?{useTaskViewport:()=>({sectionRef:{current:null},shippingRef:{current:null},viewportHeight:400})}:{default:id.includes('InventoryStateFilter')?'state-filter':'placeholder'},URLSearchParams,window:{location:{search:''},setInterval(){},clearInterval(){},setTimeout(fn){fn();},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){},getElementById:id=>({scrollIntoView:()=>opened.push(id)})}};
+const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{...names.exports,...stateSearch.exports}:id==='../api'?api:id==='../deliverySearch'?search.exports:id==='../hooks/useTaskViewport'?{useTaskViewport:()=>({sectionRef:{current:null},shippingRef:{current:null},viewportHeight:400})}:{default:id.includes('InventoryStateFilter')?'state-filter':id.includes('ReturnRequestTasks')?'return-request-tasks':'placeholder'},URLSearchParams,window:{location:{search:''},setInterval(){},clearInterval(){},setTimeout(fn){fn();},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){},getElementById:id=>({scrollIntoView:()=>opened.push(id)})}};
 vm.runInNewContext(compile('apps/delivery/src/pages/TaskList.tsx'),context);
 function all(n,result=[]){if(!n||typeof n!=='object')return result;if(Array.isArray(n)){n.forEach(x=>all(x,result));return result;}result.push(n);all(n.props?.children,result);return result;}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
 let staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};
 async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({staff});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
 (async()=>{await settle();const section=all(tree).find(n=>n.type==='section');assert(text(section).includes('写真が承認されました'));assert(text(section).includes('メッセージが届きました'));assert(text(section).includes('動作不良の報告が届きました'));assert(!text(section).includes('101'));
+ assert(all(section).some(n=>n.type==='return-request-tasks'));
  const groups=all(section).filter(n=>n.type==='ul').map(n=>n.props['aria-label']);
- assert.deepEqual(groups,['発送関連','返送依頼作成','動作不良の報告','動作不良の返信','写真承認関連']);
+ assert.deepEqual(groups,['発送関連','動作不良の報告','動作不良の返信','写真承認関連']);
  assert(text(section).indexOf('メッセージが届きました')<text(section).indexOf('写真が承認されました'));
  assert.equal(section.props.tabIndex,0);assert.equal(section.props.style.maxHeight,400);
  const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');
