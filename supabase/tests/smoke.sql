@@ -103,7 +103,7 @@ select deliverer_name, 作業中 from app.v_deliverer_workload;
 select * from app.parse_sku('2400-AADD-20260916-1296');
 
 \echo '--- [9] 仕入れを伴わない行（担当者が納品側だけ / SKU 中央ブロックが2文字） ---'
--- 作業を一通り終えて出荷済みの個体が、Amazon から返品されてくるケース
+-- Amazon返品の再作業行は、前回の作業記録があっても今回の出荷日は未入力。
 insert into app.items (sku, lot_seq, deliverer_id, purchased_at, title, cost_amount,
                        marketplace, is_accessory, sales_channel,
                        product_registered_at, inspected_at, photo_uploaded_at, shipped_on,
@@ -111,7 +111,7 @@ insert into app.items (sku, lot_seq, deliverer_id, purchased_at, title, cost_amo
 select '2402a-DD-20260801-0', 2402,
        (select id from app.staff where code = 'DD'),
        date '2026-08-01', 'Amazon返品の再処理', 0, 'Amazon返品', false, 'FBA',
-       now(), now(), now(), date '2026-08-10', date '2026-09-01';
+       now(), now(), now(), null, date '2026-09-01';
 
 select sku, status, purchaser_id is null as 仕入担当者なし,
        product_registered_at is not null as 過去の作業が残っている
@@ -134,10 +134,10 @@ select sku, status from app.set_delivery_progress(
 
 do $$
 begin
-  if (select status from app.items where sku = '2402a-DD-20260801-0') = 'Amazon返品' then
-    raise exception 'FAIL: 再出荷しても Amazon返品 のままになっている';
+  if (select status from app.items where sku = '2402a-DD-20260801-0') <> '出品中' then
+    raise exception 'FAIL: 再出荷後に出品中になっていない';
   end if;
-  raise notice 'OK: 再出荷で Amazon返品 が解除された';
+  raise notice 'OK: 再出荷後は通常商品と同じ出品中判定';
 end $$;
 
 \echo '--- [10] 古物台帳の不備が洗い出される ---'
