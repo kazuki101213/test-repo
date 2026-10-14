@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+const js=ts.transpileModule(fs.readFileSync(new URL('../apps/admin/src/sales.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {groupProducts,dailySalesRange}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+const row=(id,serial,price,date='2026-10-01',family='100')=>({id,lot_seq:100,sku:serial+'-AADD-20260901-0',is_accessory:false,cost_amount:0,sold_on:date,sold_price:price,payout_amount:price,family_key:family});
+let result=dailySalesRange(groupProducts([row('1','100',1000),row('2','100a',2000),row('3','100b',3000,'2026-10-02')]).values(),'2026-10-01','2026-10-02');
+assert.deepEqual(result.days,[{date:'2026-10-01',amount:3000,count:1},{date:'2026-10-02',amount:3000,count:1}]);
+assert.deepEqual(result.conflicts,[]);
+result=dailySalesRange(groupProducts([{...row('4','100c',0,'2026-10-01','100c'),is_accessory:true},row('5','100z',500,'2026-10-01','100z')]).values(),'2026-10-01','2026-10-01');
+assert.equal(result.days[0].count,2);assert.equal(result.days[0].amount,500);
+result=dailySalesRange(groupProducts([row('6','100',null)]).values(),'2026-10-01','2026-10-01');
+assert.deepEqual(result.conflicts,['100']);assert.equal(result.days[0].count,0);
+console.log('Product family daily sales: all checks passed');

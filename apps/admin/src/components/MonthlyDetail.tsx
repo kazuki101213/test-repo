@@ -2,7 +2,7 @@ import ColoredLabel from './ColoredLabel';
 import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
 import { fetchMonthlyDetail, type MonthlyDetailItem } from '../api';
-import { productSerial } from '../inventory';
+import { productSerial, financialProductSerial } from '../inventory';
 import type { ExpenseInput } from '../expenses';
 import { ExpenseTable } from './ExpenseList';
 
@@ -26,7 +26,7 @@ export default function MonthlyDetail({ month, metric, onClose }: { month: strin
   }, [month, kind]);
   const sum = (key: 'cost_amount' | 'sold_price' | 'payout_amount' | 'profit' | 'refund_amount' | 'shipping_cost' | 'other_cost') => (data?.items ?? []).reduce((total, row) => total + (row[key] ?? 0), 0);
   const expenseTotal = (data?.expenses ?? []).reduce((total, row) => total + row.amount, 0);
-  const soldCount = new Set((data?.items ?? []).filter(row => !(row.is_accessory && !row.sold_price && !row.payout_amount)).map(row => productSerial(row.sku,row.lot_seq))).size;
+  const soldCount = new Set((data?.items ?? []).map(row => financialProductSerial(row.sku,row.lot_seq))).size;
   return <dialog ref={dialog} className="monthly-detail" aria-labelledby="monthly-detail-title" onCancel={onClose}>
     <div className="toolbar"><h2 id="monthly-detail-title">{month} · {metric}の内訳</h2><span style={{ flex: 1 }} /><button className="btn" onClick={onClose} autoFocus>閉じる</button></div>
     {error ? <div className="error" role="alert">{error}</div> : !data ? <p>読み込み中…</p> : <>

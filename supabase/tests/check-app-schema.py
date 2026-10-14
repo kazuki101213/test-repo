@@ -47,7 +47,7 @@ VIEWS = [
     ('v_antique_ledger', 'LedgerRow'),
 ]
 
-RPCS = ['set_work_progress', 'update_delivery_fields', 'find_by_sku', 'link_login']
+RPCS = ['set_delivery_progress', 'update_delivery_fields', 'find_by_sku', 'link_login']
 
 TABLES = ['staff', 'profiles', 'payment_cards', 'products', 'items',
           'item_photos', 'item_comments', 'import_conflicts']
@@ -71,7 +71,9 @@ def main() -> None:
             print(f'  NG  {name}: TypeScript の型が見つかりません')
             failures += 1
             continue
-        missing = sorted(fields - cols)
+        # fetchMyTasks hydrates this display name from the staff query.
+        derived_fields = {'deliverer_name'} if name == 'DeliveryTask' else set()
+        missing = sorted(fields - cols - derived_fields)
         if missing:
             print(f'  NG  {view:22} {name:20} アプリが要求するが DB に無い列: {missing}')
             failures += 1

@@ -35,7 +35,8 @@ HEADER
 
   for f in "$HERE"/supabase/migrations/*.sql; do
     printf -- '-- ▼▼▼ %s ▼▼▼\n\n' "$(basename "$f")"
-    cat "$f"
+    # Keep generated SQL identical on Windows and Linux checkouts.
+    sed 's/\r$//' "$f"
     printf '\n\n'
   done
 } > "$TMP"

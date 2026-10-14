@@ -214,7 +214,7 @@ export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale
   const to = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
   const items = kind === 'expense' ? Promise.resolve([] as MonthlyDetailItem[]) : readAllRows<MonthlyDetailItem>(async (start, end) => {
     const dateColumn = kind === 'purchase' ? 'purchased_at' : 'sold_on';
-    const { data, error } = await getSupabase().from('items')
+    const { data, error } = await getSupabase().from(kind === 'purchase' ? 'items' : 'v_financial_sales')
       .select('id,lot_seq,sku,is_accessory,title,marketplace,purchased_at,sold_on,cost_amount,sold_price,payout_amount,refund_amount,profit,shipping_cost,other_cost')
       .gte(dateColumn, from).lte(dateColumn, to).order('lot_seq', { ascending: false }).order('id').range(start, end);
     if (error) throw new Error(error.message);
@@ -261,8 +261,8 @@ async function fetchPurchaseReferences(): Promise<PurchaseReference[]> {
 export async function fetchSaleRows(): Promise<SaleRow[]> {
   const rows: SaleRow[] = [];
   for (let offset = 0; ; offset += 500) {
-    const { data, error } = await getSupabase().from('items')
-      .select('id,lot_seq,sku,is_accessory,cost_amount,sold_on,sold_price,payout_amount')
+    const { data, error } = await getSupabase().from('v_financial_sales')
+      .select('id,lot_seq,sku,is_accessory,cost_amount,sold_on,sold_price,payout_amount,family_key')
       .order('id').range(offset, offset + 499);
     if (error) throw error;
     rows.push(...(data ?? []) as SaleRow[]);

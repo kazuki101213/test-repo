@@ -5627,6 +5627,8 @@ alter table app.items disable trigger items_sync_accessory_sale_date;
 do $$
 declare updated_count integer;
 begin
+  -- Fresh installations have no historical rows to correct.
+  if not exists (select 1 from app.items) then return; end if;
   update app.items i
      set is_accessory = false, sold_on = v.sold_on, sold_price = v.sold_price, payout_amount = v.payout_amount
     from (values
@@ -5689,6 +5691,15 @@ alter table app.items enable trigger items_sync_accessory_sale_date;
 
 -- ▼▼▼ 20261006060009_marketplace_message_results_visibility_and_expiry.sql ▼▼▼
 
+-- Ensure the policy target exists when replaying migrations on a fresh database.
+create table if not exists app.marketplace_message_sync_requests (
+ id uuid primary key default gen_random_uuid(), item_id uuid not null references app.items(id) on delete cascade,
+ marketplace text not null, marketplace_item_id text not null, requested_by uuid not null references auth.users(id),
+ status text not null default 'queued' check(status in ('queued','processing','completed','failed')),
+ requested_at timestamptz not null default now(), claimed_at timestamptz, claimed_by text, completed_at timestamptz, result_note text
+);
+alter table app.marketplace_message_sync_requests enable row level security;
+
 drop policy if exists marketplace_message_outbox_read on app.marketplace_message_outbox;
 create policy marketplace_message_outbox_read on app.marketplace_message_outbox for select to authenticated
 using (exists(select 1 from app.items i where i.id=item_id and
@@ -5743,6 +5754,20 @@ end; $$;
 
 -- ▼▼▼ 20261006091747_yahoo_brand_template_photos.sql ▼▼▼
 
+-- Define the table before extending its check on fresh installations.
+create table if not exists app.item_comment_template_photos (
+  id uuid primary key default gen_random_uuid(),
+  task_kind text not null check (task_kind = 'Panasonic◯ヤフオク'),
+  file_name text not null,
+  mime_type text not null check (mime_type = 'image/jpeg'),
+  photo_base64 text not null,
+  sort_order smallint not null check (sort_order between 1 and 9),
+  created_at timestamptz not null default now(),
+  unique(task_kind, sort_order),
+  check (length(photo_base64) > 0)
+);
+
+alter table app.item_comment_template_photos enable row level security;
 alter table app.item_comment_template_photos
   drop constraint if exists item_comment_template_photos_task_kind_check;
 
@@ -5767,6 +5792,9 @@ alter table app.item_comment_template_photos
 
 
 -- ▼▼▼ 20261006092731_yahoo_auction_other_task_kind.sql ▼▼▼
+
+-- The check is replayed before the later reply-template migration.
+alter table app.item_comments add column if not exists task_kind text;
 
 alter table app.item_comments
   drop constraint if exists item_comments_task_kind_check;
@@ -8890,5 +8918,1097 @@ from app.staff s join app.items i on i.deliverer_id=s.id cross join dates d
 where s.is_active group by s.id,s.name
 order by count(*) filter(where not i.is_accessory and i.status='作業中') desc;
 notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261009113000_add_accessory_parent_link.sql ▼▼▼
+
+-- Link accessories to one explicit main item and synchronize the shared inventory fields.
+alter table app.items
+  add column if not exists parent_item_id uuid references app.items(id) on delete restrict;
+
+create index if not exists items_parent_item_id_idx on app.items(parent_item_id);
+
+
+create or replace function app.is_standalone_accessory_serial(p_sku text, p_lot_seq integer)
+returns boolean
+language sql immutable set search_path=''
+as 'select coalesce(right(lower(app.product_serial(p_sku,p_lot_seq)),1) = ''c'', false)';
+
+create or replace function app.accessory_sku_for_parent(p_parent_sku text, p_accessory_sku text)
+returns text
+language plpgsql immutable set search_path=''
+as $$
+declare
+  parent_serial text := app.product_serial(p_parent_sku, null);
+  accessory_serial text := app.product_serial(p_accessory_sku, null);
+  parent_letters text := coalesce((regexp_match(parent_serial, '^[0-9]+([a-z]*)$'))[1], '');
+  accessory_letters text := coalesce((regexp_match(accessory_serial, '^[0-9]+([a-z]*)$'))[1], '');
+  suffix text;
+  tail text := coalesce(substring(p_parent_sku from '[-_].*$'), substring(p_accessory_sku from '[-_].*$'));
+begin
+  if parent_serial is null then return p_parent_sku; end if;
+  suffix := case
+    when parent_letters <> '' and accessory_letters like parent_letters || '%' then substring(accessory_letters from length(parent_letters)+1)
+    else accessory_letters
+  end;
+  if suffix = '' then suffix := 'a'; end if;
+  return parent_serial || suffix || tail;
+end;
+$$;
+
+create or replace function app.keep_accessory_sale_amounts_empty()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+begin
+  if new.is_accessory and not app.is_standalone_accessory_serial(new.sku,new.lot_seq)
+     and not exists (
+    select 1 from app.items p where p.id = new.parent_item_id and not p.is_accessory
+  ) then
+    new.sold_price := null;
+    new.payout_amount := null;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function app.enforce_amazon_return_main_item()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+declare
+  parent app.items%rowtype;
+  parent_id uuid;
+  parent_count integer := 0;
+  numeric_serial text;
+  separator_and_tail text;
+  parent_serial text;
+  existing_depth integer;
+  requested_depth integer;
+  next_depth integer;
+begin
+  if new.marketplace::text <> 'Amazon返品' then return new; end if;
+
+  if tg_op <> 'INSERT' then
+    if new.amazon_returned_on is not null then new.is_accessory := false; end if;
+    return new;
+  end if;
+
+  if new.is_accessory and new.work_stream::text = '付属品'
+     and auth.uid() is not null and app.current_role() in ('admin','purchaser') then
+    -- Resolve by the strongest available identity first. Numeric lot alone is used
+    -- only when it identifies exactly one main item.
+    if new.parent_item_id is not null then
+      select p.id into parent_id from app.items p
+       where p.id = new.parent_item_id and not p.is_accessory;
+      if parent_id is null then
+        raise exception '指定した本体が見つかりません。通番号を確認してください' using errcode='22023';
+      end if;
+    end if;
+    if parent_id is null and new.product_id is not null then
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
+       from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq
+         and p.product_id = new.product_id;
+    end if;
+    if parent_id is null and nullif(new.marketplace_item_id,'') is not null then
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
+       from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq
+         and p.marketplace_item_id = new.marketplace_item_id;
+    end if;
+    if parent_id is null and nullif(new.marketplace_url,'') is not null then
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
+       from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq
+         and p.marketplace_url = new.marketplace_url;
+    end if;
+    if parent_id is null and nullif(new.asin,'') is not null then
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
+       from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq
+         and p.asin = new.asin and p.title = new.title;
+    end if;
+    if parent_id is null then
+      select count(*), (array_agg(p.id))[1] into parent_count, parent_id
+       from app.items p
+       where not p.is_accessory and p.lot_seq = new.lot_seq;
+    end if;
+    if parent_count <> 1 or parent_id is null then
+      raise exception '同じ通番号の本体を一意に特定できません。商品ID・ASIN・仕入先URLを確認してください' using errcode='22023';
+    end if;
+    select * into parent from app.items p where p.id = parent_id for update;
+    new.parent_item_id := parent.id;
+    new.marketplace_item_id := coalesce(new.marketplace_item_id, parent.marketplace_item_id);
+    new.marketplace_url := coalesce(new.marketplace_url, parent.marketplace_url);
+    new.product_id := coalesce(new.product_id, parent.product_id);
+    new.asin := coalesce(new.asin, parent.asin);
+    parent_serial := app.product_serial(parent.sku, parent.lot_seq);
+  else
+    new.is_accessory := false;
+  end if;
+
+  numeric_serial := (regexp_match(new.sku, '^([0-9]+)'))[1];
+  separator_and_tail := substring(new.sku from '^[0-9]+[a-z]*([-_].*)$');
+  if parent_serial is null then parent_serial := numeric_serial; end if;
+  if separator_and_tail is null then return new; end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('amazon-return:'||new.lot_seq::text||':'||coalesce(parent_serial,numeric_serial),179049));
+
+  select coalesce(max(
+      case when app.product_serial(i.sku,i.lot_seq) like parent_serial || '%'
+           then length(app.product_serial(i.sku,i.lot_seq))-length(parent_serial) else 0 end
+    ),0)
+    into existing_depth
+  from app.items i
+  where i.lot_seq = new.lot_seq
+    and i.marketplace::text = 'Amazon返品'
+    and i.id <> coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid);
+
+  requested_depth := length(coalesce((regexp_match(new.sku,'^[0-9]+([a-z]*)[-_]'))[1],''));
+  next_depth := greatest(existing_depth + 1, requested_depth, 1);
+  if new.is_accessory and parent_id is not null then
+    new.sku := parent_serial || repeat('a', next_depth) || separator_and_tail;
+  else
+    new.sku := numeric_serial || repeat('a', next_depth) || separator_and_tail;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function app.link_accessory_parent_on_insert()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+declare
+  parent_id uuid;
+  parent_count integer;
+begin
+  if not new.is_accessory or new.parent_item_id is not null then return new; end if;
+  select count(*), (array_agg(p.id))[1] into parent_count, parent_id
+  from app.items p
+  where not p.is_accessory and p.lot_seq = new.lot_seq
+    and app.product_serial(p.sku,p.lot_seq) = app.product_serial(new.sku,new.lot_seq);
+  if parent_count = 0 then
+    select count(*), (array_agg(p.id))[1] into parent_count, parent_id
+    from app.items p where not p.is_accessory and p.lot_seq = new.lot_seq;
+  end if;
+  if parent_count > 1 then
+    raise exception '同じ通番号の本体が複数あるため、付属品を登録できません。SKUを確認してください' using errcode='22023';
+  end if;
+  if parent_count = 1 then new.parent_item_id := parent_id; end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists items_link_accessory_parent_on_insert on app.items;
+create trigger items_link_accessory_parent_on_insert
+  before insert on app.items for each row
+  execute function app.link_accessory_parent_on_insert();
+
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261009113100_sync_linked_accessories.sql ▼▼▼
+
+create or replace function app.sync_accessory_sale_date()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+declare
+  accessory app.items%rowtype;
+begin
+  if pg_trigger_depth() > 1 or new.is_accessory then return new; end if;
+  if not (
+    new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+    or new.shipped_on is distinct from old.shipped_on or new.sales_channel is distinct from old.sales_channel
+    or new.condition is distinct from old.condition or new.sold_on is distinct from old.sold_on
+    or new.sold_price is distinct from old.sold_price or new.payout_amount is distinct from old.payout_amount
+    or new.sku is distinct from old.sku or new.lot_seq is distinct from old.lot_seq
+    or new.deliverer_id is distinct from old.deliverer_id
+  ) then return new; end if;
+
+  for accessory in
+    select a.* from app.items a
+    where a.is_accessory and not app.is_standalone_accessory_serial(a.sku,a.lot_seq) and (
+      a.parent_item_id = new.id
+      or (a.parent_item_id is null and a.lot_seq = old.lot_seq
+          and app.product_serial(a.sku,a.lot_seq) = app.product_serial(old.sku,old.lot_seq))
+    )
+    for update
+  loop
+    update app.items set
+      parent_item_id = new.id,
+      status = new.status,
+      packed_on = new.packed_on,
+      shipped_on = new.shipped_on,
+      sales_channel = new.sales_channel,
+      condition = new.condition,
+      sold_on = new.sold_on,
+      sold_price = new.sold_price,
+      payout_amount = new.payout_amount,
+      sku = app.accessory_sku_for_parent(new.sku, accessory.sku),
+      lot_seq = new.lot_seq,
+      deliverer_id = new.deliverer_id
+    where id = accessory.id;
+  end loop;
+  return new;
+end;
+$$;
+
+create or replace function app.redirect_accessory_shared_edits()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+declare
+  parent app.items%rowtype;
+begin
+  if pg_trigger_depth() > 1 or not old.is_accessory or not new.is_accessory
+     or app.is_standalone_accessory_serial(old.sku,old.lot_seq) then return new; end if;
+  if not (
+    new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+    or new.shipped_on is distinct from old.shipped_on or new.sales_channel is distinct from old.sales_channel
+    or new.condition is distinct from old.condition or new.sold_on is distinct from old.sold_on
+    or new.sold_price is distinct from old.sold_price or new.payout_amount is distinct from old.payout_amount
+    or new.sku is distinct from old.sku or new.lot_seq is distinct from old.lot_seq
+    or new.deliverer_id is distinct from old.deliverer_id
+  ) then return new; end if;
+
+  select p.* into parent from app.items p
+  where not p.is_accessory and (
+    p.id = coalesce(new.parent_item_id, old.parent_item_id)
+    or (new.parent_item_id is null and old.parent_item_id is null
+        and p.lot_seq = old.lot_seq
+        and app.product_serial(p.sku,p.lot_seq) = app.product_serial(old.sku,old.lot_seq))
+  )
+  order by (p.id = coalesce(new.parent_item_id, old.parent_item_id)) desc
+  limit 1
+  for update;
+
+  if parent.id is null then
+    raise exception '対応する本体を一意に特定できません。通番号とSKUを確認してください' using errcode='22023';
+  end if;
+
+  update app.items set
+    status = new.status,
+    packed_on = new.packed_on,
+    shipped_on = new.shipped_on,
+    sales_channel = new.sales_channel,
+    condition = new.condition,
+    sold_on = new.sold_on,
+    sold_price = new.sold_price,
+    payout_amount = new.payout_amount,
+    lot_seq = new.lot_seq,
+    deliverer_id = new.deliverer_id,
+    sku = parent.sku
+  where id = parent.id;
+
+  select * into parent from app.items where id = parent.id;
+  new.parent_item_id := parent.id;
+  new.status := parent.status;
+  new.packed_on := parent.packed_on;
+  new.shipped_on := parent.shipped_on;
+  new.sales_channel := parent.sales_channel;
+  new.condition := parent.condition;
+  new.sold_on := parent.sold_on;
+  new.sold_price := parent.sold_price;
+  new.payout_amount := parent.payout_amount;
+  new.lot_seq := parent.lot_seq;
+  new.deliverer_id := parent.deliverer_id;
+  new.sku := app.accessory_sku_for_parent(parent.sku, old.sku);
+  return new;
+end;
+$$;
+
+drop trigger if exists items_redirect_accessory_shared_edits on app.items;
+create trigger items_redirect_accessory_shared_edits
+  before update of status,packed_on,shipped_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
+  on app.items for each row execute function app.redirect_accessory_shared_edits();
+
+drop trigger if exists items_sync_accessory_sale_date on app.items;
+create trigger items_sync_accessory_sale_date
+  after update of status,packed_on,shipped_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
+  on app.items for each row execute function app.sync_accessory_sale_date();
+
+create or replace function app.shared_product_sale_values(p_item_id uuid)
+returns table(sales_channel app.sales_channel, sold_price bigint, payout_amount bigint)
+language plpgsql stable security definer set search_path=''
+as $$
+declare target app.items%rowtype;
+declare source app.items%rowtype;
+begin
+  target := app.assert_can_work_on(p_item_id);
+  if target.is_accessory and not app.is_standalone_accessory_serial(target.sku,target.lot_seq) then
+    select parent.* into source from app.items parent
+    where not parent.is_accessory and (
+      parent.id = target.parent_item_id
+      or (target.parent_item_id is null
+          and parent.lot_seq = target.lot_seq
+          and app.product_serial(parent.sku,parent.lot_seq)=app.product_serial(target.sku,target.lot_seq))
+    )
+    limit 1;
+    if source.id is not null then
+      return query select source.sales_channel,source.sold_price,source.payout_amount;
+      return;
+    end if;
+  end if;
+  return query select target.sales_channel,target.sold_price,target.payout_amount;
+end;
+$$;
+
+create or replace function app.register_item_with_spare(p_item jsonb, p_spare_id uuid)
+returns jsonb
+language plpgsql set search_path=''
+as $$
+declare
+  v_input app.items;
+  v_item app.items;
+  v_accessory app.items;
+  v_spare app.spare_accessories;
+  v_parent_id uuid;
+  v_parent_count integer;
+begin
+  if auth.uid() is null or app.current_role() not in ('admin','purchaser') then
+    raise exception '在庫を登録する権限がありません' using errcode='42501';
+  end if;
+  if p_item is null or jsonb_typeof(p_item) <> 'object' or p_spare_id is null then
+    raise exception '登録情報が不正です' using errcode='22023';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_spare_id::text,179051));
+  select * into v_spare from app.spare_accessories where id=p_spare_id and used_for_item_id is null;
+  if not found or (not app.is_admin() and v_spare.owner_staff_id is distinct from app.current_staff_id()) then
+    raise exception 'この予備は使用済みか、割り当てできません' using errcode='22023';
+  end if;
+  if v_spare.linked_item_id is not null and exists(select 1 from app.items where id=v_spare.linked_item_id) then
+    raise exception 'この予備には在庫行が残っています。二重登録を避けるため予備の登録内容を確認してください' using errcode='22023';
+  end if;
+  v_input := jsonb_populate_record(null::app.items,p_item);
+  if coalesce(v_input.is_accessory,false) then
+    select count(*),(array_agg(p.id))[1] into v_parent_count,v_parent_id
+      from app.items p where not p.is_accessory and p.lot_seq=v_input.lot_seq
+        and app.product_serial(p.sku,p.lot_seq)=app.product_serial(v_input.sku,v_input.lot_seq);
+    if v_parent_count=0 then
+      select count(*),(array_agg(p.id))[1] into v_parent_count,v_parent_id
+        from app.items p where not p.is_accessory and p.lot_seq=v_input.lot_seq;
+    end if;
+    if v_parent_count<>1 then
+      raise exception 'この通番号の本体を一意に特定できません。本体を先に登録してください' using errcode='22023';
+    end if;
+    v_input.parent_item_id := v_parent_id;
+  end if;
+  insert into app.items (parent_item_id,sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,
+    title,cost_amount,marketplace,marketplace_item_id,marketplace_url,card_id,tracking_no,product_id,
+    asin,condition,accessories,description,planned_price,planned_payout,sales_channel,status,memo,source_purchase_draft_id)
+  values (v_input.parent_item_id,v_input.sku,v_input.lot_seq,coalesce(v_input.is_accessory,false),v_input.purchaser_id,v_input.deliverer_id,
+    v_input.work_stream,v_input.purchased_at,v_input.title,v_input.cost_amount,v_input.marketplace,
+    v_input.marketplace_item_id,v_input.marketplace_url,v_input.card_id,v_input.tracking_no,v_input.product_id,
+    v_input.asin,v_input.condition,v_input.accessories,v_input.description,v_input.planned_price,v_input.planned_payout,
+    v_input.sales_channel,coalesce(v_input.status,'作業中'::app.item_status),v_input.memo,v_input.source_purchase_draft_id)
+  returning * into v_item;
+  perform app.allocate_spare_accessory(p_spare_id,v_item.id);
+  if not v_item.is_accessory then
+    insert into app.items (parent_item_id,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,
+      cost_amount,marketplace,marketplace_item_id,tracking_no,asin,product_id,sales_channel,memo)
+    values (v_item.id,v_item.lot_seq,true,coalesce(v_spare.owner_staff_id,v_item.purchaser_id),v_item.deliverer_id,'付属品',
+      v_spare.purchased_at,v_spare.title,v_spare.cost_amount,
+      case when v_spare.marketplace in (select unnest(enum_range(null::app.marketplace))::text)
+        then v_spare.marketplace::app.marketplace else 'その他'::app.marketplace end,
+      v_spare.marketplace_item_id,v_spare.tracking_no,v_spare.asin,v_item.product_id,v_item.sales_channel,v_spare.usage_note)
+    returning * into v_accessory;
+  end if;
+  perform app.queue_spare_shipping(p_spare_id,v_item.id,coalesce(v_accessory.id,v_item.id));
+  return jsonb_build_object('id',v_item.id,'sku',v_item.sku,'accessory_sku',v_accessory.sku);
+end;
+$$;
+
+
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261009113200_invoice_standalone_accessories.sql ▼▼▼
+
+create or replace function app.guard_single_product_sale()
+returns trigger language plpgsql set search_path=''
+as 'declare serial_key text;
+begin
+  if tg_op=''UPDATE'' and new.sold_on is not distinct from old.sold_on
+    and new.sold_price is not distinct from old.sold_price
+    and new.payout_amount is not distinct from old.payout_amount then return new; end if;
+  if new.sold_on is null then return new; end if;
+  if new.is_accessory and app.is_standalone_accessory_serial(new.sku,new.lot_seq) then return new; end if;
+  if new.is_accessory and coalesce(new.sold_price,0)=0 and coalesce(new.payout_amount,0)=0 then return new; end if;
+  serial_key:=app.product_serial(new.sku,new.lot_seq);
+  perform pg_advisory_xact_lock(hashtextextended(serial_key,179049));
+  if exists (
+    select 1 from app.items i
+    where app.product_serial(i.sku,i.lot_seq)=serial_key
+      and i.id<>new.id and i.sold_on is not null
+      and not (i.is_accessory and coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0)
+      and not app.is_standalone_accessory_serial(i.sku,i.lot_seq)
+      and i.amazon_returned_on is null and i.returned_on is null
+      and i.marketplace is distinct from ''Amazon返品'' and i.status<>''返品処理''
+  ) then
+    raise exception ''同じ商品番号の商品に販売記録があります。返品処理済みの履歴は保持し、重複販売を防止します。'';
+  end if;
+  return new;
+end;';
+
+
+-- C suffix accessories are standalone sales: include one invoice line at half the normal unit price.
+create or replace function app.prepare_delivery_invoice(p_staff uuid,p_month date)
+returns jsonb language plpgsql stable security invoker set search_path=pg_catalog,app as 'declare p app.delivery_invoice_profiles; lines jsonb; subtotal bigint;
+begin
+ if auth.uid() is null or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active)
+ or not coalesce(p_staff=app.current_staff_id() or app.is_admin(),false) then
+  raise exception ''請求書へのアクセス権がありません'' using errcode=''42501'';
+ end if;
+ if p_month is null or extract(day from p_month)<>1 then raise exception ''対象月が不正です''; end if;
+ select * into p from app.delivery_invoice_profiles where staff_id=p_staff;
+ if not found or not p.enabled or p.unit_price is null then raise exception ''請求単価の設定を管理者に確認してください''; end if;
+ with invoice_items as (
+   (select distinct on (lot_seq) id,lot_seq,purchased_at,packed_on,work_stream,marketplace,title,p.unit_price as unit_price
+   from app.items
+   where deliverer_id=p_staff and not is_accessory and packed_on is not null
+   order by lot_seq,packed_on,id)
+   union all
+   select id,lot_seq,purchased_at,packed_on,work_stream,marketplace,title,floor(p.unit_price/2.0)::bigint
+   from app.items
+   where deliverer_id=p_staff and is_accessory
+     and app.is_standalone_accessory_serial(sku,lot_seq)
+     and packed_on is not null
+ ), selected as (
+   select * from invoice_items
+   where packed_on>=p_month and packed_on<p_month+interval ''1 month''
+ )
+ select coalesce(jsonb_agg(jsonb_build_object(
+   ''item_id'',id,''lot_seq'',lot_seq,''date'',purchased_at,''packed_on'',packed_on,
+   ''description'',case
+     when app.is_standalone_accessory_serial((select sku from app.items where id=invoice_items.id),lot_seq)
+       then ''付属品単体販売''
+     when marketplace::text=''Amazon返品'' then ''Amazon返品対応''
+     when work_stream::text=''テレビ'' then ''モニター・テレビ''
+     when work_stream::text=''ブルーレイ'' then ''ブルーレイレコーダー'' else ''小物'' end,
+   ''title'',title,''quantity'',1,''unit_price'',unit_price,''amount'',unit_price
+ ) order by purchased_at nulls last,lot_seq,id),''[]''::jsonb),
+ count(*)*p.unit_price into lines,subtotal from selected;
+ select coalesce(sum((value->>''amount'')::bigint),0) into subtotal from jsonb_array_elements(lines);
+ return jsonb_build_object(''profile'',p.details,''lines'',lines,''subtotal'',subtotal,''tax_percent'',p.tax_percent);
+end';
+revoke all on function app.prepare_delivery_invoice(uuid,date) from public,anon,authenticated;
+grant execute on function app.prepare_delivery_invoice(uuid,date) to authenticated;
+
+notify pgrst, 'reload schema';
+
+
+
+-- ▼▼▼ 20261009113300_preserve_return_date_sync.sql ▼▼▼
+
+create or replace function app.sync_accessory_sale_date()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+declare
+  accessory app.items%rowtype;
+begin
+  if pg_trigger_depth() > 1 or new.is_accessory then return new; end if;
+  if not (
+    new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+    or new.shipped_on is distinct from old.shipped_on or new.sales_channel is distinct from old.sales_channel
+    or new.condition is distinct from old.condition or new.sold_on is distinct from old.sold_on
+    or new.sold_price is distinct from old.sold_price or new.payout_amount is distinct from old.payout_amount
+    or new.sku is distinct from old.sku or new.lot_seq is distinct from old.lot_seq
+    or new.deliverer_id is distinct from old.deliverer_id
+  ) then return new; end if;
+
+  for accessory in
+    select a.* from app.items a
+    where a.is_accessory and not app.is_standalone_accessory_serial(a.sku,a.lot_seq) and (
+      a.parent_item_id = new.id
+      or (a.parent_item_id is null and a.lot_seq = old.lot_seq
+          and app.product_serial(a.sku,a.lot_seq) = app.product_serial(old.sku,old.lot_seq))
+    )
+    for update
+  loop
+    update app.items set
+      parent_item_id = new.id,
+      status = new.status,
+      packed_on = new.packed_on,
+      shipped_on = new.shipped_on,
+      returned_on = new.returned_on,
+      sales_channel = new.sales_channel,
+      condition = new.condition,
+      sold_on = new.sold_on,
+      sold_price = new.sold_price,
+      payout_amount = new.payout_amount,
+      sku = app.accessory_sku_for_parent(new.sku, accessory.sku),
+      lot_seq = new.lot_seq,
+      deliverer_id = new.deliverer_id
+    where id = accessory.id;
+  end loop;
+  return new;
+end;
+$$;
+
+create or replace function app.redirect_accessory_shared_edits()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+declare
+  parent app.items%rowtype;
+begin
+  if pg_trigger_depth() > 1 or not old.is_accessory or not new.is_accessory
+     or app.is_standalone_accessory_serial(old.sku,old.lot_seq) then return new; end if;
+  if not (
+    new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+    or new.shipped_on is distinct from old.shipped_on or new.sales_channel is distinct from old.sales_channel
+    or new.condition is distinct from old.condition or new.sold_on is distinct from old.sold_on
+    or new.sold_price is distinct from old.sold_price or new.payout_amount is distinct from old.payout_amount
+    or new.sku is distinct from old.sku or new.lot_seq is distinct from old.lot_seq
+    or new.deliverer_id is distinct from old.deliverer_id
+  ) then return new; end if;
+
+  select p.* into parent from app.items p
+  where not p.is_accessory and (
+    p.id = coalesce(new.parent_item_id, old.parent_item_id)
+    or (new.parent_item_id is null and old.parent_item_id is null
+        and p.lot_seq = old.lot_seq
+        and app.product_serial(p.sku,p.lot_seq) = app.product_serial(old.sku,old.lot_seq))
+  )
+  order by (p.id = coalesce(new.parent_item_id, old.parent_item_id)) desc
+  limit 1
+  for update;
+
+  if parent.id is null then
+    raise exception '対応する本体を一意に特定できません。通番号とSKUを確認してください' using errcode='22023';
+  end if;
+
+  update app.items set
+    status = new.status,
+    packed_on = new.packed_on,
+    shipped_on = new.shipped_on,
+    returned_on = new.returned_on,
+    sales_channel = new.sales_channel,
+    condition = new.condition,
+    sold_on = new.sold_on,
+    sold_price = new.sold_price,
+    payout_amount = new.payout_amount,
+    lot_seq = new.lot_seq,
+    deliverer_id = new.deliverer_id,
+    sku = parent.sku
+  where id = parent.id;
+
+  select * into parent from app.items where id = parent.id;
+  new.parent_item_id := parent.id;
+  new.status := parent.status;
+  new.packed_on := parent.packed_on;
+  new.shipped_on := parent.shipped_on;
+  new.returned_on := parent.returned_on;
+  new.sales_channel := parent.sales_channel;
+  new.condition := parent.condition;
+  new.sold_on := parent.sold_on;
+  new.sold_price := parent.sold_price;
+  new.payout_amount := parent.payout_amount;
+  new.lot_seq := parent.lot_seq;
+  new.deliverer_id := parent.deliverer_id;
+  new.sku := app.accessory_sku_for_parent(parent.sku, old.sku);
+  return new;
+end;
+$$;
+
+drop trigger if exists items_redirect_accessory_shared_edits on app.items;
+create trigger items_redirect_accessory_shared_edits
+  before update of status,packed_on,shipped_on,returned_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
+  on app.items for each row execute function app.redirect_accessory_shared_edits();
+
+drop trigger if exists items_sync_accessory_sale_date on app.items;
+create trigger items_sync_accessory_sale_date
+  after update of status,packed_on,shipped_on,sales_channel,condition,sold_on,sold_price,payout_amount,sku,lot_seq,deliverer_id
+  on app.items for each row execute function app.sync_accessory_sale_date();
+
+create or replace function app.shared_product_sale_values(p_item_id uuid)
+returns table(sales_channel app.sales_channel, sold_price bigint, payout_amount bigint)
+language plpgsql stable security definer set search_path=''
+as $$
+declare target app.items%rowtype;
+declare source app.items%rowtype;
+begin
+  target := app.assert_can_work_on(p_item_id);
+  if target.is_accessory and not app.is_standalone_accessory_serial(target.sku,target.lot_seq) then
+    select parent.* into source from app.items parent
+    where not parent.is_accessory and (
+      parent.id = target.parent_item_id
+      or (target.parent_item_id is null
+          and parent.lot_seq = target.lot_seq
+          and app.product_serial(parent.sku,parent.lot_seq)=app.product_serial(target.sku,target.lot_seq))
+    )
+    limit 1;
+    if source.id is not null then
+      return query select source.sales_channel,source.sold_price,source.payout_amount;
+      return;
+    end if;
+  end if;
+  return query select target.sales_channel,target.sold_price,target.payout_amount;
+end;
+$$;
+
+create or replace function app.register_item_with_spare(p_item jsonb, p_spare_id uuid)
+returns jsonb
+language plpgsql set search_path=''
+as $$
+declare
+  v_input app.items;
+  v_item app.items;
+  v_accessory app.items;
+  v_spare app.spare_accessories;
+  v_parent_id uuid;
+  v_parent_count integer;
+begin
+  if auth.uid() is null or app.current_role() not in ('admin','purchaser') then
+    raise exception '在庫を登録する権限がありません' using errcode='42501';
+  end if;
+  if p_item is null or jsonb_typeof(p_item) <> 'object' or p_spare_id is null then
+    raise exception '登録情報が不正です' using errcode='22023';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_spare_id::text,179051));
+  select * into v_spare from app.spare_accessories where id=p_spare_id and used_for_item_id is null;
+  if not found or (not app.is_admin() and v_spare.owner_staff_id is distinct from app.current_staff_id()) then
+    raise exception 'この予備は使用済みか、割り当てできません' using errcode='22023';
+  end if;
+  if v_spare.linked_item_id is not null and exists(select 1 from app.items where id=v_spare.linked_item_id) then
+    raise exception 'この予備には在庫行が残っています。二重登録を避けるため予備の登録内容を確認してください' using errcode='22023';
+  end if;
+  v_input := jsonb_populate_record(null::app.items,p_item);
+  if coalesce(v_input.is_accessory,false) then
+    select count(*),(array_agg(p.id))[1] into v_parent_count,v_parent_id
+      from app.items p where not p.is_accessory and p.lot_seq=v_input.lot_seq
+        and app.product_serial(p.sku,p.lot_seq)=app.product_serial(v_input.sku,v_input.lot_seq);
+    if v_parent_count=0 then
+      select count(*),(array_agg(p.id))[1] into v_parent_count,v_parent_id
+        from app.items p where not p.is_accessory and p.lot_seq=v_input.lot_seq;
+    end if;
+    if v_parent_count<>1 then
+      raise exception 'この通番号の本体を一意に特定できません。本体を先に登録してください' using errcode='22023';
+    end if;
+    v_input.parent_item_id := v_parent_id;
+  end if;
+  insert into app.items (parent_item_id,sku,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,
+    title,cost_amount,marketplace,marketplace_item_id,marketplace_url,card_id,tracking_no,product_id,
+    asin,condition,accessories,description,planned_price,planned_payout,sales_channel,status,memo,source_purchase_draft_id)
+  values (v_input.parent_item_id,v_input.sku,v_input.lot_seq,coalesce(v_input.is_accessory,false),v_input.purchaser_id,v_input.deliverer_id,
+    v_input.work_stream,v_input.purchased_at,v_input.title,v_input.cost_amount,v_input.marketplace,
+    v_input.marketplace_item_id,v_input.marketplace_url,v_input.card_id,v_input.tracking_no,v_input.product_id,
+    v_input.asin,v_input.condition,v_input.accessories,v_input.description,v_input.planned_price,v_input.planned_payout,
+    v_input.sales_channel,coalesce(v_input.status,'作業中'::app.item_status),v_input.memo,v_input.source_purchase_draft_id)
+  returning * into v_item;
+  perform app.allocate_spare_accessory(p_spare_id,v_item.id);
+  if not v_item.is_accessory then
+    insert into app.items (parent_item_id,lot_seq,is_accessory,purchaser_id,deliverer_id,work_stream,purchased_at,title,
+      cost_amount,marketplace,marketplace_item_id,tracking_no,asin,product_id,sales_channel,memo)
+    values (v_item.id,v_item.lot_seq,true,coalesce(v_spare.owner_staff_id,v_item.purchaser_id),v_item.deliverer_id,'付属品',
+      v_spare.purchased_at,v_spare.title,v_spare.cost_amount,
+      case when v_spare.marketplace in (select unnest(enum_range(null::app.marketplace))::text)
+        then v_spare.marketplace::app.marketplace else 'その他'::app.marketplace end,
+      v_spare.marketplace_item_id,v_spare.tracking_no,v_spare.asin,v_item.product_id,v_item.sales_channel,v_spare.usage_note)
+    returning * into v_accessory;
+  end if;
+  perform app.queue_spare_shipping(p_spare_id,v_item.id,coalesce(v_accessory.id,v_item.id));
+  return jsonb_build_object('id',v_item.id,'sku',v_item.sku,'accessory_sku',v_accessory.sku);
+end;
+$$;
+
+
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261011090000_preserve_explicit_listing_status.sql ▼▼▼
+
+create or replace function app.items_sync_status()
+returns trigger
+language plpgsql
+set search_path to 'pg_catalog', 'app'
+as $function$
+begin
+  if tg_op = 'UPDATE'
+     and new.status = '出品中'
+     and new.status is distinct from old.status
+     and new.shipped_on is not distinct from old.shipped_on then
+    return new;
+  end if;
+  if new.status in ('返品処理', '販売済') then return new; end if;
+  new.status := case when new.shipped_on is not null then '出品中' else '作業中' end;
+  return new;
+end;
+$function$;
+
+
+-- ▼▼▼ 20261011150000_force_amazon_return_cost_zero.sql ▼▼▼
+
+create or replace function app.items_sync_status()
+returns trigger
+language plpgsql
+set search_path to 'pg_catalog', 'app'
+as $function$
+begin
+  if new.marketplace in ('Amazon返品', '動作品Amazon返品') then
+    new.cost_amount := 0;
+  end if;
+  if tg_op = 'UPDATE'
+     and new.status = '出品中'
+     and new.status is distinct from old.status
+     and new.shipped_on is not distinct from old.shipped_on then
+    return new;
+  end if;
+  if new.status in ('返品処理', '販売済') then return new; end if;
+  new.status := case when new.shipped_on is not null then '出品中' else '作業中' end;
+  return new;
+end;
+$function$;
+
+-- ▼▼▼ 20261013100000_delivery_return_request_tasks.sql ▼▼▼
+
+-- Amazon返品が作業中になった商品に、返送依頼作成タスクを作る。
+create table if not exists app.delivery_return_request_tasks (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references app.items(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz,
+  completed_by uuid references app.staff(id) on delete set null
+);
+
+create index if not exists delivery_return_request_open_idx
+  on app.delivery_return_request_tasks(created_at desc)
+  where completed_at is null;
+
+alter table app.delivery_return_request_tasks enable row level security;
+revoke all on app.delivery_return_request_tasks from public, anon, authenticated;
+grant select on app.delivery_return_request_tasks to authenticated;
+
+drop policy if exists delivery_return_request_select on app.delivery_return_request_tasks;
+create policy delivery_return_request_select on app.delivery_return_request_tasks
+  for select to authenticated using (
+    exists (
+      select 1 from app.items i
+      where i.id = item_id
+        and (app.is_admin() or app.current_role() = 'purchaser' or i.deliverer_id = app.current_staff_id())
+    )
+  );
+
+create or replace function app.create_delivery_return_request_task()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.marketplace = 'Amazon返品'::app.marketplace
+     and new.status = '作業中'::app.item_status
+     and (tg_op = 'INSERT' or old.marketplace is distinct from new.marketplace or old.status is distinct from new.status)
+     and not exists (
+       select 1 from app.delivery_return_request_tasks t
+       where t.item_id = new.id and t.completed_at is null
+     ) then
+    insert into app.delivery_return_request_tasks(item_id) values (new.id);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists items_create_delivery_return_request_task on app.items;
+create trigger items_create_delivery_return_request_task
+  after insert or update of marketplace, status on app.items
+  for each row execute function app.create_delivery_return_request_task();
+
+insert into app.delivery_return_request_tasks(item_id)
+select i.id
+from app.items i
+where i.marketplace = 'Amazon返品'::app.marketplace
+  and i.status = '作業中'::app.item_status
+  and not exists (
+    select 1 from app.delivery_return_request_tasks t
+    where t.item_id = i.id and t.completed_at is null
+  );
+
+create or replace view app.v_delivery_return_request_tasks with (security_invoker = true) as
+select t.id, t.item_id, i.sku, i.lot_seq, i.title, p.model_no, i.asin,
+       i.deliverer_id, t.created_at, t.completed_at
+from app.delivery_return_request_tasks t
+join app.items i on i.id = t.item_id
+left join app.products p on p.id = i.product_id
+where t.completed_at is null
+  and i.marketplace = 'Amazon返品'::app.marketplace
+  and i.status = '作業中'::app.item_status;
+
+revoke all on app.v_delivery_return_request_tasks from public, anon;
+grant select on app.v_delivery_return_request_tasks to authenticated;
+
+create or replace function app.complete_delivery_return_request_task(p_task_id uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+declare v_item app.items;
+begin
+  if auth.uid() is null then raise exception '認証が必要です' using errcode = '42501'; end if;
+  select i.* into v_item
+  from app.delivery_return_request_tasks t join app.items i on i.id = t.item_id
+  where t.id = p_task_id and t.completed_at is null for update;
+  if not found then raise exception '対象の返送依頼作成タスクが見つかりません' using errcode = 'P0002'; end if;
+  if not (app.is_admin() or app.current_role() = 'purchaser' or v_item.deliverer_id = app.current_staff_id()) then
+    raise exception 'タスク完了の権限がありません' using errcode = '42501';
+  end if;
+  update app.delivery_return_request_tasks
+    set completed_at = clock_timestamp(), completed_by = app.current_staff_id()
+    where id = p_task_id and completed_at is null;
+end;
+$$;
+revoke all on function app.complete_delivery_return_request_task(uuid) from public, anon;
+grant execute on function app.complete_delivery_return_request_task(uuid) to authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261014042605_product_family_accounting.sql ▼▼▼
+
+-- Finance-only lineage; existing SKU, search and routing retain their exact serial.
+create or replace function app.financial_product_serial(p_sku text,p_lot_seq integer)
+returns text language sql immutable security invoker set search_path='' as $$
+ select regexp_replace(lower(app.product_serial(p_sku,p_lot_seq)), '^([0-9]+)[ab]+$', '\1');
+$$;
+create index if not exists items_financial_family_idx on app.items (app.financial_product_serial(sku,lot_seq));
+create or replace view app.v_financial_members with (security_invoker=true) as
+select i.id,i.sku,i.lot_seq,i.is_accessory,i.parent_item_id,i.title,i.marketplace,
+ i.purchased_at,i.created_at,i.status,i.sold_on,i.sold_price,i.payout_amount,
+ i.cost_amount,i.refund_amount,i.inventory_refund_amount,i.shipping_cost,i.other_cost,
+ lower(app.product_serial(i.sku,i.lot_seq)) as serial_key,
+ app.financial_product_serial(i.sku,i.lot_seq) as family_key,
+ (not i.is_accessory or app.is_standalone_accessory_serial(i.sku,i.lot_seq)) as is_sale_item
+from app.items i;
+create or replace view app.v_financial_families with (security_invoker=true) as
+with bodies as (
+ select distinct on (family_key) family_key,id as origin_item_id,cost_amount as body_cost,purchased_at as origin_purchased_at
+ from app.v_financial_members where is_sale_item
+ order by family_key,(serial_key=family_key) desc,purchased_at nulls last,created_at,id
+), accessories as (
+ select family_key,sum(cost_amount)::bigint as accessory_cost
+ from app.v_financial_members where not is_sale_item group by family_key
+)
+select b.family_key,b.origin_item_id,b.origin_purchased_at,
+ (b.body_cost+coalesce(a.accessory_cost,0))::bigint as family_cost
+from bodies b left join accessories a using(family_key);
+
+-- A zero-value closure with a successor is history; genuine standalone zero-price sales remain sales.
+create or replace view app.v_financial_sale_sources with (security_invoker=true) as
+select m.* from app.v_financial_members m
+where m.is_sale_item and m.sold_on is not null
+ and not (m.sold_price is not distinct from 0 and m.payout_amount is not distinct from 0
+ and m.refund_amount=0 and m.inventory_refund_amount=0 and m.shipping_cost=0 and m.other_cost=0 and exists (
+  select 1 from app.v_financial_members successor
+  where successor.is_sale_item and successor.family_key=m.family_key and successor.serial_key<>m.serial_key
+   and (m.serial_key=m.family_key or
+     (coalesce(successor.purchased_at,successor.created_at::date),successor.created_at,successor.id)>
+     (coalesce(m.purchased_at,m.created_at::date),m.created_at,m.id))
+ ));
+-- Count each actual sale stage; synchronized accessory amounts are not a second sale.
+-- Charge the original body and accessory cost once, at the first genuine sale.
+create or replace view app.v_financial_sales with (security_invoker=true) as
+with events as (
+ select s.*,row_number() over(partition by family_key order by sold_on,purchased_at nulls last,created_at,id) as family_sale_order
+ from app.v_financial_sale_sources s
+), costs as (
+ select e.id,coalesce(sum(a.refund_amount+a.inventory_refund_amount),0)::bigint as accessory_refunds,
+ coalesce(sum(a.shipping_cost),0)::bigint as accessory_shipping,
+ coalesce(sum(a.other_cost),0)::bigint as accessory_other
+ from events e left join app.v_financial_members a on not a.is_sale_item
+  and a.serial_key=e.serial_key and (a.parent_item_id is null or a.parent_item_id=e.id)
+ group by e.id
+)
+select e.id,e.lot_seq,e.sku,e.is_accessory,e.title,e.marketplace,
+ f.origin_purchased_at as purchased_at,e.sold_on,
+ case when e.family_sale_order=1 then f.family_cost else 0::bigint end as cost_amount,
+ e.sold_price,e.payout_amount,
+ (e.refund_amount+e.inventory_refund_amount+c.accessory_refunds)::bigint as refund_amount,
+ (e.shipping_cost+c.accessory_shipping)::bigint as shipping_cost,
+ (e.other_cost+c.accessory_other)::bigint as other_cost,
+ (coalesce(e.payout_amount,0)+e.refund_amount+e.inventory_refund_amount+c.accessory_refunds
+  -case when e.family_sale_order=1 then f.family_cost else 0 end
+  -e.shipping_cost-c.accessory_shipping-e.other_cost-c.accessory_other)::bigint as profit,
+ e.family_key,e.serial_key,f.family_cost,f.origin_item_id
+from events e join app.v_financial_families f using(family_key) join costs c on c.id=e.id;
+revoke all on app.v_financial_members,app.v_financial_families,app.v_financial_sale_sources,app.v_financial_sales from anon;
+grant select on app.v_financial_members,app.v_financial_families,app.v_financial_sale_sources,app.v_financial_sales to authenticated,service_role;
+create or replace view app.v_monthly_summary as
+ WITH purchased AS (
+         SELECT date_trunc('month'::text, items.purchased_at::timestamp with time zone)::date AS month,
+            count(*) AS "仕入数",
+            sum(items.cost_amount) AS "仕入金額",
+            avg(items.cost_amount)::bigint AS "平均仕入額"
+           FROM app.items
+          GROUP BY (date_trunc('month'::text, items.purchased_at::timestamp with time zone)::date)
+        ), sold AS (
+         SELECT date_trunc('month'::text, items.sold_on::timestamp with time zone)::date AS month,
+            count(DISTINCT items.family_key) AS "販売数",
+            sum(items.sold_price) AS "売上",
+            sum(items.payout_amount) AS "振込金額",
+            sum(items.profit) AS "粗利益",
+            avg(items.sold_price)::bigint AS "平均販売額",
+            avg(items.sold_on - items.purchased_at)::numeric(10,1) AS "平均回転日数"
+           FROM app.v_financial_sales items
+          WHERE items.sold_on IS NOT NULL
+          GROUP BY (date_trunc('month'::text, items.sold_on::timestamp with time zone)::date)
+        ), expense AS (
+         SELECT date_trunc('month'::text, expenses.incurred_on::timestamp with time zone)::date AS month,
+            sum(expenses.amount) AS "経費"
+           FROM app.expenses
+          GROUP BY (date_trunc('month'::text, expenses.incurred_on::timestamp with time zone)::date)
+        )
+ SELECT COALESCE(p.month, s.month, e.month) AS month,
+    COALESCE(p."仕入数", 0::bigint) AS "仕入数",
+    COALESCE(p."仕入金額", 0::numeric) AS "仕入金額",
+    COALESCE(p."平均仕入額", 0::bigint) AS "平均仕入額",
+    COALESCE(s."販売数", 0::bigint) AS "販売数",
+    COALESCE(s."売上", 0::numeric) AS "売上",
+    COALESCE(s."振込金額", 0::numeric) AS "振込金額",
+    COALESCE(s."粗利益", 0::numeric) AS "粗利益",
+    COALESCE(s."平均販売額", 0::bigint) AS "平均販売額",
+    s."平均回転日数",
+    COALESCE(e."経費", 0::numeric) AS "経費",
+    COALESCE(s."粗利益", 0::numeric) - COALESCE(e."経費", 0::numeric) AS "純利益"
+   FROM purchased p
+     FULL JOIN sold s ON s.month = p.month
+     FULL JOIN expense e ON e.month = COALESCE(p.month, s.month)
+  ORDER BY (COALESCE(p.month, s.month, e.month)) DESC;
+
+create or replace view app.v_inventory_display as
+ WITH financial_totals AS MATERIALIZED (select family_key,sum(profit)::numeric as profit from app.v_financial_sales group by family_key), totals AS MATERIALIZED (
+         SELECT app.product_serial(i.sku, i.lot_seq) AS serial_key,
+            sum(i.refund_amount) AS refunds,
+            sum(i.inventory_refund_amount) AS inventory_refunds,
+            sum(i.shipping_cost) AS shipping,
+            sum(i.other_cost) AS other_cost
+           FROM app.items i
+          GROUP BY (app.product_serial(i.sku, i.lot_seq))
+        )
+ SELECT inventory.id,
+    inventory.sku,
+    inventory.lot_seq,
+    inventory.is_accessory,
+    inventory.status,
+    inventory.condition,
+    inventory.title,
+    inventory.asin,
+    inventory.model_no,
+    inventory.maker,
+    inventory.genre,
+    inventory.turnover,
+    inventory.purchased_at,
+    inventory.cost_amount,
+    inventory.marketplace,
+    inventory.marketplace_url,
+    inventory.card_name,
+    inventory.purchaser_name,
+    inventory.deliverer_name,
+    inventory.work_stream,
+    inventory.deliverer_id,
+    inventory.purchaser_id,
+    inventory.tracking_no,
+    inventory.planned_price,
+    inventory.planned_payout,
+    inventory.sales_channel,
+    inventory.product_registered,
+    inventory.inspected,
+    inventory.photo_uploaded,
+    inventory.packed_on,
+    inventory.shipped_on,
+    inventory.listed_on,
+    inventory.sold_on,
+    inventory.sold_price,
+    inventory.payout_amount,
+    inventory.amazon_returned_on,
+    inventory.refund_amount,
+    inventory.profit,
+    inventory.days_to_sell,
+    inventory.days_in_stock,
+    (inventory.planned_payout+coalesce(financial_totals.profit,-family.family_cost,-inventory.product_cost))::bigint AS expected_profit,
+    inventory.accessories,
+    inventory.memo,
+    inventory.updated_at,
+    inventory.product_row_count,
+    coalesce(family.family_cost,inventory.product_cost)::bigint AS product_cost,
+    inventory.sale_row_count,
+    inventory.product_sale_conflict,
+    inventory.product_sold_on,
+    inventory.product_sold_price,
+    inventory.product_payout_amount,
+    raw.product_id,
+    product.product_no,
+    COALESCE(NULLIF(btrim(product.image_url), ''::text), NULLIF(btrim(asin_product.image_url), ''::text)) AS amazon_image_url,
+    raw.amazon_refund_amount,
+    raw.non_amazon_refund_amount,
+    latest.body AS latest_comment,
+        CASE WHEN NOT inventory.product_sale_conflict AND inventory.product_sold_on IS NOT NULL
+          THEN financial_totals.profit
+          ELSE NULL::numeric END AS product_profit,
+    raw.inventory_refund_amount
+   FROM app.v_inventory_items inventory
+     JOIN app.items raw ON raw.id = inventory.id
+     LEFT JOIN app.v_financial_families family ON family.family_key=app.financial_product_serial(raw.sku,raw.lot_seq)
+     LEFT JOIN financial_totals ON financial_totals.family_key=family.family_key
+     LEFT JOIN app.products product ON product.id = raw.product_id
+     LEFT JOIN app.products asin_product ON asin_product.asin = raw.asin
+     LEFT JOIN totals ON totals.serial_key = app.product_serial(raw.sku, raw.lot_seq)
+     LEFT JOIN LATERAL ( SELECT item_comments.body
+           FROM app.item_comments
+          WHERE item_comments.item_id = inventory.id
+          ORDER BY item_comments.created_at DESC, item_comments.id DESC
+         LIMIT 1) latest ON true;
+
+create or replace view app.v_stock_summary as
+with current_items as (
+ select distinct on (app.financial_product_serial(i.sku,i.lot_seq)) i.*,
+ app.financial_product_serial(i.sku,i.lot_seq) as family_key
+ from app.items i where not i.is_accessory and i.status not in ('販売済','返品処理') and i.sold_on is null
+ order by app.financial_product_serial(i.sku,i.lot_seq),i.purchased_at desc nulls last,i.created_at desc,i.id
+)
+select count(*) as "現在庫数",coalesce(sum(f.family_cost),0)::numeric as "仕入金額合計",
+ coalesce(sum(coalesce(i.planned_payout,0)),0)::numeric as "売上見込み合計",
+ coalesce(sum(coalesce(i.planned_payout,0)+coalesce(realized.profit,-f.family_cost)),0)::numeric as "見込み利益合計",
+ count(*) filter(where current_date-i.purchased_at<=7) as "高回転",
+ count(*) filter(where current_date-i.purchased_at between 8 and 14) as "中回転",
+ count(*) filter(where current_date-i.purchased_at>=15) as "低回転",
+ count(*) filter(where i.status='作業中') as "作業中",
+ count(*) filter(where false) as "入荷待ち"
+from current_items i join app.v_financial_families f using(family_key)
+left join (select family_key,sum(profit) as profit from app.v_financial_sales group by family_key) realized using(family_key);
+notify pgrst,'reload schema';
+
+
+-- Use the same sale events and original purchaser in staff profit reports.
+create or replace function app.monthly_gross_profit_by_purchaser(p_purchaser_id uuid,p_month date)
+returns jsonb language plpgsql stable security invoker set search_path=pg_catalog,app as $$
+declare current_id uuid:=app.current_staff_id(); current_user_role text:=app.current_role(); result jsonb;
+begin
+ if auth.uid() is null or current_id is null or p_month is null or extract(day from p_month)<>1 then
+  raise exception '対象月またはログイン情報が不正です' using errcode='22023';
+ end if;
+ if current_user_role='admin' then
+  if p_purchaser_id is null or not exists(select 1 from app.staff where id=p_purchaser_id and is_active and role in ('admin','purchaser')) then
+   raise exception '仕入担当者を選択してください' using errcode='22023';
+  end if;
+ elsif current_user_role='purchaser' then
+  if p_purchaser_id is distinct from current_id then raise exception '閲覧する権限がありません' using errcode='42501'; end if;
+ elsif current_user_role='deliverer' then
+  if p_purchaser_id is not null then raise exception '閲覧する権限がありません' using errcode='42501'; end if;
+ else raise exception '閲覧する権限がありません' using errcode='42501'; end if;
+
+ with products as (
+  select s.serial_key,s.sku,s.sold_on,owner.name as purchaser_name,s.profit as gross_profit
+  from app.v_financial_sales s
+  join app.items event_item on event_item.id=s.id
+  join app.items origin on origin.id=s.origin_item_id
+  left join app.staff owner on owner.id=origin.purchaser_id
+  where s.sold_on>=p_month and s.sold_on<p_month+interval '1 month'
+    and ((current_user_role='admin' and origin.purchaser_id=p_purchaser_id)
+      or (current_user_role='purchaser' and origin.purchaser_id=current_id)
+      or (current_user_role='deliverer' and event_item.deliverer_id=current_id))
+ )
+ select jsonb_build_object(
+  'rows',coalesce(jsonb_agg(jsonb_build_object('sku',sku,'sold_on',sold_on,'purchaser_name',purchaser_name,'gross_profit',gross_profit) order by sold_on,sku),'[]'::jsonb),
+  'total',coalesce(sum(gross_profit),0)
+ ) into result from products;
+ return result;
+end $$;
+revoke all on function app.monthly_gross_profit_by_purchaser(uuid,date) from public,anon,authenticated;
+grant execute on function app.monthly_gross_profit_by_purchaser(uuid,date) to authenticated;
 
 
