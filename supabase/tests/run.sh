@@ -19,7 +19,7 @@ for f in "$HERE"/../migrations/*.sql; do
   # The disposable CI database has cron/Vault stubs above. Extension binaries
   # are installed by Supabase in production, not by the plain postgres image.
   sed -E '/^create extension if not exists (pg_cron|pg_net) /Id' "$f" |
-    $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f -
+    $PSQL --single-transaction -v ON_ERROR_STOP=1 -q -d "$DB" -f -
 done
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/smoke.sql"
