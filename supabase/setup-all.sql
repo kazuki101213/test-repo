@@ -10384,12 +10384,11 @@ begin
 
   v_serial := lower(app.product_serial(v_body.sku,v_body.lot_seq));
 
-  update app.items set sales_channel='ヤフオク'::app.sales_channel, updated_at=now() where id=v_body.id;
-
   if exists (
     select 1 from app.spare_accessories s
     where lower(btrim(s.usage_note))=v_serial and s.title ilike '%リモコン%'
   ) then
+  update app.items set sales_channel='ヤフオク'::app.sales_channel, updated_at=now() where id=v_body.id;
     return;
   end if;
 
@@ -10433,6 +10432,8 @@ begin
       0,v_body.marketplace,v_body.marketplace_item_id,v_body.tracking_no,v_serial
     );
   end if;
+  -- Move the remote before the body update synchronizes and replaces its SKU.
+  update app.items set sales_channel='ヤフオク'::app.sales_channel, updated_at=now() where id=v_body.id;
 end;
 $$;
 

@@ -14,6 +14,7 @@ begin
  values('899994-EEMM-20260101-50',899994,'リモコン',500,'ヤフオク','2026-01-01',remote_buyer,worker,'FBA',true,body);
  select sku,cost_amount into original_remote_sku,original_remote_cost from app.items where lot_seq=899994 and is_accessory;
  perform app.prepare_yahoo_auction_item(body);
+ if (select sales_channel::text from app.items where id=body)<>'ヤフオク' then raise exception 'Body not prepared for Yahoo';end if;
  select id,manufacturer,owner_staff_id into spare,maker,holder from app.spare_accessories where usage_note='899994';
  if maker is distinct from 'SHARP' or holder is distinct from worker then
   raise exception 'Missing remote product must inherit body maker and delivery holder: %, %',maker,holder;end if;
