@@ -80,3 +80,27 @@
  .invoice-sheet:last-child,.receipt-sheet:last-child { break-after:auto; }
  .invoice-sheet tr { break-inside:avoid; }
 }
+.receipt-detail-form fieldset { border:1px solid var(--border); border-radius:6px; padding:12px; display:grid; gap:10px; margin:12px 0; min-width:0; }
+.receipt-detail-form legend { font-size:13px; padding:0 4px; }
+.receipt-detail-form details label { margin-top:8px; }
+.invoices label.receipt-claim { display:flex; align-items:center; gap:8px; }
+.receipt-detail-scroll { overflow:auto; margin:12px 0; }
+.receipt-detail-table { min-width:500px; width:100%; border-collapse:collapse; font-size:12px; }
+.receipt-detail-table th,.receipt-detail-table td { padding:8px; border:1px solid var(--border); vertical-align:top; overflow-wrap:anywhere; }
+.receipt-detail-table small { display:block; white-space:pre-wrap; }
+.receipt-detail-table td:nth-child(3) { text-align:right; white-space:nowrap; }
+.receipt-detail-table .btn { padding:4px; margin:2px; }
+.receipt-summary-sheet,.receipt-photo-sheet { box-sizing:border-box; width:min(100%,190mm); min-height:270mm; margin:20px auto; padding:5mm; background:#fff; color:#000; font:12px/1.5 var(--app-font-family); }
+.receipt-summary-sheet table { width:100%; border-collapse:collapse; table-layout:fixed; color:#000; font-size:12px; }
+.receipt-summary-sheet th,.receipt-summary-sheet td { border:1px solid #222; padding:3mm 2mm; overflow-wrap:anywhere; color:#000; }
+.receipt-summary-sheet th:first-child { width:7%; }
+.receipt-summary-sheet th:nth-child(2) { width:22%; }
+.receipt-summary-sheet th:last-child { width:23%; }
+.receipt-summary-sheet small { display:block; }
+.receipt-summary-sheet td:last-child,.receipt-summary-total { text-align:right; }
+.receipt-photo-sheet { height:270mm; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); gap:4mm; }
+.receipt-photo-sheet figure { min-width:0; min-height:0; margin:0; display:flex; flex-direction:column; gap:2mm; border:1px solid #bbb; padding:2mm; }
+.receipt-photo-sheet figcaption { font-size:10px; overflow-wrap:anywhere; }
+.receipt-photo-sheet img { min-height:0; flex:1; width:100%; object-fit:contain; }
+.invoice-reimbursement { margin:3mm 0; font-size:11px; }
+@media print { .receipt-summary-sheet,.receipt-photo-sheet { width:190mm; margin:0; break-after:page; } }

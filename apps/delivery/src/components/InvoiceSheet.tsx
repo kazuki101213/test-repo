@@ -1,7 +1,8 @@
+import type { InvoiceReceipt } from '@bussan/shared';
 import type { InvoiceDetails, InvoiceLine, InvoiceSnapshot } from '../invoices';
 import { yen } from '../invoices';
 
-type PrintLine = InvoiceLine & { extra?: boolean };
+type PrintLine = InvoiceLine & { extra?: boolean; taxIncluded?: boolean };
 function groupedLines(snapshot: InvoiceSnapshot, extras: InvoiceLine[]): PrintLine[] {
   const grouped = new Map<string, PrintLine>();
   for (const line of snapshot.lines) {
@@ -26,13 +27,14 @@ function Bank({ details: p }: { details: InvoiceDetails }) {
   </tbody></table>;
 }
 
-export default function InvoiceSheet({ snapshot, month, issued, extras, note }: {
-  snapshot: InvoiceSnapshot; month: string; issued: string; extras: InvoiceLine[]; note: string;
+export default function InvoiceSheet({ snapshot, month, issued, extras, note, receipts = [] }: {
+  snapshot: InvoiceSnapshot; month: string; issued: string; extras: InvoiceLine[]; note: string; receipts?: InvoiceReceipt[];
 }) {
   const p = snapshot.profile;
-  const lines = groupedLines(snapshot, extras);
-  const subtotal = lines.reduce((sum, l) => sum + (Number.isFinite(l.quantity * l.unit_price) ? l.quantity * l.unit_price : 0), 0);
-  const total = subtotal + Math.floor(subtotal * snapshot.tax_percent / 100);
+  const lines: PrintLine[] = [...groupedLines(snapshot, extras), ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true }))];
+  const subtotal = lines.filter(line => !line.taxIncluded).reduce((sum, l) => sum + (Number.isFinite(l.quantity * l.unit_price) ? l.quantity * l.unit_price : 0), 0);
+  const reimbursement = receipts.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+  const total = subtotal + Math.floor(subtotal * snapshot.tax_percent / 100) + reimbursement;
   const quantities = snapshot.lines.reduce((sum, l) => sum + l.quantity, 0);
   const pages = Array.from({ length: Math.max(1, Math.ceil(lines.length / 28)) }, (_, i) => lines.slice(i * 28, (i + 1) * 28));
   return <div className="invoice-document" aria-label={`${month}の請求書プレビュー`}>{pages.map((page, pageIndex) => {
@@ -45,12 +47,13 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note }: 
       </div>
       <div className="invoice-total"><span>合計金額</span><strong>{money(total)}</strong></div>
       <table className="invoice-lines"><colgroup><col style={{ width: '12.5%' }} /><col style={{ width: '50%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /></colgroup>
-        <thead><tr><th>日付</th><th>名称</th><th>数量</th><th>単価（税抜）</th><th>金額（税抜）</th></tr></thead>
+        <thead><tr><th>日付</th><th>名称</th><th>数量</th><th>単価（円）</th><th>金額（円）</th></tr></thead>
         <tbody>{page.map((line, i) => <tr key={i}><td>{shortDate(line.date)}</td><td>{!line.extra && i > 0 && page[i - 1]?.description === line.description ? '〃' : line.description}</td><td>{line.extra && line.quantity === 1 ? '' : Number.isFinite(line.quantity) ? line.quantity : ''}</td><td>{money(line.unit_price)}</td><td>{money(line.quantity * line.unit_price)}</td></tr>)}
           {Array.from({ length: Math.max(0, 24 - page.length) }, (_, i) => <tr key={`blank-${i}`} aria-hidden="true"><td>&nbsp;</td><td /><td /><td /><td /></tr>)}
         </tbody>
         {last && <tfoot><tr><td colSpan={2}>合計</td><td>{quantities}</td><td /><td>{money(total)}</td></tr></tfoot>}
       </table>
+      {last && <p className="invoice-reimbursement">税抜の作業費・手当：{money(subtotal)}　消費税：{money(Math.floor(subtotal * snapshot.tax_percent / 100))}　立替経費（税込）：{money(reimbursement)}</p>}
       {last && <div className="invoice-footer"><section><div>備考</div><div className="invoice-note">{note || '\u00a0'}</div></section><Bank details={p} /></div>}
     </article>;
   })}</div>;

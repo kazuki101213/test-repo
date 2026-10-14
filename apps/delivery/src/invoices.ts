@@ -1,3 +1,4 @@
+import type { InvoiceReceipt } from '@bussan/shared';
 import { getSupabase } from '@bussan/shared';
 
 export interface InvoiceDetails {
@@ -12,7 +13,7 @@ export interface InvoiceLine {
 }
 export interface InvoiceSnapshot {
   profile: InvoiceDetails; lines: InvoiceLine[]; extras?: InvoiceLine[];
-  subtotal: number; tax_percent: number; tax?: number;
+  receipt_lines?: InvoiceReceipt[]; receipt_subtotal?: number; subtotal: number; tax_percent: number; tax?: number;
 }
 export interface Invoice {
   id: string; staff_id: string; billing_month: string; issued_on: string; extras: InvoiceLine[];
