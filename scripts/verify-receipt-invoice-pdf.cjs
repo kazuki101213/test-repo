@@ -41,7 +41,7 @@ async function testReceiptEditor(){
  }:{__esModule:true,default:'DateInput'}};
  vm.runInNewContext(compile('apps/delivery/src/components/InvoiceReceipts.tsx'),component);
  async function settle(){for(let n=0;n<30;n++){if(dirty){cursor=0;dirty=false;tree=component.exports.default(props);pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
- const control=label=>{const node=all(tree).find(n=>n.type==='label'&&typeof n.props.children?.[0]==='string'&&n.props.children[0]===label);assert(node,label);return all(node).find(n=>n.type==='input'||n.type==='DateInput')};
+ const control=label=>{const node=all(tree).find(n=>n.type==='label'&&typeof n.props.children?.[0]==='string'&&text(n.props.children[0])===label);assert(node,label);return all(node).find(n=>n.type==='input'||n.type==='DateInput')};
  await settle();
  control('日付').props.onChange({target:{value:'2026-10-01'}});await settle();
  control('内容').props.onChange({target:{value:'梱包資材'}});await settle();
@@ -57,7 +57,7 @@ function testExtraRows(){
  const ctx={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:{__esModule:true,default:'DateInput'}};
  vm.runInNewContext(compile('apps/delivery/src/components/InvoiceExtraRows.tsx'),ctx);
  function render(){cursor=0;tree=ctx.exports.default({lines,disabled:false,onChange:value=>{lines=value;changed++},onDraftChange(){}})}
- function draftControl(label){const draft=all(tree).find(n=>n.props?.className==='invoice-extra invoice-extra-draft');return all(all(draft).find(n=>n.type==='label'&&n.props.children[0]===label)).find(n=>n.type==='input'||n.type==='DateInput')}
+ function draftControl(label){const draft=all(tree).find(n=>n.props?.className==='invoice-extra invoice-extra-draft');return all(all(draft).find(n=>n.type==='label'&&text(n.props.children[0])===label)).find(n=>n.type==='input'||n.type==='DateInput')}
  render();
  for(const [label,value]of [['内容','手当'],['数量','2'],['金額','1200']]){draftControl(label).props.onChange({target:{value}});render()}
  assert.equal(changed,0,'Typing a draft must not change the invoice');assert.equal(lines.length,0);
