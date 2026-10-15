@@ -13,6 +13,21 @@ assert(text(sheet).includes('¥8,800'));assert(text(sheet).includes('消費税�
 assert.equal(all(sheet).find(n=>n.type==='tfoot').props.children.props.children[1].props.children,1,'Receipt rows must not add delivery quantity');
 const photos={exports:{},require:name=>name==='react/jsx-runtime'?{jsx,jsxs:jsx}:{} };vm.runInNewContext(compile('apps/delivery/src/components/ReceiptSheets.tsx'),photos);
 const tree=photos.exports.default({rows,month:'2026-10',name:'Test'});const pages=all(tree).filter(n=>n.props?.className==='receipt-photo-sheet');assert.equal(pages.length,2);assert.equal(all(pages[0]).filter(n=>n.type==='img').length,4);assert.equal(all(pages[1]).filter(n=>n.type==='img').length,1);assert.equal(all(tree).filter(n=>n.type==='img').length,5,'PDFs must not become images');
+
+const profileFields={issuer_name:'氏名保持',postal:'100-0000',address:'住所保持',phone:'000-0000-0000',email:'sample@example.com',recipient:'請求先保持',bank:'銀行名保持',branch:'支店名保持',bank_code:'0000',branch_code:'001',account_type:'普通',account_number:'1234567',holder:'口座名義保持',holder_kana:'メイギカナ'};
+const manyExtras=Array.from({length:45},(_,i)=>({date:'2026-10-01',description:'明細保持'+i,quantity:1,unit_price:1000}));
+const manySheet=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:10},month:'2026-10',issued:'2026-10-15',extras:manyExtras,note:'備考保持',receipts:[]});
+assert(all(manySheet).filter(n=>n.props?.className==='invoice-sheet').length>1);assert.equal(all(manySheet).filter(n=>n.type==='tfoot').length,1,'Totals belong only on the final page');
+for(const line of manyExtras)assert(text(manySheet).includes(line.description));const allFieldsText=text(manySheet)+all(manySheet).filter(n=>typeof n.type==='function').map(n=>text(n.type(n.props))).join('');for(const value of Object.values(profileFields))assert(allFieldsText.includes(value),value);assert(text(manySheet).includes('備考保持'));assert(text(manySheet).includes('¥49,500'));
+const longExtras=Array.from({length:8},(_,i)=>({date:null,description:i+'長い明細を省略しない'.repeat(18),quantity:1,unit_price:1000}));
+const longSheet=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:10},month:'2026-10',issued:'2026-10-15',extras:longExtras,note:'',receipts:[]});
+assert(all(longSheet).filter(n=>n.props?.className==='invoice-sheet').length>1);for(const line of longExtras)assert(text(longSheet).includes(line.description));
+const longReceipts=Array.from({length:12},(_,i)=>({...receipt('long-'+i,100),description:'長い領収書の内容'.repeat(20),payee:'長い支払先'.repeat(30)}));
+const receiptPages=photos.exports.default({rows:longReceipts,month:'2026-10',name:'Test'});
+const summaries=all(receiptPages).filter(n=>n.props?.className==='receipt-summary-sheet');assert(summaries.length>1);
+const numbers=summaries.flatMap(page=>all(page).filter(n=>n.type==='tbody').flatMap(body=>all(body).filter(n=>n.type==='tr').map(row=>row.props.children[0].props.children)));
+assert.deepEqual(numbers,Array.from({length:12},(_,i)=>i+1),'Receipt numbers continue across variable-length pages');
+
 const api={exports:{},URL:{},require:()=>({})};vm.runInNewContext(compile('packages/shared/src/receipts.ts'),api);
 assert.equal(api.exports.invoiceReceiptDetails([...rows,{...receipt('excluded',900),include_in_invoice:false},{...receipt('legacy',100),spent_on:null}]).length,6);
 async function testReceiptEditor(){
