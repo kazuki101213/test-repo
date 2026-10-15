@@ -4,9 +4,9 @@ import type { InvoiceReceipt, ReceiptDetails } from '@bussan/shared';
 import DateInput from './DateInput';
 const blank = (): ReceiptDetails => ({ spent_on: '', description: '', amount: null, payee: '', memo: '', include_in_invoice: true });
 const messageOf = (e: unknown) => (e as { message?: string })?.message ?? '保存できませんでした。';
-export default function InvoiceReceipts({ staffId, month, approved, onBusyChange, onPrint, onCountChange, onRowsChange, onChanged }: {
-  staffId: string; month: string; approved: boolean; onBusyChange: (busy: boolean) => void; onPrint: () => void;
-  onCountChange: (count: number) => void; onRowsChange: (rows: InvoiceReceipt[]) => void; onChanged: () => void;
+export default function InvoiceReceipts({ staffId, month, approved, onBusyChange, onRowsChange, onChanged }: {
+  staffId: string; month: string; approved: boolean; onBusyChange: (busy: boolean) => void;
+  onRowsChange: (rows: InvoiceReceipt[]) => void; onChanged: () => void;
 }) {
   const [rows, setRows] = useState<InvoiceReceipt[]>([]);
   const [draft, setDraft] = useState<ReceiptDetails>(blank);
@@ -20,7 +20,7 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
   const cameraInput = useRef<HTMLInputElement>(null);
   const [attachmentMenu, setAttachmentMenu] = useState(false);
   useEffect(() => { onBusyChange(busy || loading || !!error); return () => onBusyChange(false); }, [busy, loading, error, onBusyChange]);
-  useEffect(() => { onCountChange(rows.filter(row => row.document_type !== 'invoice').length); onRowsChange(rows); }, [rows, onCountChange, onRowsChange]);
+  useEffect(() => { onRowsChange(rows); }, [rows, onRowsChange]);
   useEffect(() => {
     let active = true; let loaded: InvoiceReceipt[] = [];
     setLoading(true); setRows([]); setError('');
@@ -48,7 +48,6 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
     catch (e) { setError(messageOf(e)); } finally { setBusy(false); }
   }
   const receipts = rows.filter(row => row.document_type !== 'invoice');
-  const claimed = receipts.filter(row => row.include_in_invoice);
   return <section className="invoice-receipts">
     <div className="receipt-editor no-print"><h3>領収書登録</h3>
 
@@ -70,13 +69,11 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
         </fieldset>
       </form>}
       {busy && <p role="status">明細を保存しています…</p>}{loading && <p role="status">明細を読み込み中…</p>}{error && <div className="error" role="alert">{error}<button type="button" className="btn ghost" disabled={busy} onClick={() => setRevision(n => n + 1)}>再読み込み</button></div>}
-      <div className="receipt-detail-scroll"><table className="receipt-detail-table"><thead><tr><th>日付</th><th>内容・支払先</th><th>金額</th><th>添付</th><th>請求</th>{!approved && <th>操作</th>}</tr></thead>
-        <tbody>{receipts.map(row => <tr key={row.id}><td>{row.spent_on || '未登録'}</td><td>{row.description || '未登録'}{row.payee && <small>{row.payee}</small>}{row.memo && <small>{row.memo}</small>}</td><td>{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td><td><a href={row.url} target="_blank" rel="noreferrer">{row.mime_type === 'application/pdf' ? 'PDF' : '写真'}</a></td><td>{row.include_in_invoice ? '含める' : '含めない'}</td>{!approved && <td><button type="button" className="btn ghost" disabled={busy || loading} onClick={() => { setFile(null); setAttachmentMenu(false); setEditing(row); setDraft({ spent_on: row.spent_on ?? '', description: row.description ?? '', amount: row.amount ?? null, payee: row.payee ?? '', memo: row.memo ?? '', include_in_invoice: true }); setError(''); }}>編集</button><button type="button" className="btn ghost" disabled={busy || loading} onClick={() => void remove(row)}>削除</button></td>}</tr>)}</tbody>
-        <tfoot><tr><th colSpan={2}>請求に含める合計</th><td colSpan={approved ? 3 : 4}>¥{claimed.reduce((sum, row) => sum + (row.amount ?? 0), 0).toLocaleString('ja-JP')}</td></tr></tfoot></table></div>
+      <div className="receipt-detail-scroll"><table className="receipt-detail-table"><thead><tr><th>日付</th><th>内容・支払先</th><th>金額</th><th>写真・PDF</th></tr></thead>
+        <tbody>{receipts.map(row => <tr key={row.id}><td>{row.spent_on || '未登録'}</td><td>{row.description || '未登録'}{row.payee && <small>{row.payee}</small>}{row.memo && <small>{row.memo}</small>}</td><td>{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td><td><div className="receipt-row-attachment"><a href={row.url} target="_blank" rel="noreferrer">{row.mime_type === 'application/pdf' ? 'PDF' : '写真'}</a>{!approved && <span className="receipt-row-actions"><button type="button" className="btn ghost" disabled={busy || loading} onClick={() => { setFile(null); setAttachmentMenu(false); setEditing(row); setDraft({ spent_on: row.spent_on ?? '', description: row.description ?? '', amount: row.amount ?? null, payee: row.payee ?? '', memo: row.memo ?? '', include_in_invoice: true }); setError(''); }}>編集</button><button type="button" className="btn ghost" disabled={busy || loading} onClick={() => void remove(row)}>削除</button></span>}</div></td></tr>)}</tbody>
+      </table></div>
       {!loading && !receipts.length && <p>登録済みの明細はありません。</p>}
       {rows.filter(row => row.document_type === 'invoice').map(row => <p key={row.id}>以前の請求書添付：<a href={row.url} target="_blank" rel="noreferrer">{row.original_name}</a></p>)}
-      <p className="muted">以前の添付は残しています。未登録の項目を編集すると、請求書に含められます。</p>
-      <button type="button" className="btn ghost" disabled={!receipts.length || loading || busy} onClick={onPrint}>明細表・領収書PDF保存</button>
     </div>
   </section>;
 }
