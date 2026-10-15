@@ -29,14 +29,32 @@ async function testReceiptEditor(){
  const control=label=>{const node=all(tree).find(n=>n.type==='label'&&typeof n.props.children?.[0]==='string'&&n.props.children[0]===label);assert(node,label);return all(node).find(n=>n.type==='input'||n.type==='DateInput')};
  await settle();
  control('日付').props.onChange({target:{value:'2026-10-01'}});await settle();
- control('明細名').props.onChange({target:{value:'梱包資材'}});await settle();
- control('金額（税込・円）').props.onChange({target:{valueAsNumber:1100}});await settle();
- control('写真またはPDF（1件・20MB以内）').props.onChange({target:{files:[{name:'photo.jpg',type:'image/jpeg'}]}});await settle();
+ control('内容').props.onChange({target:{value:'梱包資材'}});await settle();
+ control('金額').props.onChange({target:{valueAsNumber:1100}});await settle();
+ all(tree).find(n=>n.type==='input'&&n.props.type==='file'&&!n.props.capture).props.onChange({target:{files:[{name:'photo.jpg',type:'image/jpeg'}]}});await settle();
  all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
- assert.equal(uploaded.staff,'worker');assert.equal(uploaded.month,'2026-10');assert.equal(uploaded.details.amount,1100);assert.equal(uploaded.details.spent_on,'2026-10-01');assert.equal(uploaded.details.description,'梱包資材');assert.equal(uploaded.details.include_in_invoice,true);assert(text(tree).includes('¥1,100'));
- all(tree).find(n=>n.type==='button'&&text(n)==='編集').props.onClick();await settle();control('金額（税込・円）').props.onChange({target:{valueAsNumber:1200}});await settle();all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(edited.row.version,1);assert.equal(edited.details.amount,1200);assert(text(tree).includes('¥1,200'));
+ assert.equal(uploaded.staff,'worker');assert.equal(uploaded.month,'2026-10');assert.equal(uploaded.details.amount,1100);assert.equal(uploaded.details.spent_on,'2026-10-01');assert.equal(uploaded.details.description,'梱包資材');assert.equal(uploaded.details.include_in_invoice,true);stored[0].include_in_invoice=false;assert(text(tree).includes('¥1,100'));
+ all(tree).find(n=>n.type==='button'&&text(n)==='編集').props.onClick();await settle();control('金額').props.onChange({target:{valueAsNumber:1200}});await settle();all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(edited.row.version,1);assert.equal(edited.details.amount,1200);assert.equal(edited.details.include_in_invoice,true,'Saving a receipt must include it in the invoice');assert(text(tree).includes('¥1,200'));
 }
+function testExtraRows(){
+ let hooks=[],cursor=0,lines=[],changed=0,tree;
+ const react={useState(initial){const n=cursor++;if(!(n in hooks))hooks[n]=typeof initial==='function'?initial():initial;return[hooks[n],v=>{hooks[n]=typeof v==='function'?v(hooks[n]):v}]} };
+ const ctx={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:{__esModule:true,default:'DateInput'}};
+ vm.runInNewContext(compile('apps/delivery/src/components/InvoiceExtraRows.tsx'),ctx);
+ function render(){cursor=0;tree=ctx.exports.default({lines,disabled:false,onChange:value=>{lines=value;changed++},onDraftChange(){}})}
+ function draftControl(label){const draft=all(tree).find(n=>n.props?.className==='invoice-extra invoice-extra-draft');return all(all(draft).find(n=>n.type==='label'&&n.props.children[0]===label)).find(n=>n.type==='input'||n.type==='DateInput')}
+ render();
+ for(const [label,value]of [['内容','手当'],['数量','2'],['金額','1200']]){draftControl(label).props.onChange({target:{value}});render()}
+ assert.equal(changed,0,'Typing a draft must not change the invoice');assert.equal(lines.length,0);
+ all(tree).find(n=>n.type==='button'&&text(n)==='追加').props.onClick();render();
+ assert.equal(lines.length,1);assert.equal(lines[0].quantity*lines[0].unit_price,2400);assert.equal(draftControl('内容').props.value,'');assert(all(tree).some(n=>n.type==='button'&&text(n)==='削除'));
+ all(tree).find(n=>n.type==='button'&&text(n)==='削除').props.onClick();render();
+ assert.equal(lines.length,0);assert.equal(all(tree).filter(n=>n.props?.className==='invoice-extra invoice-extra-draft').length,1);assert.equal(draftControl('金額').props.value,'');
+ all(tree).find(n=>n.type==='button'&&text(n)==='追加').props.onClick();assert.equal(lines.length,0,'Blank drafts must not be added');
+}
+
 (async()=>{
+ testExtraRows();
  await testReceiptEditor();
  const {PDFDocument}=require('../packages/shared/node_modules/pdf-lib');
  const source=await PDFDocument.create();source.addPage([420,595]);source.addPage([842,595]);const bytes=await source.save();
@@ -45,5 +63,5 @@ async function testReceiptEditor(){
  const merged=await PDFDocument.load(await ctx.exports.buildInvoicePdf([],rows.filter(row=>row.document_type==='receipt')));
  assert.equal(merged.getPageCount(),2);assert.deepEqual(merged.getPages().map(p=>[p.getWidth(),p.getHeight()]),[[420,595],[842,595]]);
  assert(merged.catalog.has(require('../packages/shared/node_modules/pdf-lib').PDFName.of('Names')),'Original PDF should also be embedded');
- console.log('Receipt tax-inclusive total, body quantity, 4-photo pages, legacy/excluded rows, original PDF dimensions/pages/attachment passed');
+ console.log('Invoice add/delete draft behavior, receipt save/include, tax-inclusive total, body quantity, 4-photo pages and original PDFs passed');
 })().catch(e=>{console.error(e);process.exitCode=1});
