@@ -19,3 +19,7 @@ Node検証: node --test scripts/verify-purchase-*.test.mjs
 DB検証: scripts/verify-purchase-*-transaction.sql（BEGIN/ROLLBACK付き、管理者・anon拒否・重複防止・除外維持・期限切れを確認）
 
 管理PCの配布入口: 2026-10-03/7-2-yahoo-2-yahoo-2/work/manage-extension.ps1。別PCの配置先: C:/Users/user/Documents/Codex/fleamarket-extension-v0.1.0。build.jsとreload-marker.jsonは配布時に生成し、配置成功と実読み込みを区別します。秘密鍵・診断・セッションをGitに入れないでください。
+
+
+## 販売状態の同期（0.1.45）
+メルカリの出品中・取引中、またはヤフオクの出品中・出品終了分を開き、拡張機能の「表示中の出品・取引状態を同期」を押します。表示中の通番号を完全一致で照合し、ヤフオクの「商品を発送して下さい」は取引中として反映します。販売日がある商品や古い取得情報は上書きしません。ページ外の商品を状態変更しないため、続きの一覧は表示してから同期してください。
