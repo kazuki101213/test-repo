@@ -10697,6 +10697,17 @@ create trigger items_sync_status before insert or update of status,tracking_no,m
  product_registered_at,inspected_at,cleaned_at,photo_uploaded_at,packed_on,shipped_on,listed_on,
  amazon_returned_on,sold_on,returned_on,malfunction_reported,malfunction_resolved_at,return_request_completed_at
  on app.items for each row execute function app.items_sync_status();
+
+-- Computed status changes (inspection/tracking/fault reports) also synchronize children.
+do $declare d text;begin
+ d:=pg_get_functiondef('app.sync_accessory_sale_date()'::regprocedure);
+ d:=replace(d,'pg_trigger_depth() > 1 or new.is_accessory','new.is_accessory');
+ execute d;
+end $;
+drop trigger if exists items_sync_accessory_sale_date on app.items;
+create trigger items_sync_accessory_sale_date after update on app.items
+for each row execute function app.sync_accessory_sale_date();
+
 -- Sale-date trigger must agree with the central workflow; supplier returns have no sale date.
 create or replace function app.items_mark_sold() returns trigger language plpgsql set search_path='' as $$
 begin
