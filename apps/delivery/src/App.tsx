@@ -1,4 +1,4 @@
-import { staffDisplayName } from '@bussan/shared';
+import { canOpenManagement, switchApplication, staffDisplayName } from '@bussan/shared';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { loadSession, signOut } from '@bussan/shared';
 import type { Session } from '@bussan/shared';
@@ -76,7 +76,8 @@ export default function App() {
           <h1>納品アプリ</h1>
           <span className="who">{staffDisplayName(session.staff)}</span>
         </div>
-        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button>
+        <div className="app-switch-actions">{canOpenManagement(session.staff) && <button type="button" className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => { if (canLeave()) switchApplication('management'); }}>管理アプリへ</button>}
+        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button></div>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       <nav className="row invoice-tabs no-print" aria-label="納品アプリのメニュー">

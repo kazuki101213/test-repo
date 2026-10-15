@@ -1,15 +1,12 @@
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import './styles.css';
-import App from './App';
-import PasswordSetup from './components/PasswordSetup';
-
-// Capture the invite/recovery route before the auth SDK consumes the URL fragment.
-const setup = new URLSearchParams(location.search).get('setup') === '1'
-  || ['invite', 'recovery'].includes(new URLSearchParams(location.hash.slice(1)).get('type') ?? '');
-
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    {setup ? <PasswordSetup /> : <App />}
-  </React.StrictMode>,
-);
+import { initialApplication, applicationModeKey } from '../../../packages/shared/src/applicationSwitch';
+document.documentElement.dataset.appHost = 'unified';
+let stored: string | null = null;
+try { stored = window.sessionStorage.getItem(applicationModeKey); } catch { /* Use the delivery entry when storage is unavailable. */ }
+const mode = initialApplication(location.search, location.hash, stored);
+void (mode === 'management' ? import('../../admin/src/main') : import('./deliveryEntry')).catch(() => {
+  const root = document.getElementById('root');
+  if (!root) return;
+  root.textContent = '画面を読み込めませんでした。通信状態を確認して再読み込みしてください。';
+  const button = document.createElement('button'); button.textContent = '再読み込み';
+  button.onclick = () => location.reload(); root.appendChild(button);
+});

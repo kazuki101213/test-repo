@@ -13,3 +13,5 @@ export * from './spareSearch';
 
 export * from './stateSearch';
 export * from './invoicePdf';
+
+export * from './applicationSwitch';
