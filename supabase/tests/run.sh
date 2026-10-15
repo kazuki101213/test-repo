@@ -33,6 +33,8 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/receipt_details_invoice.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/management_access.sql"
 
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/dated_sale_status.sql"
+
 # アプリが読む列・関数がこのスキーマに存在するかを突き合わせる
 DB="$DB" "$HERE/check-app-schema.py"
 
