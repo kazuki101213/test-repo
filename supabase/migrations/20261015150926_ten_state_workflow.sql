@@ -17,7 +17,7 @@ language plpgsql set search_path=pg_catalog,app as $$
 declare explicit_change boolean:=false; parent_status app.item_status;
 begin
  if new.marketplace in ('Amazon返品','動作品Amazon返品') then new.cost_amount:=0;end if;
- if new.is_accessory and new.parent_item_id is not null then
+ if new.is_accessory and new.parent_item_id is not null and not app.is_standalone_accessory_serial(new.sku,new.lot_seq) then
    select status into parent_status from app.items where id=new.parent_item_id;
    if found then new.status:=parent_status;return new;end if;
  end if;
@@ -96,7 +96,7 @@ and exists(select 1 from app.items b where not b.is_accessory and b.marketplace=
 -- Reclassify legacy active work from existing facts, not shipment dates.
 update app.items set tracking_no=tracking_no where not is_accessory and status='受取前';
 -- Parent changes already synchronize; repair any pre-existing accessory status differences.
-update app.items a set status=p.status from app.items p where a.is_accessory and a.parent_item_id=p.id and a.status is distinct from p.status;
+update app.items a set status=p.status from app.items p where a.is_accessory and not app.is_standalone_accessory_serial(a.sku,a.lot_seq) and a.parent_item_id=p.id and a.status is distinct from p.status;
 -- Remove the obsolete four-status whitelist without changing the view's RLS boundary.
 do $$ declare d text; begin
  d:=pg_get_viewdef('app.v_delivery_tasks'::regclass,true);
@@ -151,7 +151,7 @@ begin
  select * into i from app.items where id=p_item_id for update;
  if not found or not coalesce(app.is_admin() or i.deliverer_id=actor or (app.current_role()='purchaser' and i.purchaser_id=actor),false) then
  raise exception 'この商品の状態を変更できません' using errcode='42501';end if;
- if i.is_accessory and i.parent_item_id is not null then raise exception '本体から変更してください' using errcode='22023';end if;
+ if i.is_accessory and not app.is_standalone_accessory_serial(i.sku,i.lot_seq) then raise exception '本体から変更してください' using errcode='22023';end if;
  if i.sold_on is not null and p_status<>'販売済' then raise exception '販売日がある商品は販売済です' using errcode='22023';end if;
  if p_status='販売済' then
    if i.sold_on is not null then return;end if;

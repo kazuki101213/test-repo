@@ -70,3 +70,18 @@ begin
 exception when insufficient_privilege then null;end;
 end $$;
 rollback;
+
+begin;
+set local role authenticated;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
+select 990092,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'origin non-sale',1000,'ヤフオク','メルカリ';
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
+select '990092c-AADD-'||to_char(current_date,'YYYYMMDD')||'-100',990092,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'standalone C',1000,'ヤフオク','メルカリ';
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
+select '990092b-AADD-'||to_char(current_date,'YYYYMMDD')||'-0',990092,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'working return',0,'動作品Amazon返品','メルカリ';
+do $$begin
+if not exists(select 1 from app.items where title='origin non-sale' and sold_on is not null and status='販売済' and sold_price=0 and payout_amount=0 and cost_amount=1000) then raise exception 'Non-sale predecessor was not closed with its cost preserved';end if;
+if exists(select 1 from app.items where title='standalone C' and sold_on is not null) then raise exception 'Standalone C was closed with another family';end if;
+end $$;
+rollback;

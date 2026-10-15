@@ -5,7 +5,7 @@ import {setInventoryWorkflow} from '../api';
 
 export default function WorkflowControls({task,onChanged,onError}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void}){
  const [busy,setBusy]=useState(false);
- if(task.is_accessory || task.status==='販売済')return null;
+ if((task.is_accessory && !task.sku.split('-')[0].toLowerCase().endsWith('c')) || task.status==='販売済')return null;
  async function transition(status:ItemStatus){
   if(busy)return;
   if(status==='販売済'&&!window.confirm('販売金額・振込金額を0円、販売日を本日として販売済にします。'))return;
