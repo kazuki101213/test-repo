@@ -1,3 +1,4 @@
+import {readSellerInventory} from './sales-status.js';
 import {SITES,API,PUBLIC_KEY,assertSiteUrl,siteFor,eligible,jstDay,dueTime,nextTime,settingsDefault,validateSettings} from './core.js';
 import {rpc,connectSession} from './api.js';
 const STORE=chrome.storage.local;
@@ -225,7 +226,15 @@ async function uiMessage(m){
     }});
     return connectSession(result);
   }
-  if(m.type==='registerSite'){
+  if(m.type==='saleStatus'){
+ const [tab]=await chrome.tabs.query({active:true,lastFocusedWindow:true});
+ if(!tab||!['mercari','auctions'].includes(siteFor(tab.url)))throw new Error('対象の出品一覧を開いてください');
+ const [{result}]=await chrome.scripting.executeScript({target:{tabId:tab.id},func:readSellerInventory});
+ let updated=0,protectedCount=0,unmatched=0;
+ for(const row of result.rows){const status=await rpc('sync_marketplace_sale_status',{p_channel:result.channel,p_serial:row.serial,p_status:row.status,p_observed_at:result.observedAt});if(status==='updated')updated++;else if(status==='protected'||status==='stale')protectedCount++;else unmatched++;}
+ return {updated,protectedCount,unmatched};
+ }
+ if(m.type==='registerSite'){
     const [tab]=await chrome.tabs.query({active:true,lastFocusedWindow:true});const site=siteFor(tab?.url);
     if(!['mercari','flea','rakuma'].includes(site))throw new Error('メルカリ・Yahoo!フリマ・ラクマの購入一覧を開いてください');
     const s=await getSettings(),a=s.accounts.find(x=>x.id===m.id);

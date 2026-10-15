@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
-const shared={productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
+const shared={HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);Object.assign(shared,stateSearch.exports);
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
 const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);

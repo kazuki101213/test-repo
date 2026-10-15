@@ -119,10 +119,10 @@ from app.items where sku like '2402a%';
 
 do $$
 begin
-  if (select status from app.items where sku = '2402a-DD-20260801-0') <> 'Amazon返送依頼' then
-    raise exception 'FAIL: Amazon返品が返送依頼になっていない';
+  if (select status from app.items where sku = '2402a-DD-20260801-0') <> '出品中' then
+    raise exception 'FAIL: 登録済みのAmazon返品が出品中になっていない';
   end if;
-  raise notice 'OK: Amazon返品は返送依頼から開始';
+  raise notice 'OK: 登録済みのAmazon返品は出品中を維持';
 end $$;
 
 -- 納品担当者の作業一覧に出てくる
