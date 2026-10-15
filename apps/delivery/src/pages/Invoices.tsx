@@ -70,9 +70,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const [settings, setSettings] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [reload, setReload] = useState(0);
-  const [printMode, setPrintMode] = useState<'invoice' | 'receipts'>('invoice');
   const [receiptBusy, setReceiptBusy] = useState(false);
-  const [receiptCount, setReceiptCount] = useState(0);
   const [receiptRows, setReceiptRows] = useState<InvoiceReceipt[]>([]);
   const [pdfBusy, setPdfBusy] = useState(false);
   const profile = profiles.find(p => p.staff_id === staffId);
@@ -146,38 +144,35 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const claimedReceipts = invoice?.approved_at
     ? (snapshot?.receipt_lines ?? []).map(row => ({ ...row, url: receiptRows.find(file => file.id === row.id)?.url ?? '' }))
     : invoiceReceiptDetails(receiptRows).sort((a, b) => (a.spent_on ?? '').localeCompare(b.spent_on ?? ''));
-  const allReceipts = receiptRows.filter(row => row.document_type !== 'invoice');
-  const pdfReceipts = printMode === 'invoice' ? claimedReceipts : allReceipts;
-  async function printDocument(mode: 'invoice' | 'receipts') {
+  async function printDocument() {
     if (pdfBusy || receiptBusy) return;
     setPdfBusy(true); setError('');
-    setPrintMode(mode);
     try {
-      // Allow the receipt preview to switch before collecting rendered pages.
+      // Let pending receipt layout finish before collecting the rendered pages.
       await new Promise<void>(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
-      const selector = mode === 'invoice' ? '.invoice-document .invoice-sheet,.receipt-document .receipt-summary-sheet,.receipt-document .receipt-photo-sheet' : '.receipt-document .receipt-summary-sheet,.receipt-document .receipt-photo-sheet';
+      const selector = '.invoice-document .invoice-sheet,.receipt-document .receipt-summary-sheet,.receipt-document .receipt-photo-sheet';
       const elements = Array.from(document.querySelectorAll<HTMLElement>(selector));
-      const files = mode === 'invoice' ? claimedReceipts : allReceipts;
+      const files = claimedReceipts;
       if (files.some(file => !file.url)) throw new Error('請求書に含まれる添付を読み込めません。再読み込みしてください。');
-      await downloadInvoicePdf(elements, files, `${mode === 'invoice' ? '請求書_明細表_領収書' : '明細表_領収書'}_${month}.pdf`);
+      await downloadInvoicePdf(elements, files, `請求書_明細表_領収書_${month}.pdf`);
     } catch (e) { setError(errorText(e)); } finally { setPdfBusy(false); }
   }
-  async function save(mode: 'invoice' | 'receipts') {
+  async function save() {
     setBusy(true); setError(''); setMessage('');
     try {
-      const saved = await submitDocuments(staffId, month, issued, editableExtras, note, invoice, mode !== 'receipts', mode !== 'invoice');
+      const saved = await submitDocuments(staffId, month, issued, editableExtras, note, invoice, true, receiptRows.some(row => row.document_type !== 'invoice'));
       if (saved) {
         setInvoice(saved); setSnapshot(saved.snapshot);
         setExtras(saved.extras.filter(line => line.description !== 'ヤフオク入札作業日' && line.description !== '粗利益連動調整'));
         setWorkdays(saved.extras.filter(line => line.description === 'ヤフオク入札作業日').map(line => line.date).filter((date): date is string => !!date));
         setDirty(false);
       }
-      setMessage(mode === 'receipts' ? '領収書を送信しました。' : '請求書を送信しました。');
+      setMessage('請求書を送信しました。');
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   }
 
-  return <section className="invoices" data-print={printMode}>
+  return <section className="invoices" data-print="invoice">
     <div className="card invoice-workspace">
     <div className="invoice-header no-print">
       <h2>請求書・領収書</h2>
@@ -186,7 +181,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         <label>請求月<input aria-label="請求対象月" type="month" required value={month} disabled={busy || receiptBusy || pdfBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
         <label>請求日<DateInput form="invoice-submit-form" required value={issued} disabled={busy || receiptBusy || pdfBusy || loading || settings || !!invoice?.approved_at} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label>
         {profile && <button type="button" className="btn ghost" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
-        {snapshot && <button type="button" className="btn" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument('invoice')}>請求書PDF保存</button>}
+        {snapshot && <button type="button" className="btn" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>請求書PDF保存</button>}
         {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>請求書送信</button>}
       </div></div>
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に設定の登録を依頼してください。</p>}
@@ -200,7 +195,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       <div className="invoice-documents">
       <div className="invoice-section">
       {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
-      <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save('invoice'); }}>
+      <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save(); }}>
         <h3>請求書明細</h3>
         {isIshikawa && <section className="invoice-auction-workdays">
           <h3>ヤフオク入札作業日</h3><p className="muted">対象月の月・水・金を初期設定しています。作業した日を個別に追加・削除できます。</p>
@@ -214,12 +209,11 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       </form>}
       </div>
       <div className="receipt-section">
-      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onCountChange={setReceiptCount} onPrint={() => void printDocument('receipts')} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage('保存後、請求書を送信すると反映されます。'); }} />
-      {!invoice?.approved_at && <div className="receipt-submit no-print"><button type="button" className="btn" disabled={busy || receiptBusy || pdfBusy || !receiptCount} onClick={() => void save('receipts')}>領収書送信</button></div>}
+      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
       </div>
       <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div>
-      <ReceiptSheets rows={pdfReceipts} month={month} name={snapshot.profile.issuer_name} />
+      <ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} />
     </>}
     </div>
     <div className="no-print"><GrossProfitSummary staff={staff} /></div>
