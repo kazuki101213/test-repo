@@ -1,6 +1,6 @@
 import { purchaseItemUrl } from './purchaseUrl';
 import { workloadPeriod } from './workloadPeriod';
-import { getSupabase, usageRecordText } from '@bussan/shared';
+import { getSupabase, usageRecordText, HELD_STATUSES } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
@@ -134,18 +134,16 @@ export interface ItemFilter {
   purchasedTo?: string;
 }
 
-export type WorkloadMetric = '作業中' | '梱包前' | '出荷済' | '平均作業日数';
+export type WorkloadMetric = '保有在庫' | '平均作業日数';
 export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'packed_on' | 'shipped_on'>;
 
 export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric): Promise<WorkloadItem[]> {
-  const { today, monthStart, averageStart } = workloadPeriod();
+  const { today, averageStart } = workloadPeriod();
   return readAllRows<WorkloadItem>(async (from, to) => {
     let query = getSupabase().from('items')
       .select('id,lot_seq,sku,title,status,marketplace,purchased_at,packed_on,shipped_on')
       .eq('deliverer_id', delivererId).eq('is_accessory', false);
-    if (metric === '作業中') query = query.eq('status', '作業中');
-    else if (metric === '梱包前') query = query.is('packed_on', null);
-    else if (metric === '出荷済') query = query.gte('shipped_on', monthStart).lte('shipped_on', today);
+    if (metric === '保有在庫') query = query.in('status', HELD_STATUSES);
     else query = query.gte('packed_on', averageStart).lte('packed_on', today).not('purchased_at', 'is', null);
     const { data, error } = await query.order('lot_seq', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);

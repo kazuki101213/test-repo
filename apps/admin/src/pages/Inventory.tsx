@@ -1,4 +1,4 @@
-import { staffDisplayName, productModelText, deliveryStaffOptions } from '@bussan/shared';
+import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -40,7 +40,7 @@ function elapsedJstDays(value: string | null | undefined): number | null {
 function inventoryRowTone(item: InventoryItem): string {
   if (item.status === '販売済') return 'inventory-row-sold';
   if (item.status === '返品処理') return 'inventory-row-return-processing';
-  if (item.status === '作業中') {
+  if (HELD_STATUSES.includes(item.status)) {
     const days = elapsedJstDays(item.purchased_at);
     return days !== null && days >= 7 ? 'inventory-row-working-overdue' : '';
   }

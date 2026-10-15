@@ -14,3 +14,5 @@ action('diagnostic',async()=>{const d=await send('diagnostic');download('fleamar
 document.getElementById('account').addEventListener('change',e=>localStorage.setItem('fm-account',e.target.value));
 action('autoRegister',async()=>{const id=document.getElementById('account').value;const result=await send('registerSite',{id});await refresh();return result.label+' 登録済み：'+result.name;});
 refresh().catch(e=>document.getElementById('message').textContent=e.message);
+
+action('saleStatus',async()=>{const r=await send('saleStatus');return '更新 '+r.updated+'件／販売済・取得済み保持 '+r.protectedCount+'件／照合できない商品 '+r.unmatched+'件';});

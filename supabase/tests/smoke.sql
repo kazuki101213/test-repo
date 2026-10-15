@@ -97,7 +97,7 @@ select 取引区分, 取引年月日, 品目, 代価, 相手方, 確認方法 fr
 \echo '--- [7] 集計ビュー ---'
 select * from app.v_stock_summary;
 select month, 仕入数, 仕入金額, 販売数, 売上, 粗利益, 純利益 from app.v_monthly_summary;
-select deliverer_name, 作業中 from app.v_deliverer_workload;
+select deliverer_name, 保有在庫 from app.v_deliverer_workload;
 
 \echo '--- [8] SKU の往復変換 ---'
 select * from app.parse_sku('2400-AADD-20260916-1296');
@@ -119,10 +119,10 @@ from app.items where sku like '2402a%';
 
 do $$
 begin
-  if (select status from app.items where sku = '2402a-DD-20260801-0') <> '作業中' then
-    raise exception 'FAIL: Amazon返品が作業中になっていない';
+  if (select status from app.items where sku = '2402a-DD-20260801-0') <> '出品中' then
+    raise exception 'FAIL: 登録済みのAmazon返品が出品中になっていない';
   end if;
-  raise notice 'OK: Amazon返品は通常商品と同じ作業中判定';
+  raise notice 'OK: 登録済みのAmazon返品は出品中を維持';
 end $$;
 
 -- 納品担当者の作業一覧に出てくる

@@ -1,5 +1,5 @@
 import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
-import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition } from '@bussan/shared';
+import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition, ItemStatus } from '@bussan/shared';
 
 export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
@@ -348,4 +348,9 @@ export async function fetchSpareOwners(): Promise<{ id: string; name: string }[]
     .in('role', ['admin', 'purchaser', 'deliverer']).eq('is_active', true).order('name');
   if (error) throw error;
   return deliveryStaffOptions(data ?? []);
+}
+
+export async function setInventoryWorkflow(itemId:string,status:ItemStatus):Promise<void>{
+ const {error}=await getSupabase().rpc('set_inventory_workflow',{p_item_id:itemId,p_status:status});
+ if(error)throw error;
 }

@@ -18,7 +18,7 @@ async function getToken(){
   return session.access_token;
 }
 export async function rpc(name,args={},token=null){
-  if(!['marketplace_purchase_lease','marketplace_purchase_context','marketplace_purchase_import','marketplace_extension_runtime_report','marketplace_tracking_candidates','is_admin','reconcile_marketplace_tracking','marketplace_extension_probe','marketplace_extension_receipt','extension_marketplace_message_queue','extension_claim_marketplace_message','extension_finish_marketplace_message','extension_sync_marketplace_messages','extension_sync_purchase_drafts'].includes(name)) throw new Error('許可されていない登録処理です');
+  if(!['sync_marketplace_sale_status','marketplace_purchase_lease','marketplace_purchase_context','marketplace_purchase_import','marketplace_extension_runtime_report','marketplace_tracking_candidates','is_admin','reconcile_marketplace_tracking','marketplace_extension_probe','marketplace_extension_receipt','extension_marketplace_message_queue','extension_claim_marketplace_message','extension_finish_marketplace_message','extension_sync_marketplace_messages','extension_sync_purchase_drafts'].includes(name)) throw new Error('許可されていない登録処理です');
   const options={method:'POST',headers:{Authorization:'Bearer '+(token||await getToken()),'Content-Profile':'app','Accept-Profile':'app'},body:JSON.stringify(args)};try{return await jsonRequest('/rest/v1/rpc/'+name,options);}catch(e){if(!['marketplace_purchase_context','marketplace_purchase_import','marketplace_purchase_lease'].includes(name)||!/Failed to fetch|signal timed out|timeout|aborted|HTTP 50[234]/i.test(e.message))throw e;await new Promise(r=>setTimeout(r,3000));return jsonRequest('/rest/v1/rpc/'+name,options);}
 }
 export async function connectSession(data) {

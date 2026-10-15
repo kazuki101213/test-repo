@@ -1,11 +1,11 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
-const shared={productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['作業中','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
+const shared={HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);Object.assign(shared,stateSearch.exports);
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
 const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);
-const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',memo:'購入者コメント\n続き',latest_comment:'納品者コメント',status:'作業中',marketplace:'Amazon返品',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
+const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',memo:'購入者コメント\n続き',latest_comment:'納品者コメント',status:'受取前',marketplace:'Amazon返品',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
 const rows=[row,{...row,id:'2',sku:'2204c-AAII-20260901-123',is_accessory:true,title:'remote',cost_amount:1230,sold_price:200,payout_amount:150,product_sold_price:9999,product_payout_amount:8888},{...row,id:'3',sku:'2277b-AAII-20261007-100',lot_seq:2277,cost_amount:2000,amazon_refund_amount:0,purchased_at:null}];
 const f=(values=null,from='',to='')=>({values,from,to});const apply=filters.exports.filterInventoryColumns;
 assert.equal(apply(rows,{amazon_refund:f(null,'-2000','-1')}).length,2);
@@ -18,7 +18,7 @@ assert.equal(apply(rows,{}),rows);
 assert.equal(apply(Array.from({length:1001},(_,i)=>({...row,id:String(i),sku:`${i}-AAII-20261007-100`,lot_seq:i})),{serial:f(['1000'])}).length,1);
 assert.equal(Object.keys(filters.exports.inventoryColumns).length,34);
 assert.equal(shared.matchesInventoryFilters({...row,marketplace:'動作品Amazon返品'},{marketplace:['Amazon返品']}),false);
-assert.equal(shared.matchesInventoryFilters({...row,marketplace:'Amazon返品',sales_channel:'FBA'},{marketplace:['Amazon返品'],sales_channel:['FBA'],status:['作業中']}),true);
+assert.equal(shared.matchesInventoryFilters({...row,marketplace:'Amazon返品',sales_channel:'FBA'},{marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']}),true);
 assert.equal(shared.matchesInventoryFilters({...row,marketplace:'Amazon返品',sales_channel:'自己発送'},{marketplace:['Amazon返品'],sales_channel:['FBA']}),false);
 const accessory=rows[1];
 assert.equal(filters.exports.inventoryColumns.sold_price.value(accessory),200);
@@ -59,8 +59,8 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,'検索');}
  const stateFilter=()=>all(tree).find(n=>n.type==='state-filter');
  assert(stateFilter());assert(!all(tree).some(n=>['仕入先フィルター','販売先フィルター','販売状態フィルター'].includes(n.props?.['aria-label'])));
- stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['作業中']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
- stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['作業中']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1);
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1);
  all(tree).find(n=>n.type==='button'&&n.props.children==='フィルターをすべて解除').props.onClick();await settle();assert.equal(Object.keys(stateFilter().props.value).length,0);
  const accessoryRow=all(tree).find(n=>n.type==='tr'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
  const saleCell=all(accessoryRow).filter(n=>n.type==='td')[11];

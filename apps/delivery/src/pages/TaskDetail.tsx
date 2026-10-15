@@ -7,6 +7,7 @@ import {
   queueMarketplaceMessage, requestMarketplaceMessageSync, reportItemMalfunction, setDeliveryProgress, recordListingPhotoUpload, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
+import WorkflowControls from '../components/WorkflowControls';
 import DescriptionEditor from '../components/DescriptionEditor';
 import DateInput from '../components/DateInput';
 
@@ -278,6 +279,7 @@ export default function TaskDetail({
       <div className="row inline-detail-header">
         <button type="button" className="btn ghost" onClick={onClose}>詳細を閉じる</button>
         <span className="badge">{task.status}</span>
+        <WorkflowControls task={task} onChanged={reload} onError={setError} />
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
@@ -327,7 +329,7 @@ export default function TaskDetail({
               </button>
             </div>
             {task.malfunction_reported
-              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '動作不良の報告は対応完了です。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
+              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '動作不良の報告は差し戻し済みです。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
               : malfunctionChecked && <div className="malfunction-report">
                 <textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
                 <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '仕入担当者に報告'}</button>

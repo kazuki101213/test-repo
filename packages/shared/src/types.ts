@@ -12,9 +12,7 @@ export type SalesChannel = 'FBA' | '自己発送' | 'メルカリ' | 'ヤフオ�
 export type ItemCondition =
   | '新品' | '再生品' | 'ほぼ新品' | '非常に良い' | '良い' | '可' | 'ジャンク';
 
-export type ItemStatus =
-  | '作業中' | '出品中'
-  | '販売済' | '返品処理';
+export type ItemStatus = '受取前' | '検品中' | 'Amazon返送依頼' | 'Amazon補填申請中' | '商品登録前' | '出品中' | '取引中' | '販売済' | '返品処理' | '動作不良';
 
 export type WorkStream = 'テレビ' | 'ブルーレイ' | '付属品' | 'その他';
 
@@ -251,16 +249,13 @@ export interface StockSummary {
   高回転: number;
   中回転: number;
   低回転: number;
-  作業中: number;
+  保有在庫: number;
 }
 
 export interface DelivererWorkload {
   deliverer_id: string;
   deliverer_name: string;
-  作業中: number;
-  梱包前: number;
-  出荷済: number;
-  手元在庫: number;
+  保有在庫: number;
   平均作業日数: number | null;
 }
 
