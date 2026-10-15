@@ -33,7 +33,7 @@ export default function InvoiceExtraRows({ lines, disabled, onChange, onDraftCha
         <label>内容<input form="invoice-extra-draft" maxLength={200} value={draft.description} disabled={disabled} list="invoice-extra-descriptions" onChange={e => changeDraft({ description: e.target.value })} /></label>
         <label>数量<input form="invoice-extra-draft" type="number" min="1" max="100000" step="1" value={draft.quantity} disabled={disabled} onChange={e => changeDraft({ quantity: e.target.value })} /></label>
         <label>金額<input form="invoice-extra-draft" type="number" min="0" max="10000000" step="1" value={draft.amount} disabled={disabled} onChange={e => changeDraft({ amount: e.target.value })} /></label>
-        <button type="button" className="btn" disabled={disabled || lines.length >= 100} onClick={add}>追加</button>
+        <button type="button" className="btn" disabled={disabled || lines.length >= 100} onClick={add}>保存</button>
       </div>
     </div>
     <datalist id="invoice-extra-descriptions"><option value="手当" /><option value="保管料" /></datalist>
