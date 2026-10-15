@@ -14,7 +14,7 @@ interface Line { date:string|null; description:string; quantity:number; unit_pri
 interface Approval { approved_at:string; expense_id:string }
 interface Invoice {
  id:string; staff_id:string; billing_month:string; issued_on:string; total:number; version:number; updated_at:string; note:string;
- snapshot:{profile:Record<string,string>;lines:Line[];extras:Line[]};
+ snapshot:{profile:Record<string,string>;lines:Line[];extras:Line[];receipt_lines?:InvoiceReceipt[];receipt_subtotal?:number};
  delivery_invoice_approvals:Approval|Approval[]|null;
 }
 interface Submission {staff_id:string;billing_month:string;files:Omit<InvoiceReceipt,'url'>[];version:number;submitted_at:string}
@@ -49,7 +49,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');
  const [images,setImages]=useState<InvoiceReceipt[]>([]);const [imagesLoading,setImagesLoading]=useState(true);const [imageError,setImageError]=useState('');
  const invoice=task.invoice;const p=invoice?.snapshot.profile;const approved=approval(invoice);
- const lines=invoice?[...invoice.snapshot.lines,...invoice.snapshot.extras]:[];
+ const lines:Line[]=invoice?[...invoice.snapshot.lines,...invoice.snapshot.extras,...(invoice.snapshot.receipt_lines??[]).map(row=>({date:row.spent_on??null,description:(row.description??'')+'（税込）',quantity:1,unit_price:row.amount??0}))]:[];
  useEffect(()=>{const el=dialog.current;el?.showModal();return()=>el?.close();},[]);
  useEffect(()=>{
   let active=true;let loaded:InvoiceReceipt[]=[];setImagesLoading(true);setImageError('');
@@ -72,7 +72,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
  {invoice.note&&<p style={{whiteSpace:'pre-wrap'}}>{invoice.note}</p>}
  {p&&<details><summary>請求者・振込先</summary><p style={{whiteSpace:'pre-line'}}>{p.issuer_name}<br/>{p.postal} {p.address}<br/>{p.phone} / {p.email}<br/>{p.bank}（{p.bank_code}） {p.branch}（{p.branch_code}）<br/>{p.account_type} {p.account_number}<br/>{p.holder}<br/>{p.holder_kana}</p></details>}
  </>:<p>請求書はまだ送信されていません。</p>}</section>
- <section><h3>請求書・領収書の添付</h3>{imagesLoading&&<p>読み込み中…</p>}{imageError&&<p className="error">{imageError}</p>}{!imagesLoading&&!images.length&&<p>添付ファイルはありません。</p>}
+ <section><h3>領収書の明細・添付</h3>{invoice?.snapshot.receipt_lines?.length ? <table><thead><tr><th>日付</th><th>明細名・支払先</th><th>金額（税込）</th></tr></thead><tbody>{invoice.snapshot.receipt_lines.map(row=><tr key={row.id}><td>{row.spent_on}</td><td>{row.description}{row.payee&&<small>　{row.payee}</small>}</td><td>{yen(row.amount??0)}</td></tr>)}</tbody></table>:null}{imagesLoading&&<p>読み込み中…</p>}{imageError&&<p className="error">{imageError}</p>}{!imagesLoading&&!images.length&&<p>添付ファイルはありません。</p>}
  <div className="review-receipts">{images.map((image,i)=><a key={image.id} href={image.url} target="_blank" rel="noreferrer" title="クリックして開く">{image.mime_type.startsWith('image/')?<img src={image.url} alt={image.original_name}/>:<span className="receipt-pdf-link">PDFを開く</span>}<span>{image.document_type==='invoice'?'請求書':image.document_type==='receipt'?'領収書':'領収書の写真'}：{image.original_name}</span></a>)}</div></section></div>
  <PackedSummary staffId={task.staff_id} initialMonth={task.month.slice(0,7)} billedCount={invoice?.snapshot.lines.reduce((n,l)=>n+l.quantity,0)}/>
  {error&&<div className="error" role="alert">{error}</div>}

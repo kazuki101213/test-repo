@@ -12,3 +12,4 @@ export * from './productModel';
 export * from './spareSearch';
 
 export * from './stateSearch';
+export * from './invoicePdf';
