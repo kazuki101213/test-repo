@@ -35,3 +35,38 @@ if enum_range(null::app.item_status)::text[]<>array['受取前','検品中','Ama
 if pg_get_viewdef('app.v_delivery_tasks'::regclass,true) like '%ARRAY[%item_status%' then raise exception 'Legacy delivery whitelist remains';end if;
 end $$;
 rollback;
+
+-- Exercise the actual RLS/RPC/parent-accessory path in a rolled-back fixture.
+begin;
+set local role authenticated;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no)
+select 990091,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'workflow regression',1000,'ヤフオク','メルカリ','123456';
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
+select 990091,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'accessory regression',100,'ヤフオク',true;
+set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+select app.report_item_malfunction((select id from app.items where lot_seq=990091 and not is_accessory),'mistaken report');
+do $$begin
+if exists(select 1 from app.items where lot_seq=990091 and status<>'動作不良') then raise exception 'Malfunction/accessory synchronization failed';end if;
+end $$;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+select app.resolve_item_malfunction((select id from app.items where lot_seq=990091 and not is_accessory));
+do $$begin
+if exists(select 1 from app.items where lot_seq=990091 and status<>'検品中') then raise exception 'Mistaken report return failed';end if;
+if app.sync_marketplace_sale_status('メルカリ','990091','出品中',clock_timestamp())<>'updated' then raise exception 'Seller list update failed';end if;
+if app.sync_marketplace_sale_status('メルカリ','990091','取引中',now()-interval '1 minute')<>'stale' then raise exception 'Stale snapshot accepted';end if;
+end $$;
+select app.set_inventory_workflow((select id from app.items where lot_seq=990091 and not is_accessory),'取引中');
+select app.set_inventory_workflow((select id from app.items where lot_seq=990091 and not is_accessory),'販売済');
+do $$begin
+if exists(select 1 from app.items where lot_seq=990091 and (status<>'販売済' or sold_on<>(now() at time zone 'Asia/Tokyo')::date or sold_price<>0 or payout_amount<>0)) then raise exception 'Zero sale/accessory values mismatch';end if;
+if app.sync_marketplace_sale_status('メルカリ','990091','出品中',clock_timestamp())<>'protected' then raise exception 'Sold item reopened';end if;
+end $$;
+set local request.jwt.claim.sub='33333333-3333-3333-3333-333333333333';
+do $$begin
+begin
+ perform app.set_inventory_workflow((select id from app.items where lot_seq=990091 and not is_accessory),'検品中');
+ raise exception 'Unauthorized workflow transition accepted';
+exception when insufficient_privilege then null;end;
+end $$;
+rollback;

@@ -10711,7 +10711,7 @@ update app.items i set sold_on=coalesce(i.sold_on,(now() at time zone 'Asia/Toky
 where not i.is_accessory and i.status<>'返品処理'
 and (i.sold_on is null or (coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0))
 and exists(select 1 from app.items b where not b.is_accessory and b.marketplace='動作品Amazon返品'
- and b.lot_seq=i.lot_seq and b.id<>i.id
+ and app.financial_product_serial(b.sku,b.lot_seq)=app.financial_product_serial(i.sku,i.lot_seq) and b.id<>i.id
  and (i.created_at<b.created_at or (i.created_at=b.created_at and length(split_part(i.sku,'-',1))<length(split_part(b.sku,'-',1)))));
 -- Reclassify legacy active work from existing facts, not shipment dates.
 update app.items set tracking_no=tracking_no where not is_accessory and status='受取前';
@@ -10814,5 +10814,20 @@ end $$;
 revoke all on function app.sync_marketplace_sale_status(text,text,text,timestamptz) from public,anon;
 grant execute on function app.sync_marketplace_sale_status(text,text,text,timestamptz) to authenticated;
 notify pgrst,'reload schema';
+
+-- Future return stages close only non-sale predecessors in the same normal/A/B family.
+create or replace function app.close_non_sale_predecessors() returns trigger
+language plpgsql security invoker set search_path=pg_catalog,app as $$
+begin
+ if new.is_accessory or new.marketplace<>'動作品Amazon返品' then return new;end if;
+ update app.items i set sold_on=coalesce(i.sold_on,(now() at time zone 'Asia/Tokyo')::date),sold_price=0,payout_amount=0,status='販売済'
+ where not i.is_accessory and i.status<>'返品処理'
+ and app.financial_product_serial(i.sku,i.lot_seq)=app.financial_product_serial(new.sku,new.lot_seq)
+ and i.id<>new.id and (i.created_at<new.created_at or (i.created_at=new.created_at and length(split_part(i.sku,'-',1))<length(split_part(new.sku,'-',1))))
+ and (i.sold_on is null or (coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0));
+ return new;
+end $$;
+revoke all on function app.close_non_sale_predecessors() from public,anon;
+create trigger items_close_non_sale_predecessors after insert on app.items for each row execute function app.close_non_sale_predecessors();
 
 
