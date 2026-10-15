@@ -21,18 +21,19 @@ export default function InvoiceExtraRows({ lines, disabled, onChange, onDraftCha
   function change(index: number, patch: Partial<InvoiceLine>) { onChange(lines.map((line, i) => i === index ? { ...line, ...patch } : line)); }
   return <>
     <div className="invoice-extra-scroll">
+      <div className="invoice-extra invoice-extra-header" aria-hidden="true"><span>日付</span><span>内容</span><span>数量</span><span>金額</span><span /></div>
       {lines.map((line, i) => <div className="invoice-extra" key={i}>
-        <label>日付<DateInput value={line.date ?? ''} disabled={disabled} onChange={e => change(i, { date: e.target.value || null })} /></label>
-        <label>内容<input required maxLength={200} value={line.description} disabled={disabled} list="invoice-extra-descriptions" onChange={e => change(i, { description: e.target.value })} /></label>
-        <label>数量<input required type="number" min="1" max="100000" step="1" value={line.quantity} disabled={disabled} onChange={e => change(i, { quantity: e.target.valueAsNumber })} /></label>
-        <label>金額<input required type="number" min="0" max="10000000" step="1" value={line.unit_price} disabled={disabled} onChange={e => change(i, { unit_price: e.target.valueAsNumber })} /></label>
+        <label><span className="invoice-extra-label">日付</span><DateInput value={line.date ?? ''} disabled={disabled} onChange={e => change(i, { date: e.target.value || null })} /></label>
+        <label><span className="invoice-extra-label">内容</span><input required maxLength={200} value={line.description} disabled={disabled} list="invoice-extra-descriptions" onChange={e => change(i, { description: e.target.value })} /></label>
+        <label><span className="invoice-extra-label">数量</span><input required type="number" min="1" max="100000" step="1" value={line.quantity} disabled={disabled} onChange={e => change(i, { quantity: e.target.valueAsNumber })} /></label>
+        <label><span className="invoice-extra-label">金額</span><input required type="number" min="0" max="10000000" step="1" value={line.unit_price} disabled={disabled} onChange={e => change(i, { unit_price: e.target.valueAsNumber })} /></label>
         <button type="button" className="btn ghost" aria-label={`${i + 1}行目を削除`} disabled={disabled} onClick={() => onChange(lines.filter((_, index) => index !== i))}>削除</button>
       </div>)}
       <div className="invoice-extra invoice-extra-draft">
-        <label>日付<DateInput form="invoice-extra-draft" value={draft.date} disabled={disabled} onChange={e => changeDraft({ date: e.target.value })} /></label>
-        <label>内容<input form="invoice-extra-draft" maxLength={200} value={draft.description} disabled={disabled} list="invoice-extra-descriptions" onChange={e => changeDraft({ description: e.target.value })} /></label>
-        <label>数量<input form="invoice-extra-draft" type="number" min="1" max="100000" step="1" value={draft.quantity} disabled={disabled} onChange={e => changeDraft({ quantity: e.target.value })} /></label>
-        <label>金額<input form="invoice-extra-draft" type="number" min="0" max="10000000" step="1" value={draft.amount} disabled={disabled} onChange={e => changeDraft({ amount: e.target.value })} /></label>
+        <label><span className="invoice-extra-label">日付</span><DateInput form="invoice-extra-draft" value={draft.date} disabled={disabled} onChange={e => changeDraft({ date: e.target.value })} /></label>
+        <label><span className="invoice-extra-label">内容</span><input form="invoice-extra-draft" maxLength={200} value={draft.description} disabled={disabled} list="invoice-extra-descriptions" onChange={e => changeDraft({ description: e.target.value })} /></label>
+        <label><span className="invoice-extra-label">数量</span><input form="invoice-extra-draft" type="number" min="1" max="100000" step="1" value={draft.quantity} disabled={disabled} onChange={e => changeDraft({ quantity: e.target.value })} /></label>
+        <label><span className="invoice-extra-label">金額</span><input form="invoice-extra-draft" type="number" min="0" max="10000000" step="1" value={draft.amount} disabled={disabled} onChange={e => changeDraft({ amount: e.target.value })} /></label>
         <button type="button" className="btn" disabled={disabled || lines.length >= 100} onClick={add}>保存</button>
       </div>
     </div>

@@ -66,7 +66,7 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
         </tbody>
         {last && <tfoot><tr><td colSpan={2}>合計</td><td>{quantities}</td><td /><td>{money(total)}</td></tr></tfoot>}
       </table>
-      {last && <div className="invoice-reimbursement"><p>税抜の作業費・手当：{money(subtotal)}</p><p>消費税：{money(Math.floor(subtotal * snapshot.tax_percent / 100))}</p><p>立替経費（税込）：{money(reimbursement)}</p></div>}
+      {last && <div className="invoice-reimbursement"><p>作業費・手当：{money(subtotal)}</p><p>消費税：{money(Math.floor(subtotal * snapshot.tax_percent / 100))}</p><p>立替経費（税込）：{money(reimbursement)}</p></div>}
       {last && <div className="invoice-footer"><section><div>備考</div><div className="invoice-note">{note || '\u00a0'}</div></section><Bank details={p} /></div>}
     </article>;
   })}</div>;
