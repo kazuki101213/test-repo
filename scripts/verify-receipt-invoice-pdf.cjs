@@ -73,8 +73,10 @@ function testExtraRows(){
  await testReceiptEditor();
  const {PDFDocument}=require('../packages/shared/node_modules/pdf-lib');
  const source=await PDFDocument.create();source.addPage([420,595]);source.addPage([842,595]);const bytes=await source.save();
- const ctx={exports:{},document:{fonts:{ready:Promise.resolve()}},fetch:async()=>({ok:true,arrayBuffer:async()=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}),require:name=>name==='pdf-lib'?require('../packages/shared/node_modules/pdf-lib'):name==='html2canvas'?{__esModule:true,default:()=>{throw Error('PDF should not be rasterized')}}:{}};
+ const dependencyLoads=[];
+ const ctx={exports:{},document:{fonts:{ready:Promise.resolve()}},fetch:async()=>({ok:true,arrayBuffer:async()=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}),require:name=>{dependencyLoads.push(name);return name==='pdf-lib'?require('../packages/shared/node_modules/pdf-lib'):name==='html2canvas'?{__esModule:true,default:()=>{throw Error('PDF should not be rasterized')}}:{}}};
  vm.runInNewContext(compile('packages/shared/src/invoicePdf.ts'),ctx);
+ assert(dependencyLoads.includes('pdf-lib')&&dependencyLoads.includes('html2canvas'),'PDF dependencies must load with the app, before a later deployment can remove old lazy chunks');
  const merged=await PDFDocument.load(await ctx.exports.buildInvoicePdf([],rows.filter(row=>row.document_type==='receipt')));
  assert.equal(merged.getPageCount(),2);assert.deepEqual(merged.getPages().map(p=>[p.getWidth(),p.getHeight()]),[[420,595],[842,595]]);
  assert(merged.catalog.has(require('../packages/shared/node_modules/pdf-lib').PDFName.of('Names')),'Original PDF should also be embedded');

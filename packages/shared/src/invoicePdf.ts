@@ -1,7 +1,9 @@
 import type { InvoiceReceipt } from './receipts';
+import { PDFDocument, rgb } from 'pdf-lib';
+import html2canvas from 'html2canvas';
 /** Merge rendered Japanese document pages and original PDFs without resizing PDF pages. */
 export async function buildInvoicePdf(elements: HTMLElement[], files: InvoiceReceipt[]): Promise<Uint8Array> {
-  const [{ PDFDocument, rgb }, { default: html2canvas }] = await Promise.all([import('pdf-lib'), import('html2canvas')]);
+  // Load PDF dependencies with the app so an open page survives a later deployment.
   await document.fonts.ready;
   const pdf = await PDFDocument.create();
   for (const element of elements) {

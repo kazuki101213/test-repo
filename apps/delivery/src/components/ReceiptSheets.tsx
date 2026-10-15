@@ -10,8 +10,8 @@ export default function ReceiptSheets({ rows, month, name }: { rows: InvoiceRece
   const photos = Array.from({ length: Math.ceil(images.length / 4) }, (_, i) => images.slice(i * 4, (i + 1) * 4));
   return <div className="receipt-document is-preview" aria-label="明細表と添付写真プレビュー">
     {pages.map((page, pageIndex) => <article className="receipt-summary-sheet" key={`details-${pageIndex}`}>
-      <header className="document-heading"><h2>領収書明細表</h2><span aria-hidden="true">RECEIPT DETAILS</span></header><div className="receipt-summary-meta"><span>{month}　{name}</span><span>{pageIndex + 1} / {pages.length}</span></div>
-      <table><thead><tr><th>No.</th><th>日付</th><th>明細名・支払先</th><th>金額（税込）</th></tr></thead><tbody>{page.map(row => <tr key={row.id}><td>{rows.findIndex(record => record.id === row.id) + 1}</td><td>{row.spent_on}</td><td>{row.description || row.original_name}{row.payee && <small>{row.payee}</small>}</td><td>{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td></tr>)}</tbody></table>
+      <header className="document-heading"><h2>領収書</h2></header><div className="receipt-summary-meta"><span>{month}　{name}</span><span>{pageIndex + 1} / {pages.length}</span></div>
+      <table><thead><tr><th>No.</th><th>日付</th><th>明細</th><th>金額（円）</th></tr></thead><tbody>{page.map(row => <tr key={row.id}><td>{rows.findIndex(record => record.id === row.id) + 1}</td><td>{row.spent_on}</td><td>{row.description || row.original_name}{row.payee && <>　{row.payee}</>}</td><td>{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td></tr>)}</tbody></table>
       {pageIndex === pages.length - 1 && <p className="receipt-summary-total">合計（税込）　¥{rows.reduce((sum, row) => sum + (row.amount ?? 0), 0).toLocaleString('ja-JP')}</p>}
     </article>)}
     {photos.map((page, pageIndex) => <article className="receipt-photo-sheet" key={`photos-${pageIndex}`}>{page.map(row => <figure key={row.id}><figcaption>No.{rows.findIndex(record => record.id === row.id) + 1}　{row.spent_on}　{row.description || row.original_name}</figcaption><img src={row.url} alt={row.description || row.original_name} /></figure>)}</article>)}
