@@ -10657,6 +10657,7 @@ begin
  if new.status='返品処理' or new.returned_on is not null then new.status:='返品処理';return new;end if;
  if tg_op='UPDATE' then explicit_change:=new.status is distinct from old.status;end if;
  if explicit_change then
+   if new.marketplace_status_observed_at is not distinct from old.marketplace_status_observed_at then new.marketplace_status_observed_at:=now();end if;
    if new.status='販売済' then
      new.sold_on:=(now() at time zone 'Asia/Tokyo')::date;
      new.sold_price:=0;new.payout_amount:=0;return new;
@@ -10676,7 +10677,8 @@ begin
  end if;
  -- These stages require a business decision, not a shipping/photo timestamp.
  if tg_op='UPDATE' and new.sales_channel is not distinct from old.sales_channel
- and new.status in ('取引中','Amazon補填申請中') then return new;end if;
+ and new.status in ('取引中','Amazon補填申請中')
+ and new.malfunction_reported is not distinct from old.malfunction_reported then return new;end if;
  if tg_op='UPDATE' and not explicit_change and new.status='出品中'
  and new.product_registered_at is not distinct from old.product_registered_at
  and new.sales_channel is not distinct from old.sales_channel

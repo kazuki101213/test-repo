@@ -7,7 +7,7 @@ for each row execute function app.items_sync_status();
 insert into dated_sale_probe(probe_id,marketplace,cost_amount,status,sold_on,shipped_on) values
  (1,'ヤフオク',100,'出品中',date '2026-10-07',date '2026-10-07'),
  (2,'メルカリ',100,'出品中',date '2026-10-07',null),
- (3,'ヤフオク',100,'返品処理',date '2026-10-07',null),
+ (3,'ヤフオク',100,'返品処理',null,null),
  (4,'ヤフオク',100,'受取前',null,null),
  (5,'動作品Amazon返品',100,'出品中',date '2026-10-07',null);
 -- Simulate the stale listing task, including its shipment timestamp variant.

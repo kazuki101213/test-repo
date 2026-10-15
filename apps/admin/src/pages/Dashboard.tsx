@@ -65,8 +65,8 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
           <div className={`kpi-value ${(current?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.粗利益)}</div>
           <div className="kpi-label" style={{ marginTop: 12 }}>純利益</div>
           <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
-          <div className="kpi-label" style={{ marginTop: 12 }}>現在の在庫数 / 保有在庫</div>
-          <div className="kpi-value">{stock?.現在庫数 ?? 0} 点 / {stock?.保有在庫 ?? 0} 点</div>
+          <div className="kpi-label" style={{ marginTop: 12 }}>保有在庫</div>
+          <div className="kpi-value">{stock?.現在庫数 ?? 0} 点</div>
         </div>
         <Kpi label="今月の仕入" value={yen(current?.仕入金額)} count={current?.仕入数 ?? 0} />
         <div className="card">
