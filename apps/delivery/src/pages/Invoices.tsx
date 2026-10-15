@@ -214,8 +214,8 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       </div>
       </div>
       <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div>
-      <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />
       <ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} />
+      <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />
     </>}
     </div>
     <div className="no-print"><GrossProfitSummary staff={staff} /></div>
