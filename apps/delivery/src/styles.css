@@ -313,3 +313,5 @@ textarea { min-height: 80px; resize: vertical; }
 .app-bid-calculator .bid-calculator-frame { flex: 1 1 0; min-height: 0; height: 100%; }
 
 .app-switch-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
+
+.workflow-controls { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
