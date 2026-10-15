@@ -8,6 +8,7 @@ import PackedSummary from '../components/PackedSummary';
 import GrossProfitSummary from '../components/GrossProfitSummary';
 import InvoiceSheet from '../components/InvoiceSheet';
 import InvoiceReceipts from '../components/InvoiceReceipts';
+import InvoiceExtraRows from '../components/InvoiceExtraRows';
 import ReceiptSheets from '../components/ReceiptSheets';
 import type { Invoice, InvoiceDetails, InvoiceLine, InvoiceProfile, InvoiceSnapshot } from '../invoices';
 import '../invoice.css';
@@ -39,12 +40,12 @@ function ProfileEditor({ profile, onSave }: { profile: InvoiceProfile; onSave: (
     <h2>設定変更</h2>
     <div className="invoice-fields">
       <label>単価(円)<input type="number" min="0" max="1000000" step="1" required value={draft.unit_price} onChange={e => setDraft({ ...draft, unit_price: e.target.valueAsNumber })} /></label>
-      {fields.map(([key, label]) => <label key={key} className={key === 'recipient' ? 'invoice-field-recipient' : undefined}>{label}{key === 'address' || key === 'recipient'
-        ? <textarea rows={key === 'address' ? 2 : 3} maxLength={1000} required={key === 'recipient'} value={draft.details[key]} onChange={e => setDraft({ ...draft, details: { ...draft.details, [key]: e.target.value } })} />
+      {fields.filter(([key]) => key !== 'recipient').map(([key, label]) => <label key={key}>{label}{key === 'address'
+        ? <textarea rows={2} maxLength={1000} value={draft.details[key]} onChange={e => setDraft({ ...draft, details: { ...draft.details, [key]: e.target.value } })} />
         : <input type="text" maxLength={1000} required={['issuer_name', 'bank', 'branch', 'account_number', 'holder'].includes(key)} value={draft.details[key]} onChange={e => setDraft({ ...draft, details: { ...draft.details, [key]: e.target.value } })} />}</label>)}
+      <div className="invoice-recipient-save"><label>請求先<textarea rows={3} maxLength={1000} required value={draft.details.recipient} onChange={e => setDraft({ ...draft, details: { ...draft.details, recipient: e.target.value } })} /></label><button className="btn" disabled={busy}>保存</button></div>
     </div>
     {error && <div className="error" role="alert">{error}</div>}
-    <div className="row"><button className="btn" disabled={busy}>設定を保存</button></div>
   </form>;
 }
 
@@ -133,7 +134,6 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   }, [dirty]);
 
   const leave = () => !dirty || window.confirm('保存していない変更を破棄しますか？');
-  const changeExtra = (index: number, patch: Partial<InvoiceLine>) => { setExtras(rows => rows.map((row, i) => i === index ? { ...row, ...patch } : row)); setDirty(true); setMessage(''); };
   const addWorkday = () => {
     if (!newWorkday || !newWorkday.startsWith(`${month}-`) || workdays.includes(newWorkday)) return;
     setWorkdays(rows => [...rows, newWorkday].sort()); setNewWorkday(''); setDirty(true); setMessage('');
@@ -162,7 +162,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       await downloadInvoicePdf(elements, files, `${mode === 'invoice' ? '請求書_明細表_領収書' : '明細表_領収書'}_${month}.pdf`);
     } catch (e) { setError(errorText(e)); } finally { setPdfBusy(false); }
   }
-  async function save(mode: 'invoice' | 'receipts' | 'both') {
+  async function save(mode: 'invoice' | 'receipts') {
     setBusy(true); setError(''); setMessage('');
     try {
       const saved = await submitDocuments(staffId, month, issued, editableExtras, note, invoice, mode !== 'receipts', mode !== 'invoice');
@@ -172,7 +172,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         setWorkdays(saved.extras.filter(line => line.description === 'ヤフオク入札作業日').map(line => line.date).filter((date): date is string => !!date));
         setDirty(false);
       }
-      setMessage(mode === 'both' ? '請求書と領収書をまとめて送信しました。' : mode === 'receipts' ? '領収書を送信しました。' : '請求書を送信しました。');
+      setMessage(mode === 'receipts' ? '領収書を送信しました。' : '請求書を送信しました。');
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   }
@@ -187,6 +187,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         <label>請求日<DateInput form="invoice-submit-form" required value={issued} disabled={busy || receiptBusy || pdfBusy || loading || settings || !!invoice?.approved_at} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label>
         {profile && <button type="button" className="btn ghost" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
         {snapshot && <button type="button" className="btn" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument('invoice')}>請求書PDF保存</button>}
+        {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>請求書送信</button>}
       </div></div>
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に設定の登録を依頼してください。</p>}
       {pdfBusy && <p role="status">PDFを作成中…添付が多い場合は少し時間がかかります。</p>}
@@ -199,7 +200,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       <div className="invoice-documents">
       <div className="invoice-section">
       {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
-      <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save((e.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'both' ? 'both' : 'invoice'); }}>
+      <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save('invoice'); }}>
         <h3>請求書明細</h3>
         {isIshikawa && <section className="invoice-auction-workdays">
           <h3>ヤフオク入札作業日</h3><p className="muted">対象月の月・水・金を初期設定しています。作業した日を個別に追加・削除できます。</p>
@@ -208,24 +209,12 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
           <p>作業日分：¥{auctionBasePay.toLocaleString('ja-JP')}　粗利益の10%：{grossProfitLoading ? '計算中…' : `¥${auctionProfitPay.toLocaleString('ja-JP')}`}</p>
           {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
         </section>}
-        {extras.map((line, i) => <div className="invoice-extra" key={i}>
-          <label>日付<DateInput value={line.date ?? ''} disabled={busy} onChange={e => changeExtra(i, { date: e.target.value || null })} /></label>
-          <label>内容<input required maxLength={200} value={line.description} disabled={busy} list="invoice-extra-descriptions" onChange={e => changeExtra(i, { description: e.target.value })} /></label>
-          <label>数量<input required type="number" min="1" max="100000" step="1" value={line.quantity} disabled={busy} onChange={e => changeExtra(i, { quantity: e.target.valueAsNumber })} /></label>
-          <label>単価（円）<input required type="number" min="0" max="10000000" step="1" value={line.unit_price} disabled={busy} onChange={e => changeExtra(i, { unit_price: e.target.valueAsNumber })} /></label>
-          <button type="button" className="btn ghost" aria-label={`${i + 1}行目を削除`} disabled={busy} onClick={() => { setExtras(rows => rows.filter((_, index) => index !== i)); setDirty(true); }}>削除</button>
-        </div>)}
-        <datalist id="invoice-extra-descriptions"><option value="手当" /><option value="保管料" /></datalist>
-        <button type="button" className="btn ghost" disabled={busy || extras.length >= 100} onClick={() => { setExtras(rows => [...rows, { date: null, description: '', quantity: 1, unit_price: 0 }]); setDirty(true); }}>手当などを追加</button>
+        <InvoiceExtraRows key={`${staffId}/${month}`} lines={extras} disabled={busy || receiptBusy || pdfBusy} onChange={lines => { setExtras(lines); setDirty(true); setMessage(''); }} onDraftChange={() => setDirty(true)} />
         <label className="invoice-note-input">備考<textarea maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>
-        <div className="row">
-          <button className="btn" value="invoice" disabled={busy || receiptBusy || pdfBusy || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>請求書送信</button>
-          <button className="btn" value="both" disabled={busy || receiptBusy || pdfBusy || (isIshikawa && grossProfitLoading) || !receiptCount || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>請求書・領収書をまとめて送信</button>
-        </div>
       </form>}
       </div>
       <div className="receipt-section">
-      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onCountChange={setReceiptCount} onPrint={() => void printDocument('receipts')} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage('明細を登録・保存してから請求書を送信すると反映されます。'); }} />
+      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onCountChange={setReceiptCount} onPrint={() => void printDocument('receipts')} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage('保存後、請求書を送信すると反映されます。'); }} />
       {!invoice?.approved_at && <div className="receipt-submit no-print"><button type="button" className="btn" disabled={busy || receiptBusy || pdfBusy || !receiptCount} onClick={() => void save('receipts')}>領収書送信</button></div>}
       </div>
       </div>
