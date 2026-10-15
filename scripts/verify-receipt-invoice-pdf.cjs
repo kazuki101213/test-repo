@@ -33,8 +33,8 @@ assert.equal(api.exports.invoiceReceiptDetails([...rows,{...receipt('excluded',9
 async function testReceiptEditor(){
  let hooks=[],cursor=0,pending=[],dirty=true,tree,stored=[],uploaded,edited;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
- const noop=()=>{};const props={staffId:'worker',month:'2026-10',approved:false,onBusyChange:noop,onRowsChange:noop,onCountChange:noop,onChanged:noop,onPrint:noop};
- const component={exports:{},window:{confirm:()=>true},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{
+ const noop=()=>{};const props={staffId:'worker',month:'2026-10',approved:false,tableTarget:{},onBusyChange:noop,onRowsChange:noop,onCountChange:noop,onChanged:noop,onPrint:noop};
+ const component={exports:{},window:{confirm:()=>true},require:name=>name==='react'?react:name==='react-dom'?{createPortal:child=>child}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{
   loadInvoiceReceipts:async()=>stored,releaseReceiptImages:noop,
   uploadInvoiceReceipt:async(staff,month,file,type,details)=>{uploaded={staff,month,file,type,details};stored=[{...receipt('registered',details.amount),...details,version:1,original_name:file.name}]},
   updateInvoiceReceipt:async(row,details)=>{edited={row,details};stored=[{...row,...details,version:2}]},removeInvoiceReceipt:noop,
@@ -61,11 +61,11 @@ function testExtraRows(){
  render();
  for(const [label,value]of [['内容','手当'],['数量','2'],['金額','1200']]){draftControl(label).props.onChange({target:{value}});render()}
  assert.equal(changed,0,'Typing a draft must not change the invoice');assert.equal(lines.length,0);
- all(tree).find(n=>n.type==='button'&&text(n)==='追加').props.onClick();render();
+ all(tree).find(n=>n.type==='button'&&text(n)==='保存').props.onClick();render();
  assert.equal(lines.length,1);assert.equal(lines[0].quantity*lines[0].unit_price,2400);assert.equal(draftControl('内容').props.value,'');assert(all(tree).some(n=>n.type==='button'&&text(n)==='削除'));
  all(tree).find(n=>n.type==='button'&&text(n)==='削除').props.onClick();render();
  assert.equal(lines.length,0);assert.equal(all(tree).filter(n=>n.props?.className==='invoice-extra invoice-extra-draft').length,1);assert.equal(draftControl('金額').props.value,'');
- all(tree).find(n=>n.type==='button'&&text(n)==='追加').props.onClick();assert.equal(lines.length,0,'Blank drafts must not be added');
+ all(tree).find(n=>n.type==='button'&&text(n)==='保存').props.onClick();assert.equal(lines.length,0,'Blank drafts must not be added');
 }
 
 (async()=>{

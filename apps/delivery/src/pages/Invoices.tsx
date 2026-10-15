@@ -71,6 +71,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const [dirty, setDirty] = useState(false);
   const [reload, setReload] = useState(0);
   const [receiptBusy, setReceiptBusy] = useState(false);
+  const [receiptTableTarget, setReceiptTableTarget] = useState<HTMLDivElement | null>(null);
   const [receiptRows, setReceiptRows] = useState<InvoiceReceipt[]>([]);
   const [pdfBusy, setPdfBusy] = useState(false);
   const profile = profiles.find(p => p.staff_id === staffId);
@@ -196,7 +197,7 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       <div className="invoice-section">
       {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
       <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save(); }}>
-        <h3>請求書明細</h3>
+        <h3>追加項目登録</h3>
         {isIshikawa && <section className="invoice-auction-workdays">
           <h3>ヤフオク入札作業日</h3><p className="muted">対象月の月・水・金を初期設定しています。作業した日を個別に追加・削除できます。</p>
           <div className="row"><DateInput aria-label="作業日を追加" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.includes(newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
@@ -205,14 +206,15 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
           {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
         </section>}
         <InvoiceExtraRows key={`${staffId}/${month}`} lines={extras} disabled={busy || receiptBusy || pdfBusy} onChange={lines => { setExtras(lines); setDirty(true); setMessage(''); }} onDraftChange={() => setDirty(true)} />
-        <label className="invoice-note-input">備考<textarea maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>
+        <label className="invoice-note-input"><span className="invoice-note-heading">備考欄登録</span><textarea maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>
       </form>}
       </div>
       <div className="receipt-section">
-      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
+      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
       </div>
       <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div>
+      <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />
       <ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} />
     </>}
     </div>

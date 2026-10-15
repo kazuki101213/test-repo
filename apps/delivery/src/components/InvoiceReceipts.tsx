@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { loadInvoiceReceipts, uploadInvoiceReceipt, updateInvoiceReceipt, removeInvoiceReceipt, releaseReceiptImages } from '@bussan/shared';
 import type { InvoiceReceipt, ReceiptDetails } from '@bussan/shared';
 import DateInput from './DateInput';
 const blank = (): ReceiptDetails => ({ spent_on: '', description: '', amount: null, payee: '', memo: '', include_in_invoice: true });
 const messageOf = (e: unknown) => (e as { message?: string })?.message ?? '保存できませんでした。';
-export default function InvoiceReceipts({ staffId, month, approved, onBusyChange, onRowsChange, onChanged }: {
-  staffId: string; month: string; approved: boolean; onBusyChange: (busy: boolean) => void;
+export default function InvoiceReceipts({ staffId, month, approved, tableTarget, onBusyChange, onRowsChange, onChanged }: {
+  staffId: string; month: string; approved: boolean; tableTarget: HTMLElement | null; onBusyChange: (busy: boolean) => void;
   onRowsChange: (rows: InvoiceReceipt[]) => void; onChanged: () => void;
 }) {
   const [rows, setRows] = useState<InvoiceReceipt[]>([]);
@@ -17,6 +18,7 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  const editorForm = useRef<HTMLFormElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const [attachmentMenu, setAttachmentMenu] = useState(false);
   useEffect(() => { onBusyChange(busy || loading || !!error); return () => onBusyChange(false); }, [busy, loading, error, onBusyChange]);
@@ -49,9 +51,9 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
   }
   const receipts = rows.filter(row => row.document_type !== 'invoice');
   return <section className="invoice-receipts">
-    <div className="receipt-editor no-print"><h3>領収書登録</h3>
+    <div className="receipt-editor no-print"><h3>領収書明細登録</h3>
 
-      {!approved && <form className="receipt-detail-form" onChange={onChanged} onSubmit={e => { e.preventDefault(); void save(); }}>
+      {!approved && <form ref={editorForm} className="receipt-detail-form" onChange={onChanged} onSubmit={e => { e.preventDefault(); void save(); }}>
         <fieldset disabled={busy || loading}>
           <div className="receipt-entry-scroll"><div className="receipt-entry-row">
             <label>日付<DateInput required value={draft.spent_on ?? ''} onChange={e => setDraft({ ...draft, spent_on: e.target.value })} /></label>
@@ -69,11 +71,14 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
         </fieldset>
       </form>}
       {busy && <p role="status">明細を保存しています…</p>}{loading && <p role="status">明細を読み込み中…</p>}{error && <div className="error" role="alert">{error}<button type="button" className="btn ghost" disabled={busy} onClick={() => setRevision(n => n + 1)}>再読み込み</button></div>}
-      <div className="receipt-detail-scroll"><table className="receipt-detail-table"><thead><tr><th>日付</th><th>内容・支払先</th><th>金額</th><th>写真・PDF</th></tr></thead>
-        <tbody>{receipts.map(row => <tr key={row.id}><td>{row.spent_on || '未登録'}</td><td>{row.description || '未登録'}{row.payee && <small>{row.payee}</small>}{row.memo && <small>{row.memo}</small>}</td><td>{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td><td><div className="receipt-row-attachment"><a href={row.url} target="_blank" rel="noreferrer">{row.mime_type === 'application/pdf' ? 'PDF' : '写真'}</a>{!approved && <span className="receipt-row-actions"><button type="button" className="btn ghost" disabled={busy || loading} onClick={() => { setFile(null); setAttachmentMenu(false); setEditing(row); setDraft({ spent_on: row.spent_on ?? '', description: row.description ?? '', amount: row.amount ?? null, payee: row.payee ?? '', memo: row.memo ?? '', include_in_invoice: true }); setError(''); }}>編集</button><button type="button" className="btn ghost" disabled={busy || loading} onClick={() => void remove(row)}>削除</button></span>}</div></td></tr>)}</tbody>
+
+    </div>
+    {tableTarget && createPortal(<div className="receipt-list no-print"><h3>領収書明細</h3>
+      <div className="receipt-detail-scroll"><table className="receipt-detail-table"><thead><tr><th>日付</th><th>内容・支払先</th><th>金額</th><th>写真・PDF</th>{!approved && <th className="receipt-actions-cell" aria-label="明細の編集・削除" />}</tr></thead>
+        <tbody>{receipts.map(row => <tr key={row.id}><td>{row.spent_on || '未登録'}</td><td>{row.description || '未登録'}{row.payee && <small>{row.payee}</small>}{row.memo && <small>{row.memo}</small>}</td><td>{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td><td><a href={row.url} target="_blank" rel="noreferrer">{row.mime_type === 'application/pdf' ? 'PDF' : '写真'}</a></td>{!approved && <td className="receipt-actions-cell"><div className="receipt-row-actions"><button type="button" className="btn ghost" disabled={busy || loading} onClick={() => { setFile(null); setAttachmentMenu(false); setEditing(row); setDraft({ spent_on: row.spent_on ?? '', description: row.description ?? '', amount: row.amount ?? null, payee: row.payee ?? '', memo: row.memo ?? '', include_in_invoice: true }); setError(''); editorForm.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>編集</button><button type="button" className="btn ghost" disabled={busy || loading} onClick={() => void remove(row)}>削除</button></div></td>}</tr>)}</tbody>
       </table></div>
       {!loading && !receipts.length && <p>登録済みの明細はありません。</p>}
       {rows.filter(row => row.document_type === 'invoice').map(row => <p key={row.id}>以前の請求書添付：<a href={row.url} target="_blank" rel="noreferrer">{row.original_name}</a></p>)}
-    </div>
+    </div>, tableTarget)}
   </section>;
 }
