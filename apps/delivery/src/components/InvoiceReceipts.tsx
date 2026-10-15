@@ -48,8 +48,8 @@ export default function InvoiceReceipts({ staffId, month, approved, onBusyChange
   const receipts = rows.filter(row => row.document_type !== 'invoice');
   const claimed = receipts.filter(row => row.include_in_invoice);
   return <section className="invoice-receipts">
-    <div className="receipt-editor no-print"><h3>領収書の明細表</h3>
-      <p className="muted">請求月：{month}。請求に含める明細の金額と添付資料を、請求書へ自動で反映します。</p>
+    <div className="receipt-editor no-print"><h3>領収書登録</h3>
+
       {!approved && <form className="receipt-detail-form" onChange={onChanged} onSubmit={e => { e.preventDefault(); void save(); }}>
         <fieldset disabled={busy || loading}><legend>{editing ? '明細を編集' : '明細を登録'}</legend>
           <label>日付<DateInput required value={draft.spent_on ?? ''} onChange={e => setDraft({ ...draft, spent_on: e.target.value })} /></label>
