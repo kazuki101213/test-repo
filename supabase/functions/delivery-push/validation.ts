@@ -15,7 +15,7 @@ export function validSubscription(value: unknown): value is { endpoint: string; 
 }
 
 export const appBaseUrls: Record<'admin' | 'delivery', readonly string[]> = {
-  admin: ['https://bussan-admin.vercel.app/', 'https://kazuki101213.github.io/test-repo/admin/', 'http://localhost:5173/'],
+  admin: ['https://bussan-admin.vercel.app/', 'https://test-repo-delivery.vercel.app/', 'https://kazuki101213.github.io/test-repo/admin/', 'http://localhost:5173/'],
   delivery: ['https://test-repo-delivery.vercel.app/', 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/'],
 };
 

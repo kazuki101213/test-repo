@@ -411,3 +411,5 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
   .inventory-multi-filter-panel { position: fixed; z-index: 1200; left: 8px; right: 8px; top: 8px; width: auto; max-width: none; max-height: calc(100dvh - 16px); box-sizing: border-box; }
 }
 
+
+.management-switch-actions { display:flex; justify-content:flex-end; margin-bottom:14px; }

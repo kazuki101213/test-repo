@@ -1,4 +1,4 @@
-import { staffDisplayName } from '@bussan/shared';
+import { canOpenManagementPage, switchApplication, staffDisplayName } from '@bussan/shared';
 import { useEffect, useState } from 'react';
 import { loadSession, signOut } from '@bussan/shared';
 import type { Session } from '@bussan/shared';
@@ -27,6 +27,7 @@ export default function App() {
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<Page>('dashboard');
+  const visiblePage: Page = session && canOpenManagementPage(session.staff, page) ? page : 'inventory';
   async function logout() {
     try { await disableDevicePush(); await signOut(); await refresh(); }
     catch { setError('通知の停止またはログアウトに失敗しました。再度お試しください。'); }
@@ -64,6 +65,7 @@ export default function App() {
         <div className="error">
           このアプリは管理者・仕入担当者向けです。納品アプリをお使いください。
         </div>
+        <button className="btn" onClick={() => switchApplication('delivery')}>納品アプリへ</button>
         <button className="btn" onClick={() => void signOut().then(refresh)}>ログアウト</button>
       </div>
     );
@@ -74,8 +76,8 @@ export default function App() {
       <aside className="sidebar">
         <h1>物販管理</h1>
         <p className="who">{staffDisplayName(session.staff)}（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</p>
-        {NAV.filter(n => n.key !== 'expenses' || session.staff.role === 'admin').map((n) => (
-          <button key={n.key} className="nav" data-active={page === n.key} onClick={() => setPage(n.key)}>
+        {NAV.filter(n => canOpenManagementPage(session.staff, n.key)).map((n) => (
+          <button key={n.key} className="nav" data-active={visiblePage === n.key} onClick={() => setPage(n.key)}>
             {n.label}
           </button>
         ))}
@@ -84,13 +86,14 @@ export default function App() {
       </aside>
 
       <main>
+        <div className="management-switch-actions"><button type="button" className="btn ghost" onClick={() => switchApplication('delivery')}>納品アプリへ</button></div>
         {error && <p className="error" role="alert">{error}</p>}
-        {page === 'dashboard' && <Dashboard staff={session.staff} userId={session.user.id} />}
-        {page === 'inventory' && <Inventory me={session.staff} />}
-        {page === 'spares' && <Spares me={session.staff} />}
-        {page === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
-        {page === 'products'  && <Products />}
-        {page === 'ledger'    && <Ledger />}
+        {visiblePage === 'dashboard' && <Dashboard staff={session.staff} userId={session.user.id} />}
+        {visiblePage === 'inventory' && <Inventory me={session.staff} />}
+        {visiblePage === 'spares' && <Spares me={session.staff} />}
+        {visiblePage === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
+        {visiblePage === 'products'  && <Products />}
+        {visiblePage === 'ledger'    && <Ledger />}
       </main>
     </div>
   );
