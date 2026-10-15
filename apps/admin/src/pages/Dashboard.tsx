@@ -65,8 +65,8 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
           <div className={`kpi-value ${(current?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.粗利益)}</div>
           <div className="kpi-label" style={{ marginTop: 12 }}>純利益</div>
           <div className={`kpi-value ${(current?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.純利益)}</div>
-          <div className="kpi-label" style={{ marginTop: 12 }}>現在の在庫数 / 作業中</div>
-          <div className="kpi-value">{stock?.現在庫数 ?? 0} 点 / {stock?.作業中 ?? 0} 点</div>
+          <div className="kpi-label" style={{ marginTop: 12 }}>現在の在庫数 / 保有在庫</div>
+          <div className="kpi-value">{stock?.現在庫数 ?? 0} 点 / {stock?.保有在庫 ?? 0} 点</div>
         </div>
         <Kpi label="今月の仕入" value={yen(current?.仕入金額)} count={current?.仕入数 ?? 0} />
         <div className="card">
@@ -96,8 +96,8 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
           <table>
             <thead>
               <tr>
-                <th>担当者</th><th className="num">作業中</th>
-                <th className="num">梱包前</th><th className="num">出荷済</th><th className="num">平均作業日数</th>
+                <th>担当者</th><th className="num">保有在庫</th>
+                <th className="num">平均作業日数</th>
               </tr>
             </thead>
             <tbody>
@@ -106,7 +106,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
                   <td>
                     {staffDisplayName(w.deliverer_name)}
                   </td>
-                  {(['作業中', '梱包前', '出荷済', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
+                  {(['保有在庫', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
                     <button className="metric-link" aria-label={`${staffDisplayName(w.deliverer_name)} ${metric}の詳細`} onClick={() => setWorkloadDetail({ delivererId: w.deliverer_id, name: staffDisplayName(w.deliverer_name), metric })}>{w[metric] ?? '—'}</button>
                   </td>)}
                 </tr>

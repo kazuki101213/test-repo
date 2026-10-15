@@ -3,7 +3,7 @@ const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOpt
 const constants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),constants);
 const shared={exports:{},require:()=>constants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),shared);
 const match=shared.exports.matchesInventoryFilters;
-assert(match({marketplace:'Amazon返品',sales_channel:'FBA',status:'作業中'},{marketplace:['Amazon返品','ヤフオク'],sales_channel:['FBA','自己発送'],status:['作業中','販売済']}));
+assert(match({marketplace:'Amazon返品',sales_channel:'FBA',status:'受取前'},{marketplace:['Amazon返品','ヤフオク'],sales_channel:['FBA','自己発送'],status:['受取前','販売済']}));
 assert(!match({marketplace:'動作品Amazon返品',sales_channel:'FBA'},{marketplace:['Amazon返品']}));
 assert(!match({marketplace:'Amazon返品',sales_channel:'メルカリ'},{marketplace:['Amazon返品'],sales_channel:['FBA']}));
 assert(match({marketplace:null},{marketplace:[]}));
@@ -17,7 +17,7 @@ for(const app of ['admin','delivery']){
  assert.equal(all(tree).filter(n=>n.type==='details').length,1);assert.equal(all(tree).filter(n=>n.type==='select').length,0);
  assert.deepEqual(all(tree).filter(n=>n.type==='legend').map(text),['仕入先','販売先','販売状態']);
  const toggle=(group,option,checked)=>{const fieldset=all(tree).find(n=>n.type==='fieldset'&&all(n).some(v=>v.type==='legend'&&text(v)===group));const label=all(fieldset).find(n=>n.type==='label'&&text(n)===option);assert(label);all(label).find(n=>n.type==='input').props.onChange({target:{checked}});render();};
- toggle('仕入先','Amazon返品',true);toggle('仕入先','ヤフオク',true);toggle('販売先','FBA',true);toggle('販売先','自己発送',true);toggle('販売状態','作業中',true);toggle('販売状態','販売済',true);
+ toggle('仕入先','Amazon返品',true);toggle('仕入先','ヤフオク',true);toggle('販売先','FBA',true);toggle('販売先','自己発送',true);toggle('販売状態','受取前',true);toggle('販売状態','販売済',true);
  assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（6）');assert.equal(value.marketplace.length,2);assert.equal(value.sales_channel.length,2);assert.equal(value.status.length,2);
  toggle('仕入先','Amazon返品',false);assert.equal(value.marketplace.join(','),'ヤフオク');assert.equal(value.status.length,2);
  listeners.pointerdown({target:'inside'});assert(ref.current.open);listeners.pointerdown({target:'outside'});assert(!ref.current.open);

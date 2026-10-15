@@ -1,26 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DeliveryTask, Staff, InventoryFilters } from '@bussan/shared';
-import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
+import type { DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
+import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters, STATUSES } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import { downloadTsv } from '../csv';
 import { deliveryErrorMessage } from '../errors';
 import InventoryStateFilter from '../components/InventoryStateFilter';
 import TaskCard from '../components/TaskCard';
 import SpareShippingTasks from '../components/SpareShippingTasks';
-import ReturnRequestTasks from '../components/ReturnRequestTasks';
 import { useTaskViewport } from '../hooks/useTaskViewport';
 import { deliverySearchFields, deliverySearchValue, matchesDeliverySearch, normalizeSearch, type DeliverySearchField } from '../deliverySearch';
 
-type Filter = 'all' | 'working' | 'shipped' | 'return-processing' | 'amazon-return' | 'working-amazon-return';
-
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: 'working', label: '作業中' },
-  { key: 'shipped', label: '出荷済' },
-  { key: 'return-processing', label: '返品処理' },
-  { key: 'amazon-return', label: 'Amazon返品' },
-  { key: 'working-amazon-return', label: '動作品Amazon返品' },
-  { key: 'all',     label: 'すべて' },
-];
+type Filter = 'all' | ItemStatus;
+const FILTERS: { key: Filter; label: string }[] = [...STATUSES.map(key => ({key,label:key})),{key:'all',label:'すべて'}];
 
 function serialNumber(task: DeliveryTask): string {
   const prefix = task.sku.match(/^(\d+[a-z]*)-/i)?.[1];
@@ -40,7 +31,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [tasks, setTasks] = useState<DeliveryTask[]>([]);
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
-  const [filter, setFilter] = useState<Filter>(() => staff.name === '長部一輝' ? 'all' : 'working');
+  const [filter, setFilter] = useState<Filter>('検品中');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
@@ -51,7 +42,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [detailRevision, setDetailRevision] = useState(0);
+  const detailRevision = 0;
   const deepLinkItemId = new URLSearchParams(window.location.search).get('itemId');
   const deepLinkHandled = useRef(false);
   const toggleExpanded = (id: string) => setExpandedId(current => current === id ? null : id);
@@ -142,15 +133,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     })).filter(({ task: t, members }) => {
       if (queryField !== 'deliverer' && q && !members.some(member => matchesDeliverySearch(deliverySearchValue(member, queryField, originalIds), queryField, query))) return false;
       if (!members.some(member => matchesInventoryFilters(member, inventoryFilters))) return false;
-      const active = t.status === '作業中';
-      switch (filter) {
-        case 'working': return active && t.shipped_on === null;
-        case 'shipped': return t.shipped_on !== null;
-        case 'return-processing': return members.some(member => member.status === '返品処理');
-        case 'amazon-return': return members.some(member => member.marketplace === 'Amazon返品');
-        case 'working-amazon-return': return members.some(member => member.marketplace === '動作品Amazon返品');
-        case 'all':     return true;
-      }
+      return filter === 'all' || t.status === filter;
     });
     return { rows, originalIds };
   }, [tasks, filter, query, queryField, staff.role, delivererId, inventoryFilters]);
@@ -173,21 +156,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     }).catch(cause => setReplyTaskError(deliveryErrorMessage(cause)))
       .finally(() => openingReads.current.delete(itemId));
   }, []);
-  const malfunctionTasks = canViewDeliveryAssignee(staff)
-    ? tasks.filter(task => task.malfunction_reported && !task.malfunction_resolved_at) : [];
-  const taskById = new Map(tasks.map(task => [task.id, task]));
-  const visibleNotices = notices.filter(notice => taskById.has(notice.item_id));
   const unreadItemIds = new Set(notices.filter(notice => notice.reply_at || notice.photo_at).map(notice => notice.item_id));
-  function openReplyTask(task: DeliveryTask) {
-    setInventoryFilters({});
-    setFilter('all');
-    setQueryField('sku');
-    setQuery(task.sku);
-    setExpandedId(task.id);
-    setDetailRevision(current => current + 1);
-    if (staff.role === 'admin') setDelivererId(task.deliverer_id || '');
-    window.setTimeout(() => document.getElementById(`delivery-task-${task.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
-  }
 
   return (
     <>
@@ -205,33 +174,6 @@ export default function TaskList({ staff }: { staff: Staff }) {
       <h3 className="delivery-task-heading" id="delivery-task-heading">タスク</h3>
       <section ref={sectionRef} className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading" tabIndex={0} style={{ maxHeight: viewportHeight }}>
         <ul ref={shippingRef} className="invoice-task-rows" aria-label="発送関連"><SpareShippingTasks staff={staff} /></ul>
-        <ReturnRequestTasks />
-        {replyTaskError && <p className="error" role="alert">返信タスクを読み込めませんでした：{replyTaskError}</p>}
-        {malfunctionTasks.length > 0 && <ul className="invoice-task-rows" aria-label="動作不良の報告">
-          {malfunctionTasks.map(task => <li key={task.id}>
-            <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(task)}>
-              【{task.sku.split('-')[0]}】動作不良の報告が届きました
-            </button>
-            <div className="spare-shipping-details">
-              <span>納品担当者：{task.deliverer_name || '未設定'}</span><span>品名：{task.title}</span>
-              <span>{task.malfunction_comment || '報告内容未登録'}</span>
-            </div>
-          </li>)}
-        </ul>}
-        {visibleNotices.some(notice => notice.reply_at) && <ul className="invoice-task-rows" aria-label="動作不良の返信">
-          {visibleNotices.filter(notice => notice.reply_at).map(notice => <li key={notice.item_id}>
-            <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
-              【{notice.lot_seq}】メッセージが届きました
-            </button>
-          </li>)}
-        </ul>}
-        {visibleNotices.some(notice => notice.photo_at) && <ul className="invoice-task-rows" aria-label="写真承認関連">
-          {visibleNotices.filter(notice => notice.photo_at).map(notice => <li key={notice.item_id}>
-            <button type="button" className="btn delivery-notice-message" onClick={() => openReplyTask(taskById.get(notice.item_id)!)}>
-              【{notice.lot_seq}】写真が承認されました。
-            </button>
-          </li>)}
-        </ul>}
       </section>
 
       <div className="filters task-filters">
@@ -250,6 +192,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
         <button className="btn" disabled={exporting || selected.size === 0} onClick={() => setSelected(new Set())}>選択解除</button>
       </div>
 
+      {replyTaskError && <div className="error">{replyTaskError}</div>}
       {error && <div className="error">{error}</div>}
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}

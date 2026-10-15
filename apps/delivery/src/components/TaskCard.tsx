@@ -88,7 +88,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
       <div className="task-content">
       <div className="task-card-overview">
         <div className="task-card-info">
-          <span className="muted">仕入日 {jpDate(task.purchased_at)}</span>
+          <span className="badge">{task.status}</span><span className="muted">仕入日 {jpDate(task.purchased_at)}</span>
           <span className="muted">仕入先 <ColoredLabel value={task.marketplace} /></span>
           <span className="muted">販売先 <ColoredLabel value={task.sales_channel || '—'} /></span>
           <span className="muted">コンディション <ColoredLabel value={task.condition || '—'} /></span>

@@ -302,7 +302,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
         <MalfunctionConversation item={row} staff={staff} onReplied={refresh} />
       </div>
-      {(staff.role === 'admin' || staff.role === 'purchaser') && <button className="btn" disabled={busy !== null} onClick={() => void resolve(row.id)}>{busy === row.id ? '更新中…' : '対応完了'}</button>}
+      {(staff.role === 'admin' || staff.role === 'purchaser') && <button className="btn" disabled={busy !== null} onClick={() => void resolve(row.id)}>{busy === row.id ? '更新中…' : '差し戻し'}</button>}
     </li>)}
   </>;
 }

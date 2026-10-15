@@ -1,9 +1,9 @@
 import ColoredLabel from '../components/ColoredLabel';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WORK_STEPS, jpDate, canViewDeliveryAssignee, staffDisplayName } from '@bussan/shared';
-import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
+import { WORK_STEPS, STATUSES, jpDate, canViewDeliveryAssignee, staffDisplayName } from '@bussan/shared';
+import type { DeliveryTask, ItemComment, Staff, WorkStep, ItemStatus } from '@bussan/shared';
 import {
-  addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
+  setInventoryWorkflow, addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
   queueMarketplaceMessage, requestMarketplaceMessageSync, reportItemMalfunction, setDeliveryProgress, recordListingPhotoUpload, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
@@ -278,6 +278,9 @@ export default function TaskDetail({
       <div className="row inline-detail-header">
         <button type="button" className="btn ghost" onClick={onClose}>詳細を閉じる</button>
         <span className="badge">{task.status}</span>
+        <select aria-label="販売状態" value={task.status} disabled={malfunctionBusy} onChange={async event => { setMalfunctionBusy(true); setError(null); try { await setInventoryWorkflow(task.id,event.target.value as ItemStatus); await reload(); } catch(cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setMalfunctionBusy(false); } }}>{STATUSES.filter(status => status !== '販売済').map(status => <option key={status} value={status}>{status}</option>)}{task.status === '販売済' && <option value="販売済">販売済</option>}</select>
+        {task.status === 'Amazon返送依頼' && <button className="btn" disabled={malfunctionBusy} onClick={async()=>{setMalfunctionBusy(true);try{await setInventoryWorkflow(task.id,'検品中');await reload();}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{setMalfunctionBusy(false);}}}>返送依頼済みにする</button>}
+        {task.status !== '販売済' && task.status !== '返品処理' && <button className="btn" disabled={malfunctionBusy} onClick={async()=>{if(!window.confirm('販売金額・振込金額を0円、販売日を本日として販売済にします。'))return;setMalfunctionBusy(true);try{await setInventoryWorkflow(task.id,'販売済');await reload();}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{setMalfunctionBusy(false);}}}>0円で販売済にする</button>}
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
@@ -327,7 +330,7 @@ export default function TaskDetail({
               </button>
             </div>
             {task.malfunction_reported
-              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '動作不良の報告は対応完了です。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
+              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '動作不良の報告は差し戻し済みです。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
               : malfunctionChecked && <div className="malfunction-report">
                 <textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
                 <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '仕入担当者に報告'}</button>

@@ -14,33 +14,28 @@ assert.deepEqual(Array.from(sorted.slice(24),r=>r.id),['legacy','unset']);
 let cursor=0,hooks=[],dirty=true,tree,pending=[],opened=[],acknowledged=[];
 const react={useState(initial){const n=cursor++;if(!hooks[n])hooks[n]={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useMemo(fn){cursor++;return fn();},useCallback(fn){cursor++;return fn;},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((value,i)=>value!==hooks[n].deps[i])){hooks[n]?.cleanup?.();const hook=hooks[n]={deps};pending.push(()=>{hook.cleanup=fn();});}}};
 const jsx=(type,props)=>({type,props});
-const tasks=[{id:'II-item',sku:'100a-AAII-20260901-0',lot_seq:100,title:'model',status:'作業中',marketplace:'Amazon返品',sales_channel:'FBA',deliverer_id:'II',deliverer_name:'II 久保田 真由',malfunction_reported:true,malfunction_resolved_at:null,malfunction_comment:'故障',is_accessory:false,shipped_on:null},{id:'LL-item',sku:'101-AALL-20260901-0',lot_seq:101,title:'other',status:'作業中',marketplace:'動作品Amazon返品',sales_channel:'自己発送',deliverer_id:'LL',malfunction_reported:true,malfunction_resolved_at:'now',shipped_on:null}];
+const tasks=[{id:'II-item',sku:'100a-AAII-20260901-0',lot_seq:100,title:'model',status:'受取前',marketplace:'Amazon返品',sales_channel:'FBA',deliverer_id:'II',deliverer_name:'II 久保田 真由',malfunction_reported:true,malfunction_resolved_at:null,malfunction_comment:'故障',is_accessory:false,shipped_on:null},{id:'LL-item',sku:'101-AALL-20260901-0',lot_seq:101,title:'other',status:'受取前',marketplace:'動作品Amazon返品',sales_channel:'自己発送',deliverer_id:'LL',malfunction_reported:true,malfunction_resolved_at:'now',shipped_on:null}];
 tasks.push({...tasks[0],id:'II-accessory',sku:'100a-AAII-20260901-1',is_accessory:true,malfunction_reported:false,tracking_no:'ACCESSORY-TRACK'});
 const notices=[{item_id:'II-item',lot_seq:100,photo_at:'today',reply_at:'today'}];
 const api={fetchMyTasks:async()=>tasks,fetchDeliveryItemNotices:async()=>notices,fetchDeliveryStaff:async()=>[{id:'II',name:'久保田真由'},{id:'LL',name:'土井花菜'}],markDeliveryItemNoticesRead:async n=>acknowledged.push(n.item_id)};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);
-const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{...names.exports,...stateSearch.exports}:id==='../api'?api:id==='../deliverySearch'?search.exports:id==='../hooks/useTaskViewport'?{useTaskViewport:()=>({sectionRef:{current:null},shippingRef:{current:null},viewportHeight:400})}:{default:id.includes('InventoryStateFilter')?'state-filter':id.includes('ReturnRequestTasks')?'return-request-tasks':'placeholder'},URLSearchParams,window:{location:{search:''},setInterval(){},clearInterval(){},setTimeout(fn){fn();},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){},getElementById:id=>({scrollIntoView:()=>opened.push(id)})}};
+const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{...stateConstants.exports,...names.exports,...stateSearch.exports}:id==='../api'?api:id==='../deliverySearch'?search.exports:id==='../hooks/useTaskViewport'?{useTaskViewport:()=>({sectionRef:{current:null},shippingRef:{current:null},viewportHeight:400})}:{default:id.includes('InventoryStateFilter')?'state-filter':id.includes('ReturnRequestTasks')?'return-request-tasks':'placeholder'},URLSearchParams,window:{location:{search:''},setInterval(){},clearInterval(){},setTimeout(fn){fn();},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){},getElementById:id=>({scrollIntoView:()=>opened.push(id)})}};
 vm.runInNewContext(compile('apps/delivery/src/pages/TaskList.tsx'),context);
 function all(n,result=[]){if(!n||typeof n!=='object')return result;if(Array.isArray(n)){n.forEach(x=>all(x,result));return result;}result.push(n);all(n.props?.children,result);return result;}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
 let staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};
 async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({staff});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
-(async()=>{await settle();const section=all(tree).find(n=>n.type==='section');assert(text(section).includes('写真が承認されました'));assert(text(section).includes('メッセージが届きました'));assert(text(section).includes('動作不良の報告が届きました'));assert(!text(section).includes('101'));
- assert(all(section).some(n=>n.type==='return-request-tasks'));
- const groups=all(section).filter(n=>n.type==='ul').map(n=>n.props['aria-label']);
- assert.deepEqual(groups,['発送関連','動作不良の報告','動作不良の返信','写真承認関連']);
- assert(text(section).indexOf('メッセージが届きました')<text(section).indexOf('写真が承認されました'));
- assert.equal(section.props.tabIndex,0);assert.equal(section.props.style.maxHeight,400);
+(async()=>{await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,0,'Default filter is inspection');const section=all(tree).find(n=>n.type==='section');assert(!text(section).includes('写真が承認されました'));assert(!text(section).includes('メッセージが届きました'));assert(!text(section).includes('動作不良の報告が届きました'));assert.deepEqual(all(section).filter(n=>n.type==='ul').map(n=>n.props['aria-label']),['発送関連']);assert.equal(section.props.tabIndex,0);assert.equal(section.props.style.maxHeight,400);
  const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');
  const input=()=>all(tree).find(n=>n.props?.['aria-label']==='在庫を検索');
  assert.equal(input().props.placeholder,'検索');assert.equal(selector().props.value,'serial');
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['納品担当者','通番号','SKU','型番','ASIN','商品ID','追跡番号']);
  const stateFilter=()=>all(tree).find(n=>n.type==='state-filter');assert(stateFilter());
- stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['作業中']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['II-item']);assert(input());
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['II-item']);assert(input());
  stateFilter().props.onChange({marketplace:['Amazon返品','動作品Amazon返品'],sales_channel:['FBA','自己発送']});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送']});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,0);
  stateFilter().props.onChange({});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
- tasks[1].status='販売済';stateFilter().props.onChange({status:['販売済']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['LL-item']);tasks[1].status='作業中';stateFilter().props.onChange({});await settle();
+ tasks[1].status='販売済';stateFilter().props.onChange({status:['販売済']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['LL-item']);tasks[1].status='受取前';stateFilter().props.onChange({});await settle();
  selector().props.onChange({target:{value:'deliverer'}});await settle();assert(!input());
  all(tree).find(n=>n.props?.['aria-label']==='納品担当者で検索').props.onChange({target:{value:'LL'}});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['LL-item']);
  selector().props.onChange({target:{value:'serial'}});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2,'Changing fields clears hidden owner filtering');
@@ -51,8 +46,7 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  selector().props.onChange({target:{value:'asin'}});input().props.onChange({target:{value:'100a'}});await settle();
  assert.equal(all(tree).filter(n=>n.props?.task).length,0,'Selected-field search must not match serial while ASIN is selected');
  stateFilter().props.onChange({marketplace:['動作品Amazon返品']});await settle();
- all(section).find(n=>n.type==='button'&&text(n).includes('動作不良の報告')).props.onClick();await settle();assert.deepEqual(opened,['delivery-task-II-item']);assert.deepEqual(acknowledged,[]);assert.equal(selector().props.value,'sku');assert.equal(input().props.value,tasks[0].sku);
- assert.equal(Object.keys(stateFilter().props.value).length,0);
+ stateFilter().props.onChange({});selector().props.onChange({target:{value:'serial'}});input().props.onChange({target:{value:''}});await settle();
  const card=all(tree).find(n=>n.props?.task?.id==='II-item');card.props.onDetailOpened('II-item');await settle();assert.deepEqual(acknowledged,['II-item']);assert(!text(all(tree).find(n=>n.type==='section')).includes('写真が承認されました'));
  hooks=[];pending=[];staff={id:'II',code:'II',role:'deliverer',name:'久保田真由'};dirty=true;await settle();assert(!text(all(tree).find(n=>n.type==='section')).includes('動作不良の報告が届きました'));
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);

@@ -50,7 +50,7 @@ export default function PhotoReviewTasks() {
       if (approvedIds.length) {
         const { data: candidates, error: candidateError } = await getSupabase().from('items')
           .select('id,sku,lot_seq,sales_channel').in('id', approvedIds)
-          .in('sales_channel', ['メルカリ', 'ヤフオク']).neq('status', '出品中');
+          .in('sales_channel', ['メルカリ', 'ヤフオク']).eq('status', '商品登録前').is('sold_on', null);
         if (candidateError) throw candidateError;
         nextListingTasks = (candidates ?? []) as ListingTask[];
       }
@@ -139,7 +139,7 @@ export default function PhotoReviewTasks() {
     try {
       const { error: updateError } = await getSupabase().from('items')
         .update({ status: '出品中' })
-        .eq('id', task.id);
+        .eq('id', task.id).eq('status','商品登録前').is('sold_on',null);
       if (updateError) throw updateError;
       setListingTasks(current => current.filter(row => row.id !== task.id));
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
