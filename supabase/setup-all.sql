@@ -10663,6 +10663,7 @@ begin
      new.sold_price:=0;new.payout_amount:=0;return new;
    elsif new.status='Amazon返送依頼' then new.return_request_completed_at:=null;return new;
    elsif new.status='検品中' then
+     if new.marketplace not in ('Amazon返品','動作品Amazon返品') and nullif(btrim(new.tracking_no),'') is null then raise exception '検品中にするには追跡番号を登録してください' using errcode='22023';end if;
      if new.marketplace in ('Amazon返品','動作品Amazon返品') then new.return_request_completed_at:=coalesce(new.return_request_completed_at,now());end if;
      new.inspected_at:=null;new.cleaned_at:=null;new.product_registered_at:=null;
      return new;
@@ -10672,7 +10673,8 @@ begin
      return new;
    elsif new.status='出品中' then
      new.product_registered_at:=coalesce(new.product_registered_at,now());return new;
-   elsif new.status in ('取引中','Amazon補填申請中','動作不良') then return new;
+   elsif new.status='動作不良' then new.malfunction_reported:=true;new.malfunction_resolved_at:=null;return new;
+   elsif new.status in ('取引中','Amazon補填申請中') then return new;
    end if;
  end if;
  -- These stages require a business decision, not a shipping/photo timestamp.
