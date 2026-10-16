@@ -113,6 +113,46 @@ body { font-family: inherit; background: #f0f2f5; color: #333; font-size: 14px; 
 body, button, input, select, textarea, pre, code { font-family: inherit; }
 #sourceFeedback { display:none; max-width:820px; margin:18px auto; padding:18px; background:#fff; border-radius:10px; }
 #sourceFeedback:has(#bussanStatus:not(:empty)), #sourceFeedback:has(#bussanIssues:not(:empty)) { display:block; }
+/* The iframe uses the same width breakpoint as the delivery application. */
+@media screen {
+ .tab-content, #sourceFeedback { max-width:none; }
+ .tab-content { padding:16px 0; }
+ .tab-header { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+ .tab-btn { padding:12px 8px; min-width:0; min-height:44px; white-space:nowrap; }
+ .model-input-row { display:grid !important; grid-template-columns:minmax(0,1fr) auto auto; }
+ .model-select { width:100%; min-width:0; }
+ button, .model-select, .shipping-row input { min-height:44px; }
+ .shipping-row, .load-row { min-width:0; }
+ .price-tags { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); }
+ .price-tags > * { min-width:0; overflow-wrap:anywhere; }
+ [id^=shippingRow] { display:grid !important; grid-template-columns:repeat(6,minmax(0,1fr)); }
+ [id^=shippingRow] > button { min-width:0; white-space:nowrap; }
+ .tab-content > .card, .manual-card { min-width:0; overflow-wrap:anywhere; }
+ .result-card > div:has(> div[style*="min-width:180px"]) { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .result-card > div > div[style*="min-width:180px"] { min-width:0 !important; }
+}
+@media screen {
+ html[data-layout="compact"] .tab-header { grid-template-columns:minmax(0,1fr); }
+ html[data-layout="compact"] .tab-btn { font-size:14px; }
+ html[data-layout="compact"] .card, html[data-layout="compact"] .manual-card, html[data-layout="compact"] .load-card, html[data-layout="compact"] .result-card { padding:12px; }
+ html[data-layout="compact"] .model-input-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ html[data-layout="compact"] .model-input-row > .model-select { grid-column:1 / -1; }
+ html[data-layout="compact"] .load-row { display:grid; grid-template-columns:minmax(0,1fr); }
+ html[data-layout="compact"] .load-row .load-btn { width:100%; }
+ html[data-layout="compact"] .price-tags { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ html[data-layout="compact"] [id^=shippingRow] { grid-template-columns:repeat(3,minmax(0,1fr)); }
+ html[data-layout="compact"] [id^=shippingRow] > button { padding:8px 2px !important; font-size:14px !important; }
+ html[data-layout="compact"] .shipping-row { display:grid; grid-template-columns:auto minmax(0,1fr); }
+ html[data-layout="compact"] .shipping-row input { width:100%; min-width:0; }
+ html[data-layout="compact"] .adj-label { display:grid; grid-template-columns:17px minmax(0,1fr); }
+ html[data-layout="compact"] .adj-label > .badge-minus, html[data-layout="compact"] .adj-label > .badge-plus { justify-self:start; }
+ html[data-layout="compact"] .adj-label { overflow-wrap:anywhere; }
+ html[data-layout="compact"] .result-card > div:has(> div[style*="min-width:180px"]) { grid-template-columns:minmax(0,1fr); }
+ html[data-layout="compact"] .rate-badge { padding:2px 5px; }
+ html[data-layout="compact"] .data-table { table-layout:fixed; }
+ html[data-layout="compact"] .data-table th, html[data-layout="compact"] .data-table td { padding:8px 4px; overflow-wrap:anywhere; }
+ html[data-layout="compact"] input, html[data-layout="compact"] select { font-size:16px; }
+}
 </style>
 </head>
 <body>
@@ -144,7 +184,7 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
   <!-- STEP 1: Model Number -->
   <div class="card">
     <div class="card-title"><span class="step-badge">1</span>型番を入力</div>
-    <div style="display:flex; align-items:center; gap:10px;">
+    <div class="model-input-row" style="display:flex; align-items:center; gap:10px;">
       <input type="text" id="modelNumber" class="model-select" list="modelList" placeholder="型番を入力または選択" autocomplete="off" oninput="onModelSelect()">
       <datalist id="modelList"></datalist>
       <button onclick="resetAll()" style="padding:10px 16px; background:#95a5a6; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; font-family: inherit; cursor:pointer; white-space:nowrap;" onmouseover="this.style.background='#7f8c8d'" onmouseout="this.style.background='#95a5a6'">リセット</button>
@@ -398,7 +438,7 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
 
   <div class="card">
     <div class="card-title"><span class="step-badge">1</span>型番を入力</div>
-    <div style="display:flex; align-items:center; gap:10px;">
+    <div class="model-input-row" style="display:flex; align-items:center; gap:10px;">
       <input type="text" id="modelNumber_m" class="model-select" list="modelList_m" placeholder="型番を入力または選択" autocomplete="off" oninput="onModelSelect_m()">
       <datalist id="modelList_m"></datalist>
       <button onclick="resetAll_m()" style="padding:10px 16px; background:#95a5a6; color:#fff; border:none; border-radius:6px; font-size:13px; font-weight:600; font-family: inherit; cursor:pointer; white-space:nowrap;" onmouseover="this.style.background='#7f8c8d'" onmouseout="this.style.background='#95a5a6'">リセット</button>

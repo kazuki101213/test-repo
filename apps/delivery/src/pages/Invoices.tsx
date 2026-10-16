@@ -10,6 +10,7 @@ import InvoiceSheet from '../components/InvoiceSheet';
 import InvoiceReceipts from '../components/InvoiceReceipts';
 import InvoiceExtraRows from '../components/InvoiceExtraRows';
 import ReceiptSheets from '../components/ReceiptSheets';
+import DocumentPreview from '../components/DocumentPreview';
 import type { Invoice, InvoiceDetails, InvoiceLine, InvoiceProfile, InvoiceSnapshot } from '../invoices';
 import '../invoice.css';
 
@@ -181,9 +182,9 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         <label>担当者<select value={staffId} disabled={staff.role !== 'admin' || busy || receiptBusy || pdfBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{staffDisplayName(p.details.issuer_name)}</option>)}</select></label>
         <label>請求月<input aria-label="請求対象月" type="month" required value={month} disabled={busy || receiptBusy || pdfBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
         <label>請求日<DateInput form="invoice-submit-form" required value={issued} disabled={busy || receiptBusy || pdfBusy || loading || settings || !!invoice?.approved_at} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label>
-        {profile && <button type="button" className="btn ghost" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
-        {snapshot && <button type="button" className="btn" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>請求書PDF保存</button>}
-        {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>請求書送信</button>}
+        {profile && <button type="button" className="btn ghost invoice-settings-button" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
+        {snapshot && <button type="button" className="btn invoice-pdf-button" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>請求書PDF保存</button>}
+        {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn invoice-send-button" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>請求書送信</button>}
       </div></div>
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に設定の登録を依頼してください。</p>}
       {pdfBusy && <p role="status">PDFを作成中…添付が多い場合は少し時間がかかります。</p>}
@@ -213,8 +214,8 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
       </div>
-      <div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div>
-      <ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} />
+      <DocumentPreview><div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div></DocumentPreview>
+      <DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} /></DocumentPreview>
     </>}
     </div>
     <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />

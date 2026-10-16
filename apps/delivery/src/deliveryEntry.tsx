@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import App from './App';
 import PasswordSetup from './components/PasswordSetup';
+import './responsive.css';
 
 // Capture the invite/recovery route before the auth SDK consumes the URL fragment.
 document.title = '納品アプリ';

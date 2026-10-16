@@ -1,6 +1,11 @@
 import type { InvoiceReceipt } from './receipts';
 import { PDFDocument, rgb } from 'pdf-lib';
 import html2canvas from 'html2canvas';
+/** Screen-only preview transforms must not scale the exported A4 pages. */
+function resetPreview(doc: Document) {
+  doc.querySelectorAll<HTMLElement>('.document-preview').forEach(node => { node.style.height = 'auto'; });
+  doc.querySelectorAll<HTMLElement>('.document-preview-content').forEach(node => { node.style.transform = 'none'; node.style.marginLeft = '0'; });
+}
 /** Merge rendered Japanese document pages and original PDFs without resizing PDF pages. */
 export async function buildInvoicePdf(elements: HTMLElement[], files: InvoiceReceipt[]): Promise<Uint8Array> {
   // Load PDF dependencies with the app so an open page survives a later deployment.
@@ -19,7 +24,7 @@ export async function buildInvoicePdf(elements: HTMLElement[], files: InvoiceRec
         const top = 841.89 - 28.35 - Math.floor(index / 2) * (cellHeight + 11.34);
         page.drawRectangle({ x, y: top - cellHeight, width: cellWidth, height: cellHeight, borderWidth: .5, borderColor: rgb(.7, .7, .7) });
         const titleCanvas = await html2canvas(caption, { scale: 3, backgroundColor: '#fff', logging: false, windowWidth: 1280,
-          onclone: (_doc, clone) => { clone.style.width = '85mm'; clone.style.maxWidth = 'none'; clone.style.minHeight = '0'; },
+          onclone: (doc, clone) => { resetPreview(doc); clone.style.width = '85mm'; clone.style.maxWidth = 'none'; clone.style.minHeight = '0'; },
         });
         const title = await pdf.embedPng(titleCanvas.toDataURL('image/png'));
         const titleWidth = cellWidth - 12; const titleHeight = title.height * titleWidth / title.width;
@@ -39,7 +44,7 @@ export async function buildInvoicePdf(elements: HTMLElement[], files: InvoiceRec
     await Promise.all(Array.from(element.querySelectorAll('img')).map(image => image.decode()));
     const canvas = await html2canvas(element, {
       scale: 3, backgroundColor: '#fff', useCORS: true, logging: false, windowWidth: 1280,
-      onclone: (_doc, clone) => { clone.style.width = '190mm'; clone.style.margin = '0'; clone.style.maxWidth = 'none'; clone.style.minHeight = '270mm'; },
+      onclone: (doc, clone) => { resetPreview(doc); clone.style.width = '190mm'; clone.style.margin = '0'; clone.style.maxWidth = 'none'; clone.style.minHeight = '270mm'; },
     });
     const image = await pdf.embedPng(canvas.toDataURL('image/png'));
     const page = pdf.addPage([595.28, 841.89]);
