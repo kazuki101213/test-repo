@@ -22,7 +22,7 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
   if(button.note){setForm(button);setNote('');}else void run(button);
  }
  return <div className="workflow-controls" aria-label={`${task.sku}の操作`}>
-  <div className="workflow-buttons">{buttons.map(button=><button key={button.key} type="button" className="btn" disabled={busy} onClick={()=>choose(button)}>{button.label}</button>)}</div>
+  <div className="workflow-buttons">{buttons.map(button=><button key={button.key} type="button" className="btn" data-wide={button.label.length > 7} disabled={busy} onClick={()=>choose(button)}>{button.label}</button>)}</div>
   {form&&buttons.some(button=>button.key===form.key)&&<div className="workflow-action-form">
    <label>{form.key==='report'?form.label+'の内容':'理由'}<textarea value={note} maxLength={2000} disabled={busy} onChange={event=>setNote(event.target.value)} /></label>
    <button type="button" className="btn primary" disabled={busy||!note.trim()} onClick={()=>void run(form)}>{busy?'更新中…':form.key==='report'?'仕入担当者に報告':'確定'}</button>

@@ -10,6 +10,10 @@ export default function BidCalculator() {
   const frame = useRef<HTMLIFrameElement>(null);
   const session = useRef<Session | null>(null);
   const [error, setError] = useState('');
+  const syncLayout = useCallback(() => {
+    const doc = frame.current?.contentDocument;
+    if (doc) doc.documentElement.dataset.layout = window.matchMedia('(min-width: 1024px)').matches ? 'desktop' : 'compact';
+  }, []);
   const deliver = useCallback(() => {
     const target = frame.current?.contentWindow as CalculatorWindow | null;
     const current = session.current;
@@ -18,8 +22,16 @@ export default function BidCalculator() {
       expiresAt: (current.expires_at ?? 0) * 1000,
     } : null);
     const doc = target?.document;
-    if(doc) doc.documentElement.style.fontFamily = getComputedStyle(document.documentElement).fontFamily;
-  }, []);
+    if(doc) {
+      doc.documentElement.style.fontFamily = getComputedStyle(document.documentElement).fontFamily;
+      syncLayout();
+    }
+  }, [syncLayout]);
+
+  useEffect(() => {
+    window.addEventListener('resize', syncLayout);
+    return () => window.removeEventListener('resize', syncLayout);
+  }, [syncLayout]);
 
   useEffect(() => {
     let active = true;
