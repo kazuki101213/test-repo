@@ -66,7 +66,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
    if(target.name==='ClosingYMD'||target.id==='ClosingYMD'){const m=String(value).match(/^(\d{4})-(\d\d)-(\d\d)$/);return m&&(option.value===m.slice(1).join('')||new RegExp('^'+Number(m[2])+'月'+Number(m[3])+'日').test(norm(option.text)));}
    if(target.name==='ClosingTime'||target.id==='ClosingTime'){const hour=Number(value),prefix=(hour<12?'午前':'午後')+(hour%12)+'時';return option.value===String(value)||norm(option.text).startsWith(prefix+'から')||norm(option.text).startsWith(prefix+'（正午）から');}
    return choiceText(option.text)===wanted||choiceText(option.text).includes(wanted)||option.value===String(value);
-  });const exact=options.filter(o=>choiceText(o.text)===wanted||o.value===String(value)),selected=exact.length?exact:options;if(selected.length!==1)throw Error('選択肢を1件に確認できません：'+names[0]);setValue(target,selected[0].value);return target;}
+  });const exact=options.filter(o=>choiceText(o.text)===wanted||o.value===String(value)),selected=exact.length?exact:options;if(selected.length!==1)throw Error('選択肢を1件に確認できません：'+names[0]);if(target.value!==selected[0].value)setValue(target,selected[0].value);return target;}
   if(target.tagName==='INPUT'&&target.type!=='radio'){setValue(target,value);return target;}
   throw Error('選択欄の形式に対応していません：'+names[0]);
  }
@@ -97,7 +97,9 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  const statusValues=()=>[...root.querySelectorAll('[role="status"],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')).map(e=>norm(e.innerText));
  const postalMethod=()=>['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size)?payload.size:'ゆうパック';
  const expectedValues=()=>[payload.title,payload.description,String(payload.price),payload.condition,job.channel==='ヤフオク'&&/購入者/.test(payload.shippingPayer)?'落札者':payload.shippingPayer,job.channel==='ヤフオク'?/日本郵便/.test(payload.shippingMethod)?postalMethod():payload.size==='宅急便コンパクト'?'宅急便コンパクト':'宅急便':payload.shippingMethod,payload.origin,payload.dispatchDays,...String(payload.listingCategory||payload.category).split(/\s*[>＞]\s*/)];
- function confirmationSetting(name){const values=[];for(const row of root.querySelectorAll('tr')){const cells=[...row.children];if(cells.length>=2&&norm(cells[0].innerText).replace(/[（(]無料[）)]/g,'')===name)values.push(norm(cells.slice(1).map(e=>e.innerText).join(' ')));}for(const label of root.querySelectorAll('dt'))if(norm(label.innerText)===name&&label.nextElementSibling?.tagName==='DD')values.push(norm(label.nextElementSibling.innerText));if(values.length!==1)return null;return values[0];}
+ function exposedTextElement(element){if(!element||getComputedStyle(element).visibility!=='visible')return false;for(let current=element;current;current=current.parentElement){const style=getComputedStyle(current);if(current.hidden||current.getAttribute('aria-hidden')==='true'||style.display==='none'||style.contentVisibility==='hidden'||style.opacity==='0')return false;}return true;}
+ function confirmationSetting(name){const values=[];for(const row of root.querySelectorAll('tr')){if(!exposedTextElement(row))continue;const cells=[...row.children];if(cells.length>=2&&norm(cells[0].innerText).replace(/[（(]無料[）)]/g,'')===name)values.push(norm(cells.slice(1).map(e=>e.innerText).join(' ')));}for(const label of root.querySelectorAll('dt'))if(exposedTextElement(label)&&norm(label.innerText)===name&&label.nextElementSibling?.tagName==='DD')values.push(norm(label.nextElementSibling.innerText));for(const marker of root.querySelectorAll('div,span,p,li,dt,th')){if(!exposedTextElement(marker)||norm(marker.textContent).replace(/[：:]$/,'')!==name)continue;const next=marker.nextElementSibling;if(next&&exposedTextElement(next)&&norm(next.textContent).length<60)values.push(norm(next.textContent));const group=marker.parentElement;if(group&&exposedTextElement(group)&&norm(group.textContent).length<100){const value=norm(group.textContent).replace(new RegExp('^'+name+'[：:]?\\s*'),'');if(value)values.push(value);}}if(name==='自動再出品'){const fixed=[...root.querySelectorAll('input[type=hidden][name=numResubmit]')];if(fixed.length>1||fixed.length===1&&!/^[0-9]+$/.test(fixed[0].value))return null;if(fixed.length===1)values.push(fixed[0].value+'回');}const unique=[...new Set(values.map(value=>norm(value).replace(/^[：:]\s*/,'' )).filter(value=>/^[0-9]+回$/.test(value)||['あり','する','有効','なし','しない','設定しない'].includes(value)))];if(unique.length!==1)return null;return unique[0];}
+ if(phase==='prepare_listing_payer'){await choose(['送料の負担','送料負担'],payload.shippingPayer);return {ready:true};}
  if(phase==='listing_preflight'){
   const title=field(['商品名','タイトル'],['name','Title','title']),description=descriptionField();
   if((title.value&&title.value!==payload.title)||(description.value&&description.value!==payload.description)||descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('サイトに別の下書きがあるため上書きしません');return {ready:true};
@@ -111,12 +113,13 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   }
   if((title.value&&title.value!==payload.title)||(description.value&&description.value!==payload.description))throw Error('サイトに別の下書きがあるため上書きしません');
   if(descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('説明文エディターに別の下書きがあるため上書きしません');
+  await choose(['送料の負担','送料負担'],payload.shippingPayer);
   if(choicesResolved){for(const value of [payload.listingCategory||payload.category,payload.condition,payload.shippingMethod])if(!text().includes(norm(value)))throw Error('別画面で選択した出品条件を確認できません');}
   else{if(!categoryResolved)await choose(['カテゴリー','カテゴリ'],payload.listingCategory||payload.category);await choose(['商品の状態','商品状態'],payload.condition);await choose(['配送の方法','配送方法'],payload.shippingMethod);}
-  await choose(['送料の負担','送料負担'],payload.shippingPayer);await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);
+  await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);
   let auctionOptionsConfirmed=true;
   if(job.channel==='ヤフオク'){
-   if(/日本郵便/.test(payload.shippingMethod)&&/^\d+$/.test(String(payload.size))){if(!['2','5','10','15','20','25'].includes(String(payload.weightKg)))throw Error('梱包後の重さを選択してください');await choose(['配送サイズ'],payload.size+'cm以内',['ship_delivery_yupack_size_select']);await choose(['配送重量'],payload.weightKg+'kg以内',['ship_delivery_yupack_weight_select']);}
+   if(/日本郵便/.test(payload.shippingMethod)&&/^\d+$/.test(String(payload.size))){if(!/購入者|落札者/.test(payload.shippingPayer)||candidates(['配送サイズ'],['ship_delivery_yupack_size_select']).length){if(!['2','5','10','15','20','25'].includes(String(payload.weightKg)))throw Error('梱包後の重さを選択してください');await choose(['配送サイズ'],payload.size+'cm以内',['ship_delivery_yupack_size_select']);await choose(['配送重量'],payload.weightKg+'kg以内',['ship_delivery_yupack_weight_select']);}}
    else if(/ヤマト運輸/.test(payload.shippingMethod)){if(!['100','140','宅急便コンパクト'].includes(String(payload.size)))throw Error('ヤマト運輸の配送サイズを選択してください');}
    else if(!['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size))throw Error('ヤフオクの配送サイズを選択してください');
    const auction=root.querySelector('input[name="salesmode"][value="auction"]');if(auction&&!auction.checked){auction.click();if(!auction.checked)throw Error('オークション形式を確認できません');}
@@ -152,12 +155,14 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const button=oneButton(['出品する','出品']);reserve();button.click();return {submitted:true};
  }
  if(phase==='publish_confirmation'||phase==='check_listing_confirmation'){
+  if(job.channel==='ヤフオク'&&/^\/sell\/jp\/show\/preview$/.test(location.pathname))root=document.body;
   if(!/確認|出品/.test(text()))throw Error('出品の確認画面ではありません');
   const frames=[...root.querySelectorAll('iframe')].flatMap(frame=>{try{return [frame.contentDocument?.body?.innerText||''];}catch{return [];}}).join(' ');
-  const normalized=choiceText(text()+' '+frames).replaceAll(',','');for(const value of expectedValues()){if(!normalized.includes(choiceText(value).replaceAll(',','')))throw Error('確認画面で出品内容が一致しません');}
+  const rendered=[],walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){const parent=node.parentElement;if(parent&&!/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(parent.tagName)&&exposedTextElement(parent)&&norm(node.textContent))rendered.push(node.textContent);}
+  const normalized=choiceText(rendered.join(' ')+' '+frames).replaceAll(',','');const missing=expectedValues().flatMap((value,index)=>normalized.includes(choiceText(value).replaceAll(',',''))?[]:[['商品名','説明文','価格','商品状態','送料負担','配送方法','発送元','発送日数'][index]||'カテゴリ']);if(missing.length)throw Error('確認画面で出品内容が一致しません：'+missing.join('・'));
   if(job.channel==='ヤフオク'&&(!['あり','する','有効'].includes(confirmationSetting('自動延長'))||!['なし','しない','0回','設定しない'].includes(confirmationSetting('自動再出品'))))throw Error('確認画面で自動延長あり・自動再出品なしを確認できません。出品は送信しません');
   if(phase==='check_listing_confirmation')return {verified:true,stoppedBeforePublish:true};
-  const button=oneButton(['出品する','ガイドラインに同意して出品する']);reserve();button.click();return {submitted:true};
+  const button=oneButton(['出品する','ガイドラインに同意して出品する','上記のガイドライン、規約、情報提供等に同意して 出品する']);reserve();button.click();return {submitted:true};
  }
  if(phase==='listing_result'){
   return waitFor(()=>{
