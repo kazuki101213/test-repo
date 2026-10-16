@@ -61,7 +61,6 @@ export default function Inventory({ me }: { me: Staff }) {
   const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
-  const hasInventoryFilters = Object.values(inventoryFilters).some(values => !!values?.length);
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
