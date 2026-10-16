@@ -25,7 +25,7 @@ function all(n,result=[]){if(!n||typeof n!=='object')return result;if(Array.isAr
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
 let staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};
 async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({staff});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
-(async()=>{await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,0,'Default filter is inspection');const section=all(tree).find(n=>n.type==='section');assert(!text(section).includes('写真が承認されました'));assert(!text(section).includes('メッセージが届きました'));assert(!text(section).includes('動作不良の報告が届きました'));assert.deepEqual(all(section).filter(n=>n.type==='ul').map(n=>n.props['aria-label']),['発送関連']);assert.equal(section.props.tabIndex,0);assert.equal(section.props.style.maxHeight,400);
+(async()=>{await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2,'AA defaults to all inventory states');const section=all(tree).find(n=>n.type==='section');assert(!text(section).includes('写真が承認されました'));assert(!text(section).includes('メッセージが届きました'));assert(!text(section).includes('動作不良の報告が届きました'));assert.deepEqual(all(section).filter(n=>n.type==='ul').map(n=>n.props['aria-label']),['発送関連']);assert.equal(section.props.tabIndex,0);assert.equal(section.props.style.maxHeight,400);
  const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');
  const input=()=>all(tree).find(n=>n.props?.['aria-label']==='在庫を検索');
  assert.equal(input().props.placeholder,'検索');assert.equal(selector().props.value,'serial');
@@ -48,7 +48,7 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  stateFilter().props.onChange({marketplace:['動作品Amazon返品']});await settle();
  stateFilter().props.onChange({});selector().props.onChange({target:{value:'serial'}});input().props.onChange({target:{value:''}});await settle();
  const card=all(tree).find(n=>n.props?.task?.id==='II-item');card.props.onDetailOpened('II-item');await settle();assert.deepEqual(acknowledged,['II-item']);assert(!text(all(tree).find(n=>n.type==='section')).includes('写真が承認されました'));
- hooks=[];pending=[];staff={id:'II',code:'II',role:'deliverer',name:'久保田真由'};dirty=true;await settle();assert(!text(all(tree).find(n=>n.type==='section')).includes('動作不良の報告が届きました'));
+ hooks=[];pending=[];staff={id:'II',code:'II',role:'deliverer',name:'久保田真由'};dirty=true;await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,0,'Other delivery staff still default to inspection');assert(!text(all(tree).find(n=>n.type==='section')).includes('動作不良の報告が届きました'));
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
  hooks=[];pending=[];staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};context.window.location.search='?itemId=II-item';dirty=true;await settle();
  assert.equal(selector().props.value,'sku');assert.equal(input().props.value,tasks[0].sku);assert.equal(all(tree).filter(n=>n.props?.task).length,1,'Deep links use SKU search');
