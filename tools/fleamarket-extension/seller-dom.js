@@ -111,12 +111,13 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   }
   if((title.value&&title.value!==payload.title)||(description.value&&description.value!==payload.description))throw Error('サイトに別の下書きがあるため上書きしません');
   if(descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('説明文エディターに別の下書きがあるため上書きしません');
+  await choose(['送料の負担','送料負担'],payload.shippingPayer);
   if(choicesResolved){for(const value of [payload.listingCategory||payload.category,payload.condition,payload.shippingMethod])if(!text().includes(norm(value)))throw Error('別画面で選択した出品条件を確認できません');}
   else{if(!categoryResolved)await choose(['カテゴリー','カテゴリ'],payload.listingCategory||payload.category);await choose(['商品の状態','商品状態'],payload.condition);await choose(['配送の方法','配送方法'],payload.shippingMethod);}
-  await choose(['送料の負担','送料負担'],payload.shippingPayer);await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);
+  await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);
   let auctionOptionsConfirmed=true;
   if(job.channel==='ヤフオク'){
-   if(/日本郵便/.test(payload.shippingMethod)&&/^\d+$/.test(String(payload.size))){if(!['2','5','10','15','20','25'].includes(String(payload.weightKg)))throw Error('梱包後の重さを選択してください');await choose(['配送サイズ'],payload.size+'cm以内',['ship_delivery_yupack_size_select']);await choose(['配送重量'],payload.weightKg+'kg以内',['ship_delivery_yupack_weight_select']);}
+   if(/日本郵便/.test(payload.shippingMethod)&&/^\d+$/.test(String(payload.size))){if(!/購入者|落札者/.test(payload.shippingPayer)||candidates(['配送サイズ'],['ship_delivery_yupack_size_select']).length){if(!['2','5','10','15','20','25'].includes(String(payload.weightKg)))throw Error('梱包後の重さを選択してください');await choose(['配送サイズ'],payload.size+'cm以内',['ship_delivery_yupack_size_select']);await choose(['配送重量'],payload.weightKg+'kg以内',['ship_delivery_yupack_weight_select']);}}
    else if(/ヤマト運輸/.test(payload.shippingMethod)){if(!['100','140','宅急便コンパクト'].includes(String(payload.size)))throw Error('ヤマト運輸の配送サイズを選択してください');}
    else if(!['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size))throw Error('ヤフオクの配送サイズを選択してください');
    const auction=root.querySelector('input[name="salesmode"][value="auction"]');if(auction&&!auction.checked){auction.click();if(!auction.checked)throw Error('オークション形式を確認できません');}
