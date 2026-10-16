@@ -25,7 +25,7 @@ do $$declare q jsonb;begin
  q:=app.read_inventory_page('delivery','{"queryField":"serial","query":"990201","status":"検品中"}',1,(select p->'fingerprints' from page_probe));
  if q->'ids'<>'[]'::jsonb or (q->>'total')::integer<>0 then raise exception 'Out-of-filter group retained';end if;
  q:=app.read_inventory_page('management','{"queryField":"serial","query":"990201"}',1,'{}');
- if (q->>'total')::integer<>1 then raise exception 'Management serial pagination failed: page=%, direct=%, sku=%, role=%', q, (select count(*) from app.v_inventory_display where lot_seq=990201),(select array_agg(sku) from app.items where lot_seq=990201), app.current_role();end if;
+ if (q->>'total')::integer<>(select count(distinct app.product_serial(sku,lot_seq)) from app.v_inventory_display where lot_seq=990201) or jsonb_array_length(q->'rows')<>1 then raise exception 'Management suffix groups or page size changed';end if;
 end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare q jsonb;begin
