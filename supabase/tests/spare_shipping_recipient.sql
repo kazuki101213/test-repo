@@ -30,6 +30,8 @@ begin
   -- Editing the linked accessory follows the existing parent-redirection rule.
   update app.items set deliverer_id=dd where id=accessory;
   if not exists(select 1 from app.v_spare_shipping_tasks where id=task and recipient_staff_id=dd)
+    or not exists(select 1 from app.items where id=body and deliverer_id=dd)
+    or not exists(select 1 from app.items where id=accessory and deliverer_id=dd)
   then raise exception 'Accessory edit did not update the shipping destination';end if;
 
   -- Same holder / missing assignee must not create impossible shipping requests.
@@ -78,6 +80,10 @@ begin
   update app.items set deliverer_id=hh where id=body;
   if exists(select 1 from app.v_spare_shipping_tasks where id=second_task)
   then raise exception 'Unknown physical holder reactivated a shipping request';end if;
+  insert into app.spare_accessories(owner_name,title,cost_amount)
+    values('久保田 真由','legacy named holder',0) returning id into spare;
+  if not exists(select 1 from app.spare_accessories where id=spare and owner_staff_id=ii)
+  then raise exception 'Name-only legacy holder did not resolve to the registered staff';end if;
   if has_function_privilege('authenticated','app.sync_spare_shipping_recipient()','execute')
     or has_table_privilege('anon','app.spare_shipping_tasks','select')
   then raise exception 'Internal sync expanded direct/public access';end if;

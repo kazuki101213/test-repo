@@ -11767,8 +11767,8 @@ create trigger spare_sync_shipping_holder
 after update of owner_staff_id on app.spare_accessories
 for each row execute function app.sync_spare_shipping_holder();
 
--- Only repair named, unambiguously identified holders of pending allocations.
--- Leave all dispatched/completed shipping history intact.
+-- Repair uniquely named holders, including legacy allocations without a task.
+-- The shipping trigger still leaves dispatched/completed history intact.
 update app.spare_accessories s
 set owner_staff_id=staff.id
 from app.staff staff
@@ -11777,7 +11777,7 @@ where staff.is_active and s.owner_staff_id is distinct from staff.id
       regexp_replace(regexp_replace(coalesce(s.owner_name,''),'[[:space:]　]','','g'),'^[A-Za-z]{2}','')
   and (select count(*) from app.staff other where other.is_active and
        regexp_replace(other.name,'[[:space:]　]','','g')=regexp_replace(staff.name,'[[:space:]　]','','g'))=1
-  and exists(select 1 from app.spare_shipping_tasks t where t.spare_id=s.id and t.sent_at is null and t.completed_at is null);
+  ;
 
 -- Repair existing pending allocations, without changing sent/completed history.
 update app.spare_shipping_tasks t
@@ -11800,5 +11800,123 @@ select t.id,t.spare_id,t.item_id,t.accessory_item_id,t.owner_staff_id,t.recipien
 from app.spare_shipping_tasks t join app.staff o on o.id=t.owner_staff_id
 join app.staff d on d.id=t.recipient_staff_id
 where t.delivery_required or t.sent_at is not null;
+
+-- Avoid updating the accessory twice while its BEFORE trigger redirects to the body.
+create or replace function app.redirect_accessory_shared_edits()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+declare
+  parent app.items%rowtype; previous_redirect text;
+begin
+  if pg_trigger_depth() > 1 or not old.is_accessory or not new.is_accessory
+     or app.is_standalone_accessory_serial(old.sku,old.lot_seq) then return new; end if;
+  if not (
+    new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+    or new.shipped_on is distinct from old.shipped_on or new.sales_channel is distinct from old.sales_channel
+    or new.condition is distinct from old.condition or new.sold_on is distinct from old.sold_on
+    or new.sold_price is distinct from old.sold_price or new.payout_amount is distinct from old.payout_amount
+    or new.sku is distinct from old.sku or new.lot_seq is distinct from old.lot_seq
+    or new.deliverer_id is distinct from old.deliverer_id
+  ) then return new; end if;
+
+  select p.* into parent from app.items p
+  where not p.is_accessory and (
+    p.id = coalesce(new.parent_item_id, old.parent_item_id)
+    or (new.parent_item_id is null and old.parent_item_id is null
+        and p.lot_seq = old.lot_seq
+        and app.product_serial(p.sku,p.lot_seq) = app.product_serial(old.sku,old.lot_seq))
+  )
+  order by (p.id = coalesce(new.parent_item_id, old.parent_item_id)) desc
+  limit 1
+  for update;
+
+  if parent.id is null then
+    raise exception '対応する本体を一意に特定できません。通番号とSKUを確認してください' using errcode='22023';
+  end if;
+
+  previous_redirect:=current_setting('app.redirecting_accessory_id',true);
+  perform set_config('app.redirecting_accessory_id',old.id::text,true);
+  update app.items set
+    status = new.status,
+    packed_on = new.packed_on,
+    shipped_on = new.shipped_on,
+    returned_on = new.returned_on,
+    sales_channel = new.sales_channel,
+    condition = new.condition,
+    sold_on = new.sold_on,
+    sold_price = new.sold_price,
+    payout_amount = new.payout_amount,
+    lot_seq = new.lot_seq,
+    deliverer_id = new.deliverer_id,
+    sku = parent.sku
+  where id = parent.id;
+
+  perform set_config('app.redirecting_accessory_id',coalesce(previous_redirect,''),true);
+  select * into parent from app.items where id = parent.id;
+  new.parent_item_id := parent.id;
+  new.status := parent.status;
+  new.packed_on := parent.packed_on;
+  new.shipped_on := parent.shipped_on;
+  new.returned_on := parent.returned_on;
+  new.sales_channel := parent.sales_channel;
+  new.condition := parent.condition;
+  new.sold_on := parent.sold_on;
+  new.sold_price := parent.sold_price;
+  new.payout_amount := parent.payout_amount;
+  new.lot_seq := parent.lot_seq;
+  new.deliverer_id := parent.deliverer_id;
+  new.sku := app.accessory_sku_for_parent(parent.sku, old.sku);
+  return new;
+end;
+$$;
+
+
+create or replace function app.sync_accessory_sale_date()
+returns trigger
+language plpgsql security definer set search_path=''
+as $$
+declare
+  accessory app.items%rowtype;
+begin
+  if new.is_accessory then return new; end if;
+  if not (
+    new.status is distinct from old.status or new.packed_on is distinct from old.packed_on
+    or new.shipped_on is distinct from old.shipped_on or new.sales_channel is distinct from old.sales_channel
+    or new.condition is distinct from old.condition or new.sold_on is distinct from old.sold_on
+    or new.sold_price is distinct from old.sold_price or new.payout_amount is distinct from old.payout_amount
+    or new.sku is distinct from old.sku or new.lot_seq is distinct from old.lot_seq
+    or new.deliverer_id is distinct from old.deliverer_id
+  ) then return new; end if;
+
+  for accessory in
+    select a.* from app.items a
+    where a.id::text is distinct from nullif(current_setting('app.redirecting_accessory_id',true),'')
+      and a.is_accessory and not app.is_standalone_accessory_serial(a.sku,a.lot_seq) and (
+      a.parent_item_id = new.id
+      or (a.parent_item_id is null and a.lot_seq = old.lot_seq
+          and app.product_serial(a.sku,a.lot_seq) = app.product_serial(old.sku,old.lot_seq))
+    )
+    for update
+  loop
+    update app.items set
+      parent_item_id = new.id,
+      status = new.status,
+      packed_on = new.packed_on,
+      shipped_on = new.shipped_on,
+      returned_on = new.returned_on,
+      sales_channel = new.sales_channel,
+      condition = new.condition,
+      sold_on = new.sold_on,
+      sold_price = new.sold_price,
+      payout_amount = new.payout_amount,
+      sku = app.accessory_sku_for_parent(new.sku, accessory.sku),
+      lot_seq = new.lot_seq,
+      deliverer_id = new.deliverer_id
+    where id = accessory.id;
+  end loop;
+  return new;
+end;
+$$;
 
 
