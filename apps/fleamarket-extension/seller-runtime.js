@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget} from './seller-inspection.js?v=0.1.79';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.79';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.82';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.82';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.79';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.82';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -123,10 +123,10 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
  finally{await session?.close();}
  await rpc('extension_finish_seller_operation',{p_id:job.id,p_status:status,p_result:result});
 }
-export async function openSellerSession(account,{tabs,scripting,identity,executionTimeoutMs=30000}){
+export async function openSellerSession(account,{tabs,scripting,windows,identity,executionTimeoutMs=30000}){
  const borrowed=await borrowSiteTab(tabs,account.site);let last=borrowed.originalUrl,categoryResolution=null;
  async function loaded(){for(let n=0;n<60;n++){const tab=await tabs.get(borrowed.id);if(tab.status==='complete'){await pause(800);const settled=await tabs.get(borrowed.id);if(settled.status==='complete'&&settled.url===tab.url){sellerUrl(account,settled.url);last=settled.url;borrowed.lastUrl=last;return;}}await pause(300);}throw Error('販売画面の読み込みが時間切れになりました');}
- async function go(url){sellerUrl(account,url);const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');await tabs.update(borrowed.id,{url,active:account.site==='mercari'});last=url;borrowed.lastUrl=url;await loaded();}
+ async function go(url){sellerUrl(account,url);const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');const arrived=await tabs.update(borrowed.id,{url,active:account.site==='mercari'});last=url;borrowed.lastUrl=url;if(account.site==='mercari'&&windows&&Number.isInteger(arrived.windowId)){const w=await windows.get(arrived.windowId);if(w.state==='minimized')await windows.update(w.id,{state:'normal'});if(w.state!=='maximized'&&(w.width<1000||w.height<700))await windows.update(w.id,{width:1200,height:900});await windows.update(w.id,{focused:true});}await loaded();}
  async function execute(func,args){
   const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');let timer;
   try{
@@ -157,6 +157,7 @@ export async function openSellerSession(account,{tabs,scripting,identity,executi
    return finishChoice(await execute(clickSellerChoice,kind),kind);
   },
   inspectionTarget:serial=>execute(readInspectionTarget,serial),
+  inspectionShippingTarget:target=>execute(readShippingInspectionTarget,target),
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
   read:phase=>execute(readSellerPage,{site:account.site,phase}),

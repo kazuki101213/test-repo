@@ -5,7 +5,18 @@ const PROFILE_ACCOUNTS={
 export function sellerInspectionApplies(request,profileId,previous,now=Date.now()){
  if(!request||!PROFILE_ACCOUNTS[profileId]||request.id===previous||!/^[-0-9a-f]{36}$/i.test(request.id||''))return false;
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
- return request.kind==='seller-readonly-structure'&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
+ return request.kind==='seller-readonly-structure'&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&profileId==='f29f12b6-35f2-4e9f-8312-a8321ddf3c12')&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
+}
+/** User-supplied item ID: exact transaction and serial checks, no form entry or clicks. */
+export async function readShippingInspectionTarget({serial,itemId}){
+ if(!/^[0-9]{1,8}[a-z]{0,3}$/.test(serial)||!/^m[0-9]{8,14}$/.test(itemId)||location.hostname!=='jp.mercari.com'||location.pathname!=='/transaction/'+itemId)return {__error:'指定した商品の取引画面ではありません'};
+ const visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden',norm=s=>(s||'').replace(/\s+/g,' ').trim();
+ const end=Date.now()+18000;let root,body,serials=[];
+ do{root=document.body;body=norm(root.innerText);if(document.querySelector('input[type=password],input[autocomplete=one-time-code]')||/ログインしてください|セキュリティチェック|文字認証/.test(body))return {__error:'ログイン・追加認証のため停止しました'};const productText=body+' '+[...root.querySelectorAll('img[alt]')].filter(visible).map(e=>e.alt).join(' ');serials=[...productText.matchAll(/[【\[]([0-9]+[a-z]*)[】\]]/gi)].map(m=>m[1].toLowerCase());if(serials.includes(serial)&&/取引画面|取引情報|発送|配送/.test(body))break;await new Promise(resolve=>setTimeout(resolve,250));}while(Date.now()<end);
+ const serialMatches=serials.includes(serial);
+ const sellerShipping=/発送してください|発送して下さい|商品の発送をお願いします|発送通知をする|商品の発送を通知|発送したことを通知|発送場所を選択|配送用の2次元コード/.test(body);
+ const buyerControls=/商品の到着をお待ち|商品が届いたら|受取評価をする|受け取り評価をする/.test(body);
+ return {itemId,serial,serialMatches,visibility:document.visibilityState,visibleTextLength:body.length,mainCount:document.querySelectorAll('main').length,loadingMarkers:[...root.querySelectorAll('[data-testid]')].filter(e=>visible(e)&&/skeleton|loading|error|empty/i.test(e.getAttribute('data-testid'))).map(e=>e.getAttribute('data-testid')).slice(0,20),sellerShipping,buyerControls,paymentWaiting:/支払い待ち|支払いをお待ち|お支払い待ち/.test(body),statusPhrases:['発送してください','発送して下さい','発送通知をする','配送方法を選択してください','取引が完了しました','発送済み','配送中','アプリで開く','アプリで取引','ページが見つかりません','表示できません','読み込み中'].filter(t=>body.includes(t)),codeElements:[...root.querySelectorAll('canvas,img')].filter(e=>visible(e)&&/QR|2次元|二次元|配送コード/.test(e.getAttribute('alt')||e.getAttribute('aria-label')||e.id||'')).map(e=>({tag:e.tagName,id:e.id||null,testId:e.getAttribute('data-testid'),format:e.tagName==='CANVAS'?'canvas':e.getAttribute('src')?.startsWith('data:')?'data':e.getAttribute('src')?.startsWith('blob:')?'blob':'url'}))};
 }
 /** Exact visible serial match only. No buyer names, input values or unrelated product text. */
 export function readInspectionTarget(serial){
@@ -20,8 +31,8 @@ export function readInspectionTarget(serial){
 /** Fixed diagnostic: returns control structure, never field values, cookies or page HTML. */
 export async function readSellerStructure(){
  const norm=value=>(value||'').replace(/\s+/g,' ').trim(),visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
- const u=new URL(location.href);let root=document.querySelector('main')||document.body;
- const end=Date.now()+10000;while(Date.now()<end){root=document.querySelector('main')||document.body;const t=norm(root.innerText);const ready=u.hostname==='jp.mercari.com'&&u.pathname==='/mypage/listings'?/出品した商品|出品中|取引中|売却済み/.test(t):u.pathname.includes('/sell/create')?!!root.querySelector('input[type="file"],input[name="name"],textarea'):!!t;
+ const u=new URL(location.href);const pageRoot=()=>u.hostname==='jp.mercari.com'&&u.pathname.startsWith('/transaction/')?document.body:document.querySelector('main')||document.body;let root=pageRoot();
+ const end=Date.now()+10000;while(Date.now()<end){root=pageRoot();const t=norm(root.innerText);const ready=u.hostname==='jp.mercari.com'&&u.pathname==='/mypage/listings'?/出品した商品|出品中|取引中|売却済み/.test(t):u.pathname.includes('/sell/create')?!!root.querySelector('input[type="file"],input[name="name"],textarea'):!!t;
   if(ready&&!root.querySelector('[aria-busy="true"]'))break;await new Promise(resolve=>setTimeout(resolve,250));}
  const body=norm(root.innerText);
  if(document.querySelector('input[type="password"],input[autocomplete="one-time-code"]')||/文字認証|認証コードを入力|ロボットではない|セキュリティチェック|ログインしてください/.test(body))throw Error('ログイン・追加認証のため診断を停止しました');
@@ -47,6 +58,14 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  await storage.set({sellerInspectionRequest:request.id,sellerInspectionEvidence:{...evidence,status:'running'}});
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
+  if(request.targetItemId){
+   if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリ1のみです');
+   await session.go('https://jp.mercari.com/transaction/'+request.targetItemId);
+   evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
+   evidence.pages.push({kind:'target-shipping',...await session.structure()});
+   if(evidence.target.serialMatches!==true||!evidence.target.sellerShipping||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定商品に発送待ちの出品者画面を確認できません');
+   evidence.status='completed';return true;
+  }
   let links=await session.links();
   if(request.targetSerial){
    if(account.site!=='mercari')throw Error('対象指定の診断はメルカリ1のみです');
