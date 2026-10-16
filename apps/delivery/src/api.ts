@@ -354,3 +354,28 @@ export async function setInventoryWorkflow(itemId:string,status:ItemStatus):Prom
  const {error}=await getSupabase().rpc('set_inventory_workflow',{p_item_id:itemId,p_status:status});
  if(error)throw error;
 }
+
+export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status'>,action:import('@bussan/shared').InventoryAction,note?:string,requestId=crypto.randomUUID()):Promise<void>{
+ const {error}=await getSupabase().rpc('perform_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_note:note??null,p_request_id:requestId});
+ if(error)throw error;
+}
+export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}
+export interface SellerContext {revision:string;assignee?:string|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
+export async function fetchSellerContext(itemId:string):Promise<SellerContext>{
+ const {data,error}=await getSupabase().rpc('seller_operation_context',{p_item_id:itemId});if(error)throw error;return data as SellerContext;
+}
+export async function queueSellerOperation(itemId:string,kind:string,payload:Record<string,unknown>,requestId:string):Promise<string>{
+ const {data,error}=await getSupabase().rpc('queue_seller_operation',{p_item_id:itemId,p_kind:kind,p_payload:payload,p_request_id:requestId});if(error)throw error;return data as string;
+}
+export async function fetchSupplierConversation(itemId:string):Promise<MarketplaceConversation&{account_id?:string|null}>{
+ const {data,error}=await getSupabase().rpc('supplier_conversation',{p_item_id:itemId});if(error)throw error;return data;
+}
+export async function queueSupplierOperation(itemId:string,kind:'read'|'send',accountId:string,requestId:string,body:string|null=null):Promise<string>{
+ const {data,error}=await getSupabase().rpc('queue_supplier_operation',{p_item_id:itemId,p_kind:kind,p_body:body,p_account_id:accountId,p_request_id:requestId});if(error)throw error;return data;
+}
+export async function fetchSupplierOperation(id:string):Promise<{status:string;note?:string|null}>{
+ const {data,error}=await getSupabase().rpc('read_supplier_operation',{p_id:id});if(error)throw error;return data;
+}
+export async function fetchSellerOperation(id:string):Promise<{status:string;note?:string|null}>{
+ const {data,error}=await getSupabase().rpc('read_seller_operation',{p_id:id});if(error)throw error;return data;
+}

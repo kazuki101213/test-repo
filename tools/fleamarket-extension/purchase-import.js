@@ -1,3 +1,4 @@
+import {validPurchaseTitle} from './purchase-title.js';
 export async function purchaseImportStep(job,a,s){
  const {rpc,navigate,read,save,nextAccount,verifyAccount,task,log,dbSite}=s;
  if(s.lease&&await s.lease(job,a,'acquire')!==true)return save(job);
@@ -45,13 +46,14 @@ export async function purchaseImportStep(job,a,s){
    if(!more.endConfirmed)throw new Error('購入一覧の末尾を確認できません');return nextAccount(job);
   }
   let row={...job.purchaseQueue[job.index]};
+  if(row.title&&!validPurchaseTitle(row.title)){job.counts.checked++;await note(row,'商品名が通知文・操作案内等のため追加しません。商品名を確認してください');job.index++;return save(job);}
   if(!row.purchased_at||!row.title||row.cost_amount===null){
-   await navigate(job,a,row.detailUrl);const d=await read(job.tabId,'purchaseDetail',{account:a,itemId:row.marketplace_item_id,recipe:{scope:'main'}});
-   if(d.auth)throw new Error(d.auth);if(d.cancelled){job.counts.skipped++;job.index++;return save(job);}
+   const navigation=await navigate(job,a,row.detailUrl);const d=await read(job.tabId,'purchaseDetail',{account:a,itemId:row.marketplace_item_id,recipe:{scope:'main',navigation}});
+   if(d.auth)throw new Error(d.auth);if(!d.purchased_at&&d.purchaseBeforeOrOn&&d.purchaseBeforeOrOn<job.purchaseCutoff){job.counts.skipped++;job.index++;return save(job);}if(d.cancelled){job.counts.skipped++;job.index++;return save(job);}
    row={...row,purchased_at:row.purchased_at||d.purchased_at,title:row.title||d.title,cost_amount:row.cost_amount??d.cost_amount};
   }
   job.counts.checked++;
-  if(!row.purchased_at||!row.title){await note(row,'購入日または商品名を確認できないため追加しません');}
+  if(!row.purchased_at||!validPurchaseTitle(row.title)){await note(row,'購入日または有効な商品名を確認できないため追加しません');}
   else if(row.purchased_at>=job.purchaseCutoff&&row.purchased_at<=job.purchaseDay){
    const result=await rpc('marketplace_purchase_import',{p_marketplace:dbSite,p_account_label:a.label,p_purchases:[row]});
    job.counts.imported+=Number(result.inserted)||0;job.counts.skipped+=Number(result.skipped)||0;

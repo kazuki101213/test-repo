@@ -39,7 +39,10 @@ export async function inventoryFirstStep(job,a,services){
  if(job.stage==='detail'){
   if(job.index>=job.matchRows.length)return complete();
   const row=job.matchRows[job.index];await navigate(job,a,row.url);
-  const tx=await read(job.tabId,'detail',{account:a,recipe:{scope:'main'}});
+  let tx;try{tx=await read(job.tabId,'detail',{account:a,recipe:{scope:'main'}});}catch(e){
+   if(!/^(取引の商品IDを1件に確定できません|対象要素が1件に限定できません: main)$/.test(e.message||''))throw e;
+   job.counts.errors++;await task(row.inventory,'画面確認待ち',e.message);job.index++;return save(job);
+  }
   if(tx.auth)throw new Error(tx.auth);
   job.counts.checked++;
   if(tx.itemId!==row.itemId||tx.role==='seller'){await task(row.inventory,'画面確認待ち','商品IDまたは購入者側の詳細を確認できません');}

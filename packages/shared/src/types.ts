@@ -159,6 +159,10 @@ export interface ItemView {
 
 /** app.v_delivery_tasks の 1 行 */
 export interface DeliveryTask {
+  return_request_completed_at?: string | null;
+  supplier_contact_requested_at?: string | null;
+  workflow_decision?: string | null;
+  seller_message_attention?: boolean;
   summary_only?: boolean;
   detail_revision?: string;
   original_marketplace_item_id?: string | null;

@@ -1,1 +1,1 @@
-export const LOADED_BUILD="source-checkout";
+export const LOADED_BUILD="00000000-0000-4000-8000-000000000000";

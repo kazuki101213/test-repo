@@ -1,6 +1,6 @@
 const fs=require('fs'),ts=require('typescript'),vm=require('vm'),assert=require('node:assert/strict');
 const jsx=(type,props)=>({type,props}), shared={jpDate:v=>v,yen:v=>v,canViewDeliveryAssignee:s=>s.code==='AA',productModelText:t=>t.title};
-const mod={exports:{},require:n=>n==='react'?{useState:v=>[v,()=>{}]}:n==='react/jsx-runtime'?{jsx,jsxs:jsx}:n==='@bussan/shared'?shared:{default:'component'}};
+const mod={exports:{},window:{location:{search:''}},URLSearchParams,require:n=>n==='react'?{useState:v=>[typeof v==='function'?v():v,()=>{}],lazy:()=> 'seller-panel',Suspense:'suspense'}:n==='react/jsx-runtime'?{jsx,jsxs:jsx}:n==='@bussan/shared'?shared:{default:'component'}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/delivery/src/components/TaskCard.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,mod);
 function all(n,out=[]){if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);}return out;}
 const task={id:'body',sku:'2392-test',title:'model',purchased_at:'2026-10-01',memo:'購入者のコメント\n改行あり',deliverer_name:'MM',is_accessory:false},member={...task,id:'other',memo:'付属品のコメント',is_accessory:true};

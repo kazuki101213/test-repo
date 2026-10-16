@@ -1,15 +1,11 @@
-import { useState, type SyntheticEvent, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useState, type SyntheticEvent, type KeyboardEvent } from 'react';
 import { jpDate, yen, canViewDeliveryAssignee, productModelText } from '@bussan/shared';
-import type { DeliveryTask, Staff } from '@bussan/shared';
+import type { DeliveryTask, Staff, ProductPanel } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
 import ColoredLabel from './ColoredLabel';
-
-const STEP_FLAGS = (t: DeliveryTask) => [
-  t.inspected && t.cleaned,
-  t.product_registered && (t.marketplace === '動作品Amazon返品' || t.photo_uploaded),
-  t.packed_on !== null,
-  t.shipped_on !== null,
-];
+import WorkflowControls from './WorkflowControls';
+import {fetchTask} from '../api';
+const SellerPanel=lazy(()=>import('./SellerPanel')); 
 
 const MARKETPLACE_HOSTS: Record<string, string[]> = {
   'メルカリ': ['mercari.com'],
@@ -70,8 +66,10 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
 }
 
 export default function TaskCard({ task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
-  const flags = STEP_FLAGS(task);
-  const done = flags.filter(Boolean).length;
+  const [panel,setPanel]=useState<ProductPanel>(()=>new URLSearchParams(window.location.search).get('openMessages')==='1'?'messages':'photos');
+  const [actionError,setActionError]=useState<string|null>(null);
+  async function refreshAction(){const updated=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(updated)onTaskChange(updated);}
+  function openPanel(mode:ProductPanel){setPanel(mode);onOpen();}
   const productIdFor = (item: DeliveryTask) => (item.marketplace === '動作品Amazon返品' ? item.marketplace_item_id : originalMarketplaceIds.get(item.id) || item.marketplace_item_id) || '—';
   const modelFor = productModelText;
   const itemIdLabel = (item: DeliveryTask) => item.marketplace === '動作品Amazon返品' ? 'ENA' : '商品ID';
@@ -102,20 +100,19 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
           {task.memo?.trim() && <span className="purchaser-comment">仕入担当者からのコメント：{task.memo}</span>}
         </div>
         <div className="task-photo-action">
-          <button type="button" className="task-card-photo-button" aria-label={expandedId ? '作業詳細を閉じる' : '写真をクリックして作業詳細を開く'} aria-expanded={!!expandedId} onClick={() => expandedId ? onClose() : onOpen()}>
+          <button type="button" className="task-card-photo-button" aria-label={expandedId&&panel==='photos' ? '写真を閉じる' : '写真を表示'} aria-expanded={!!expandedId} onClick={() => expandedId&&panel==='photos' ? onClose() : openPanel('photos')}>
             {amazonImageUrl ? <img className="task-card-photo" src={amazonImageUrl} alt={`${task.title}のAmazon商品画像`} loading="lazy" /> : <span className="task-card-photo task-card-no-photo" aria-label="Amazon商品画像なし">写真なし</span>}
           </button>
-          <div className="progress" aria-label={`作業 ${done}/${flags.length}`}>
-            {flags.map((f, i) => <span key={i} data-done={f} />)}
-          </div>
         </div>
       </div>
+      <WorkflowControls task={task} onChanged={refreshAction} onError={setActionError} onPanel={openPanel} />
+      {actionError&&<p className="error" role="alert">{actionError}</p>}
       {members.length > 1 && <div className="task-members">
         {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className={`task-member-row${member.is_accessory ? ' task-member-accessory' : ''}`}>
           {member.is_accessory ? <>
             <span className="badge">付属品</span>
             <span className="muted task-member-date">仕入日 {jpDate(member.purchased_at)}</span>
-            <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
+            <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => {setPanel('photos');onOpenMember(member.id);}}>
               品名 {member.title}
             </button>
             <span className="task-item-id-line"><CopyableText label={itemIdLabel(member)} value={productIdFor(member)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
@@ -136,7 +133,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
         </div>)}
       </div>}
       </div>
-      {expandedId && <TaskDetail key={`${expandedId}-${detailRevision}`} itemId={expandedId} latestTask={members.find(member => member.id === expandedId)} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />}
+      {expandedId && (panel==='listing'||panel==='shipping'||panel==='messages'&&(task.status==='取引中'||task.status==='出品中') ? <Suspense fallback={<p>読み込み中…</p>}><SellerPanel mode={panel} task={members.find(member=>member.id===expandedId)??task} staff={staff} onClose={onClose} onChanged={onTaskChange}/></Suspense> : <TaskDetail mode={panel} key={`${expandedId}-${detailRevision}`} itemId={expandedId} latestTask={members.find(member => member.id === expandedId)} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />)}
     </div>
   );
 }

@@ -24,7 +24,7 @@ export function itemId(site,url) {
   try {const u=new URL(url); if(siteFor(url)!==site) return null;
     const p=u.pathname;
     if(site==='mercari') return p.match(/\/(?:item|transaction)\/(m\d+)(?:\/|$)/)?.[1] || null;
-    if(site==='auctions') return p.match(/\/auction\/([a-zA-Z]\d+)(?:\/|$)/)?.[1] || ['aID','aid','auctionID'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||'')) || null;
+    if(site==='auctions') return p.match(/\/auction\/([a-zA-Z]\d+)(?:\/|$)/)?.[1] || ['aID','aid','auctionID','auctionId'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||'')) || null;
     if(site==='flea') return p.match(/\/(?:item|transaction)\/([a-zA-Z]\d+)(?:\/|$)/)?.[1] || null;
     if(site==='rakuma') return p.match(/^\/([a-f0-9]{32})(?:\/|$)/)?.[1] || p.match(/\/(?:item|transaction|trade|deal)\/([a-f0-9]{32})(?:\/|$)/)?.[1] || (p==='/transaction'&&/^[a-f0-9]{32}$/.test(u.searchParams.get('item_id')||'')?u.searchParams.get('item_id'):null);
   } catch {return null;}
@@ -45,7 +45,7 @@ export function eligible(items,tx) {
 export function jstDay(now=Date.now()) {return new Date(now+9*3600000).toISOString().slice(0,10);}
 export function dueTime(hour,now=Date.now()) {return Date.parse(jstDay(now)+'T'+String(hour).padStart(2,'0')+':00:00+09:00');}
 export function nextTime(hour,now=Date.now()) {const d=dueTime(hour,now); return d>now?d:d+86400000;}
-export function settingsDefault(){return {mode:'diagnostic',trackingHour:1,receiptHour:2,accounts:structuredClone(SLOTS),recipes:{}};}
+export function settingsDefault(){return {openNewTabs:false,mode:'diagnostic',trackingHour:1,receiptHour:2,accounts:structuredClone(SLOTS),recipes:{}};}
 export function validateSettings(s) {
   if(!['diagnostic','tracking','full'].includes(s.mode)) throw new Error('動作モードが不正です');
   for(const key of ['trackingHour','receiptHour']) if(!Number.isInteger(s[key])||s[key]<0||s[key]>23) throw new Error('時刻は0〜23時です');

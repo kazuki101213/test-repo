@@ -1,0 +1,2 @@
+import {send,download} from './ui.js';
+try{const report=await send('export');download('fleamarket-extension-'+Date.now()+'-diagnostic.json',report);document.getElementById('result').textContent='診断記録を保存しました';const tab=await chrome.tabs.getCurrent();if(tab?.id)setTimeout(()=>chrome.tabs.remove(tab.id).catch(()=>{}),2000);}catch(e){document.getElementById('result').textContent='診断記録を保存できません: '+e.message;}

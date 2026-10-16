@@ -1,0 +1,2 @@
+const message=document.getElementById('status');
+try{const tab=await chrome.tabs.getCurrent();const r=await chrome.runtime.sendMessage({type:'launchSites',launchTabId:tab.id});if(!r?.ok)throw Error(r?.error||'起動できませんでした');document.querySelector('h1').textContent='フリマの起動準備ができました';message.textContent=r.value.connected?'必要なフリマサイトを開きました。当日分の未実行・タブ不足分を確認します。':'フリマサイトを開きました。管理アプリとの連携を確認してください。';document.getElementById('accounts').textContent=r.value.accounts.join(' / ');if(r.value.connected)setTimeout(()=>chrome.tabs.remove(tab.id),4000);}catch(e){message.textContent=e.message;}
