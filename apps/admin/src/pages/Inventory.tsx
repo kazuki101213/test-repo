@@ -1,11 +1,12 @@
-import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES } from '@bussan/shared';
+import { fetchCompleteInventory, staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES } from '@bussan/shared';
+import {useInventoryPage} from '../hooks/useInventoryPage';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, matchesInventoryFilters } from '@bussan/shared';
 import type { PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
-import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchItems, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
+import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
 import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
@@ -55,24 +56,21 @@ function inventoryRowTone(item: InventoryItem): string {
 }
 
 export default function Inventory({ me }: { me: Staff }) {
-  const [items, setItems] = useState<InventoryItem[]>([]);
+
   const [staff, setStaff] = useState<Staff[]>([]);
   const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
-  const hasInventoryFilters = Object.values(inventoryFilters).some(values => !!values?.length);
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
   const [openColumn, setOpenColumn] = useState<{ field: string; anchor: HTMLElement } | null>(null);
   const closeColumn = useCallback(() => setOpenColumn(null), []);
-  const viewItems = useMemo(() => filterInventoryColumns(items.filter(item => matchesInventoryFilters(item, inventoryFilters)), columnFilters), [items, columnFilters, inventoryFilters]);
-  const activeColumnCount = Object.values(columnFilters).filter(isColumnFilterActive).length;
-  const [count, setCount] = useState(0);
-  const request = useRef(0);
-  const controller = useRef<AbortController | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const activeColumnCount=Object.values(columnFilters).filter(isColumnFilterActive).length;
+  const [error,setError]=useState<string|null>(null);
+  const inventory=useInventoryPage<InventoryItem>('management',me.id,{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters},!!openColumn||activeColumnCount>0);
+  const items=inventory.rows,count=inventory.total,loading=inventory.loading;
+  const viewItems=useMemo(()=>filterInventoryColumns(items.filter(item=>matchesInventoryFilters(item,inventoryFilters)),columnFilters),[items,columnFilters,inventoryFilters]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseDrafts, setPurchaseDrafts] = useState<PurchaseDraft[]>([]);
   const [selectedPurchaseDraft, setSelectedPurchaseDraft] = useState<PurchaseDraft | null>(null);
@@ -86,42 +84,14 @@ export default function Inventory({ me }: { me: Staff }) {
   const inventoryTopScrollRef = useRef<HTMLDivElement>(null);
   const inventoryTableScrollRef = useRef<HTMLDivElement>(null);
 
-  const load = useCallback(async (quiet = false) => {
-    const current = ++request.current;
-    controller.current?.abort();
-    const active = new AbortController();
-    controller.current = active;
-    if (!quiet) { setItems([]); setCount(0); setLoading(true); }
+  const load=async()=>{await inventory.refresh();};
+  async function exportInventory(){
     setError(null);
-    try {
-      if (purchasedFrom && purchasedTo && purchasedFrom > purchasedTo) throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
-      const result = await fetchItems({ queryField, query: query || undefined, purchasedFrom, purchasedTo }, active.signal, quiet ? undefined : progress => {
-        if (current !== request.current) return;
-        setItems(progress.items); setCount(progress.count);
-      });
-      if (current !== request.current) return;
-      setItems(result.items); setCount(result.count);
-    } catch (e) {
-      if (current !== request.current) return;
-      setItems([]); setCount(0);
-      setError(e instanceof Error ? e.message : e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e));
-    } finally {
-      if (current === request.current) setLoading(false);
-    }
-  }, [queryField, query, purchasedFrom, purchasedTo]);
-
-  useEffect(() => { void load(); return () => { request.current++; controller.current?.abort(); }; }, [load]);
-  useEffect(() => {
-    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void load(true); };
-    const timer = window.setInterval(refreshWhenVisible, 30_000);
-    window.addEventListener('focus', refreshWhenVisible);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refreshWhenVisible);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, [load]);
+    try{
+      const rows=await fetchCompleteInventory<InventoryItem>('management',{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters});
+      downloadCsv('inventory-'+new Date().toISOString().slice(0,10)+'.csv',filterInventoryColumns(rows,columnFilters) as unknown as Record<string,unknown>[]);
+    }catch(cause){setError(inventoryError(cause));}
+  }
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
   const loadPurchaseDrafts = useCallback(() => {
     fetchPurchaseDrafts().then(rows => { setPurchaseDrafts(rows); setDraftError(null); }).catch(error => {
@@ -199,7 +169,7 @@ export default function Inventory({ me }: { me: Staff }) {
         <button type="button" className="btn" onClick={clearFilters}>フィルターをすべて解除</button>
         {activeColumnCount > 0 && <span className="sub">項目フィルター {activeColumnCount}件</span>}
         <span style={{ flex: 1 }} />
-        <button className="btn" disabled={loading} onClick={() => downloadCsv(`inventory-${new Date().toISOString().slice(0, 10)}.csv`, viewItems as unknown as Record<string, unknown>[])}>
+        <button className="btn" disabled={loading} onClick={()=>void exportInventory()}>
           一覧をCSV
         </button>
         <button className="btn" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
@@ -223,9 +193,9 @@ export default function Inventory({ me }: { me: Staff }) {
         </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
-      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount || hasInventoryFilters ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount || hasInventoryFilters ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
+      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
 
-      {error && <div className="error">{error}</div>}
+      {(error||inventory.error)&&<div className="error">{error||inventory.error}</div>}
       {loading && items.length === 0 && <div className="empty">読み込み中…</div>}
       {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
@@ -307,7 +277,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </>
       )}
       {!loading && items.length > 0 && viewItems.length === 0 && <p className="empty" role="status">フィルターに一致する在庫はありません。フィルターの条件を変更するか、すべて解除してください。</p>}
-      {visibleCount < viewItems.length && <div ref={loadMoreRef} className="toolbar"><button className="btn" onClick={() => setVisibleCount(current => Math.min(current + 80, viewItems.length))}>さらに表示</button></div>}
+      {(visibleCount<viewItems.length||inventory.more)&&<div ref={loadMoreRef} className="toolbar"><button className="btn" disabled={loading} onClick={()=>{if(visibleCount<viewItems.length)setVisibleCount(current=>Math.min(current+80,viewItems.length));else {setVisibleCount(current=>current+50);inventory.loadMore();}}}>さらに表示</button></div>}
       </section>
       {openColumn && <InventoryColumnFilter key={openColumn.field} field={openColumn.field} anchor={openColumn.anchor} items={items} current={columnFilters[openColumn.field]} onClose={closeColumn} onApply={filter => {
         setColumnFilters(current => { const next = { ...current }; if (filter && isColumnFilterActive(filter)) next[openColumn.field] = filter; else delete next[openColumn.field]; return next; });

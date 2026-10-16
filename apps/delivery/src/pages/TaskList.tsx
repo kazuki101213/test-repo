@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
 import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters, STATUSES } from '@bussan/shared';
-import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, fetchMyTasks, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
+import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
+import {useInventoryPage} from '../hooks/useInventoryPage';
+import {fetchTask} from '../api';
 import { downloadTsv } from '../csv';
 import { deliveryErrorMessage } from '../errors';
 import InventoryStateFilter from '../components/InventoryStateFilter';
@@ -28,7 +30,7 @@ function hasSerialSuffix(task: DeliveryTask): boolean {
 
 export default function TaskList({ staff }: { staff: Staff }) {
   const { sectionRef, shippingRef, viewportHeight } = useTaskViewport();
-  const [tasks, setTasks] = useState<DeliveryTask[]>([]);
+
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
   const [filter, setFilter] = useState<Filter>('検品中');
@@ -39,7 +41,8 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [error, setError] = useState<string | null>(null);
   const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
   const [notices, setNotices] = useState<DeliveryItemNotice[]>([]);
-  const [loading, setLoading] = useState(true);
+  const inventory=useInventoryPage<DeliveryTask>('delivery',staff.id,{status:filter,states:inventoryFilters,queryField,query:queryField==='deliverer'?'':query,delivererId:queryField==='deliverer'?delivererId:''});
+  const tasks=inventory.rows,loading=inventory.loading;
   const [exporting, setExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const detailRevision = 0;
@@ -47,20 +50,18 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const deepLinkHandled = useRef(false);
   const toggleExpanded = (id: string) => setExpandedId(current => current === id ? null : id);
   const updateTask = useCallback((updated: DeliveryTask) => {
-    setTasks(current => current.map(task => task.id === updated.id ? updated : task));
-  }, []);
+    inventory.updateRow(updated);
+  }, [inventory.updateRow]);
 
-  useEffect(() => {
-    if (!deepLinkItemId || deepLinkHandled.current || loading) return;
-    const item = tasks.find(row => row.id === deepLinkItemId);
-    if (!item) return;
-    deepLinkHandled.current = true;
-    setFilter('all');
-    setInventoryFilters({}); setQueryField('sku');
-    setQuery(item.sku);
-    setExpandedId(item.id);
-    if (staff.role === 'admin' && item.deliverer_id) setDelivererId(item.deliverer_id);
-  }, [deepLinkItemId, loading, tasks, staff.role]);
+  useEffect(()=>{
+    if(!deepLinkItemId||deepLinkHandled.current)return;
+    let active=true;
+    void fetchTask(deepLinkItemId,canViewDeliveryAssignee(staff)).then(item=>{
+      if(!active||!item)return;deepLinkHandled.current=true;
+      setFilter('all');setInventoryFilters({});setQueryField('sku');setQuery(item.sku);setExpandedId(item.id);
+    }).catch(cause=>{if(active)setError(deliveryErrorMessage(cause));});
+    return()=>{active=false;};
+  },[deepLinkItemId,staff.id]);
   async function exportAmazon() {
     if (exporting || selected.size === 0) return;
     setExporting(true); setError(null);
@@ -75,36 +76,12 @@ export default function TaskList({ staff }: { staff: Staff }) {
     finally { setExporting(false); }
   }
 
-  useEffect(() => {
-    let active = true;
-    const refresh = async (initial = false) => {
-      try {
-        const rows = await fetchMyTasks(canViewDeliveryAssignee(staff));
-        if (active) { setTasks(rows); setError(null); }
-        try {
-          const latestNotices = await fetchDeliveryItemNotices();
-          if (active) { setNotices(latestNotices); setReplyTaskError(null); }
-        } catch (replyError) {
-          if (active) setReplyTaskError(deliveryErrorMessage(replyError));
-        }
-      } catch (e) {
-        if (active) setError(deliveryErrorMessage(e));
-      } finally {
-        if (active && initial) setLoading(false);
-      }
-    };
-    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
-    void refresh(true);
-    const timer = window.setInterval(refreshWhenVisible, 30_000);
-    window.addEventListener('focus', refreshWhenVisible);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-      window.removeEventListener('focus', refreshWhenVisible);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, []);
+  useEffect(()=>{
+    let active=true,busy=false;
+    const refresh=async()=>{if(busy)return;busy=true;try{const rows=await fetchDeliveryItemNotices();if(active){setNotices(rows);setReplyTaskError(null);}}catch(cause){if(active)setReplyTaskError(deliveryErrorMessage(cause));}finally{busy=false;}};
+    void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},60000);
+    return()=>{active=false;window.clearInterval(timer);};
+  },[staff.id]);
   useEffect(() => {
     if (staff.role === 'admin') void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(deliveryErrorMessage(e)));
   }, [staff.role]);
@@ -116,7 +93,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       if (!hasSerialSuffix(task) || task.marketplace === '動作品Amazon返品') continue;
       const original = tasks.find(candidate => !candidate.is_accessory && !hasSerialSuffix(candidate)
         && baseSerialNumber(candidate) === baseSerialNumber(task) && candidate.marketplace_item_id);
-      const productId = original?.marketplace_item_id || task.marketplace_item_id;
+      const productId = original?.marketplace_item_id || task.original_marketplace_item_id || task.marketplace_item_id;
       if (productId) originalIds.set(task.id, productId);
     }
     const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
@@ -187,13 +164,15 @@ export default function TaskList({ staff }: { staff: Staff }) {
         ))}
       </div>
       <div className="export-actions">
+        <button type="button" className="btn" disabled={loading} onClick={()=>void inventory.refresh()}>再読み込み</button>
+        <span>{shownRows.length} / {inventory.total}商品</span>
         <button className="btn" disabled={exporting || selected.size === 0} onClick={() => void exportAmazon()}>{exporting ? '出力中…' : `Amazon出品ファイル（${selected.size}件）`}</button>
         <button className="btn" disabled={exporting || shownRows.length === 0} onClick={() => setSelected(current => new Set([...current, ...shownRows.map(group => group.task.id)]))}>表示中を選択</button>
         <button className="btn" disabled={exporting || selected.size === 0} onClick={() => setSelected(new Set())}>選択解除</button>
       </div>
 
       {replyTaskError && <div className="error">{replyTaskError}</div>}
-      {error && <div className="error">{error}</div>}
+      {(error||inventory.error) && <div className="error">{error||inventory.error}</div>}
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
@@ -202,6 +181,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;
       })} onOpen={() => toggleExpanded(t.id)} />)}
+      {inventory.more&&<button type="button" className="btn" disabled={loading} onClick={inventory.loadMore}>さらに表示</button>}
     </>
   );
 }

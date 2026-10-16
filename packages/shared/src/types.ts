@@ -159,6 +159,7 @@ export interface ItemView {
 
 /** app.v_delivery_tasks の 1 行 */
 export interface DeliveryTask {
+  original_marketplace_item_id?: string | null;
   id: string;
   sku: string;
   lot_seq: number;

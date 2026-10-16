@@ -16,7 +16,7 @@ export function deliverySearchValue(task: DeliveryTask, field: DeliverySearchFie
   if (field === 'serial') return task.sku.match(/^(\d+[a-z]*)-/i)?.[1] ?? String(task.lot_seq ?? '');
   if (field === 'model') return productModelText(task);
   if (field === 'marketplace_item_id') return (task.marketplace === '動作品Amazon返品'
-    ? task.marketplace_item_id : originalIds.get(task.id) || task.marketplace_item_id) ?? '';
+    ? task.marketplace_item_id : originalIds.get(task.id) || task.original_marketplace_item_id || task.marketplace_item_id) ?? '';
   return task[field] ?? '';
 }
 

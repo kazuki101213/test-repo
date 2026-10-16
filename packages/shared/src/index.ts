@@ -15,3 +15,5 @@ export * from './stateSearch';
 export * from './invoicePdf';
 
 export * from './applicationSwitch';
+
+export * from './inventorySync';
