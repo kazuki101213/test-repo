@@ -345,6 +345,12 @@ export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
   return data as InventoryItem;
 }
 
+export async function fetchInventoryPaymentCard(id: string): Promise<string | null> {
+  const { data, error } = await getSupabase().from('items').select('card_id').eq('id', id).single();
+  if (error) throw error;
+  return data.card_id as string | null;
+}
+
 export async function createItem(input: ItemInsert, spareId?: string): Promise<{ id: string; sku: string; accessory_sku?: string }> {
   const normalizedInput = input;
   if (normalizedInput.marketplace === 'Amazon返品' && normalizedInput.is_accessory && !normalizedInput.lot_seq) {
@@ -401,7 +407,7 @@ export type InventoryEdit = Pick<ItemView,
   'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount' | 'refund_amount'
 > & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount' | 'inventory_refund_amount' | 'marketplace_item_id'>;
 
-export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit): Promise<void> {
+export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit & { card_id?: string | null }): Promise<void> {
   const title = fields.title.trim();
   if (!title || title.length > 500) throw new Error('商品名を入力してください。');
   if (!Number.isSafeInteger(fields.cost_amount) || fields.cost_amount < 0 ||
