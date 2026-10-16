@@ -32,5 +32,3 @@ const signal=new AbortController().signal;await fetchInventoryPage('delivery',{}
 await assert.rejects(fetchInventoryPage('management',{from:'2026-10-20',to:'2026-10-01'},50),/終了日/);
 console.log('Inventory transport: 50/100 paging, fingerprints, deletion, ordering, retained errors/recovery, hidden/focus dedup, per-user cache and abort passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});
-
-
