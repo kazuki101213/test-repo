@@ -33,7 +33,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  const request=await fetchRequest(),previous=(await storage.get('sellerInspectionRequest')).sellerInspectionRequest;
  if(!sellerInspectionApplies(request,profileId,previous))return false;
  const account=settings.accounts.find(a=>a.enabled&&a.id===PROFILE_ACCOUNTS[profileId]);if(!account)return false;
- const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-3'};let session;
+ const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-4'};let session;
  await storage.set({sellerInspectionRequest:request.id,sellerInspectionEvidence:{...evidence,status:'running'}});
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
@@ -48,7 +48,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    if(!formStructure.fileInputs?.length&&direct.length===1){formUrl=direct[0].url;await session.go(formUrl);evidence.pages.push({kind:'listing-form-detail',...await session.structure()});}
    if(session.inspectChoice){for(const kind of ['category','condition','shipping']){
     await session.structure();const opened=await session.inspectChoice(kind);(evidence.choiceAttempts??=[]).push({kind,opened});
-    if(opened){evidence.pages.push({kind:'choice-'+kind,...await session.structure()});await session.go(formUrl);}
+    if(opened){evidence.pages.push({kind:'choice-'+kind,...await session.structure()});if(kind==='category'&&account.site==='auctions'&&await session.inspectChoice('category-search'))evidence.pages.push({kind:'choice-category-search',...await session.structure()});await session.go(formUrl);}
    }}
   }else evidence.listing='出品フォームへの実リンクを取得できません';
   const trading=links.find(link=>/^(取引中|出品終了分)$/.test(link.text));
