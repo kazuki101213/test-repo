@@ -1,11 +1,13 @@
 const PROFILE_ACCOUNTS={
  'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':'auctions-1',
  'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1',
+ '51502a66-28a6-4af0-81ea-660e63d8b66c':'mercari-2',
 };
 export function sellerInspectionApplies(request,profileId,previous,now=Date.now()){
  if(!request||!PROFILE_ACCOUNTS[profileId]||request.id===previous||!/^[-0-9a-f]{36}$/i.test(request.id||''))return false;
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
- return request.kind==='seller-readonly-structure'&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&profileId==='f29f12b6-35f2-4e9f-8312-a8321ddf3c12')&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
+ if(request.advanceShippingSize!=null&&(request.advanceShippingSize!==true||profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||request.targetSerial!=='1805a'||request.targetItemId!=='m99125688368'))return false;
+ return request.kind==='seller-readonly-structure'&&(profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||!!request.targetItemId)&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&['f29f12b6-35f2-4e9f-8312-a8321ddf3c12','51502a66-28a6-4af0-81ea-660e63d8b66c'].includes(profileId))&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
 }
 /** User-supplied item ID: exact transaction and serial checks, no form entry or clicks. */
 export async function readShippingInspectionTarget({serial,itemId}){
@@ -54,16 +56,20 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  const request=await fetchRequest(),previous=(await storage.get('sellerInspectionRequest')).sellerInspectionRequest;
  if(!sellerInspectionApplies(request,profileId,previous))return false;
  const account=settings.accounts.find(a=>a.enabled&&a.id===PROFILE_ACCOUNTS[profileId]);if(!account)return false;
- const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-10'};let session;
+ const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:request.advanceShippingSize!==true,approvedUiAdvance:request.advanceShippingSize===true,adapterRevision:'native-choices-20261016-11'};let session;
  await storage.set({sellerInspectionRequest:request.id,sellerInspectionEvidence:{...evidence,status:'running'}});
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
   if(request.targetItemId){
-   if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリ1のみです');
+   if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリのみです');
    await session.go('https://jp.mercari.com/transaction/'+request.targetItemId);
    evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
    evidence.pages.push({kind:'target-shipping',...await session.structure()});
    if(evidence.target.serialMatches!==true||!evidence.target.sellerShipping||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定商品に発送待ちの出品者画面を確認できません');
+   if(session.inspectChoice&&await session.inspectChoice('shipping-details')){
+    const choices=await session.structure();evidence.pages.push({kind:'shipping-choices',...choices});
+    if(request.advanceShippingSize===true&&choices.path.endsWith('/shipping_class')){await session.inspectionShippingPlace({itemId:request.targetItemId,size:'100'});evidence.pages.push({kind:'shipping-place',...await session.structure()});}
+   }
    evidence.status='completed';return true;
   }
   let links=await session.links();
