@@ -35,7 +35,14 @@ export async function sellerDomOperation({job,phase,files=[]}){
   if(category){const search=await waitFor(()=>[...document.querySelectorAll('input')].filter(e=>visible(e)&&/カテゴリー名を検索|カテゴリ名を検索/.test(label(e))).find(e=>e.type==='text'||e.type==='search'),'カテゴリー検索欄を確認できません');setValue(search,target);}
   const selected=await waitFor(()=>{
    const scopes=[...document.querySelectorAll('[role="dialog"]')].filter(visible),scope=scopes.at(-1)||document.querySelector('main')||document.body;
-   const options=[...scope.querySelectorAll('a,button,[role="option"],label')].filter(e=>visible(e)&&!e.disabled&&e!==trigger&&choiceText(buttonLabel(e))===wanted);
+   if(/配送/.test(names[0])){
+    const radios=[...scope.querySelectorAll('input[type="radio"][name="selectedShippingMethod"]')].filter(e=>visible(e)&&!e.disabled&&(norm(label(e))===target||norm(label(e)).startsWith(target+' ')));
+    if(radios.length===1)return radios[0];if(radios.length>1)throw Error('配送方法の選択肢が曖昧です');
+   }
+   const options=[...scope.querySelectorAll('a,button,[role="option"],label')].filter(e=>{
+    if(!visible(e)||e.disabled||e===trigger)return false;
+    const t=buttonLabel(e);return choiceText(t)===wanted||(/状態/.test(names[0])&&/^condition-[1-6]-row$/.test(e.getAttribute('data-testid')||'')&&t.startsWith(target+' '))||(category&&e.tagName==='A'&&t.startsWith(target+' '));
+   });
    return options.length===1?options[0]:null;
   },'選択肢を1件に確認できません：'+names[0]);
   selected.click();await sleep(500);root=document.querySelector('main')||document.body;

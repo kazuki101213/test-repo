@@ -26,15 +26,15 @@ export async function readSellerStructure(){
  }).filter(Boolean).slice(0,100);
  const links=[...root.querySelectorAll('a[href]')].filter(visible).flatMap(e=>{const text=norm(e.innerText);if(!/^(出品|出品する|出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|取引ナビ|発送する|配送方法を選択する)$/.test(text))return [];try{const x=new URL(e.href);return [{text,host:x.hostname,path:x.pathname,queryKeys:[...x.searchParams.keys()]}];}catch{return [];}}).slice(0,30);
  const notices=[...root.querySelectorAll('p,[role="status"],h2,h3,span')].filter(e=>visible(e)&&!e.children.length).map(e=>norm(e.innerText)).filter(t=>t.length<100&&/商品.*(?:ありません|ない|ございません)|取引.*(?:ありません|ない|ございません)|読み込み中|エラー|発送して|発送待ち|支払い待ち|チャージ完了/.test(t)).slice(0,12);
- return {host:u.hostname,path:u.pathname.replace(/\b(?:m[0-9]{7,}|[a-z][0-9]{8,})\b/gi,'[item]'),queryKeys:[...u.searchParams.keys()],notices,controls,links,headings:[...root.querySelectorAll('h1,h2,h3')].filter(visible).map(e=>norm(e.innerText)).filter(t=>recognized.test(t)&&t.length<80).slice(0,12),fileInputs:[...root.querySelectorAll('input[type="file"]')].map(e=>({accept:e.accept,multiple:e.multiple,disabled:e.disabled,id:e.id||null,name:e.name||null,visible:visible(e),section:section(e)})),backingFields:[...root.querySelectorAll('select,textarea')].filter(e=>!visible(e)).map(e=>({tag:e.tagName,id:e.id||null,name:e.name||null,section:section(e)})).slice(0,30),editorFrames:[...root.querySelectorAll('iframe')].map(e=>({id:e.id||null,title:e.title||null})),shippingCodesVisible:!!root.querySelector('canvas[aria-label*="QR"],img[alt*="QR"],img[alt*="2次元"]')};
+ return {host:u.hostname,path:u.pathname.replace(/\b(?:m[0-9]{7,}|[a-z][0-9]{8,})\b/gi,'[item]'),queryKeys:[...u.searchParams.keys()],notices,controls,links,headings:[...root.querySelectorAll('h1,h2,h3')].filter(visible).map(e=>norm(e.innerText)).filter(t=>recognized.test(t)&&t.length<80).slice(0,12),fileInputs:[...root.querySelectorAll('input[type="file"]')].map(e=>({accept:e.accept,multiple:e.multiple,disabled:e.disabled,id:e.id||null,name:e.name||null,visible:visible(e),section:section(e)})),backingFields:[...root.querySelectorAll('select,textarea')].filter(e=>!visible(e)).map(e=>({tag:e.tagName,id:e.id||null,name:e.name||null,section:section(e),options:e.tagName==='SELECT'?[...e.options].slice(0,50).map(o=>norm(o.text)):undefined})).slice(0,30),publicSettings:[...root.querySelectorAll('input[type=checkbox],input[type=radio]')].filter(e=>/auto|extend|relist|自動|延長|再出品/i.test((e.name||'')+' '+(e.id||'')+' '+label(e))).map(e=>({id:e.id||null,name:e.name||null,label:label(e),type:e.type,checked:e.checked,visible:visible(e)})).slice(0,20),editorFrames:[...root.querySelectorAll('iframe')].map(e=>{let editable=false;try{editable=e.contentDocument?.body?.isContentEditable===true;}catch{}return {id:e.id||null,title:e.title||null,editable};}),shippingCodesVisible:!!root.querySelector('canvas[aria-label*="QR"],img[alt*="QR"],img[alt*="2次元"]')};
 }
 /** Borrow registered seller tabs once; no data entry, submission, RPC writes or new tabs. */
 export async function runSellerReadOnlyInspection({settings,profileId,storage,fetchRequest,openSession,log}){
  const request=await fetchRequest(),previous=(await storage.get('sellerInspectionRequest')).sellerInspectionRequest;
  if(!sellerInspectionApplies(request,profileId,previous))return false;
  const account=settings.accounts.find(a=>a.enabled&&a.id===PROFILE_ACCOUNTS[profileId]);if(!account)return false;
- await storage.set({sellerInspectionRequest:request.id});
- const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-2'};let session;
+ const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-3'};let session;
+ await storage.set({sellerInspectionRequest:request.id,sellerInspectionEvidence:{...evidence,status:'running'}});
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
   let links=await session.links();
@@ -43,9 +43,9 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
   const list=links.find(link=>/^(出品した商品|出品一覧|出品中)$/.test(link.text));
   if(list){await session.go(list.url);evidence.pages.push({kind:'seller-list',...await session.structure()});const current=await session.links();links=[...links,...current];}
   if(form){
-   await session.go(form.url);evidence.pages.push({kind:'listing-form',...await session.structure()});let formUrl=form.url;
+   await session.go(form.url);const formStructure=await session.structure();evidence.pages.push({kind:'listing-form',...formStructure});let formUrl=form.url;
    const direct=(await session.links()).filter(link=>/^(出品|出品する|出品フォーム)$/.test(link.text)&&link.url!==form.url);
-   if(direct.length===1){formUrl=direct[0].url;await session.go(formUrl);evidence.pages.push({kind:'listing-form-detail',...await session.structure()});}
+   if(!formStructure.fileInputs?.length&&direct.length===1){formUrl=direct[0].url;await session.go(formUrl);evidence.pages.push({kind:'listing-form-detail',...await session.structure()});}
    if(session.inspectChoice){for(const kind of ['category','condition','shipping']){
     await session.structure();const opened=await session.inspectChoice(kind);(evidence.choiceAttempts??=[]).push({kind,opened});
     if(opened){evidence.pages.push({kind:'choice-'+kind,...await session.structure()});await session.go(formUrl);}
