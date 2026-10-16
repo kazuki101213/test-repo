@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { jpDate, canViewDeliveryAssignee } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff } from '@bussan/shared';
 import {
-  addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoUrls, fetchTask, postComment,
-  queueMarketplaceMessage, requestMarketplaceMessageSync, recordListingPhotoUpload, uploadPhoto,
+  addPhotosToDrive, deletePhoto, fetchComments, fetchSupplierConversation, fetchSupplierOperation, fetchPhotoReview, fetchPhotoUrls, fetchTask, postComment,
+  queueSupplierOperation, recordListingPhotoUpload, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
@@ -15,6 +15,8 @@ export default function TaskDetail({
 }: { mode?: 'photos'|'description'|'messages'|'comments'; itemId: string; latestTask?: DeliveryTask; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
   const [task, setTask] = useState<DeliveryTask | null>(null);
   const openedReported = useRef(false);
+  const [supplierAccount,setSupplierAccount]=useState('');
+  const supplierRequest=useRef(crypto.randomUUID());
   const autoOpenedMessages = useRef(false);
   const [comments, setComments] = useState<ItemComment[]>([]);
   const [photos, setPhotos] = useState<ItemPhoto[]>([]);
@@ -69,15 +71,21 @@ export default function TaskDetail({
 
   async function displayMarketplaceMessages() {
     if (!task || marketplaceLoading) return;
-    if (marketplaceVisible) { setMarketplaceVisible(false); return; }
     setMarketplaceVisible(true); setMarketplaceLoading(true); setMarketplaceError('');
     try {
-      const current = await fetchMarketplaceConversation(itemId); setMarketplaceConversation(current);
+      const current = await fetchSupplierConversation(itemId); setMarketplaceConversation(current);
+      if(current.account_id&&!supplierAccount)setSupplierAccount(current.account_id);
       if (current.expired) { setMarketplaceError('梱包完了から7日を過ぎたため、取引メッセージは保存期間終了です。'); return; }
-      if (!current.first_app_sent_at) { setMarketplaceError('アプリから取引メッセージを送信した後に、相手のメッセージを確認できます。'); return; }
-      await requestMarketplaceMessageSync(itemId);
+
+      const supplierRequestId=await queueSupplierOperation(itemId,'read',supplierAccount||current.account_id||'',supplierRequest.current);supplierRequest.current=crypto.randomUUID();
       const deadline = Date.now() + 120000;
-      while (Date.now() < deadline) { await new Promise(resolve => window.setTimeout(resolve, 4000)); const updated = await fetchMarketplaceConversation(itemId); setMarketplaceConversation(updated); if (updated.sync?.status === 'completed') { if(updated.sync.result_note)setMarketplaceError(updated.sync.result_note); return; } if (updated.sync?.status === 'failed') { setMarketplaceError(updated.sync.result_note || '拡張機能で取引メッセージを確認できませんでした。'); return; } }
+      while (Date.now() < deadline) {
+       await new Promise(resolve=>window.setTimeout(resolve,4000));
+       const updated=await fetchSupplierOperation(supplierRequestId);
+       if(updated.status==='succeeded'||updated.status==='failed'){
+        setMarketplaceConversation(await fetchSupplierConversation(itemId));if(updated.status==='failed')setMarketplaceError(updated.note||'取引メッセージを確認できませんでした');return;
+       }
+      }
       setMarketplaceError('拡張機能の確認待ちです。ログイン済みChromeで拡張機能を起動し、もう一度「メッセージを表示」を押してください。');
     } catch (cause) { setMarketplaceError(cause instanceof Error ? cause.message : String(cause)); } finally { setMarketplaceLoading(false); }
   }
@@ -188,27 +196,15 @@ export default function TaskDetail({
     setMarketplaceSending(true);
     setMarketplaceError('');
     try {
-      const requestId = await queueMarketplaceMessage(task.id, marketplaceDraft.trim());
-      setMarketplaceDraft('');
+      const requestId = await queueSupplierOperation(task.id,'send',supplierAccount,supplierRequest.current,marketplaceDraft.trim());
+      setMarketplaceDraft('');supplierRequest.current=crypto.randomUUID();
       const deadline = Date.now() + 120000;
-      while (Date.now() < deadline) {
-        const updated = await fetchMarketplaceConversation(task.id);
-        setMarketplaceConversation(updated);
-        if (updated.expired) {
-          setMarketplaceError('梱包完了から7日を過ぎたため、送信結果を確認できません。');
-          return;
-        }
-        const request = updated.outbox.find(row => row.id === requestId);
-        if (!request) {
-          setMarketplaceError('送信依頼は登録されましたが、結果を読み取れませんでした。再送前に会話を再読み込みしてください。');
-          return;
-        }
-        if (request.status === 'sent') return;
-        if (request.status === 'failed' || request.status === 'uncertain') {
-          setMarketplaceError(request.result_note || (request.status === 'failed' ? 'フリマサイトへの送信に失敗しました。' : '送信結果を確認できません。フリマサイト上の送信状況を確認してください。'));
-          return;
-        }
-        await new Promise(resolve => window.setTimeout(resolve, 3000));
+      while(Date.now()<deadline){
+       const state=await fetchSupplierOperation(requestId);
+       if(['succeeded','failed','uncertain'].includes(state.status)){
+        setMarketplaceConversation(await fetchSupplierConversation(itemId));if(state.status!=='succeeded')setMarketplaceError(state.note||'送信結果を確認してください');return;
+       }
+       await new Promise(resolve=>window.setTimeout(resolve,4000));
       }
       setMarketplaceError('送信依頼は登録されていますが、拡張機能からの結果待ちです。送信状態を再確認してください。');
     } catch (cause) {
@@ -226,6 +222,7 @@ export default function TaskDetail({
     );
   }
 
+  const supplierAccounts=task.marketplace==='メルカリ'?[['mercari-1','メルカリ1'],['mercari-2','メルカリ2']]:task.marketplace==='ヤフオク'?[['auctions-1','ヤフオク1'],['auctions-2','ヤフオク2']]:task.marketplace==='ラクマ'?[['rakuma-1','ラクマ1']]:[['flea-1','Yahoo!フリマ1'],['flea-2','Yahoo!フリマ2']];
   const isWorkingAmazonReturn = task.marketplace === '動作品Amazon返品';
 
   return (
@@ -293,12 +290,13 @@ export default function TaskDetail({
 
       {mode === 'messages' && <div className="card marketplace-conversation" aria-label="フリマサイト取引メッセージ">
         <div className="marketplace-conversation-heading"><strong>取引メッセージ</strong><span className="muted"><ColoredLabel value={task.marketplace} /> · {task.marketplace_item_id || '取引IDなし'}</span></div>
+        <label>購入アカウント<select aria-label="仕入先の購入アカウント" value={supplierAccount} onChange={event=>setSupplierAccount(event.target.value)}><option value="">選択</option>{supplierAccounts.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
         {!task.marketplace_item_id ? <p className="muted">商品IDが登録されていないため、取引メッセージを連携できません。</p> : <>
-          <button type="button" className="btn" disabled={marketplaceLoading} onClick={() => void displayMarketplaceMessages()}>{marketplaceLoading ? '確認中…' : marketplaceVisible ? 'メッセージを閉じる' : 'メッセージを表示'}</button>
+          <button type="button" className="btn" disabled={marketplaceLoading} onClick={() => void displayMarketplaceMessages()}>{marketplaceLoading ? '確認中…' : 'メッセージを取得'}</button>
           {marketplaceError && <p className="error" role="alert">{marketplaceError}</p>}
           {marketplaceVisible && <>
             <div className="marketplace-message-list" aria-live="polite">
-              {marketplaceConversation.messages.length === 0 && <p className="muted">アプリから送信した後の相手メッセージはありません。</p>}
+              {marketplaceConversation.messages.length === 0 && <p className="muted">取引メッセージはまだ取得されていません。</p>}
               {marketplaceConversation.messages.map(message => <article key={message.id} className="marketplace-message" data-author={message.author_role}>
                 <div className="meta">{message.author || (message.author_role === 'self' ? '自分' : '取引相手')}{message.sent_at ? ' · ' + new Date(message.sent_at).toLocaleString('ja-JP') : ''}</div><p>{message.body}</p>
               </article>)}

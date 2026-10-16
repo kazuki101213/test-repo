@@ -21,6 +21,9 @@ globalThis.fetch=async(url,options)=>{
   else if(name==='marketplace_extension_runtime_report')result={reported:true};
   else if(name==='marketplace_tracking_candidates')result={day:'2026-10-05',cutoff:'2026-09-05',items:[]};
   else if(name==='marketplace_extension_probe')result={count:1,items:[{sku:'123-TEST-20261004-1',inspected_at:'2026-10-04',cleaned_at:'2026-10-04'}]};
+  else if(name==='extension_supplier_queue')result=[];
+  else if(name==='extension_seller_queue')result=[];
+  else if(name==='extension_seller_daily_barrier')result=false;
   else if(name==='reconcile_marketplace_tracking')result={result:'updated'};
   else if(name==='marketplace_extension_receipt')result=args.p_action==='reserve'?{eligible:true,token:'00000000-0000-0000-0000-000000000001'}:{ok:true};
   else throw new Error('Unexpected network request '+url);

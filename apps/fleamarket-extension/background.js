@@ -1,3 +1,5 @@
+import {supplierQueuedOperations} from './supplier-runtime.js';
+import {sellerDaily,sellerQueuedOperations,openSellerSession} from './seller-runtime.js';
 import {readSellerInventory} from './sales-status.js';
 import {openLauncherSites,missingTabRecovery,desktopRequestApplies} from './launcher.js';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
@@ -12,7 +14,7 @@ import {SITES,API,PUBLIC_KEY,assertSiteUrl,siteFor,eligible,jstDay,dueTime,nextT
 import {rpc,connectSession} from './api.js';
 import {checkPackageUpdate,LOADED_BUILD} from './updates.js';
 const STORE=chrome.storage.local;
-let busy=false;let focusRestore=null;let dailyStarting=false;let launcherChain=Promise.resolve();const readyLaunchTabs=new Set();
+let sellerBusy=false;let busy=false;let focusRestore=null;let dailyStarting=false;let launcherChain=Promise.resolve();const readyLaunchTabs=new Set();
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function getSettings(){const {settings}=await STORE.get('settings');return settings||settingsDefault();}
 async function log(kind,text,extra={}){const {events=[]}=await STORE.get('events');events.unshift({at:new Date().toISOString(),kind,text,...extra});await STORE.set({events:events.slice(0,200)});await chrome.action.setBadgeText({text:kind==='error'?'!':''});}
@@ -90,7 +92,7 @@ async function flushOutbox(){const {outbox=[]}=await STORE.get('outbox');if(!out
 function prepareAccount(a){const copy=structuredClone(a);if(copy.site==='auctions'&&copy.listUrl==='https://auctions.yahoo.co.jp/my/won'&&copy.identity)copy.identity.pageUrl=copy.listUrl;if(copy.site==='flea'&&copy.listUrl==='https://paypayfleamarket.yahoo.co.jp/my/purchase'&&copy.identity)copy.identity.pageUrl=copy.listUrl;return copy;}
 async function diagnosticReport(force=false){if((await getSettings()).openNewTabs===false)return;if(force||(await getSettings()).mode==='diagnostic')await chrome.tabs.create({url:chrome.runtime.getURL('report.html'),active:false}).catch(()=>{});}
 async function capturePage(job,a,stage){if(job.settings.mode!=='diagnostic'&&job.kind!=='purchases')return;try{const d=await content(job.tabId,'diagnostic');const {pages=[]}=await STORE.get('pages');pages.push({at:new Date().toISOString(),account:a.label,stage,...d});await STORE.set({pages:pages.slice(-60)});}catch{}}
-async function start(kind,manual=false){if(!['tracking','receipt','messages','purchases'].includes(kind))throw new Error('処理種別が不正です');const {job,operationPolicy}=await STORE.get(['job','operationPolicy']);if(operationPolicy&&!operationPolicy.includes(kind))throw new Error('この運用では発送・メッセージ・購入などは実行しません');if(job)throw new Error('別の巡回を実行中です');const s=await getSettings();const accounts=s.accounts.filter(a=>a.enabled).map(prepareAccount);if(!accounts.length)throw new Error('このChromeプロファイルのアカウントを登録してください');
+async function start(kind,manual=false){if(sellerBusy)throw Error('販売サイトの確認中です。完了後に操作してください');if(!['tracking','receipt','messages','purchases'].includes(kind))throw new Error('処理種別が不正です');const {job,operationPolicy}=await STORE.get(['job','operationPolicy']);if(operationPolicy&&!operationPolicy.includes(kind))throw new Error('この運用では発送・メッセージ・購入などは実行しません');if(job)throw new Error('別の巡回を実行中です');const s=await getSettings();const accounts=s.accounts.filter(a=>a.enabled).map(prepareAccount);if(!accounts.length)throw new Error('このChromeプロファイルのアカウントを登録してください');
   if(kind==='purchases'&&s.mode==='diagnostic')throw new Error('診断モードでは仕入れリストへ追加しません');if(kind==='receipt'&&s.mode!=='full')throw new Error('受け取り評価は実画面検証と切り替え後に有効になります');
   // 診断モードにはSupabaseの読み取り照合も含むが、登録・評価送信は行わない。
   if(await rpc('is_admin')!==true)throw new Error('管理アプリとの連携を確認してください');
@@ -106,7 +108,7 @@ async function recoverSend(job,a){
   if(p){await rpc('marketplace_extension_receipt',receiptArgs(a,p.itemId,'unknown',p.token,'Chrome停止等により送信結果が未確認')).catch(()=>{});await task(a,'評価結果要確認','受け取り評価','送信済みか判定できないため自動再送を停止しています',p.itemId);}
   delete job.pendingReceipt;job.stage='detail';job.index++;job.counts.errors++;await STORE.set({job});
 }
-async function step(){if(await launchPending())return;if(busy)return;busy=true;try{
+async function step(){if(sellerBusy)return;if(await launchPending())return;if(busy)return;busy=true;try{
   let {job}=await STORE.get('job');if(!job){await flushOutbox();return;}
   const a=prepareAccount(job.accounts[job.accountIndex]),r=job.settings.recipes[a.site]||{};
   if(job.stage==='sending'){await recoverSend(job,a);return;}
@@ -187,21 +189,21 @@ async function step(){if(await launchPending())return;if(busy)return;busy=true;t
     // 認証・画面異常があるアカウントはこの回の巡回を停止。利用者用にタブを残す。
     job.tabId=null;await nextAccount(job);
   }
-}finally{if(focusRestore){const restore=focusRestore;focusRestore=null;try{const [current]=await chrome.tabs.query({active:true,currentWindow:true});if(current?.id===restore.scan)await chrome.tabs.update(restore.previous,{active:true});}catch{}}busy=false;if(!(await STORE.get('job')).job)await checkPackageUpdate({runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy,record:log}).catch(e=>log('error','更新確認: '+e.message));}}
+}finally{if(focusRestore){const restore=focusRestore;focusRestore=null;try{const [current]=await chrome.tabs.query({active:true,currentWindow:true});if(current?.id===restore.scan)await chrome.tabs.update(restore.previous,{active:true});}catch{}}busy=false;if(!(await STORE.get('job')).job)await checkPackageUpdate({runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy||sellerBusy,record:log}).catch(e=>log('error','更新確認: '+e.message));}}
 async function recoverConnection(){
  const {authProblem,authRecoveryAttempt}=await STORE.get(['authProblem','authRecoveryAttempt']);
  if(!authProblem)return true;
  if(authRecoveryAttempt?.at&&Date.now()-Date.parse(authRecoveryAttempt.at)<15*60000)return false;
  await STORE.set({authRecoveryAttempt:{at:new Date().toISOString()}});
  try{
-  const tabs=await chrome.tabs.query({url:'https://bussan-admin.vercel.app/*'});
+  const tabs=await chrome.tabs.query({url:['https://test-repo-delivery.vercel.app/*','https://bussan-admin.vercel.app/*']});
   if(!tabs.length)throw Error('既存の管理アプリのタブにログインしてください。新しいタブは開きません');
   await uiMessage({type:'connect',automatic:true});
   await log('info','ログイン済み管理アプリから連携を復旧しました。本日の未実行分を再開します');
   await reportRuntimeStatus();await diagnosticReport(true);return true;
  }catch(e){const reason=/管理者が違い/.test(e.message)?'admin-mismatch':/ログインして|ログインしてください|JWT|token.*expired/i.test(e.message)?'admin-login-required':'admin-link-required';await STORE.set({authRecoveryAttempt:{at:new Date().toISOString(),reason}});await log('error','定期巡回は管理アプリの再連携待ちです。ログイン済み管理アプリで連携を押してください',{reason});await diagnosticReport(true);return false;}
 }
-async function due(onlyPurchases=false){if(await launchPending())return;if(dailyStarting)return;dailyStarting=true;try{return await dueOnce(onlyPurchases);}finally{dailyStarting=false;}}
+async function due(onlyPurchases=false){if(sellerBusy)return;if(await launchPending())return;if(dailyStarting)return;dailyStarting=true;try{return await dueOnce(onlyPurchases);}finally{dailyStarting=false;}}
 async function dueOnce(onlyPurchases=false){if(!await recoverConnection())return;const s=await getSettings();const records=await STORE.get(['lastRun','scheduledRuns','trackingAccessHistory','job']);if(records.job)return;
   const {operationPolicy}=await STORE.get('operationPolicy');if(!operationPolicy||operationPolicy.includes('messages'))try{
     const sites=[...new Set(s.accounts.filter(a=>a.enabled).flatMap(a=>SITES[a.site].db))];
@@ -235,7 +237,7 @@ async function uiMessage(m){
   if(m.type==='disconnect'){if((await STORE.get('job')).job)throw new Error('先に巡回を停止してください');await STORE.remove(['session','authProblem','authRecoveryAttempt']);return {disconnected:true};}
   if(m.type==='connect'){
     if(m.automatic===true){const {session}=await STORE.get('session');if(!session?.access_token)throw Error('手動で連携してください');}
-    const tabs=await chrome.tabs.query({url:'https://bussan-admin.vercel.app/*'});
+    const tabs=await chrome.tabs.query({url:['https://test-repo-delivery.vercel.app/*','https://bussan-admin.vercel.app/*']});
     if(!tabs.length)throw new Error('既存の管理アプリのタブにログインして連携してください。新しいタブは開きません');
     let existing,adminTab,mismatched=false;
     const {session:linked}=await STORE.get('session');
@@ -307,7 +309,7 @@ chrome.runtime.onMessage.addListener((m,sender,respond)=>{
 });
 chrome.runtime.onInstalled.addListener(()=>void initialize());
 chrome.runtime.onStartup.addListener(()=>void initialize().then(resumeLauncherRecovery).then(due).then(step).catch(e=>log('error',e.message)));
-chrome.alarms.onAlarm.addListener(a=>{if(a.name==='fm:update'){void processDesktopLaunchRequest().then(()=>checkPackageUpdate({runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy,record:log})).catch(e=>log('error','更新確認: '+e.message));return;}if(a.name.startsWith('fm:'))void (async()=>{if(initializationPending)await initialization.catch(()=>{});if(a.name!=='fm:pulse')await schedule(a.name);await runPendingDiagnostic();if(!busy&&await recoverConnection())await applyProductionPlan();await resumeLauncherRecovery();await repairImportedTitles();await retryYahooTrackingRepair();await retryRakumaRepair();await due();await step();})().catch(e=>log('error',e.message));});
+chrome.alarms.onAlarm.addListener(a=>{if(a.name==='fm:update'){void processDesktopLaunchRequest().then(()=>checkPackageUpdate({runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy||sellerBusy,record:log})).catch(e=>log('error','更新確認: '+e.message));return;}if(a.name.startsWith('fm:'))void (async()=>{if(initializationPending)await initialization.catch(()=>{});if(a.name!=='fm:pulse')await schedule(a.name);await runPendingDiagnostic();if(!busy&&await recoverConnection())await applyProductionPlan();await resumeLauncherRecovery();await repairImportedTitles();await retryYahooTrackingRepair();await retryRakumaRepair();await due();await step();await runSellerWork();})().catch(e=>log('error',e.message));});
 void initialize().catch(e=>log('error',e.message));
 
 async function retryRakumaRepair(){
@@ -375,4 +377,16 @@ async function prepareDesktopLaunchRequest(){
  const status={at:new Date().toISOString(),source:'desktop-request',...result,recoveryAccounts:recovery.requests.reduce((n,r)=>n+r.accounts.length,0),connected:!!records.session?.access_token&&!records.authProblem};
  await STORE.set({lastDesktopLaunchRequest:request.id,launcherStatus:status,launcherRecoveryMarks:recovery.marks,launcherRecoveryQueue:[...(records.launcherRecoveryQueue||[]).filter(q=>q.day===jstDay()),...recovery.requests]});
  await log('info','デスクトップの起動要求でフリマサイトを準備しました',{created:result.created,reused:result.reused});
+}
+
+async function runSellerWork(){
+ if(sellerBusy||busy||await launchPending())return;
+ const records=await STORE.get(['session','authProblem','job','diagnosticInstance','lastRun','scheduledRuns','sellerDailyAttempt','sellerBarrierDay','sellerBarrierError','sellerQueueErrorDay']);
+ if(records.job||records.authProblem||!records.session?.access_token||!PRODUCTION_PLAN.profiles[records.diagnosticInstance])return;
+ const settings=await getSettings();if(settings.mode==='diagnostic')return;
+ sellerBusy=true;try{
+  const dependencies={settings,storage:STORE,rpc,log,openSession:account=>openSellerSession(prepareAccount(account),{tabs:chrome.tabs,scripting:chrome.scripting,identity:(tabId,account)=>content(tabId,'identity',{account})})};
+  if(records.sellerQueueErrorDay!==jstDay())try{await supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log});await sellerQueuedOperations(dependencies);}catch(error){await STORE.set({sellerQueueErrorDay:jstDay()});await log('error','販売操作の取得を停止しました。自動再試行はしません：'+error.message);}
+  await sellerDaily({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance});
+ }finally{sellerBusy=false;}
 }

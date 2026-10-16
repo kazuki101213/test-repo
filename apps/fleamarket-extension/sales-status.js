@@ -19,7 +19,7 @@ export function readSellerInventory(){
   if(!match)continue;
   const serial=match[1].toLowerCase();
   // Yahoo ended auctions enter transactions only for this specific shipping instruction.
-  const status=channel==='ヤフオク'?(/商品を発送して(下さい|ください)/.test(text)?'取引中':explicitState==='出品中'?'出品中':null):(/取引中/.test(text)?'取引中':explicitState);
+  const status=channel==='メルカリ'&&/支払い待ち|お支払い待ち|支払いをお待ち/.test(text)?'出品中':channel==='ヤフオク'?(/商品を発送して(下さい|ください)/.test(text)?'取引中':explicitState==='出品中'?'出品中':null):(/取引中/.test(text)?'取引中':explicitState);
   if(!status)continue;
   if(rows.has(serial)&&rows.get(serial)!==status)throw new Error('同じ通番号に異なる状態があり、反映を中止しました');
   rows.set(serial,status);
