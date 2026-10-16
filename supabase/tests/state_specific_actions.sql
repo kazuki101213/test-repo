@@ -128,8 +128,9 @@ do $$declare p op_probe;begin select * into p from op_probe;
  begin perform app.supplier_conversation(p.id);raise exception 'Other deliverer read supplier messages';exception when insufficient_privilege then null;end;
 end $$;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
-do $$begin
- if app.extension_seller_daily_barrier(current_date,'88888888-0000-4000-8000-000000000001',array['mercari-1','mercari-2']) then raise exception 'Daily barrier opened early';end if;
- if not app.extension_seller_daily_barrier(current_date,'88888888-0000-4000-8000-000000000002',array['auctions-1','auctions-2','flea-1','flea-2','rakuma-1']) then raise exception 'Daily barrier did not open after seven';end if;
+do $$declare v_today date := (clock_timestamp() at time zone 'Asia/Tokyo')::date;begin
+ -- The scheduler reports a Japan calendar day even when the CI server is on UTC.
+ if app.extension_seller_daily_barrier(v_today,'88888888-0000-4000-8000-000000000001',array['mercari-1','mercari-2']) then raise exception 'Daily barrier opened early';end if;
+ if not app.extension_seller_daily_barrier(v_today,'88888888-0000-4000-8000-000000000002',array['auctions-1','auctions-2','flea-1','flea-2','rakuma-1']) then raise exception 'Daily barrier did not open after seven';end if;
 end $$;
 rollback;

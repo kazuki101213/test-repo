@@ -5,8 +5,9 @@ const PROFILE_ACCOUNTS={
 };
 export function sellerInspectionApplies(request,profileId,previous,now=Date.now()){
  if(!request||!PROFILE_ACCOUNTS[profileId]||request.id===previous||!/^[-0-9a-f]{36}$/i.test(request.id||''))return false;
+ if(request.advanceShippingSize!=null||request.issueShippingQr!=null)return false;
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
- if(request.advanceShippingSize!=null&&(request.advanceShippingSize!==true||profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||request.targetSerial!=='1805a'||request.targetItemId!=='m99125688368'))return false;
+ if(request.readShippingQrOnly!=null&&(request.readShippingQrOnly!==true||profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||request.targetSerial!=='1805a'||request.targetItemId!=='m99125688368'))return false;
  return request.kind==='seller-readonly-structure'&&(profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||!!request.targetItemId)&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&['f29f12b6-35f2-4e9f-8312-a8321ddf3c12','51502a66-28a6-4af0-81ea-660e63d8b66c'].includes(profileId))&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
 }
 /** User-supplied item ID: exact transaction and serial checks, no form entry or clicks. */
@@ -18,7 +19,7 @@ export async function readShippingInspectionTarget({serial,itemId}){
  const serialMatches=serials.includes(serial);
  const sellerShipping=/発送してください|発送して下さい|商品の発送をお願いします|発送通知をする|商品の発送を通知|発送したことを通知|発送場所を選択|配送用の2次元コード/.test(body);
  const buyerControls=/商品の到着をお待ち|商品が届いたら|受取評価をする|受け取り評価をする/.test(body);
- return {itemId,serial,serialMatches,visibility:document.visibilityState,visibleTextLength:body.length,mainCount:document.querySelectorAll('main').length,loadingMarkers:[...root.querySelectorAll('[data-testid]')].filter(e=>visible(e)&&/skeleton|loading|error|empty/i.test(e.getAttribute('data-testid'))).map(e=>e.getAttribute('data-testid')).slice(0,20),sellerShipping,buyerControls,paymentWaiting:/支払い待ち|支払いをお待ち|お支払い待ち/.test(body),statusPhrases:['発送してください','発送して下さい','発送通知をする','配送方法を選択してください','取引が完了しました','発送済み','配送中','アプリで開く','アプリで取引','ページが見つかりません','表示できません','読み込み中'].filter(t=>body.includes(t)),codeElements:[...root.querySelectorAll('canvas,img')].filter(e=>visible(e)&&/QR|2次元|二次元|配送コード/.test(e.getAttribute('alt')||e.getAttribute('aria-label')||e.id||'')).map(e=>({tag:e.tagName,id:e.id||null,testId:e.getAttribute('data-testid'),format:e.tagName==='CANVAS'?'canvas':e.getAttribute('src')?.startsWith('data:')?'data':e.getAttribute('src')?.startsWith('blob:')?'blob':'url'}))};
+ return {itemId,serial,serialMatches,visibility:document.visibilityState,visibleTextLength:body.length,mainCount:document.querySelectorAll('main').length,loadingMarkers:[...root.querySelectorAll('[data-testid]')].filter(e=>visible(e)&&/skeleton|loading|error|empty/i.test(e.getAttribute('data-testid'))).map(e=>e.getAttribute('data-testid')).slice(0,20),sellerShipping,buyerControls,paymentWaiting:/支払い待ち|支払いをお待ち|お支払い待ち/.test(body),statusPhrases:['発送してください','発送して下さい','発送通知をする','配送方法を選択してください','取引が完了しました','発送済み','配送中','アプリで開く','アプリで取引','ページが見つかりません','表示できません','読み込み中'].filter(t=>body.includes(t)),codeElements:[...root.querySelectorAll('canvas,img')].filter(e=>visible(e)&&/QR|2次元|二次元|配送コード/.test(e.getAttribute('alt')||e.getAttribute('aria-label')||e.id||'')).map(e=>({tag:e.tagName,id:e.id||null,testId:e.getAttribute('data-testid'),alt:e.getAttribute('alt')?.slice(0,80),width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height,naturalWidth:e.naturalWidth,complete:e.complete,withinMain:!!e.closest('main'),sourceHost:(()=>{try{return new URL(e.getAttribute('src'),location.href).hostname;}catch{return null;}})(),format:e.tagName==='CANVAS'?'canvas':e.getAttribute('src')?.startsWith('data:')?'data':e.getAttribute('src')?.startsWith('blob:')?'blob':'url'}))};
 }
 /** Exact visible serial match only. No buyer names, input values or unrelated product text. */
 export function readInspectionTarget(serial){
@@ -45,7 +46,7 @@ export async function readSellerStructure(){
  const controls=[...root.querySelectorAll('input:not([type="hidden"]),textarea,select,button,a,[role="button"],[role="combobox"],[role="tab"],[contenteditable="true"]')].filter(visible).map(e=>{
   const text=e.matches('button,a,[role="button"],[role="tab"],input[type="button"],input[type="submit"]')?norm(e.innerText||e.getAttribute('aria-label')||e.value).slice(0,100):label(e);
   if(!e.matches('input,textarea,select')&&!text)return null;if(e.tagName==='A'&&!selectionPage&&!/選択|変更|設定|選んで|未設定|出品|取引|配送|発送/.test(text))return null;
-  return {tag:e.tagName,type:e.type||null,role:e.getAttribute('role'),name:e.name||null,id:e.id||null,testId:e.getAttribute('data-testid'),section:section(e),label:text,optionValue:e.type==='radio'||e.type==='checkbox'?e.getAttribute('value'):undefined,disabled:e.disabled===true,required:e.required===true,accept:e.type==='file'?e.accept:null,options:e.tagName==='SELECT'?[...e.options].slice(0,60).map(o=>norm(o.text).slice(0,60)):undefined};
+  return {tag:e.tagName,type:e.type||null,role:e.getAttribute('role'),name:e.name||null,id:e.id||null,testId:e.getAttribute('data-testid'),section:section(e),label:text,optionValue:e.type==='radio'||e.type==='checkbox'?e.getAttribute('value'):undefined,disabled:e.disabled===true,readOnly:e.readOnly===true,ariaHidden:e.getAttribute('aria-hidden'),required:e.required===true,accept:e.type==='file'?e.accept:null,options:e.tagName==='SELECT'?[...e.options].slice(0,60).map(o=>norm(o.text).slice(0,60)):undefined};
  }).filter(Boolean).slice(0,100);
  const links=[...root.querySelectorAll('a[href]')].filter(visible).flatMap(e=>{const text=norm(e.innerText);if(!/^(出品|出品する|出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|取引ナビ|発送する|配送方法を選択する)$/.test(text))return [];try{const x=new URL(e.href);return [{text,host:x.hostname,path:x.pathname,queryKeys:[...x.searchParams.keys()]}];}catch{return [];}}).slice(0,30);
  const notices=[...root.querySelectorAll('p,[role="status"],h2,h3,span')].filter(e=>visible(e)&&!e.children.length).map(e=>norm(e.innerText)).filter(t=>t.length<100&&/商品.*(?:ありません|ない|ございません)|取引.*(?:ありません|ない|ございません)|読み込み中|エラー|発送して|発送待ち|支払い待ち|チャージ完了/.test(t)).slice(0,12);
@@ -56,7 +57,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  const request=await fetchRequest(),previous=(await storage.get('sellerInspectionRequest')).sellerInspectionRequest;
  if(!sellerInspectionApplies(request,profileId,previous))return false;
  const account=settings.accounts.find(a=>a.enabled&&a.id===PROFILE_ACCOUNTS[profileId]);if(!account)return false;
- const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:request.advanceShippingSize!==true,approvedUiAdvance:request.advanceShippingSize===true,adapterRevision:'native-choices-20261016-11'};let session;
+ const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-12'};let session;
  await storage.set({sellerInspectionRequest:request.id,sellerInspectionEvidence:{...evidence,status:'running'}});
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
@@ -66,9 +67,12 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
    evidence.pages.push({kind:'target-shipping',...await session.structure()});
    if(evidence.target.serialMatches!==true||!evidence.target.sellerShipping||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定商品に発送待ちの出品者画面を確認できません');
+   if(request.readShippingQrOnly===true){
+    const job={external_id:request.targetItemId,trade_key:'inspection:'+request.id,channel:'メルカリ',payload:{}};
+    const result=await session.operation(job,'read_shipping_code',{waitForShippingCode:true});evidence.qr={captured:typeof result.qr_code==='string'&&result.qr_code.startsWith('data:image/png;base64,'),format:result.qr_code?'image/png':null,dataLength:result.qr_code?.length||0};evidence.pages.push({kind:'existing-shipping-qr',...await session.structure()});evidence.status=evidence.qr.captured?'completed':'stopped';return true;
+   }
    if(session.inspectChoice&&await session.inspectChoice('shipping-details')){
     const choices=await session.structure();evidence.pages.push({kind:'shipping-choices',...choices});
-    if(request.advanceShippingSize===true&&choices.path.endsWith('/shipping_class')){await session.inspectionShippingPlace({itemId:request.targetItemId,size:'100'});evidence.pages.push({kind:'shipping-place',...await session.structure()});}
    }
    evidence.status='completed';return true;
   }
@@ -109,7 +113,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    else evidence.shipping=page.empty?'取引中の商品がないため配送画面を確認できません':'発送対象の行を特定できないため配送画面は未確認です';
   }
   evidence.status='completed';
- }catch(error){evidence.status='stopped';evidence.error=error.message;await log('info',account.label+'の読取診断を停止しました。自動再試行しません：'+error.message);}
+ }catch(error){evidence.status='stopped';evidence.error=error.message;if(request.readShippingQrOnly&&session){try{evidence.pages.push({kind:'shipping-qr-stopped',...await session.structure()});}catch{}}await log('info',account.label+'の読取診断を停止しました。自動再試行しません：'+error.message);}
  finally{await session?.close();await storage.set({sellerInspectionEvidence:evidence});}
  return true;
 }
