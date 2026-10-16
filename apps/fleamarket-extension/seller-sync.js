@@ -3,7 +3,7 @@ export function sellerScheduleReady(settings,records,day){
  if(settings.mode==='diagnostic'||records.job||records.sellerDailyAttempt?.day===day)return false;
  return ['tracking',...(settings.purchaseImportEnabled?['purchases']:[])].every(kind=>records.scheduledRuns?.[kind]?.day===day&&records.lastRun?.[kind]?.day===day);
 }
-export function sellerAccounts(settings){return settings.accounts.filter(account=>account.enabled&&['mercari-1','auctions-1'].includes(account.id));}
+export function sellerAccounts(settings){return settings.accounts.filter(account=>account.enabled&&['mercari-2','auctions-1'].includes(account.id));}
 export function sellerUrl(account,url){
  const value=new URL(url),hosts=account.site==='mercari'?['jp.mercari.com']:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','salesmanagement.yahoo.co.jp','aucpay.yahoo.co.jp'];
  if(value.protocol!=='https:'||!hosts.includes(value.hostname)||value.username||value.password||/login|signin|captcha|auth\//i.test(value.pathname))throw Error('対象の販売サイトを確認できません');return value.href;

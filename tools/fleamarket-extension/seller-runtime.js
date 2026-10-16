@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.91';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.91';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.95';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.95';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.91';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.95';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -14,7 +14,8 @@ export async function clickSellerChoice(kind){
  if(!names[kind])throw Error('未対応の選択画面です');
  const norm=s=>String(s||'').replace(/\s+/g,'').trim();let candidates=[];const end=Date.now()+10000;
  const shippingEdit=e=>kind==='shipping-details'&&e.tagName==='A'&&location.hostname==='jp.mercari.com'&&/^\/transaction\/m[0-9]+$/.test(location.pathname)&&e.origin===location.origin&&e.pathname===location.pathname+'/shipping_class';
- while(Date.now()<end){candidates=[...document.querySelectorAll('a,button,input[type="button"]')].filter(e=>e.getClientRects().length&&(names[kind].some(name=>norm(name)===norm(e.innerText||e.getAttribute('aria-label')||e.value))||(kind==='category'&&e.id==='acMdCateChange')||shippingEdit(e)));if(candidates.length)break;await new Promise(resolve=>setTimeout(resolve,250));}
+ const listingEdit=e=>e.tagName==='A'&&location.hostname==='jp.mercari.com'&&location.pathname==='/sell/create'&&e.origin===location.origin&&e.pathname===({category:'/sell/categories',condition:'/sell/conditions',shipping:'/sell/shipping_methods'})[kind];
+ while(Date.now()<end){candidates=[...document.querySelectorAll('a,button,input[type="button"]')].filter(e=>e.getClientRects().length&&(names[kind].some(name=>norm(name)===norm(e.innerText||e.getAttribute('aria-label')||e.value))||(kind==='category'&&e.id==='acMdCateChange')||shippingEdit(e)||listingEdit(e)));if(candidates.length)break;await new Promise(resolve=>setTimeout(resolve,250));}
  if(!candidates.length)return false;if(candidates.length!==1||candidates[0].disabled)throw Error('選択画面の入口が曖昧です');
  const before={url:location.href,text:document.body.innerText,controls:[...document.querySelectorAll('input,select,textarea')].filter(e=>e.getClientRects().length).map(e=>[e.id,e.name,e.type].join('|')).join(';')};setTimeout(()=>candidates[0].click(),100);return before;
 }
@@ -42,6 +43,7 @@ export async function resolveYahooCategory(target){
 export function sellerChoiceReady(kind){
  const visible=e=>!!e&&e.getClientRects().length>0;
  if(location.hostname==='jp.mercari.com'){
+  if(kind==='listing-form')return !!document.querySelector('input[type=file]')&&/出品/.test(document.body.innerText);
   if(kind==='category')return [...document.querySelectorAll('input')].some(e=>visible(e)&&/カテゴリー名を検索/.test((e.getAttribute('placeholder')||'')+' '+(e.getAttribute('aria-label')||'')));
   if(kind==='condition')return [...document.querySelectorAll('[data-testid^="condition-"]')].some(visible);
   if(kind==='shipping-details')return location.pathname.startsWith('/transaction/')&&[...document.querySelectorAll('[role=dialog],select,input[type=radio]')].some(visible);
@@ -52,6 +54,18 @@ export function sellerChoiceReady(kind){
   if(kind==='category')return /\/show\/topsubmit$/.test(location.pathname)&&[...document.querySelectorAll('a')].some(e=>visible(e)&&/キーワードから選択する/.test(e.innerText));
   if(kind==='category-search')return visible(document.querySelector('#category-search-keyword'));
  }return false;
+}
+export async function selectMercariListingChoice({kind,value}){
+ try{
+ if(location.hostname!=='jp.mercari.com'||!['category','condition','shipping'].includes(kind)||!/^\/sell\//.test(location.pathname))throw Error('メルカリの選択画面ではありません');
+ const norm=s=>String(s||'').replace(/\s+/g,' ').trim(),target=norm(value),visible=e=>e.getClientRects().length>0&&!e.disabled;const end=Date.now()+12000;
+ while(Date.now()<end){const scope=[...document.querySelectorAll('[role=dialog]')].filter(visible).at(-1)||document.querySelector('main')||document.body;let choices;
+  if(kind==='condition')choices=[...scope.querySelectorAll('[data-testid^="condition-"]')].filter(e=>visible(e)&&/^condition-[1-6]-row$/.test(e.getAttribute('data-testid'))&&(norm(e.innerText)===target||norm(e.innerText).startsWith(target+' ')));
+  else if(kind==='shipping')choices=[...scope.querySelectorAll('input[type=radio][name=selectedShippingMethod]')].filter(e=>visible(e)&&[...e.labels].some(l=>norm(l.innerText)===target||norm(l.innerText).startsWith(target+' ')));
+  else choices=[...scope.querySelectorAll('a')].filter(e=>visible(e)&&(norm(e.innerText)===target||norm(e.innerText).startsWith(target+' ')));
+  if(choices.length>1)throw Error('選択肢が曖昧なため停止しました');if(choices.length===1){const before={url:location.href};setTimeout(()=>choices[0].click(),100);return before;}await new Promise(resolve=>setTimeout(resolve,200));
+ }throw Error('選択肢を1件に確認できません：'+kind);
+ }catch(error){return {__error:error.message};}
 }
 /** Advance only the size step, never the place confirmation or QR issuance. */
 export function advanceMercariShippingSize({itemId,size,shippingMethod='らくらくメルカリ便'}){
@@ -127,6 +141,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
    const entry=await session.structure();if(!entry.fileInputs?.length){const direct=(await session.links()).filter(link=>/^(出品|出品する|出品フォーム)$/.test(link.text)&&link.url!==listing.url);if(direct.length!==1)throw Error('出品入力画面への実リンクを1件に確認できません');await session.go(direct[0].url);}
    await session.operation(job,'listing_preflight');
    if(account.site==='auctions')await session.prepareCategory(job.payload.listingCategory||job.payload.category);
+   else if(session.prepareListingChoices)await session.prepareListingChoices(job);
    const files=[];let total=0,convertedTotal=0;for(const [index,url] of job.payload.photos.entries()){
     const source=new URL(url);if(source.protocol!=='https:'||!['xgoppuqoqeppckyunnvx.supabase.co','lh3.googleusercontent.com','drive.google.com','drive.usercontent.google.com','drive.googleusercontent.com'].includes(source.hostname))throw Error('写真の取得先を確認できません');
     const response=await fetch(url,{credentials:'omit',signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error('写真を取得できません');const blob=await response.blob();if(!['image/jpeg','image/png','image/webp'].includes(blob.type)||blob.size>8*1024*1024)throw Error('写真の形式・容量を確認してください');total+=blob.size;if(total>20*1024*1024)throw Error('出品写真の合計容量が20MBを超えています');const photo=await normalizeSellerPhoto({site:account.site,file:{name:`photo-${index+1}.`+(blob.type==='image/png'?'png':blob.type==='image/webp'?'webp':'jpg'),type:blob.type,bytes:[...new Uint8Array(await blob.arrayBuffer())]}});convertedTotal+=photo.bytes.length;if(convertedTotal>20*1024*1024)throw Error('変換後の出品写真の合計容量が20MBを超えています');files.push(photo);
@@ -150,7 +165,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
  await rpc('extension_finish_seller_operation',{p_id:job.id,p_status:status,p_result:result});
 }
 export async function openSellerSession(account,{tabs,scripting,windows,identity,executionTimeoutMs=30000}){
- const borrowed=await borrowSiteTab(tabs,account.site);let last=borrowed.originalUrl,categoryResolution=null;
+ const borrowed=await borrowSiteTab(tabs,account.site);let last=borrowed.originalUrl,categoryResolution=null,listingChoices=null;
  async function loaded(){for(let n=0;n<60;n++){const tab=await tabs.get(borrowed.id);if(tab.status==='complete'){await pause(800);const settled=await tabs.get(borrowed.id);if(settled.status==='complete'&&settled.url===tab.url){sellerUrl(account,settled.url);last=settled.url;borrowed.lastUrl=last;return;}}await pause(300);}throw Error('販売画面の読み込みが時間切れになりました');}
  async function go(url){sellerUrl(account,url);const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');const arrived=await tabs.update(borrowed.id,{url,active:account.site==='mercari'});last=url;borrowed.lastUrl=url;if(account.site==='mercari'&&windows&&Number.isInteger(arrived.windowId)){const w=await windows.get(arrived.windowId);if(w.state==='minimized')await windows.update(w.id,{state:'normal'});if(w.state!=='maximized'&&(w.width<1000||w.height<700))await windows.update(w.id,{width:1200,height:900});await windows.update(w.id,{focused:true});}await loaded();}
  async function execute(func,args){
@@ -178,6 +193,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
    const parts=String(target).split(/\s*[>＞]\s*/).filter(Boolean);await finishChoice(await execute(searchSellerCategory,parts.length>1?parts.at(-2):parts[0]));
    return categoryForm(target,formUrl);
   },
+  prepareListingChoices:async job=>{if(account.site!=='mercari')throw Error('メルカリの出品設定ではありません');for(const [kind,value] of [['category',job.payload.listingCategory||job.payload.category],['condition',job.payload.condition],['shipping',job.payload.shippingMethod]]){if(!await finishChoice(await execute(clickSellerChoice,kind),kind))throw Error('出品条件の選択画面を開けません：'+kind);if(kind==='category')await finishChoice(await execute(searchSellerCategory,value));await finishChoice(await execute(selectMercariListingChoice,{kind,value}),'listing-form');}listingChoices={id:job.id,values:JSON.stringify([job.payload.listingCategory||job.payload.category,job.payload.condition,job.payload.shippingMethod]),url:last};},
   searchCategory:async term=>finishChoice(await execute(searchSellerCategory,term)),
   inspectChoice:async kind=>{
    return finishChoice(await execute(clickSellerChoice,kind),kind);
@@ -190,7 +206,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   read:phase=>execute(readSellerPage,{site:account.site,phase}),
   selectTab:label=>execute(async function(label){const candidates=[...document.querySelectorAll('button,[role="tab"]')].filter(e=>e.getClientRects().length&&e.innerText.trim()===label);if(candidates.length!==1)return false;const before=document.body.innerText;const button=candidates[0];button.click();for(let n=0;n<20;n++){await new Promise(resolve=>setTimeout(resolve,200));if(button.getAttribute('aria-selected')==='true'||document.body.innerText!==before)return true;}throw Error('一覧タブの切り替え結果を確認できません');},label),
   detail:async(url,id)=>{await go(url);let page=await raw();if(!/取引画面|取引情報|受け取り明細/.test(page.text)){const options=page.links.filter(link=>/取引画面|取引ナビ|取引情報|詳細/.test(link.text)&&link.url.includes(id));if(options.length!==1)throw Error('販売明細へのリンクを特定できません');await go(options[0].url);page=await raw();}if(!page.text.includes(id))throw Error('取引の商品IDを確認できません');return page;},
-  operation:(job,phase,extra={})=>execute(sellerDomOperation,{job,phase,...extra,categoryResolved:categoryResolution?.target===(job.payload?.listingCategory||job.payload?.category)&&categoryResolution?.url===last}),
+  operation:(job,phase,extra={})=>execute(sellerDomOperation,{job,phase,...extra,reportErrors:true,choicesResolved:listingChoices?.id===job.id&&listingChoices?.values===JSON.stringify([job.payload?.listingCategory||job.payload?.category,job.payload?.condition,job.payload?.shippingMethod])&&listingChoices?.url===last,categoryResolved:categoryResolution?.target===(job.payload?.listingCategory||job.payload?.category)&&categoryResolution?.url===last}),
   close:()=>restoreSiteTab(tabs,borrowed).catch(()=>{}),
  };
 }
