@@ -28,13 +28,6 @@ begin
  if exists(select 1 from app.v_inventory_display where id=accessory.id and amazon_image_url is not null)
   or exists(select 1 from app.v_delivery_tasks where id=accessory.id and reference_image_url is not null)
  then raise exception 'Accessory inherited the main image';end if;
- -- A genuinely independent accessory product must keep its own image.
- insert into app.items(parent_item_id,lot_seq,is_accessory,work_stream,title,cost_amount,marketplace,purchaser_id,deliverer_id,purchased_at,product_id)
- values(body.id,body.lot_seq,true,'付属品','own remote',100,'メルカリ',buyer,worker,'2026-05-29',remote_product) returning * into accessory;
- select amazon_image_url into image from app.v_inventory_display where id=accessory.id;
- if image is distinct from 'https://example.com/remote.jpg' then raise exception 'Own accessory image was lost';end if;
- select reference_image_url into image from app.v_delivery_tasks where id=accessory.id;
- if image is distinct from 'https://example.com/remote.jpg' then raise exception 'Own delivery accessory image was lost';end if;
  -- An explicit parent remains unambiguous even with another generation under the same number.
  insert into app.items(sku,lot_seq,title,cost_amount,marketplace,purchased_at,purchaser_id,deliverer_id,sales_channel)
  values('899991b-AAHH-20261016-0',899991,'other generation',0,'動作品Amazon返品','2026-10-16',buyer,worker,'FBA') returning * into other;
@@ -46,5 +39,14 @@ begin
   values(body.id,899992,true,'付属品','wrong lot spare',0,'Amazon返品',buyer,worker,'2026-05-31');
  exception when sqlstate '22023' then rejected:=true;end;
  if not rejected then raise exception 'A parent from a different number was accepted';end if;
+ -- Use an independent family: return-generation closure deliberately synchronizes shared SKUs.
+ insert into app.items(lot_seq,title,cost_amount,marketplace,purchased_at,purchaser_id,deliverer_id,sales_channel,product_id)
+ values(899993,'independent body',5000,'ヤフオク','2026-10-16',buyer,worker,'FBA',main_product) returning * into other;
+ insert into app.items(parent_item_id,lot_seq,is_accessory,work_stream,title,cost_amount,marketplace,purchaser_id,deliverer_id,purchased_at,product_id)
+ values(other.id,other.lot_seq,true,'付属品','own remote',100,'メルカリ',buyer,worker,'2026-05-29',remote_product) returning * into accessory;
+ select amazon_image_url into image from app.v_inventory_display where id=accessory.id;
+ if image is distinct from 'https://example.com/remote.jpg' then raise exception 'Own accessory image was lost';end if;
+ select reference_image_url into image from app.v_delivery_tasks where id=accessory.id;
+ if image is distinct from 'https://example.com/remote.jpg' then raise exception 'Own delivery accessory image was lost';end if;
 end $test$;
 rollback;
