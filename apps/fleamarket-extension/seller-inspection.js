@@ -50,7 +50,6 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
   let links=await session.links();
   if(request.targetSerial){
    if(account.site!=='mercari')throw Error('対象指定の診断はメルカリ1のみです');
-   await session.go('https://jp.mercari.com/mypage');links=await session.links();
    const listing=links.find(link=>/^(出品した商品|出品一覧)$/.test(link.text));if(!listing)throw Error('出品一覧への実リンクを確認できません');
    await session.go(listing.url);evidence.pages.push({kind:'target-list',...await session.structure()});
    const trading=(await session.links()).find(link=>link.text==='取引中');if(trading)await session.go(trading.url);else if(!await session.selectTab('取引中'))throw Error('取引中の一覧を確認できません');
