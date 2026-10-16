@@ -5,7 +5,16 @@ const PROFILE_ACCOUNTS={
 export function sellerInspectionApplies(request,profileId,previous,now=Date.now()){
  if(!request||!PROFILE_ACCOUNTS[profileId]||request.id===previous||!/^[-0-9a-f]{36}$/i.test(request.id||''))return false;
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
- return request.kind==='seller-readonly-structure'&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
+ return request.kind==='seller-readonly-structure'&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
+}
+/** Exact visible serial match only. No buyer names, input values or unrelated product text. */
+export function readInspectionTarget(serial){
+ if(!/^[0-9]{1,8}[a-z]{0,3}$/.test(serial)||location.hostname!=='jp.mercari.com'||!location.pathname.startsWith('/mypage/listings'))throw Error('対象の出品一覧ではありません');
+ const visible=e=>e.getClientRects().length>0,norm=s=>(s||'').replace(/\s+/g,' ').trim();
+ const anchors=[...document.querySelectorAll('a[href]')].filter(visible),matches=[];
+ for(const a of anchors){let box=a;for(let n=0;n<4&&box;n++,box=box.parentElement){const text=norm(box.innerText+' '+[...box.querySelectorAll('img[alt]')].map(e=>e.alt).join(' '));const ids=[...text.matchAll(/[【\[]([0-9]+[a-z]*)[】\]]/gi)].map(m=>m[1].toLowerCase());if(ids.length&&ids.every(id=>id===serial)){const u=new URL(a.href);if(u.hostname==='jp.mercari.com'&&/^\/(?:item|transaction)\/m[0-9]+/.test(u.pathname))matches.push({url:u.href,serial,shippingPending:/発送してください|発送して下さい|発送待ち/.test(text)});}if(new Set(ids).size>1)break;}}
+ const unique=matches.filter((m,i,all)=>all.findIndex(x=>x.url===m.url)===i).map(m=>({...m,shippingPending:matches.some(x=>x.url===m.url&&x.shippingPending)}));
+ return {matches:unique,visibleAnchors:anchors.length,visibleItemLinks:anchors.filter(a=>/\/(?:item|transaction)\/m[0-9]+/.test(a.href)).length,targetVisible:[...document.querySelectorAll('img[alt]')].some(e=>visible(e)&&new RegExp('[【\\[]'+serial+'[】\\]]','i').test(e.alt)),navigation:anchors.filter(a=>/^(出品中|取引中|売却済み)$/.test(norm(a.innerText))).map(a=>({text:norm(a.innerText),url:a.href})),listControls:[...document.querySelectorAll('button,[role=tab]')].filter(visible).map(e=>norm(e.innerText)).filter(t=>/^(出品中|取引中|売却済み|もっと見る|次へ)$/.test(t))};
 }
 /** Fixed diagnostic: returns control structure, never field values, cookies or page HTML. */
 export async function readSellerStructure(){
@@ -38,6 +47,17 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
   let links=await session.links();
+  if(request.targetSerial){
+   if(account.site!=='mercari')throw Error('対象指定の診断はメルカリ1のみです');
+   await session.go('https://jp.mercari.com/mypage');links=await session.links();
+   const listing=links.find(link=>/^(出品した商品|出品一覧)$/.test(link.text));if(!listing)throw Error('出品一覧への実リンクを確認できません');
+   await session.go(listing.url);evidence.pages.push({kind:'target-list',...await session.structure()});
+   const trading=(await session.links()).find(link=>link.text==='取引中');if(trading)await session.go(trading.url);else if(!await session.selectTab('取引中'))throw Error('取引中の一覧を確認できません');
+   await session.read('取引中');const target=await session.inspectionTarget(request.targetSerial);evidence.target=target;evidence.pages.push({kind:'target-trades',...await session.structure()});
+   const candidates=target.matches.filter(m=>/\/transaction\//.test(m.url));const chosen=candidates.length===1?candidates:target.matches;
+   if(chosen.length!==1)throw Error('対象通番号の取引リンクを1件に特定できません');
+   await session.go(chosen[0].url);evidence.pages.push({kind:'target-shipping',...await session.structure()});evidence.status='completed';return true;
+  }
   if(!links.some(link=>/出品/.test(link.text))){await session.go(account.site==='mercari'?'https://jp.mercari.com/mypage':'https://auctions.yahoo.co.jp/my');links=await session.links();evidence.pages.push({kind:'seller-menu',...await session.structure()});}
   const form=links.find(link=>/^(出品|出品する|出品フォーム)$/.test(link.text));
   const list=links.find(link=>/^(出品した商品|出品一覧|出品中)$/.test(link.text));
