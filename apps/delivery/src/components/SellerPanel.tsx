@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {sellerDefaults,SMALL_PACKAGES,canViewDeliveryAssignee} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
-import {fetchSellerContext,fetchTask,fetchPhotoUrls,queueSellerOperation} from '../api';
+import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,queueSellerOperation} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
 
 function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>void}){
@@ -25,14 +25,24 @@ export default function SellerPanel({mode,task,staff,onClose,onChanged}:{mode:'l
  const onRead=useRef((value:string)=>readCode.current(value)).current;
  useEffect(()=>{let active=true;void Promise.all([fetchTask(task.id,canViewDeliveryAssignee(staff)),fetchSellerContext(task.id),mode==='listing'?fetchPhotoUrls(task.id):Promise.resolve([])]).then(([full,info,images])=>{if(!active)return;if(!full||!info)throw new Error('商品が見つかりません');const defaults=sellerDefaults({...full,deliverer_name:info.assignee||full.deliverer_name||(full.deliverer_id===staff.id?staff.name:'')});setDraft(defaults);setContext(info);setPhotos(images);setSelected(images.slice(0,10).map(photo=>photo.id));}).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:String(cause));});return()=>{active=false;};},[task.id,mode,staff.id,staff.name,staff.role]);
  const pending=context?.operations.some(op=>['queued','running','uncertain'].includes(op.status))??false;
- useEffect(()=>{if(!pending)return;let active=true,inFlight=false;async function refresh(){if(!active||inFlight||document.visibilityState!=='visible')return;inFlight=true;try{const info=await fetchSellerContext(task.id);if(!active)return;setContext(info);const finished=info.operations.find(op=>op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){lastFinished.current=finished.id;const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(active&&full)onChanged(full);}}catch(cause){if(active)setError(cause instanceof Error?cause.message:String(cause));}finally{inFlight=false;}}const timer=window.setInterval(()=>void refresh(),15000);return()=>{active=false;window.clearInterval(timer);};},[pending,task.id,staff.role,staff.code,onChanged]);
- const operations=context?.operations??[],latestCode=operations.find(op=>op.kind==='shipping_code'&&op.status==='succeeded'),proof=operations.find(op=>op.status==='succeeded'&&(op.kind==='register_package'||op.kind==='verify_shipping'&&op.result.accepted===true));
+ const watching=context?.operations.find(op=>op.status==='queued'||op.status==='running');
+ useEffect(()=>{if(!watching)return;let active=true,inFlight=false;
+  async function refresh(){if(!active||inFlight||document.visibilityState!=='visible')return;if(Date.now()-Date.parse(watching!.created_at)>600000){setError('実行結果の確認が必要です。自動再実行はしません。');return;}inFlight=true;
+   try{const state=await fetchSellerOperation(watching!.id);if(!active)return;
+    if(!['queued','running'].includes(state.status)){const info=await fetchSellerContext(task.id);if(!active)return;setContext(info);const finished=info.operations.find(op=>op.id===watching!.id&&op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){lastFinished.current=finished.id;const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(active&&full)onChanged(full);}}
+   }catch(cause){if(active)setError(cause instanceof Error?cause.message:String(cause));}finally{inFlight=false;}
+  }
+  const timer=window.setInterval(()=>void refresh(),15000);return()=>{active=false;window.clearInterval(timer);};
+ },[watching?.id,task.id,staff.role,staff.code,onChanged]);
+ useEffect(()=>{setCode('');setPosted(false);setCamera(false);setMessage('');},[context?.listing?.trade_key]);
+ const operations=context?.operations??[],latestCode=operations.find(op=>op.kind==='shipping_code'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key),proof=operations.find(op=>op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key&&(op.kind==='register_package'||op.kind==='verify_shipping'&&op.result.accepted===true));
  useEffect(()=>{let active=true;const value=latestCode?.result.qr_code;if(typeof value!=='string'){setQr('');return;}if(value.startsWith('data:image/png;base64,')){setQr(value);return;}void import('qrcode').then(module=>module.toDataURL(value,{width:260,margin:2})).then(url=>{if(active)setQr(url);}).catch(()=>{if(active)setError('配送コードを表示できません');});return()=>{active=false;};},[latestCode?.id]);
  async function submit(kind:string,payload:Record<string,unknown>){if(lock.current||pending)return;lock.current=true;setBusy(true);setError('');try{await queueSellerOperation(task.id,kind,{...payload,expected_revision:context?.revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));setMessage('');}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
  function change<K extends keyof SellerDraft>(field:K,value:SellerDraft[K]){setDraft(current=>current?{...current,[field]:value}:current);request.current=crypto.randomUUID();}
  const disabled=busy||pending,trade=context?.listing?.trade_key;
  const tradePayload={trade_key:trade,size:draft?.size,dropoff:draft?.dropoff,shippingMethod:draft?.shippingMethod,category:draft?.category};
- const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded')?.result.messages;
+ const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key)?.result.messages;
+ if(mode==='listing'&&task.status!=='商品登録前')return <section className="task-detail-inline"><button type="button" className="btn ghost" onClick={onClose}>閉じる</button><p>現在の状態：{task.status}</p>{context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}</section>;
  return <section className="task-detail-inline" aria-label={`${task.sku}の${mode==='listing'?'出品':mode==='shipping'?'発送':'取引メッセージ'}`}>
   <button type="button" className="btn ghost" onClick={onClose}>閉じる</button>
   {error&&<p className="error" role="alert">{error}</p>}

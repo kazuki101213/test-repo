@@ -17,6 +17,8 @@ export default function TaskDetail({
   const openedReported = useRef(false);
   const [supplierAccount,setSupplierAccount]=useState('');
   const supplierRequest=useRef(crypto.randomUUID());
+  const mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const autoOpenedMessages = useRef(false);
   const [comments, setComments] = useState<ItemComment[]>([]);
   const [photos, setPhotos] = useState<ItemPhoto[]>([]);
@@ -81,6 +83,8 @@ export default function TaskDetail({
       const deadline = Date.now() + 120000;
       while (Date.now() < deadline) {
        await new Promise(resolve=>window.setTimeout(resolve,4000));
+       if(!mounted.current)return;
+       if(document.visibilityState==='hidden')continue;
        const updated=await fetchSupplierOperation(supplierRequestId);
        if(updated.status==='succeeded'||updated.status==='failed'){
         setMarketplaceConversation(await fetchSupplierConversation(itemId));if(updated.status==='failed')setMarketplaceError(updated.note||'取引メッセージを確認できませんでした');return;
@@ -200,6 +204,8 @@ export default function TaskDetail({
       setMarketplaceDraft('');supplierRequest.current=crypto.randomUUID();
       const deadline = Date.now() + 120000;
       while(Date.now()<deadline){
+       if(!mounted.current)return;
+       if(document.visibilityState==='hidden'){await new Promise(resolve=>window.setTimeout(resolve,4000));continue;}
        const state=await fetchSupplierOperation(requestId);
        if(['succeeded','failed','uncertain'].includes(state.status)){
         setMarketplaceConversation(await fetchSupplierConversation(itemId));if(state.status!=='succeeded')setMarketplaceError(state.note||'送信結果を確認してください');return;
@@ -223,6 +229,7 @@ export default function TaskDetail({
   }
 
   const supplierAccounts=task.marketplace==='メルカリ'?[['mercari-1','メルカリ1'],['mercari-2','メルカリ2']]:task.marketplace==='ヤフオク'?[['auctions-1','ヤフオク1'],['auctions-2','ヤフオク2']]:task.marketplace==='ラクマ'?[['rakuma-1','ラクマ1']]:[['flea-1','Yahoo!フリマ1'],['flea-2','Yahoo!フリマ2']];
+  const canEditPhotos=task.status==='商品登録前';
   const isWorkingAmazonReturn = task.marketplace === '動作品Amazon返品';
 
   return (
@@ -237,11 +244,11 @@ export default function TaskDetail({
       {mode === 'photos' && <>
       <div className="card photo-control-row">
         <span className="muted">写真 {photos.length}枚</span>
-        <label className="btn photo-upload">{uploading ? '追加中…' : '写真追加'}
+        {canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : '写真追加'}
           <input type="file" aria-label="商品写真追加" accept="image/*" multiple disabled={uploading || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
-        </label>
-        <button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
-          onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブ追加中…' : 'Googleドライブ追加'}</button>
+        </label>}
+        {canEditPhotos&&<button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
+          onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブ追加中…' : 'Googleドライブ追加'}</button>}
         <button type="button" className="btn photo-save-all" aria-label="商品写真をすべて端末に保存" title="すべての写真を端末に保存" disabled={savingPhotoId !== null || photos.length === 0 || driveBusy || uploading} onClick={() => void saveAllPhotosToAlbum()}>
           {savingPhotoId === 'all' ? '…' : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>}
         </button>
@@ -253,9 +260,9 @@ export default function TaskDetail({
           <a href={photo.url} target="_blank" rel="noreferrer">
             <img src={photo.url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
           </a>
-                    <div className="uploaded-photo-actions"><button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={photo.canDelete === false || deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
+                    <div className="uploaded-photo-actions">{canEditPhotos&&<button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={photo.canDelete === false || deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
               {deletingPhotoId === photo.id ? '削除中…' : '削除'}
-            </button>
+            </button>}
           </div>
         </div>)}</div>}
       </div>
@@ -264,7 +271,7 @@ export default function TaskDetail({
       </p>}
 
       </>}
-      {mode === 'description' && <DescriptionEditor key={task.id} task={task} listingSkus={listingSkus} onSaved={reload} />}
+      {mode === 'description' && task.status==='商品登録前' && <DescriptionEditor key={task.id} task={task} listingSkus={listingSkus} onSaved={reload} />}
       {(mode === 'messages'||mode === 'comments') && <>
       {/* ── 仕入担当者とのやり取り ───────────────── */}
       <div className="card">

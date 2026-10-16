@@ -359,7 +359,7 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  const {error}=await getSupabase().rpc('perform_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_note:note??null,p_request_id:requestId});
  if(error)throw error;
 }
-export interface SellerOperation {id:string;kind:string;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}
+export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}
 export interface SellerContext {revision:string;assignee?:string|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
 export async function fetchSellerContext(itemId:string):Promise<SellerContext>{
  const {data,error}=await getSupabase().rpc('seller_operation_context',{p_item_id:itemId});if(error)throw error;return data as SellerContext;
@@ -375,4 +375,7 @@ export async function queueSupplierOperation(itemId:string,kind:'read'|'send',ac
 }
 export async function fetchSupplierOperation(id:string):Promise<{status:string;note?:string|null}>{
  const {data,error}=await getSupabase().rpc('read_supplier_operation',{p_id:id});if(error)throw error;return data;
+}
+export async function fetchSellerOperation(id:string):Promise<{status:string;note?:string|null}>{
+ const {data,error}=await getSupabase().rpc('read_seller_operation',{p_id:id});if(error)throw error;return data;
 }
