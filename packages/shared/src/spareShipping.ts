@@ -1,3 +1,4 @@
+import { readResourceSnapshot } from './resourceSync';
 import { usageRecordText } from './spares';
 import { getSupabase } from './supabase';
 
@@ -10,14 +11,9 @@ export interface SpareShippingTask {
   sent_at: string | null; completed_at: string | null;
 }
 export async function fetchSpareShippingTasks(): Promise<SpareShippingTask[]> {
-  const rows: SpareShippingTask[] = [];
-  for (let start=0;;start+=500) {
-    const {data,error}=await getSupabase().from('v_spare_shipping_tasks').select('*')
-      .is('completed_at',null).order('created_at').order('id').range(start,start+499);
-    if(error) throw error;
-    rows.push(...((data ?? []) as SpareShippingTask[]).map(row => ({ ...row, usage_note: usageRecordText(row.usage_note) })));
-    if((data?.length ?? 0)<500) return rows;
-  }
+  const rows = await readResourceSnapshot<SpareShippingTask & {created_at:string}>('shipping');
+  return [...rows].sort((a,b)=>a.created_at.localeCompare(b.created_at)||a.id.localeCompare(b.id))
+    .map(row=>({...row,usage_note:usageRecordText(row.usage_note)}));
 }
 export async function sendSpareShipping(id: string, tracking: string): Promise<void> {
   const {error}=await getSupabase().rpc('send_spare_shipping',{p_task_id:id,p_tracking_no:tracking});

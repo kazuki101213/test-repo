@@ -1,3 +1,4 @@
+import { cachedReceiptBlob } from './receiptBlobCache';
 import { getSupabase } from './supabase';
 
 export type InvoiceDocumentType = 'invoice' | 'receipt' | 'receipt_photo';
@@ -19,11 +20,18 @@ export async function loadInvoiceReceipts(staffId: string, month: string): Promi
 
 export async function loadReceiptImages(files: Omit<InvoiceReceipt, 'url'>[]): Promise<InvoiceReceipt[]> {
   const sb = getSupabase();
+  const {data:session,error:sessionError}=await sb.auth.getSession();
+  if(sessionError)throw sessionError;
+  const user=session.session?.user.id;
+  if(!user)throw new Error('ログインしてください。');
   const rows: InvoiceReceipt[] = [];
   try {
     for (const record of files) {
-      const { data: blob, error: downloadError } = await sb.storage.from(bucket).download(record.storage_path);
-      if (downloadError) throw downloadError;
+      const blob = await cachedReceiptBlob(user,record.storage_path,async()=>{
+        const { data, error } = await sb.storage.from(bucket).download(record.storage_path);
+        if(error)throw error;
+        return data;
+      });
       rows.push({
         ...record,
         document_type: record.document_type ?? 'receipt_photo',

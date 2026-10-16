@@ -70,10 +70,18 @@ export default function TaskDetail({
   }, [itemId, onChanged, onOpened, staff.code, staff.role]);
 
   useEffect(() => { void reload(); }, [reload]);
+  const detailRevision = useRef(latestTask?.detail_revision);
   // Keep catalog/item data current without remounting the editor or resetting drafts.
   useEffect(() => {
-    if (latestTask) setTask(current => current ? latestTask : current);
-  }, [latestTask]);
+    if (latestTask) setTask(current => current ? {
+      ...current,...latestTask,
+      ...(latestTask.summary_only?{description:current.description,malfunction_comment:current.malfunction_comment}:{}),
+    } : current);
+    if(latestTask?.detail_revision && latestTask.detail_revision!==detailRevision.current){
+      detailRevision.current=latestTask.detail_revision;
+      void reload();
+    }
+  }, [latestTask, reload]);
 
 
 

@@ -1,3 +1,4 @@
+import { readResourceSnapshot } from './resourceSync';
 import { getSupabase } from './supabase';
 import { DELIVERY_STAFF_CODES, staffDisplayName } from './staffNames';
 
@@ -45,25 +46,11 @@ export interface SpareAccessory {
 }
 
 export async function fetchSpareAccessories(ownerStaffId?: string): Promise<SpareAccessory[]> {
-  const rows: SpareAccessory[] = [];
-  for (let from = 0; ; from += 500) {
-    let query = getSupabase().from('spare_accessories').select('*').is('used_for_item_id', null)
-      .order('source_sheet_row', { ascending: false }).order('id').range(from, from + 499);
-    if (ownerStaffId) query = query.eq('owner_staff_id', ownerStaffId);
-    const { data, error } = await query;
-    if (error) throw error;
-    rows.push(...((data ?? []) as SpareAccessory[]).map(row => ({ ...row, usage_note: usageRecordText(row.usage_note) })));
-    if ((data?.length ?? 0) < 500) {
-      const ids = [...new Set(rows.flatMap(row => row.owner_staff_id ? [row.owner_staff_id] : []))];
-      const owners: {id: string; code: string; name: string}[] = [];
-      for (let offset = 0; offset < ids.length; offset += 100) {
-        const result = await getSupabase().from('staff').select('id,code,name').in('id', ids.slice(offset, offset + 100));
-        if (result.error) throw result.error;
-        owners.push(...(result.data ?? []));
-      }
-      return sortSpareAccessories(rows, owners);
-    }
-  }
+  const rows = [...await readResourceSnapshot<SpareAccessory & {_owner_code?:string}>('spares', {owner:ownerStaffId??''})];
+  const owners = rows.flatMap(row=>row.owner_staff_id?[{id:row.owner_staff_id,code:row._owner_code,name:row.owner_name??''}]:[]);
+  // Preserve the previous stable tie order within owner/manufacturer groups.
+  rows.sort((a,b)=>(b.source_sheet_row??-Infinity)-(a.source_sheet_row??-Infinity)||a.id.localeCompare(b.id));
+  return sortSpareAccessories(rows.map(row=>({...row,usage_note:usageRecordText(row.usage_note)})),owners);
 }
 
 export async function deleteSpareAccessory(id: string): Promise<void> {

@@ -39,6 +39,8 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/ten_state_workflow.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/paged_inventory_sync.sql"
 
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/resource_snapshot.sql"
+
 # アプリが読む列・関数がこのスキーマに存在するかを突き合わせる
 DB="$DB" "$HERE/check-app-schema.py"
 

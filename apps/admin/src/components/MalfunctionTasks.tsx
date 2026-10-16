@@ -1,3 +1,4 @@
+import { readResourceSnapshot } from '@bussan/shared';
 import { staffDisplayName } from '@bussan/shared';
 import { deliveryAppUrl } from '../appUrls';
 import { useEffect, useRef, useState } from 'react';
@@ -205,41 +206,25 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
 
+  const pendingRefresh=useRef<Promise<void>|null>(null);
+  const alive=useRef(true);
   async function refresh() {
-    const sb = getSupabase();
-    let query = sb.from('items')
-      .select('id,sku,lot_seq,title,asin,marketplace_item_id,purchaser_id,deliverer_id,malfunction_comment,malfunction_reported_at,malfunction_reported_by,products(model_no)')
-      .eq('malfunction_reported', true).is('malfunction_resolved_at', null);
-    if (staff.role === 'purchaser') query = query.eq('purchaser_id', staff.id);
-    const { data, error: queryError } = await query.order('malfunction_reported_at', { ascending: false });
-    if (queryError) throw queryError;
-    const tasks = (data ?? []) as MalfunctionTask[];
-    const asins = [...new Set(tasks.flatMap(task => task.asin?.trim() ? [task.asin.trim()] : []))];
-    const makers = new Map<string, string>();
-    for (let start = 0; start < asins.length; start += 100) {
-      const { data: products, error: productError } = await sb.from('products')
-        .select('asin,maker').in('asin', asins.slice(start, start + 100)).eq('is_active', true);
-      if (productError) throw productError;
-      for (const product of products ?? []) {
-        if (product.maker) makers.set(product.asin.trim(), product.maker);
-      }
-    }
-    setMakersByAsin(makers);
-    setRows(tasks);
-    const staffIds = [...new Set(tasks.flatMap(row => [row.malfunction_reported_by, row.purchaser_id, row.deliverer_id]).filter((id): id is string => !!id))];
-    if (staffIds.length) {
-      const { data: people, error: staffError } = await sb.from('staff').select('id,name').in('id', staffIds);
-      if (staffError) throw staffError;
-      setNames(new Map((people ?? []).map(person => [person.id as string, staffDisplayName(person.name)])));
-    } else setNames(new Map());
-    if (staff.role === 'admin') {
-      const { data: actions, error: actionError } = await sb.from('v_item_action_tasks')
-        .select('*').is('task_completed_at', null).order('created_at', { ascending: false });
-      if (actionError) throw actionError;
-      setActionTasks((actions ?? []) as unknown as ActionTask[]);
-    } else setActionTasks([]);
+    if(pendingRefresh.current)return pendingRefresh.current;
+    const load=async()=>{
+    const [tasks,actions] = await Promise.all([
+      readResourceSnapshot<MalfunctionTask & {maker:string|null;people:{id:string|null;name:string|null}[]}>('malfunctions'),
+      staff.role==='admin'?readResourceSnapshot<ActionTask & {id:string;created_at:string}>('actions'):Promise.resolve([]),
+    ]);
+    if(!alive.current)return;
+    setRows([...tasks].sort((a,b)=>b.malfunction_reported_at.localeCompare(a.malfunction_reported_at)));
+    setMakersByAsin(new Map(tasks.flatMap(row=>row.asin&&row.maker?[[row.asin.trim(),row.maker] as [string,string]]:[])));
+    setNames(new Map(tasks.flatMap(row=>row.people.flatMap(person=>person.id?[[person.id,staffDisplayName(person.name)] as [string,string]]:[]))));
+    setActionTasks([...actions].sort((a,b)=>b.created_at.localeCompare(a.created_at)));
     setError('');
     setLoaded(true);
+    };
+    const request=load();pendingRefresh.current=request;
+    try{await request;}finally{pendingRefresh.current=null;}
   }
 
   useEffect(() => {
@@ -252,11 +237,11 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
   }, [loaded, rows, actionTasks]);
 
   useEffect(() => {
-    let active = true;
+    let active = true;alive.current=true;
     const load = () => { void refresh().catch(cause => { if (active) setError(messageOf(cause)); }); };
     load();
-    const timer = window.setInterval(load, 30000);
-    return () => { active = false; window.clearInterval(timer); };
+    const timer = window.setInterval(() => { if(document.visibilityState==='visible') load(); }, 30000);
+    return () => { active = false; alive.current=false; window.clearInterval(timer); };
   }, [staff.id, staff.role]);
 
   async function completeTask(id: string) {

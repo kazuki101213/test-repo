@@ -671,3 +671,13 @@ export async function nextLotSeq(): Promise<number> {
   if (error) throw error;
   return ((data as { lot_seq: number } | null)?.lot_seq ?? 0) + 1;
 }
+
+export interface ProductSaleSummary { product_id:string; history_count:number; amazon_count:number; amazon_average:number|null }
+export async function fetchProductSaleSummaries(products:Pick<Product,'id'>[]):Promise<ProductSaleSummary[]> {
+ const rows:ProductSaleSummary[]=[];
+ for(let start=0;start<products.length;start+=100){
+  const {data,error}=await getSupabase().rpc('product_sale_summaries',{p_product_ids:products.slice(start,start+100).map(p=>p.id)});
+  if(error)throw error;rows.push(...(data??[]) as ProductSaleSummary[]);
+ }
+ return rows;
+}

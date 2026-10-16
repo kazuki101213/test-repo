@@ -47,7 +47,7 @@ VIEWS = [
     ('v_antique_ledger', 'LedgerRow'),
 ]
 
-RPCS = ['read_inventory_page', 'set_delivery_progress', 'update_delivery_fields', 'find_by_sku', 'link_login']
+RPCS = ['read_resource_snapshot', 'product_sale_summaries', 'read_inventory_page', 'set_delivery_progress', 'update_delivery_fields', 'find_by_sku', 'link_login']
 
 TABLES = ['staff', 'profiles', 'payment_cards', 'products', 'items',
           'item_photos', 'item_comments', 'import_conflicts']
@@ -72,7 +72,7 @@ def main() -> None:
             failures += 1
             continue
         # read_inventory_page adds these derived fields; paged_inventory_sync.sql verifies the response.
-        derived_fields = {'deliverer_name', 'original_marketplace_item_id'} if name == 'DeliveryTask' else set()
+        derived_fields = {'deliverer_name', 'original_marketplace_item_id', 'summary_only', 'detail_revision'} if name == 'DeliveryTask' else set()
         missing = sorted(fields - cols - derived_fields)
         if missing:
             print(f'  NG  {view:22} {name:20} アプリが要求するが DB に無い列: {missing}')
