@@ -77,6 +77,8 @@ do $$declare obs jsonb:=jsonb_build_object('external_id','m992003','serial','992
  if app.sync_seller_observation('mercari-1',obs)<>'stale' then raise exception 'Stale seller status accepted';end if;
  perform app.perform_inventory_action(item,'trade_cancel','取引中','cancelled on site');
  if app.sync_seller_observation('mercari-1',obs||jsonb_build_object('observed_at',now()+interval '2 seconds'))<>'protected' then raise exception 'Cancelled trade reopened';end if;
+ if app.sync_seller_observation('mercari-1',obs||jsonb_build_object('status','出品中','trade_key','m992003','observed_at',now()+interval '2 seconds'))<>'protected' then raise exception 'Listing placeholder cleared cancellation guard';end if;
+ if app.sync_seller_observation('mercari-1',obs||jsonb_build_object('observed_at',now()+interval '2 seconds'))<>'protected' then raise exception 'Old trade reopened after listing observation';end if;
  if app.sync_seller_observation('mercari-1',obs||jsonb_build_object('trade_key','m992003:two','observed_at',now()+interval '3 seconds'))<>'updated' then raise exception 'New trade not attached to same inventory';end if;
  obs:=obs||jsonb_build_object('trade_key','m992003:two','status','販売済','sold_on',current_date-2,'sold_price',6100,'payout_amount',4371,'observed_at',now()+interval '4 seconds');
  if app.sync_seller_observation('mercari-1',obs)<>'updated' then raise exception 'Completed sale not saved';end if;

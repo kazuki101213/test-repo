@@ -11286,7 +11286,7 @@ begin
   or jsonb_typeof(p_payload->'photos') is distinct from 'array' then raise exception '出品内容を確認してください';end if;
   if jsonb_array_length(p_payload->'photos') not between 1 and 10 or exists(select 1 from jsonb_array_elements_text(p_payload->'photos') u where u!~'^https://(xgoppuqoqeppckyunnvx[.]supabase[.]co/|lh3[.]googleusercontent[.]com/|drive[.]google[.]com/|drive[.]usercontent[.]google[.]com/|drive[.]googleusercontent[.]com/)') then raise exception '商品写真を確認してください';end if;
  elsif p_kind in ('shipping_code','register_package','verify_shipping','ship_notice','message_sync','message_send') then
-  if i.status<>'取引中' or link.id is null or link.trade_key is null then raise exception '対象の取引情報を先に取得してください';end if;
+  if (i.status<>'取引中' and not (p_kind in ('message_sync','message_send') and i.status='出品中' and i.seller_message_attention)) or link.id is null or link.trade_key is null then raise exception '対象の取引情報を先に取得してください';end if;
   if p_payload->>'trade_key' is distinct from link.trade_key then raise exception '取引情報が更新されています';end if;
   if p_kind='register_package' and length(btrim(coalesce(p_payload->>'code',''))) not between 1 and 2048 then raise exception '専用資材のコードを読み取ってください';end if;
   if p_kind='message_send' and length(btrim(coalesce(p_payload->>'body',''))) not between 1 and 2000 then raise exception 'メッセージを入力してください';end if;
@@ -11364,7 +11364,7 @@ begin
  end if;
  if i.sold_on is not null or i.status in ('販売済','返品処理','動作不良','Amazon補填申請中') or i.sales_channel<>ch then return 'protected';end if;
  if greatest(l.observed_at,i.marketplace_status_observed_at)>=observed then return 'stale';end if;
- if i.seller_cancelled_at is not null and (i.seller_cancelled_trade_key='*' or trade is null or trade=i.seller_cancelled_trade_key) then return 'protected';end if;
+ if i.seller_cancelled_at is not null and (i.seller_cancelled_trade_key='*' or trade is null or trade=i.seller_cancelled_trade_key or trade=ext or state not in ('取引中','販売済')) then return 'protected';end if;
  if state='販売済' then
   day:=(p_observation->>'sold_on')::date;
   if day is null or day>(clock_timestamp() at time zone 'Asia/Tokyo')::date or day<i.purchased_at or coalesce(p_observation->>'sold_price','')!~'^[0-9]{1,9}$' or coalesce(p_observation->>'payout_amount','')!~'^[0-9]{1,9}$' then raise exception '実際の販売日・販売金額・振込金額を確認できません';end if;
