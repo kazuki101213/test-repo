@@ -88,6 +88,6 @@ export default function SpareShippingTasks({staff,management=false,onChanged}:{
     : task.owner_staff_id===staff.id && !task.sent_at));
   if(error) return <li className="spare-shipping-row"><p className="error" role="alert">{error}</p>
     <button className="btn" onClick={()=>void refreshRef.current()}>再読み込み</button></li>;
-  return <>{visible.map(task=><ShippingRow key={task.id} task={task} staff={staff} management={management}
+  return <>{visible.map(task=><ShippingRow key={`${task.id}:${task.recipient_staff_id}`} task={task} staff={staff} management={management}
     onChanged={()=>{setRows(current=>current.filter(row=>row.id!==task.id));setRevision(n=>n+1);onChanged?.();}} />)}</>;
 }

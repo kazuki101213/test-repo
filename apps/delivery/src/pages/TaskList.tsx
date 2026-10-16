@@ -33,7 +33,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
 
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
   const [delivererId, setDelivererId] = useState('');
-  const [filter, setFilter] = useState<Filter>('検品中');
+  const [filter, setFilter] = useState<Filter>(() => canViewDeliveryAssignee(staff) ? 'all' : '検品中');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
