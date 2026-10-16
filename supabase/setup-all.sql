@@ -11086,3 +11086,302 @@ do $$declare definition text;marker text:='coalesce(jsonb_agg(d order by n) filt
 end $$;
 
 
+-- ▼▼▼ 20261016075033_state_specific_actions_and_seller_links.sql ▼▼▼
+
+-- State-specific commands are the delivery write boundary. Every transition is locked,
+-- checks its source status and actor, and keeps an immutable local action history.
+alter table app.items add column if not exists supplier_contact_requested_at timestamptz;
+alter table app.items add column if not exists workflow_decision text;
+alter table app.items add column if not exists workflow_previous_sales_channel app.sales_channel;
+alter table app.items add column if not exists seller_trade_key text;
+alter table app.items add column if not exists seller_cancelled_trade_key text;
+alter table app.items add column if not exists seller_cancelled_at timestamptz;
+alter table app.items add column if not exists seller_message_attention boolean not null default false;
+create table app.inventory_workflow_events(
+ id uuid primary key, item_id uuid not null references app.items(id), actor_id uuid not null references app.staff(id),
+ action text not null, from_status app.item_status not null,to_status app.item_status not null,
+ note text, created_at timestamptz not null default clock_timestamp()
+);
+create index inventory_workflow_events_item_time on app.inventory_workflow_events(item_id,created_at desc);
+alter table app.inventory_workflow_events enable row level security;
+revoke all on app.inventory_workflow_events from public,anon,authenticated;
+grant select on app.inventory_workflow_events to authenticated;
+create policy inventory_workflow_events_read on app.inventory_workflow_events for select to authenticated using(exists(
+ select 1 from app.items i where i.id=item_id and (app.is_admin() or i.deliverer_id=app.current_staff_id() or (app.current_role()='purchaser' and i.purchaser_id=app.current_staff_id()))));
+
+create or replace function app.perform_inventory_action(p_item_id uuid,p_action text,p_expected_status app.item_status,p_note text default null,p_request_id uuid default gen_random_uuid())
+returns void language plpgsql security definer set search_path=pg_catalog,app as $$
+declare i app.items;actor uuid:=app.current_staff_id();manager boolean;target app.item_status;old_event app.inventory_workflow_events;
+begin
+ if auth.uid() is null or actor is null or not exists(select 1 from app.staff where id=actor and is_active) then raise exception 'ログインが必要です' using errcode='42501';end if;
+ select * into i from app.items where id=p_item_id for update;
+ manager:=coalesce(app.is_admin() or (app.current_role()='purchaser' and i.purchaser_id=actor),false);
+ if i.id is null or not coalesce(manager or i.deliverer_id=actor,false) then raise exception 'この商品を操作できません' using errcode='42501';end if;
+ if i.is_accessory and not app.is_standalone_accessory_serial(i.sku,i.lot_seq) then raise exception '本体から操作してください' using errcode='22023';end if;
+ if p_request_id is null then raise exception '操作IDがありません' using errcode='22023';end if;
+ select * into old_event from app.inventory_workflow_events where id=p_request_id;
+ if found then
+  if old_event.item_id=i.id and old_event.actor_id=actor and old_event.action=p_action and old_event.note is not distinct from nullif(btrim(p_note),'') then return;end if;
+  raise exception '操作IDが重複しています' using errcode='22023';
+ end if;
+ if i.sold_on is not null or i.status='販売済' then raise exception '販売済の商品は管理機能で販売日を訂正してください' using errcode='22023';end if;
+ if i.status is distinct from p_expected_status then raise exception '状態が更新されています。一覧を再読み込みしてください' using errcode='40001';end if;
+ if length(coalesce(p_note,''))>2000 then raise exception '2000文字以内で入力してください' using errcode='22023';end if;
+ target:=i.status;
+ case p_action
+ when 'return_request_complete' then
+  if i.status<>'Amazon返送依頼' or i.marketplace not in ('Amazon返品','動作品Amazon返品') then raise exception '返送依頼待ちの商品ではありません';end if;
+  target:='検品中';update app.items set return_request_completed_at=clock_timestamp(),status=target where id=i.id;
+ when 'return_request_cancel' then
+  if i.status<>'検品中' or i.marketplace not in ('Amazon返品','動作品Amazon返品') then raise exception '返送依頼の取消対象ではありません';end if;
+  target:='Amazon返送依頼';update app.items set return_request_completed_at=null,status=target where id=i.id;
+ when 'inspection_complete' then
+  if i.status<>'検品中' then raise exception '検品中の商品ではありません';end if;
+  target:='商品登録前';update app.items set inspected_at=coalesce(inspected_at,clock_timestamp()),cleaned_at=coalesce(cleaned_at,clock_timestamp()),status=target where id=i.id;
+ when 'inspection_cancel' then
+  if i.status<>'商品登録前' or i.workflow_decision is not null then raise exception '検品完了の取消対象ではありません';end if;
+  target:='検品中';update app.items set inspected_at=null,cleaned_at=null,product_registered_at=null,status=target where id=i.id;
+ when 'report' then
+  if i.status<>'検品中' or nullif(btrim(p_note),'') is null then raise exception '検品中の商品について報告内容を入力してください';end if;
+  target:=case when i.marketplace in ('Amazon返品','動作品Amazon返品') then 'Amazon補填申請中'::app.item_status else '動作不良'::app.item_status end;
+  update app.items set malfunction_reported=true,malfunction_comment=btrim(p_note),malfunction_reported_at=clock_timestamp(),malfunction_reported_by=actor,malfunction_resolved_at=null,malfunction_resolved_by=null,status=target where id=i.id;
+ when 'report_cancel','send_back' then
+  if i.status not in ('動作不良','Amazon補填申請中') then raise exception '報告の取消対象ではありません';end if;
+  if p_action='send_back' and not manager then raise exception '管理者・仕入担当者のみ差し戻しできます' using errcode='42501';end if;
+  if i.status='Amazon補填申請中' and not manager then raise exception '破損報告の差し戻しは管理側から行ってください' using errcode='42501';end if;
+  target:='検品中';update app.items set malfunction_reported=false,malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=actor,supplier_contact_requested_at=null,workflow_decision=null,status=target where id=i.id;
+ when 'supplier_check' then
+  if not manager then raise exception '管理者・仕入担当者のみ操作できます' using errcode='42501';end if;
+  if i.status<>'動作不良' then raise exception '動作不良の商品ではありません';end if;
+  update app.items set supplier_contact_requested_at=clock_timestamp() where id=i.id;
+  insert into app.item_comments(item_id,author_id,body,task_kind) values(i.id,actor,'仕入先へ確認します。','仕入先確認');
+ when 'supplier_return_complete' then
+  if i.status<>'動作不良' or i.supplier_contact_requested_at is null then raise exception '仕入先確認後に返品完了を登録してください';end if;
+  target:='返品処理';update app.items set returned_on=(clock_timestamp() at time zone 'Asia/Tokyo')::date,status=target where id=i.id;
+ when 'supplier_return_cancel' then
+  if i.status<>'返品処理' or i.marketplace in ('Amazon返品','動作品Amazon返品') then raise exception '返品完了の取消対象ではありません';end if;
+  target:='動作不良';update app.items set returned_on=null,malfunction_reported=true,malfunction_resolved_at=null,status=target where id=i.id;
+ when 'return_impossible','yahoo_instruction' then
+  if i.status<>'動作不良' or (p_action='return_impossible' and i.supplier_contact_requested_at is null) then raise exception '動作不良の商品で仕入先確認後に操作してください';end if;
+  if p_action='yahoo_instruction' and not manager then raise exception '販売指示は管理側から行ってください' using errcode='42501';end if;
+  target:='商品登録前';update app.items set workflow_previous_sales_channel=sales_channel,workflow_decision='yahoo',sales_channel='ヤフオク',malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=actor,status=target where id=i.id;
+ when 'yahoo_instruction_cancel' then
+  if i.status<>'商品登録前' or i.workflow_decision is distinct from 'yahoo' then raise exception '返品不可・販売指示の取消対象ではありません';end if;
+  target:='動作不良';update app.items set sales_channel=coalesce(workflow_previous_sales_channel,sales_channel),workflow_decision=null,malfunction_reported=true,malfunction_resolved_at=null,status=target where id=i.id;
+ when 'compensation_complete','compensation_denied' then
+  if not manager then raise exception '補填結果は管理側から登録してください' using errcode='42501';end if;
+  if i.status<>'Amazon補填申請中' then raise exception 'Amazon補填申請中の商品ではありません';end if;
+  target:='商品登録前';update app.items set sales_channel='ヤフオク',workflow_decision=case when p_action='compensation_complete' then 'compensated' else 'compensation_denied' end,malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=actor,status=target where id=i.id;
+ when 'listing_complete' then
+  if i.status<>'商品登録前' or i.sales_channel not in ('FBA','自己発送') then raise exception 'FBA・自己発送の出品完了のみ手動で登録できます';end if;
+  target:='出品中';update app.items set product_registered_at=clock_timestamp(),status=target where id=i.id;
+ when 'listing_cancel' then
+  if i.status<>'出品中' or nullif(btrim(p_note),'') is null then raise exception '実際に出品されていないことを確認してください';end if;
+  target:='商品登録前';update app.items set product_registered_at=null,status=target,seller_cancelled_trade_key=coalesce(seller_trade_key,'*'),seller_cancelled_at=clock_timestamp() where id=i.id;
+ when 'trade_cancel','resell' then
+  if i.status<>'取引中' or nullif(btrim(p_note),'') is null then raise exception '取引中の商品について理由を入力してください';end if;
+  target:=case when p_action='trade_cancel' then '出品中'::app.item_status else '商品登録前'::app.item_status end;
+  update app.items set status=target,product_registered_at=case when p_action='resell' then null else product_registered_at end,seller_cancelled_trade_key=coalesce(seller_trade_key,'*'),seller_cancelled_at=clock_timestamp() where id=i.id;
+ else raise exception '未対応の操作です' using errcode='22023';
+ end case;
+ insert into app.inventory_workflow_events(id,item_id,actor_id,action,from_status,to_status,note) values(p_request_id,i.id,actor,p_action,i.status,target,nullif(btrim(p_note),''));
+end $$;
+revoke all on function app.perform_inventory_action(uuid,text,app.item_status,text,uuid) from public,anon;
+grant execute on function app.perform_inventory_action(uuid,text,app.item_status,text,uuid) to authenticated;
+
+-- Existing entry points share the same transition checks.
+create or replace function app.report_item_malfunction(p_item_id uuid,p_comment text) returns void language plpgsql security invoker set search_path=pg_catalog,app as $$
+begin perform app.perform_inventory_action(p_item_id,'report','検品中',p_comment);end $$;
+create or replace function app.resolve_item_malfunction(p_item_id uuid) returns void language plpgsql security definer set search_path=pg_catalog,app as $$
+declare state app.item_status;begin
+ select status into state from app.items where id=p_item_id;
+ perform app.perform_inventory_action(p_item_id,'send_back',state);
+end $$;
+-- Reuse existing supplier/Yahoo reply templates without moving or duplicating accessories.
+create or replace function app.apply_malfunction_reply() returns trigger language plpgsql security definer set search_path=pg_catalog,app as $$
+begin
+ if auth.uid() is null or new.author_id is distinct from app.current_staff_id() then return new;end if;
+ if not exists(select 1 from app.items i join app.staff s on s.id=new.author_id where i.id=new.item_id and i.status='動作不良' and i.sold_on is null and (s.role='admin' or (s.role='purchaser' and i.purchaser_id=s.id))) then return new;end if;
+ if new.task_kind='仕入先確認' then update app.items set supplier_contact_requested_at=coalesce(supplier_contact_requested_at,new.created_at) where id=new.item_id;
+ elsif new.task_kind like '%ヤフオク%' then
+  update app.items set workflow_previous_sales_channel=sales_channel,workflow_decision='yahoo',sales_channel='ヤフオク',malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=new.author_id,status='商品登録前' where id=new.item_id;
+ end if;return new;
+end $$;
+revoke all on function app.apply_malfunction_reply() from public,anon,authenticated;
+
+-- Include small workflow flags in both full detail and incremental list reads.
+do $$declare definition text;begin
+ definition:=regexp_replace(pg_get_viewdef('app.v_delivery_tasks'::regclass,true),';\s*$','');
+ execute 'create or replace view app.v_delivery_tasks with(security_invoker=true) as select v.*,i.return_request_completed_at,i.supplier_contact_requested_at,i.workflow_decision,i.seller_message_attention from ('||definition||') v join app.items i on i.id=v.id';
+end $$;
+notify pgrst,'reload schema';
+
+-- Preserve conditional snapshots while exposing the current report phase to management.
+do $$declare definition text;begin
+ definition:=pg_get_functiondef('app.read_resource_snapshot(text,jsonb,jsonb)'::regprocedure);
+ definition:=replace(definition,'i.malfunction_reported_by,','i.malfunction_reported_by,i.status,');
+ definition:=replace(definition,'where i.malfunction_reported and i.malfunction_resolved_at is null','where i.malfunction_reported and i.malfunction_resolved_at is null and i.status in (''動作不良'',''Amazon補填申請中'') and i.sold_on is null');
+ execute definition;
+end $$;
+-- A delivery caller cannot bypass the flow through the previous general status API.
+do $$declare definition text;begin
+ definition:=pg_get_functiondef('app.set_inventory_workflow(uuid,app.item_status)'::regprocedure);
+ definition:=replace(definition,'or i.deliverer_id=actor','');
+ execute definition;
+ definition:=pg_get_functiondef('app.sync_marketplace_sale_status(text,text,text,timestamptz)'::regprocedure);
+ definition:=replace(definition,'if i.marketplace_status_observed_at is not null','if i.seller_cancelled_at is not null then return ''protected'';end if; if i.marketplace_status_observed_at is not null');
+ execute definition;
+end $$;
+-- Seller records attach to an existing physical inventory row. A scrape never inserts inventory.
+create table app.seller_listings(
+ id uuid primary key default gen_random_uuid(),item_id uuid not null references app.items(id),
+ channel app.sales_channel not null check(channel in ('メルカリ','ヤフオク')),account_id text not null check(account_id in ('mercari-1','auctions-1')),
+ external_id text not null,url text not null,trade_key text,observed_at timestamptz,active boolean not null default true,
+ unique(channel,account_id,external_id)
+);
+create unique index seller_current_item on app.seller_listings(item_id) where active;
+create table app.seller_operations(
+ id uuid primary key,item_id uuid not null references app.items(id),actor_id uuid not null references app.staff(id),
+ kind text not null check(kind in ('listing','shipping_code','register_package','verify_shipping','ship_notice','message_sync','message_send')),
+ channel app.sales_channel not null,account_id text not null,expected_status app.item_status not null,payload jsonb not null,
+ status text not null default 'queued' check(status in ('queued','running','succeeded','failed','uncertain')),
+ result jsonb not null default '{}',created_at timestamptz not null default clock_timestamp(),claimed_at timestamptz,finished_at timestamptz
+);
+create unique index seller_one_pending on app.seller_operations(item_id) where status in ('queued','running','uncertain');
+create index seller_queue on app.seller_operations(account_id,created_at) where status='queued';
+alter table app.seller_listings enable row level security;
+alter table app.seller_operations enable row level security;
+revoke all on app.seller_listings,app.seller_operations from public,anon,authenticated;
+grant select on app.seller_listings,app.seller_operations to authenticated;
+create policy seller_listing_read on app.seller_listings for select to authenticated using(exists(select 1 from app.items i where i.id=item_id and (app.is_admin() or i.deliverer_id=app.current_staff_id() or (app.current_role()='purchaser' and i.purchaser_id=app.current_staff_id()))));
+create policy seller_operation_read on app.seller_operations for select to authenticated using(exists(select 1 from app.items i where i.id=item_id and (app.is_admin() or i.deliverer_id=app.current_staff_id() or (app.current_role()='purchaser' and i.purchaser_id=app.current_staff_id()))));
+create function app.seller_operation_context(p_item_id uuid) returns jsonb language sql stable security invoker set search_path=pg_catalog,app as $$
+ select jsonb_build_object('listing',(select to_jsonb(l) from app.seller_listings l where l.item_id=i.id and l.active),'assignee',(select name from app.staff where id=i.deliverer_id),
+ 'operations',coalesce((select jsonb_agg(to_jsonb(q)-'payload' order by q.created_at desc) from (select * from app.seller_operations where item_id=i.id order by created_at desc limit 12) q),'[]'::jsonb)) from app.items i where i.id=p_item_id
+$$;
+revoke all on function app.seller_operation_context(uuid) from public,anon;
+grant execute on function app.seller_operation_context(uuid) to authenticated;
+create function app.queue_seller_operation(p_item_id uuid,p_kind text,p_payload jsonb,p_request_id uuid) returns uuid
+language plpgsql security definer set search_path=pg_catalog,app as $$
+declare i app.items;a uuid:=app.current_staff_id();existing app.seller_operations;link app.seller_listings;proof app.seller_operations;
+begin
+ if auth.uid() is null or a is null or not exists(select 1 from app.staff where id=a and is_active) then raise exception 'ログインが必要です' using errcode='42501';end if;
+ select * into i from app.items where id=p_item_id for update;
+ if i.id is null or not coalesce(app.is_admin() or i.deliverer_id=a,false) then raise exception '納品担当者または管理者のみ操作できます' using errcode='42501';end if;
+ select * into existing from app.seller_operations where id=p_request_id;
+ if found then if existing.item_id=i.id and existing.actor_id=a and existing.kind=p_kind and existing.payload=p_payload then return existing.id;end if;raise exception '操作IDが重複しています';end if;
+ if i.is_accessory and not app.is_standalone_accessory_serial(i.sku,i.lot_seq) then raise exception '本体から操作してください';end if;
+ if i.sold_on is not null or i.status='販売済' then raise exception '販売済の商品は操作できません';end if;
+ if i.sales_channel not in ('メルカリ','ヤフオク') or i.sales_channel is null then raise exception '販売先が対応していません';end if;
+ if p_request_id is null or p_payload is null or jsonb_typeof(p_payload)<>'object' or octet_length(p_payload::text)>200000 then raise exception '入力内容を確認してください';end if;
+ if exists(select 1 from app.seller_operations where item_id=i.id and status in ('queued','running','uncertain')) then raise exception '前の操作の結果確認が必要です。二重実行を防ぐため停止しました';end if;
+ select * into link from app.seller_listings where item_id=i.id and active;
+ if p_kind='listing' then
+  if i.status<>'商品登録前' then raise exception '商品登録前の商品だけ出品できます';end if;
+  if length(btrim(coalesce(p_payload->>'title',''))) not between 1 and 128 or length(btrim(coalesce(p_payload->>'description',''))) not between 1 and 5000
+  or coalesce(p_payload->>'price','')!~'^[0-9]{1,9}$' or (p_payload->>'price')::numeric<1
+  or nullif(p_payload->>'condition','') is null or nullif(p_payload->>'origin','') is null or nullif(p_payload->>'shippingMethod','') is null
+  or jsonb_typeof(p_payload->'photos') is distinct from 'array' then raise exception '出品内容を確認してください';end if;
+  if jsonb_array_length(p_payload->'photos') not between 1 and 10 or exists(select 1 from jsonb_array_elements_text(p_payload->'photos') u where u!~'^https://(xgoppuqoqeppckyunnvx[.]supabase[.]co/|lh3[.]googleusercontent[.]com/|drive[.]google[.]com/|drive[.]usercontent[.]google[.]com/|drive[.]googleusercontent[.]com/)') then raise exception '商品写真を確認してください';end if;
+ elsif p_kind in ('shipping_code','register_package','verify_shipping','ship_notice','message_sync','message_send') then
+  if i.status<>'取引中' or link.id is null or link.trade_key is null then raise exception '対象の取引情報を先に取得してください';end if;
+  if p_payload->>'trade_key' is distinct from link.trade_key then raise exception '取引情報が更新されています';end if;
+  if p_kind='register_package' and length(btrim(coalesce(p_payload->>'code',''))) not between 1 and 2048 then raise exception '専用資材のコードを読み取ってください';end if;
+  if p_kind='message_send' and length(btrim(coalesce(p_payload->>'body',''))) not between 1 and 2000 then raise exception 'メッセージを入力してください';end if;
+  if p_kind='ship_notice' then
+   select * into proof from app.seller_operations where id=(p_payload->>'proof_id')::uuid and item_id=i.id and status='succeeded' and payload->>'trade_key'=link.trade_key;
+   if proof.id is null or not ((proof.kind='register_package' and (p_payload->>'posted')::boolean is true) or (proof.kind='verify_shipping' and (proof.result->>'accepted')::boolean is true)) then raise exception 'コード登録後の投函、または店舗での受付を確認してください';end if;
+  end if;
+ else raise exception '未対応の操作です';end if;
+ insert into app.seller_operations(id,item_id,actor_id,kind,channel,account_id,expected_status,payload)
+ values(p_request_id,i.id,a,p_kind,i.sales_channel,case when i.sales_channel='メルカリ' then 'mercari-1' else 'auctions-1' end,i.status,p_payload);
+ return p_request_id;
+end $$;
+revoke all on function app.queue_seller_operation(uuid,text,jsonb,uuid) from public,anon;
+grant execute on function app.queue_seller_operation(uuid,text,jsonb,uuid) to authenticated;
+create function app.extension_seller_queue(p_account_ids text[]) returns jsonb language plpgsql stable security definer set search_path=pg_catalog,app as $$
+begin
+ if auth.uid() is null or not app.is_admin() then raise exception '権限がありません' using errcode='42501';end if;
+ return coalesce((select jsonb_agg(to_jsonb(q)) from (select o.*,l.external_id,l.url,l.trade_key from app.seller_operations o left join app.seller_listings l on l.item_id=o.item_id and l.active where o.status='queued' and o.account_id=any(p_account_ids) order by o.created_at limit 10) q),'[]'::jsonb);
+end $$;
+create function app.extension_claim_seller_operation(p_id uuid,p_account_id text) returns boolean language plpgsql security definer set search_path=pg_catalog,app as $$
+begin
+ if auth.uid() is null or not app.is_admin() then raise exception '権限がありません' using errcode='42501';end if;
+ update app.seller_operations set status='running',claimed_at=clock_timestamp() where id=p_id and status='queued' and account_id=p_account_id;
+ return found;
+end $$;
+create function app.extension_finish_seller_operation(p_id uuid,p_status text,p_result jsonb) returns void language plpgsql security definer set search_path=pg_catalog,app as $$
+declare q app.seller_operations;i app.items;ext text;u text;begin
+ if auth.uid() is null or not app.is_admin() then raise exception '権限がありません' using errcode='42501';end if;
+ if p_status not in ('succeeded','failed','uncertain') or p_result is null or octet_length(p_result::text)>200000 then raise exception '結果を確認してください';end if;
+ select * into q from app.seller_operations where id=p_id for update;
+ if q.id is null then raise exception '操作がありません';end if;
+ if q.status=p_status and q.result=p_result then return;end if;
+ if q.status<>'running' then raise exception '実行済みの操作です';end if;
+ select * into i from app.items where id=q.item_id for update;
+ if p_status='succeeded' and q.kind='listing' then
+  ext:=p_result->>'external_id';u:=p_result->>'url';
+  if not ((q.channel='メルカリ' and ext~'^m[0-9]+$' and u='https://jp.mercari.com/item/'||ext) or (q.channel='ヤフオク' and ext~'^[a-z][0-9]+$' and u='https://page.auctions.yahoo.co.jp/jp/auction/'||ext)) then raise exception '出品結果のURL・商品IDを確認してください';end if;
+  update app.seller_listings set active=false where item_id=i.id and active;
+  insert into app.seller_listings(item_id,channel,account_id,external_id,url) values(i.id,q.channel,q.account_id,ext,u)
+  on conflict(channel,account_id,external_id) do update set active=true where app.seller_listings.item_id=excluded.item_id;
+  if not found then raise exception '他の商品と出品IDが重複しています';end if;
+  if i.status=q.expected_status and i.sold_on is null and i.sales_channel=q.channel then
+   update app.items set status='出品中',product_registered_at=clock_timestamp(),seller_trade_key=null,seller_cancelled_at=null,seller_cancelled_trade_key=null where id=i.id;
+  else p_status:='uncertain';p_result:=p_result||jsonb_build_object('note','出品後に商品の状態が変わっています。出品URLを確認してください');end if;
+ elsif p_status='succeeded' and q.kind='message_sync' then
+  update app.items set seller_message_attention=coalesce((p_result->>'attention')::boolean,false) where id=i.id;
+ end if;
+ update app.seller_operations set status=p_status,result=p_result,finished_at=clock_timestamp() where id=q.id;
+end $$;
+revoke all on function app.extension_seller_queue(text[]),app.extension_claim_seller_operation(uuid,text),app.extension_finish_seller_operation(uuid,text,jsonb) from public,anon;
+grant execute on function app.extension_seller_queue(text[]),app.extension_claim_seller_operation(uuid,text),app.extension_finish_seller_operation(uuid,text,jsonb) to authenticated;
+
+-- Exact listing identity takes priority; legacy serial matching requires one exact row.
+create function app.sync_seller_observation(p_account_id text,p_observation jsonb) returns text language plpgsql security definer set search_path=pg_catalog,app as $$
+declare i app.items;l app.seller_listings;ch app.sales_channel;ext text:=p_observation->>'external_id';serial text:=lower(p_observation->>'serial');
+ observed timestamptz:=(p_observation->>'observed_at')::timestamptz;state text:=p_observation->>'status';trade text:=p_observation->>'trade_key';n integer;day date;
+begin
+ if auth.uid() is null or not app.is_admin() then raise exception '権限がありません' using errcode='42501';end if;
+ ch:=case p_account_id when 'mercari-1' then 'メルカリ'::app.sales_channel when 'auctions-1' then 'ヤフオク'::app.sales_channel else null end;
+ if ch is null or observed is null or observed>clock_timestamp()+interval '5 minutes' or observed<clock_timestamp()-interval '1 day' or state not in ('出品中','支払い待ち','取引中','販売済','キャンセル')
+ or not ((ch='メルカリ' and ext~'^m[0-9]+$') or (ch='ヤフオク' and ext~'^[a-z][0-9]+$')) then raise exception '取得情報を確認してください';end if;
+ select * into l from app.seller_listings where channel=ch and account_id=p_account_id and external_id=ext;
+ if l.id is not null then
+  if not l.active then return 'protected';end if;
+  select * into i from app.items where id=l.item_id for update;
+ else
+  if serial is null or serial!~'^[0-9]+[a-z]*$' then return 'unmatched';end if;
+  select count(*) into n from app.items where split_part(sku,'-',1)=serial and not is_accessory and sales_channel=ch;
+  if n<>1 then return 'unmatched';end if;
+  select * into i from app.items where split_part(sku,'-',1)=serial and not is_accessory and sales_channel=ch for update;
+  if exists(select 1 from app.seller_listings where item_id=i.id and active) then return 'unmatched';end if;
+  insert into app.seller_listings(item_id,channel,account_id,external_id,url) values(i.id,ch,p_account_id,ext,case when ch='メルカリ' then 'https://jp.mercari.com/item/'||ext else 'https://page.auctions.yahoo.co.jp/jp/auction/'||ext end) returning * into l;
+ end if;
+ if i.sold_on is not null or i.status in ('販売済','返品処理','動作不良','Amazon補填申請中') or i.sales_channel<>ch then return 'protected';end if;
+ if greatest(l.observed_at,i.marketplace_status_observed_at)>=observed then return 'stale';end if;
+ if i.seller_cancelled_at is not null and (i.seller_cancelled_trade_key='*' or trade is null or trade=i.seller_cancelled_trade_key) then return 'protected';end if;
+ if state='販売済' then
+  day:=(p_observation->>'sold_on')::date;
+  if day is null or day>(clock_timestamp() at time zone 'Asia/Tokyo')::date or day<i.purchased_at or coalesce(p_observation->>'sold_price','')!~'^[0-9]{1,9}$' or coalesce(p_observation->>'payout_amount','')!~'^[0-9]{1,9}$' then raise exception '実際の販売日・販売金額・振込金額を確認できません';end if;
+  if l.trade_key is not null and trade is distinct from l.trade_key then return 'unmatched';end if;
+  update app.items set sold_on=day,sold_price=(p_observation->>'sold_price')::numeric,payout_amount=(p_observation->>'payout_amount')::numeric,status='販売済',seller_trade_key=trade,marketplace_status_observed_at=observed where id=i.id;
+ elsif state='キャンセル' then
+  if i.status<>'取引中' or trade is distinct from l.trade_key then return 'protected';end if;
+  update app.items set status='出品中',seller_cancelled_trade_key=coalesce(trade,'*'),seller_cancelled_at=observed,marketplace_status_observed_at=observed where id=i.id;
+ else
+  if i.status not in ('商品登録前','出品中','取引中') then return 'protected';end if;
+  if state in ('取引中','支払い待ち') and trade is null then raise exception '取引IDを確認してください';end if;
+  if i.status='取引中' and state in ('出品中','支払い待ち') then return 'protected';end if;
+  update app.items set status=case when state='支払い待ち' then '出品中'::app.item_status else state::app.item_status end,
+   seller_trade_key=coalesce(trade,seller_trade_key),seller_cancelled_at=case when trade is not null and trade is distinct from seller_cancelled_trade_key then null else seller_cancelled_at end,marketplace_status_observed_at=observed,
+   seller_message_attention=coalesce((p_observation->>'attention')::boolean,false) where id=i.id;
+ end if;
+ update app.seller_listings set observed_at=observed,trade_key=coalesce(trade,trade_key) where id=l.id;
+ return 'updated';
+end $$;
+revoke all on function app.sync_seller_observation(text,jsonb) from public,anon;
+grant execute on function app.sync_seller_observation(text,jsonb) to authenticated;
+notify pgrst,'reload schema';
+
+

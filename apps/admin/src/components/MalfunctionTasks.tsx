@@ -1,10 +1,10 @@
 import { readResourceSnapshot } from '@bussan/shared';
-import { staffDisplayName } from '@bussan/shared';
+import { managementWorkflowButtons, staffDisplayName } from '@bussan/shared';
 import { deliveryAppUrl } from '../appUrls';
 import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
 import { getSupabase } from '@bussan/shared';
-import type { Staff } from '@bussan/shared';
+import type { Staff, ItemStatus, InventoryAction } from '@bussan/shared';
 
 const PHOTO_AUCTION_TEMPLATES = [
   'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
@@ -12,10 +12,10 @@ const PHOTO_AUCTION_TEMPLATES = [
   'SHARP◯ヤフオク', 'SHARP×ヤフオク',
   'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク',
 ] as const;
-const TASK_TEMPLATES = ['Amazon販売', '仕入先確認', ...PHOTO_AUCTION_TEMPLATES, 'ヤフオク その他'] as const;
+const TASK_TEMPLATES = ['仕入先確認', ...PHOTO_AUCTION_TEMPLATES, 'ヤフオク その他'] as const;
 type TaskKind = typeof TASK_TEMPLATES[number];
 interface MalfunctionTask {
-  id: string; sku: string; lot_seq: number; title: string; asin: string | null; marketplace_item_id: string | null;
+  status: ItemStatus; id: string; sku: string; lot_seq: number; title: string; asin: string | null; marketplace_item_id: string | null;
   purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
   products: { model_no: string | null }[];
 }
@@ -34,7 +34,6 @@ const messageOf = (cause: unknown) => cause instanceof Error ? cause.message : S
 
 function templateBody(kind: TaskKind, row: MalfunctionTask): string {
   const header = '【' + row.lot_seq + '】';
-  if (kind === 'Amazon販売') return header + '\nAmazon販売お願いします。';
   if (kind === '仕入先確認') return header + '\n仕入先へ確認します。\nお待ちください。';
   if (kind === 'ヤフオク その他') return header + '\nヤフオク販売お願いします。\n【写真に関して】\n付属品はすべてつけてください。\n撮影ボックスではなくて、床やテーブル等で撮ってください。\n電源が確認できるものであれば、確認できるような写真お願いします。';
   return header + '\nヤフオク販売お願いします。\nリモコンやB-CASカードや電源ケーブルは予備としてください。\n【写真に関して】\n付属品が写っていれば付属させてください。\n撮影ボックスで撮っていますが、床やテーブル等で撮ってください。\nランプや表示は写真の通りお願いします。\nトレイは開かない場合は開かなくて大丈夫です。\n写真は以下の通りです。';
@@ -254,10 +253,10 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     finally { setBusy(null); }
   }
 
-  async function resolve(id: string) {
-    setBusy(id); setError('');
+  async function resolve(row: MalfunctionTask, action: InventoryAction) {
+    setBusy(row.id); setError('');
     try {
-      const { error: rpcError } = await getSupabase().rpc('resolve_item_malfunction', { p_item_id: id });
+      const { error: rpcError } = await getSupabase().rpc('perform_inventory_action', {p_item_id:row.id,p_action:action,p_expected_status:row.status,p_request_id:crypto.randomUUID(),p_note:null});
       if (rpcError) throw rpcError;
       await refresh();
     } catch (cause) { setError(messageOf(cause)); }
@@ -274,7 +273,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     </li>)}
     {rows.map(row => <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className="malfunction-task-row">
       <div className="malfunction-task-content">
-        <strong className="malfunction-task-heading">動作不良</strong>
+        <strong className="malfunction-task-heading">{row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
         <div className="malfunction-task-metadata">
           <div><span>通番号</span><span>{row.lot_seq}</span></div>
           <div><span>SKU</span><span>{row.sku}</span></div>
@@ -285,9 +284,9 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
           <div><span>送信時間</span><span>{new Date(row.malfunction_reported_at).toLocaleString('ja-JP')}</span></div>
         </div>
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
-        <MalfunctionConversation item={row} staff={staff} onReplied={refresh} />
+        {row.status === '動作不良' && <MalfunctionConversation item={row} staff={staff} onReplied={refresh} />}
       </div>
-      {(staff.role === 'admin' || staff.role === 'purchaser') && <button className="btn" disabled={busy !== null} onClick={() => void resolve(row.id)}>{busy === row.id ? '更新中…' : '差し戻し'}</button>}
+      {(staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).map(button=><button key={button.key} className="btn" disabled={busy !== null} onClick={()=>void resolve(row,button.key as InventoryAction)}>{button.label}</button>)}</div>}
     </li>)}
   </>;
 }

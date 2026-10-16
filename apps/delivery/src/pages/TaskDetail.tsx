@@ -1,60 +1,43 @@
 import ColoredLabel from '../components/ColoredLabel';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WORK_STEPS, jpDate, canViewDeliveryAssignee, staffDisplayName } from '@bussan/shared';
-import type { DeliveryTask, ItemComment, Staff, WorkStep } from '@bussan/shared';
+import { jpDate, canViewDeliveryAssignee } from '@bussan/shared';
+import type { DeliveryTask, ItemComment, Staff } from '@bussan/shared';
 import {
-  addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoReviewPolicy, fetchPhotoUrls, fetchTask, postComment,
-  queueMarketplaceMessage, requestMarketplaceMessageSync, reportItemMalfunction, setDeliveryProgress, recordListingPhotoUpload, uploadPhoto,
+  addPhotosToDrive, deletePhoto, fetchComments, fetchMarketplaceConversation, fetchPhotoReview, fetchPhotoUrls, fetchTask, postComment,
+  queueMarketplaceMessage, requestMarketplaceMessageSync, recordListingPhotoUpload, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
-import WorkflowControls from '../components/WorkflowControls';
 import DescriptionEditor from '../components/DescriptionEditor';
-import DateInput from '../components/DateInput';
 
-
-function isStepDone(task: DeliveryTask, step: WorkStep): boolean {
-  switch (step) {
-    case 'inspection_cleaning': return task.inspected && task.cleaned;
-    case 'listing':    return task.product_registered && (task.marketplace === '動作品Amazon返品' || task.photo_uploaded);
-    case 'packed':     return task.packed_on !== null;
-    case 'shipped':    return task.shipped_on !== null;
-  }
-}
 
 export default function TaskDetail({
-  itemId, latestTask, staff, listingSkus, onClose, onChanged, onOpened,
-}: { itemId: string; latestTask?: DeliveryTask; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
+  itemId, latestTask, staff, listingSkus, mode = 'photos', onClose, onChanged, onOpened,
+}: { mode?: 'photos'|'description'|'messages'|'comments'; itemId: string; latestTask?: DeliveryTask; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
   const [task, setTask] = useState<DeliveryTask | null>(null);
   const openedReported = useRef(false);
   const autoOpenedMessages = useRef(false);
   const [comments, setComments] = useState<ItemComment[]>([]);
   const [photos, setPhotos] = useState<ItemPhoto[]>([]);
   const [photoReview, setPhotoReview] = useState<PhotoReviewState | null>(null);
-  const [reviewEnforced, setReviewEnforced] = useState(false);
   const [driveBusy, setDriveBusy] = useState(false);
   const [driveMessage, setDriveMessage] = useState('');
   const [draft, setDraft] = useState('');
-  const [pending, setPending] = useState<WorkStep | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
   const [photoSaveMessage, setPhotoSaveMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [malfunctionChecked, setMalfunctionChecked] = useState(false);
-  const [malfunctionComment, setMalfunctionComment] = useState('');
-  const [malfunctionBusy, setMalfunctionBusy] = useState(false);
   const [marketplaceConversation, setMarketplaceConversation] = useState<MarketplaceConversation>({ messages: [], outbox: [] });
   const [marketplaceVisible, setMarketplaceVisible] = useState(false);
   const [marketplaceLoading, setMarketplaceLoading] = useState(false);
   const [marketplaceDraft, setMarketplaceDraft] = useState('');
   const [marketplaceSending, setMarketplaceSending] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState('');
-  const isDeliveryMaster = staff.role === 'admin' && staff.name === '長部一輝';
 
   const reload = useCallback(async () => {
     try {
-      const [t, c, p, review, enforced] = await Promise.all([
-        fetchTask(itemId, canViewDeliveryAssignee(staff)), fetchComments(itemId), fetchPhotoUrls(itemId), fetchPhotoReview(itemId), fetchPhotoReviewPolicy(),
+      const [t, c, p, review] = await Promise.all([
+        fetchTask(itemId, canViewDeliveryAssignee(staff)), mode === 'messages'||mode === 'comments' ? fetchComments(itemId) : Promise.resolve([]), mode === 'photos' ? fetchPhotoUrls(itemId) : Promise.resolve([]), mode === 'photos' ? fetchPhotoReview(itemId) : Promise.resolve(null),
       ]);
       if (!t) throw new Error('商品が見つかりません。');
       setTask(t);
@@ -62,12 +45,11 @@ export default function TaskDetail({
       setComments(c);
       setPhotos(p);
       setPhotoReview(review);
-      setReviewEnforced(enforced);
       if (!openedReported.current) { openedReported.current = true; onOpened(itemId); }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [itemId, onChanged, onOpened, staff.code, staff.role]);
+  }, [itemId, onChanged, onOpened, staff.code, staff.role, mode]);
 
   useEffect(() => { void reload(); }, [reload]);
   const detailRevision = useRef(latestTask?.detail_revision);
@@ -107,32 +89,6 @@ export default function TaskDetail({
     const timer = window.setTimeout(() => { void displayMarketplaceMessages(); }, 0);
     return () => window.clearTimeout(timer);
   }, [task, itemId, staff.id, staff.name, staff.role]);
-  async function toggle(step: WorkStep) {
-    if (!task) return;
-    setPending(step);
-    setError(null);
-    try {
-      if (step === 'inspection_cleaning' || step === 'listing' || step === 'packed' || step === 'shipped') {
-        const date = step === 'packed' ? task.packed_on : step === 'shipped' ? task.shipped_on : null;
-        const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-        await setDeliveryProgress(task.id, step, !isStepDone(task, step), date ?? today);
-      }
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPending(null);
-    }
-  }
-
-  async function setStepDate(step: 'packed' | 'shipped', date: string) {
-    if (!task) return;
-    setPending(step); setError(null);
-    try { await setDeliveryProgress(task.id, step, !!date, date || undefined); await reload(); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setPending(null); }
-  }
-
   async function onPhotoPick(files: FileList | null) {
     if (!files || !task) return;
     setUploading(true);
@@ -270,16 +226,6 @@ export default function TaskDetail({
     );
   }
 
-  async function reportMalfunction() {
-    if (!task || !malfunctionComment.trim()) return;
-    setMalfunctionBusy(true); setError(null);
-    try {
-      await reportItemMalfunction(task.id, malfunctionComment.trim());
-      setMalfunctionChecked(false); setMalfunctionComment('');
-      await reload();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setMalfunctionBusy(false); }
-  }
   const isWorkingAmazonReturn = task.marketplace === '動作品Amazon返品';
 
   return (
@@ -287,14 +233,15 @@ export default function TaskDetail({
       <div className="row inline-detail-header">
         <button type="button" className="btn ghost" onClick={onClose}>詳細を閉じる</button>
         <span className="badge">{task.status}</span>
-        <WorkflowControls task={task} onChanged={reload} onError={setError} />
+
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
+      {mode === 'photos' && <>
       <div className="card photo-control-row">
         <span className="muted">写真 {photos.length}枚</span>
         <label className="btn photo-upload">{uploading ? '追加中…' : '写真追加'}
-          <input type="file" aria-label="商品写真追加" accept="image/*" multiple disabled={uploading || pending !== null || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+          <input type="file" aria-label="商品写真追加" accept="image/*" multiple disabled={uploading || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>
         <button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
           onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブ追加中…' : 'Googleドライブ追加'}</button>
@@ -319,58 +266,9 @@ export default function TaskDetail({
         写真確認：{photoReview.approved_at ? '完了' : '確認待ち'}
       </p>}
 
-      {/* ── 作業チェック ─────────────────────────── */}
-      <div className="card">
-        <strong>作業チェック</strong>
-        <div className="steps">
-          <div className="malfunction-step-wrap">
-            <div className="step" data-done={task.malfunction_reported || malfunctionChecked}>
-              <button type="button" className="step-toggle" aria-pressed={task.malfunction_reported || malfunctionChecked}
-                disabled={malfunctionBusy || task.malfunction_reported}
-                onClick={() => setMalfunctionChecked(checked => !checked)}>
-                <span className="check">{task.malfunction_reported || malfunctionChecked ? '✓' : ''}</span>
-                <span><span className="label">動作不良</span><br />
-                  <span className="hint">{task.malfunction_reported
-                    ? `仕入担当者（${staffDisplayName(task.purchaser_name) || '未設定'}）へ報告済み`
-                    : '不具合がある場合に選択して、仕入担当者へ報告します'}</span>
-                </span>
-              </button>
-            </div>
-            {task.malfunction_reported
-              ? <p className="muted malfunction-status" role="status">{task.malfunction_resolved_at ? '動作不良の報告は差し戻し済みです。' : '仕入担当者への報告は対応待ちです。'}{task.malfunction_comment ? ` 内容：${task.malfunction_comment}` : ''}</p>
-              : malfunctionChecked && <div className="malfunction-report">
-                <textarea aria-label="動作不良の内容" value={malfunctionComment} onChange={e => setMalfunctionComment(e.target.value)} maxLength={2000} placeholder="動作不良の内容を入力" />
-                <button type="button" className="btn primary" disabled={!malfunctionComment.trim() || malfunctionBusy} onClick={() => void reportMalfunction()}>{malfunctionBusy ? '報告中…' : '仕入担当者に報告'}</button>
-              </div>}
-          </div>
-          {WORK_STEPS.map((step) => {
-            const s = isWorkingAmazonReturn && step.key === 'listing' ? { ...step, label: '商品登録' } : step;
-            const done = isStepDone(task, s.key);
-            return (
-              <div className="step" key={s.key} data-done={done}>
-              <button
-                className="step-toggle"
-                aria-pressed={done} disabled={pending !== null || uploading || (!isDeliveryMaster && reviewEnforced && (s.key === 'packed' || s.key === 'shipped') && !photoReview?.approved_at && !done)} onClick={() => void toggle(s.key)}
-              >
-                <span className="check">{done ? '✓' : ''}</span>
-                <span>
-                  <span className="label">{s.label}</span>
-                </span>
-              </button>
-              {(s.key === 'packed' || s.key === 'shipped') &&
-                <DateInput className="step-date" aria-label={s.key === 'packed' ? '梱包の日付' : '出荷の日付'}
-                  value={s.key === 'packed' ? task.packed_on ?? '' : task.shipped_on ?? ''} disabled={pending !== null || uploading || (!isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && !done)}
-                  onChange={e => void setStepDate(s.key as 'packed' | 'shipped', e.target.value)} />}
-              </div>
-            );
-          })}
-
-        </div>
-      </div>
-      {!isWorkingAmazonReturn && !isDeliveryMaster && reviewEnforced && !photoReview?.approved_at && <p className="muted">梱包・出荷は管理アプリの写真確認が完了すると入力できます。</p>}
-
-      <DescriptionEditor key={task.id} task={task} listingSkus={listingSkus} onSaved={reload} />
-
+      </>}
+      {mode === 'description' && <DescriptionEditor key={task.id} task={task} listingSkus={listingSkus} onSaved={reload} />}
+      {(mode === 'messages'||mode === 'comments') && <>
       {/* ── 仕入担当者とのやり取り ───────────────── */}
       <div className="card">
         <strong>コメント</strong>
@@ -393,7 +291,7 @@ export default function TaskDetail({
         </button>
       </div>
 
-      <div className="card marketplace-conversation" aria-label="フリマサイト取引メッセージ">
+      {mode === 'messages' && <div className="card marketplace-conversation" aria-label="フリマサイト取引メッセージ">
         <div className="marketplace-conversation-heading"><strong>取引メッセージ</strong><span className="muted"><ColoredLabel value={task.marketplace} /> · {task.marketplace_item_id || '取引IDなし'}</span></div>
         {!task.marketplace_item_id ? <p className="muted">商品IDが登録されていないため、取引メッセージを連携できません。</p> : <>
           <button type="button" className="btn" disabled={marketplaceLoading} onClick={() => void displayMarketplaceMessages()}>{marketplaceLoading ? '確認中…' : marketplaceVisible ? 'メッセージを閉じる' : 'メッセージを表示'}</button>
@@ -415,8 +313,8 @@ export default function TaskDetail({
             </div>}
           </>}
         </>}
-      </div>
-
+      </div>}
+      </>}
     </section>
   );
 }

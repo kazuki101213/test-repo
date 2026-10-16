@@ -1,3 +1,4 @@
+if(chrome.storage?.local&&(await chrome.storage.local.get('settings')).settings?.openNewTabs===false)throw new Error('新しいタブを開かない設定のため専用診断は停止しています');
 import {send,download} from './ui.js';
 const pause=ms=>new Promise(r=>setTimeout(r,ms));const created=[];
 const x=await send('export');const report={kind:'listing-inspection',profileId:x.profileId,exportedAt:new Date().toISOString(),version:x.version,loadedBuild:x.loadedBuild,entries:[]};

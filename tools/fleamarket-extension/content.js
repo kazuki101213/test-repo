@@ -38,7 +38,7 @@
   function getId(site,url){
     const u=new URL(url,location.href);
     if(site==='mercari') return u.pathname.match(/\/(?:item|transaction)\/(m\d+)(?:\/|$)/)?.[1];
-    if(site==='auctions') return u.pathname.match(/\/auction\/([a-zA-Z]\d+)(?:\/|$)/)?.[1]||['aID','aid','auctionID'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||''));
+    if(site==='auctions') return u.pathname.match(/\/auction\/([a-zA-Z]\d+)(?:\/|$)/)?.[1]||['aID','aid','auctionID','auctionId'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||''));
     if(site==='flea') return u.pathname.match(/\/(?:item|transaction)\/([a-zA-Z]\d+)(?:\/|$)/)?.[1];
     if(site==='rakuma') return u.pathname.match(/^\/([a-f0-9]{32})(?:\/|$)/)?.[1]||u.pathname.match(/\/(?:item|transaction|trade|deal)\/([a-f0-9]{32})(?:\/|$)/)?.[1] || (u.pathname==='/transaction'&&/^[a-f0-9]{32}$/.test(u.searchParams.get('item_id')||'')?u.searchParams.get('item_id'):null);
   }
@@ -46,7 +46,9 @@
   const RECEIPT=/^(受取評価をする|受け取り評価をする|受け取り連絡をする|受取通知をする|商品の受け取り|商品を受け取りました|受け取り評価)$/;
   function detail(a,recipe){
     const problem=authProblem(); if(problem) return {auth:problem};
-    identity(a);const scope=one(recipe.scope||'main');const text=norm(scope.innerText);
+    identity(a);const selector=recipe.scope||'main';const scopes=[...document.querySelectorAll(selector)].filter(visible);
+    const storeOrder=a.site==='auctions'&&location.hostname==='buy.auctions.yahoo.co.jp'&&location.pathname==='/order/status'&&getId(a.site,location.href);
+    const scope=selector==='main'&&scopes.length===0&&storeOrder?document.body:one(selector);const text=norm(scope.innerText);
     const buttons=[...scope.querySelectorAll('button,a,input[type="submit"],label')].filter(visible).map(controlText);
     const completed=/取引が完了しました|取引は完了しました|取引完了済み|受取評価済み|受け取り連絡済み|受取通知済み/.test(text);
     const seller=buttons.some(t=>/^(発送通知をする|発送したので、発送通知をする|購入者を評価する|発送連絡をする)$/.test(t));
@@ -156,24 +158,34 @@
     if(['flea','rakuma'].includes(a.site)&&!transactionLinks.length&&!purchaseDate(row,a.site,referenceDay))return null;
     const ownLinks=[...(row.matches('a[href]')?[row]:[]),...row.querySelectorAll('a[href]')].filter(e=>{try{return getId(a.site,safeUrl(a.site,e.href))===id;}catch{return false;}});
     const titleNodes=[...row.querySelectorAll('[data-testid*="title" i],[class*="title" i],h3,h4')].filter(visible);
-    const titleCandidates=[...titleNodes.map(e=>norm(e.innerText)),...ownLinks.map(e=>norm(e.getAttribute('title')||e.getAttribute('aria-label')||e.innerText)),...row.querySelectorAll('img[alt]')].map(v=>typeof v==='string'?v:norm(v.alt)).filter(t=>t&&!/^(取引連絡|取引画面|評価|詳細を見る|商品ページへ|商品画像|サムネイル|発送待ち|取引完了)$/.test(t));
-    const leafTitles=[...row.querySelectorAll('p,span')].filter(e=>visible(e)&&!e.children.length).map(e=>norm(e.innerText)).filter(t=>t.length>12&&!/^\d{4}[./-]\d/.test(t)&&!/^(商品ID|取引|落札日|購入日|発送|支払い)/.test(t)&&!/^\d[\d,]*\s*円$/.test(t));
-    const title=(titleNodes.length?norm(titleNodes[0].innerText):(['mercari','flea'].includes(a.site)?[...row.querySelectorAll('p')].filter(e=>visible(e)&&!e.children.length).map(e=>norm(e.innerText)).find(t=>t&&!/^\d{4}[年./-]/.test(t)&&!/^(取引|購入日|落札日|発送|支払い)/.test(t)):null)||titleCandidates[0])?.replace(/\s+\d{4}[./-]\d{1,2}[./-]\d{1,2}\s+\d{1,2}:\d{2}.*$/,'').slice(0,500)||null;
+    const titleValue=value=>{const t=norm(value).replace(/\s+\d{4}[./-]\d{1,2}[./-]\d{1,2}\s+\d{1,2}:\d{2}.*$/,'');return t&&!/^(取引メッセージがあります|新しい取引メッセージがあります|未読の取引メッセージがあります|メッセージがあります|取引連絡|取引ナビ|取引画面|評価|詳細を見る|商品ページへ|商品画像|サムネイル|発送待ち|取引完了)$/.test(t)?t.slice(0,500):null;};
+    let title=null;
+    if(a.site==='auctions'){
+      // Only the same item's public product link supplies its title; message/feedback controls do not.
+      const productLinks=ownLinks.filter(e=>{try{const u=new URL(e.href);return ['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp'].includes(u.hostname)&&/^\/(?:jp\/)?auction\/[a-zA-Z][0-9]+\/?$/.test(u.pathname);}catch{return false;}});
+      const productTitles=[...productLinks.map(e=>e.innerText),...productLinks.flatMap(e=>[...e.querySelectorAll('img[alt]')].map(x=>x.alt)),...productLinks.map(e=>e.getAttribute('title')||e.getAttribute('aria-label'))].map(titleValue).filter(Boolean);
+      title=productTitles[0]||null;
+    }else{
+      const titleCandidates=[...titleNodes.map(e=>e.innerText),...ownLinks.map(e=>e.getAttribute('title')||e.getAttribute('aria-label')||e.innerText),...[...row.querySelectorAll('img[alt]')].map(e=>e.alt)].map(titleValue).filter(Boolean);
+      const textTitle=['mercari','flea'].includes(a.site)?[...row.querySelectorAll('p')].filter(e=>visible(e)&&!e.children.length).map(e=>titleValue(e.innerText)).find(t=>t&&!/^\d{4}[年./-]/.test(t)&&!/^(取引|購入日|落札日|発送|支払い)/.test(t)):null;
+      title=titleNodes.map(e=>titleValue(e.innerText)).find(Boolean)||textTitle||titleCandidates[0]||null;
+    }
     const canonical={mercari:'https://jp.mercari.com/item/',auctions:'https://auctions.yahoo.co.jp/jp/auction/',flea:'https://paypayfleamarket.yahoo.co.jp/item/',rakuma:'https://item.fril.jp/'}[a.site]+id;
     const detailUrl=transactionLinks[0]?.href||(a.site==='mercari'?'https://jp.mercari.com/transaction/'+id:url);
     return {marketplace_item_id:id,marketplace_url:canonical,detailUrl,title,purchased_at:purchaseDate(row,a.site,referenceDay),cost_amount:purchaseMoney(row,a.site),cancelled:/取引がキャンセルされました|キャンセル済み|取引キャンセル|購入をキャンセル/.test(text)};
   }
   async function parsePurchaseDetail(a,recipe,expected){
     const auth=authProblem();if(auth)return {auth};identity(a);
-    let pageId=getId(a.site,location.href);if(a.site==='rakuma'&&location.hostname==='web.fril.jp'&&location.pathname==='/v2/purchase/item'&&[...new URL(location.href).searchParams.values()].includes(expected))pageId=expected;safeUrl(a.site,location.href);if(a.site==='rakuma'&&location.hostname==='web.fril.jp'&&!pageId){const ids=new Set([...document.querySelectorAll('a[href]')].map(x=>{try{return getId(a.site,safeUrl(a.site,x.href));}catch{return null;}}).filter(Boolean));if(ids.size===1&&ids.has(expected))pageId=expected;}if(pageId!==expected)throw new Error('購入詳細の商品IDが一致しません: '+location.hostname+location.pathname);const mains=[...document.querySelectorAll('main')].filter(visible);if(mains.length>1)throw new Error('購入詳細の表示領域が複数あります');const root=mains[0]||document.body;
+    let pageId=getId(a.site,location.href);if(a.site==='rakuma'&&location.hostname==='web.fril.jp'&&location.pathname==='/v2/purchase/item'&&[...new URL(location.href).searchParams.values()].includes(expected))pageId=expected;safeUrl(a.site,location.href);if(a.site==='rakuma'&&!pageId&&recipe.navigation?.finalUrl===location.href){try{const from=new URL(safeUrl(a.site,recipe.navigation.requestedUrl)),to=new URL(location.href);if(from.origin==='https://fril.jp'&&from.pathname==='/transaction'&&getId(a.site,from.href)===expected&&to.origin==='https://web.fril.jp'&&to.pathname==='/v2/purchase/item'&&/^[0-9]{1,12}$/.test(to.searchParams.get('item_id')||''))pageId=expected;}catch{}}if(a.site==='rakuma'&&location.hostname==='web.fril.jp'&&!pageId){const ids=new Set([...document.querySelectorAll('a[href]')].map(x=>{try{return getId(a.site,safeUrl(a.site,x.href));}catch{return null;}}).filter(Boolean));if(ids.size===1&&ids.has(expected))pageId=expected;}if(pageId!==expected)throw new Error('購入詳細の商品IDが一致しません: '+location.hostname+location.pathname);const mains=[...document.querySelectorAll('main')].filter(visible);if(mains.length>1)throw new Error('購入詳細の表示領域が複数あります');const root=mains[0]||document.body;
     const text=norm(root.innerText);if([...root.querySelectorAll('button')].filter(visible).some(e=>/^(発送通知をする|購入者を評価する|発送連絡をする)$/.test(controlText(e))))throw new Error('出品者側の画面のため取得しません');
     const dateLabels=[...text.matchAll(/(?:購入日時|購入日|落札日時|落札日)[：:\s]*(\d{4})[年./-](\d{1,2})[月./-](\d{1,2})日?/g)];
     const dates=[...new Set(dateLabels.map(m=>m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')))];
-    return {purchased_at:dates.length===1?dates[0]:null,cost_amount:purchaseMoney(root,'detail'),title:null,cancelled:/取引がキャンセルされました|キャンセル済み/.test(text)};
+    const completed=[...text.matchAll(/取引完了日[：:\s]*(\d{4})[年./-](\d{1,2})[月./-](\d{1,2})日?/g)].map(m=>m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')).filter(d=>{try{return new Date(d+'T00:00:00Z').toISOString().slice(0,10)===d;}catch{return false;}});const upper=[...new Set(completed)];
+    return {purchased_at:dates.length===1?dates[0]:null,purchaseBeforeOrOn:a.site==='rakuma'&&upper.length===1?upper[0]:null,cost_amount:purchaseMoney(root,'detail'),title:null,cancelled:/取引がキャンセルされました|キャンセル済み/.test(text)};
   }
   async function purchaseDetail(a,recipe,expected){
     const limit=Number.isFinite(recipe.detailWaitMs)?Math.max(0,Math.min(recipe.detailWaitMs,18000)):18000,until=Date.now()+limit;let result;
-    do{try{result=await parsePurchaseDetail(a,recipe,expected);if(result.auth||result.cancelled||result.cost_amount!==null||result.purchased_at!==null||Date.now()>=until)return result;}catch(e){if(!/購入詳細の商品IDが一致しません/.test(e.message)||Date.now()>=until)throw e;}await new Promise(r=>setTimeout(r,350));}while(true);
+    do{try{result=await parsePurchaseDetail(a,recipe,expected);if(result.auth||result.cancelled||result.cost_amount!==null||result.purchased_at!==null||result.purchaseBeforeOrOn||Date.now()>=until)return result;}catch(e){if(!/購入詳細の商品IDが一致しません/.test(e.message)||Date.now()>=until)throw e;}await new Promise(r=>setTimeout(r,350));}while(true);
   }
   async function purchaseMore(a,recipe,seenIds){
     const auth=authProblem();if(auth)return {auth};identity(a);

@@ -18,14 +18,12 @@ async function settle(){for(let i=0;i<40;i++){if(dirty){cursor=0;dirty=false;tre
 const listing=()=>all(tree).find(n=>n.type==='button'&&text(n).includes('商品登録・写真登録'));
 function upload(files){all(tree).find(n=>n.props?.['aria-label']==='商品写真追加').props.onChange({target:{files,value:'file'}});}
 (async()=>{
- await settle();assert.equal(listing().props['aria-pressed'],false);
- upload([{name:'a'},{name:'b'}]);await settle();assert.equal(photos.length,2);assert.equal(photoEvents,1);assert.equal(row.product_registered,false);assert.equal(listing().props['aria-pressed'],false);assert.equal(rpcCalls[0][0],'set_delivery_listing_progress');assert.equal(rpcCalls[0][1].p_done,null);assert.equal(rpcCalls[0][1].p_item_id,'one');
- listing().props.onClick();await settle();assert.equal(listing().props['aria-pressed'],true);assert.deepEqual(progress.at(-1),['listing',true]);
- listing().props.onClick();await settle();assert.equal(listing().props['aria-pressed'],false);
- uploadFailAt=uploads+2;upload([{name:'c'},{name:'bad'}]);await settle();assert.equal(photos.length,3);assert.equal(photoEvents,2,'Partial successful upload records photo progress');assert.equal(row.product_registered,false);assert.equal(listing().props['aria-pressed'],false);assert(text(tree).includes('写真ファイルエラー'));assert(text(tree).includes('写真 3枚'));
+ await settle();assert(!listing(),'Legacy combined progress control is removed');
+ upload([{name:'a'},{name:'b'}]);await settle();assert.equal(photos.length,2);assert.equal(photoEvents,1);assert.equal(row.product_registered,false);assert(!listing());assert.equal(rpcCalls[0][0],'set_delivery_listing_progress');assert.equal(rpcCalls[0][1].p_done,null);assert.equal(rpcCalls[0][1].p_item_id,'one');
+ uploadFailAt=uploads+2;upload([{name:'c'},{name:'bad'}]);await settle();assert.equal(photos.length,3);assert.equal(photoEvents,1,'Partial success preserves the existing photo progress without redundant writes');assert.equal(row.product_registered,false);assert(!listing());assert(text(tree).includes('写真ファイルエラー'));assert(text(tree).includes('写真 3枚'));
  assert(all(tree).some(n=>n.props?.['aria-label']==='商品写真をすべて端末に保存'));assert(all(tree).some(n=>n.type==='button'&&text(n).includes('Googleドライブ追加')));
- hooks=[];pending=[];dirty=true;row={...row,marketplace:'動作品Amazon返品',product_registered:true,photo_uploaded:false};await settle();assert(!listing());const exemption=all(tree).find(n=>n.type==='button'&&text(n).includes('商品登録'));assert.equal(exemption.props['aria-pressed'],true);
+ hooks=[];pending=[];dirty=true;row={...row,marketplace:'動作品Amazon返品',product_registered:true,photo_uploaded:false};await settle();assert(!listing());assert(!all(tree).some(n=>n.type==='button'&&text(n).includes('商品登録')));
  rpcError={message:'写真の記録に失敗しました'};await assert.rejects(actualApi.exports.recordListingPhotoUpload('one'),{message:rpcError.message});
  assert.deepEqual(Array.from(constants.exports.STATUSES),["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","出品中","取引中","販売済","返品処理","動作不良"]);assert(!('出荷済' in constants.exports.STATUS_COLORS));
- console.log('Photo-only upload, combined check/uncheck, partial failure, display/save controls, working return exemption and four states passed');
+ console.log('Photo-only upload and partial failure preserve product registration; photos-only detail has no obsolete progress or zero-sale controls');
 })().catch(e=>{console.error(e);process.exitCode=1;});

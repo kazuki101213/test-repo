@@ -4,7 +4,7 @@ export const SITES = {
   mercari: {name:'メルカリ', db:['メルカリ'], hosts:['jp.mercari.com'], home:'https://jp.mercari.com/mypage'},
   auctions: {name:'ヤフオク', db:['ヤフオク'], hosts:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp'], home:'https://auctions.yahoo.co.jp/my'},
   flea: {name:'Yahoo!フリマ', db:['ヤフフリ','PayPayフリマ'], hosts:['paypayfleamarket.yahoo.co.jp','paypayfleamarket-sec.yahoo.co.jp'], home:'https://paypayfleamarket.yahoo.co.jp/'},
-  rakuma: {name:'ラクマ', db:['ラクマ'], hosts:['fril.jp','www.fril.jp','item.fril.jp'], home:'https://fril.jp/'}
+  rakuma: {name:'ラクマ', db:['ラクマ'], hosts:['fril.jp','www.fril.jp','item.fril.jp','web.fril.jp'], home:'https://fril.jp/'}
 };
 export const SLOTS = [
   ['mercari-1','mercari','メルカリ1'],['mercari-2','mercari','メルカリ2'],
@@ -24,7 +24,7 @@ export function itemId(site,url) {
   try {const u=new URL(url); if(siteFor(url)!==site) return null;
     const p=u.pathname;
     if(site==='mercari') return p.match(/\/(?:item|transaction)\/(m\d+)(?:\/|$)/)?.[1] || null;
-    if(site==='auctions') return p.match(/\/auction\/([a-zA-Z]\d+)(?:\/|$)/)?.[1] || ['aID','aid','auctionID'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||'')) || null;
+    if(site==='auctions') return p.match(/\/auction\/([a-zA-Z]\d+)(?:\/|$)/)?.[1] || ['aID','aid','auctionID','auctionId'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||'')) || null;
     if(site==='flea') return p.match(/\/(?:item|transaction)\/([a-zA-Z]\d+)(?:\/|$)/)?.[1] || null;
     if(site==='rakuma') return p.match(/^\/([a-f0-9]{32})(?:\/|$)/)?.[1] || p.match(/\/(?:item|transaction|trade|deal)\/([a-f0-9]{32})(?:\/|$)/)?.[1] || (p==='/transaction'&&/^[a-f0-9]{32}$/.test(u.searchParams.get('item_id')||'')?u.searchParams.get('item_id'):null);
   } catch {return null;}
@@ -45,7 +45,7 @@ export function eligible(items,tx) {
 export function jstDay(now=Date.now()) {return new Date(now+9*3600000).toISOString().slice(0,10);}
 export function dueTime(hour,now=Date.now()) {return Date.parse(jstDay(now)+'T'+String(hour).padStart(2,'0')+':00:00+09:00');}
 export function nextTime(hour,now=Date.now()) {const d=dueTime(hour,now); return d>now?d:d+86400000;}
-export function settingsDefault(){return {mode:'diagnostic',trackingHour:1,receiptHour:2,accounts:structuredClone(SLOTS),recipes:{}};}
+export function settingsDefault(){return {openNewTabs:false,mode:'diagnostic',trackingHour:1,receiptHour:2,accounts:structuredClone(SLOTS),recipes:{}};}
 export function validateSettings(s) {
   if(!['diagnostic','tracking','full'].includes(s.mode)) throw new Error('動作モードが不正です');
   for(const key of ['trackingHour','receiptHour']) if(!Number.isInteger(s[key])||s[key]<0||s[key]>23) throw new Error('時刻は0〜23時です');
@@ -67,8 +67,10 @@ if(a.identity?.pageUrl){
       assertSiteUrl(a.site,a.listUrl); if(!a.identity?.selector||!a.identity?.text||a.identity.text.length>200) throw new Error('ログイン中アカウントの紐付けが必要です');}
   }
   for(const [site,r] of Object.entries(s.recipes||{})){if(!SITES[site]) throw new Error('サイト設定が不正です');
-    if(r.verified&&!r.scope) throw new Error('検証済みレシピには対象領域が必要です');
+    if((r.verified||r.trackingEnabled)&&!r.scope) throw new Error('検証済みレシピには対象領域が必要です');
     if(r.receiptVerified&&(!r.receiptScope||!r.positive||!r.submit||!r.submitText||!r.successText)) throw new Error('評価レシピの検証項目が不足しています');
   }
   return s;
 }
+
+export function trackingEnabled(recipe){return recipe?.verified===true||recipe?.trackingEnabled===true;}

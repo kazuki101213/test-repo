@@ -1,24 +1,32 @@
-import {useState} from 'react';
-import {STATUSES} from '@bussan/shared';
-import type {DeliveryTask,ItemStatus} from '@bussan/shared';
-import {setInventoryWorkflow} from '../api';
+import {useRef,useState} from 'react';
+import {deliveryWorkflowButtons} from '@bussan/shared';
+import type {DeliveryTask,InventoryAction,ProductPanel,WorkflowButton} from '@bussan/shared';
+import {performInventoryAction} from '../api';
 
-export default function WorkflowControls({task,onChanged,onError}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void}){
- const [busy,setBusy]=useState(false);
- if((task.is_accessory && !/^\d+[a-z]*c-/i.test(task.sku)) || task.status==='販売済')return null;
- async function transition(status:ItemStatus){
-  if(busy)return;
-  if(status==='販売済'&&!window.confirm('販売金額・振込金額を0円、販売日を本日として販売済にします。'))return;
-  setBusy(true);onError(null);
-  try{await setInventoryWorkflow(task.id,status);await onChanged();}
+const panels=new Set(['photos','description','messages','comments','listing','shipping']);
+export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void;onPanel?:(panel:ProductPanel)=>void}){
+ const [busy,setBusy]=useState(false),[form,setForm]=useState<WorkflowButton|null>(null),[note,setNote]=useState('');
+ const lock=useRef(false),request=useRef(crypto.randomUUID());
+ const buttons=deliveryWorkflowButtons(task);
+ async function run(button:WorkflowButton){
+  if(lock.current)return;
+  if(button.confirmation&&!window.confirm(button.confirmation))return;
+  lock.current=true;setBusy(true);onError(null);
+  try{await performInventoryAction(task,button.key as InventoryAction,note,request.current);request.current=crypto.randomUUID();setForm(null);setNote('');await onChanged();}
   catch(cause){onError(cause instanceof Error?cause.message:String(cause));}
-  finally{setBusy(false);}
+  finally{lock.current=false;setBusy(false);}
  }
- return <div className="workflow-controls">
-  <select aria-label="販売状態" value={task.status} disabled={busy} onChange={event=>void transition(event.target.value as ItemStatus)}>
-   {STATUSES.filter(status=>status!=='販売済').map(status=><option key={status} value={status}>{status}</option>)}
-  </select>
-  {task.status==='Amazon返送依頼'&&<button type="button" className="btn" disabled={busy} onClick={()=>void transition('検品中')}>返送依頼済みにする</button>}
-  {task.status!=='返品処理'&&<button type="button" className="btn" disabled={busy} onClick={()=>void transition('販売済')}>0円で販売済にする</button>}
+ function choose(button:WorkflowButton){
+  if(panels.has(button.key)){onPanel?.(button.key as ProductPanel);return;}
+  request.current=crypto.randomUUID();
+  if(button.note){setForm(button);setNote('');}else void run(button);
+ }
+ return <div className="workflow-controls" aria-label={`${task.sku}の操作`}>
+  <div className="workflow-buttons">{buttons.map(button=><button key={button.key} type="button" className="btn" disabled={busy} onClick={()=>choose(button)}>{button.label}</button>)}</div>
+  {form&&buttons.some(button=>button.key===form.key)&&<div className="workflow-action-form">
+   <label>{form.key==='report'?form.label+'の内容':'理由'}<textarea value={note} maxLength={2000} disabled={busy} onChange={event=>setNote(event.target.value)} /></label>
+   <button type="button" className="btn primary" disabled={busy||!note.trim()} onClick={()=>void run(form)}>{busy?'更新中…':form.key==='report'?'仕入担当者に報告':'確定'}</button>
+   <button type="button" className="btn ghost" disabled={busy} onClick={()=>{setForm(null);setNote('');}}>閉じる</button>
+  </div>}
  </div>;
 }

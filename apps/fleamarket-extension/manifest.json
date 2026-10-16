@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "フリマ取引サポート",
-  "version": "0.1.45",
+  "version": "0.1.62",
   "description": "購入履歴の仕入れリスト連携、取引メッセージ同期・送信、追跡番号照合を支援します。",
   "minimum_chrome_version": "120",
   "permissions": [
@@ -22,7 +22,8 @@
     "https://item.fril.jp/*",
     "https://bussan-admin.vercel.app/*",
     "https://xgoppuqoqeppckyunnvx.supabase.co/*",
-    "https://paypayfleamarket-sec.yahoo.co.jp/*"
+    "https://paypayfleamarket-sec.yahoo.co.jp/*",
+    "https://web.fril.jp/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -45,7 +46,8 @@
         "https://fril.jp/*",
         "https://www.fril.jp/*",
         "https://item.fril.jp/*",
-        "https://paypayfleamarket-sec.yahoo.co.jp/*"
+        "https://paypayfleamarket-sec.yahoo.co.jp/*",
+        "https://web.fril.jp/*"
       ],
       "js": [
         "content.js"
