@@ -33,5 +33,17 @@ const load=(file,require,extra={})=>{const ctx={exports:{},require,...extra};vm.
  await assert.rejects(blobApi.cachedReceiptBlob('first','bad.pdf',async()=>{throw Error('download failed');}),/failed/);
  await blobApi.cachedReceiptBlob('first','bad.pdf',download);assert.equal(downloads,5,'Failed download can retry');
  const big=new Blob([new Uint8Array(33*1024*1024)]);let bigCalls=0;for(let n=0;n<2;n++)await blobApi.cachedReceiptBlob('first','big.pdf',async()=>{bigCalls++;return big;});assert.equal(bigCalls,2,'Oversized file is never retained');
+ user='first';let fileRows=[{id:'receipt',storage_path:'consumer.pdf',original_name:'original.pdf',document_type:'receipt_photo',mime_type:'application/pdf',description:'before'}];
+ let fileDownloads=0,metadataReads=0,urls=new Map(),nextUrl=0;
+ sb.storage={from:()=>({download:async()=>{fileDownloads++;return{data:blob,error:null};}})};
+ sb.from=()=>{const q={select(){return q;},eq(){return q;},order(){return q;},then(resolve){metadataReads++;return Promise.resolve({data:fileRows,error:null}).then(resolve);}};return q;};
+ const receiptApi=load('packages/shared/src/receipts.ts',id=>id==='./supabase'?{getSupabase:()=>sb}:blobApi,{URL:{createObjectURL:blob=>{const url='blob:'+nextUrl++;urls.set(url,blob);return url;},revokeObjectURL:url=>urls.delete(url)}});
+ const view1=await receiptApi.loadInvoiceReceipts('staff','2026-10');
+ fileRows=[{...fileRows[0],description:'edited metadata'}];
+ const view2=await receiptApi.loadInvoiceReceipts('staff','2026-10');
+ assert.equal(fileDownloads,1);assert.equal(metadataReads,2);assert.equal(view2[0].description,'edited metadata');assert.notEqual(view1[0].url,view2[0].url);
+ receiptApi.releaseReceiptImages(view1);assert(urls.has(view2[0].url),'Releasing one view must not revoke another reader URL');
+ receiptApi.releaseReceiptImages(view2);assert.equal(urls.size,0);
+ fileRows=[];assert.equal((await receiptApi.loadInvoiceReceipts('staff','2026-10')).length,0);assert.equal(fileDownloads,1,'Deleted metadata must not return cached file');
  console.log('Resource differences, removals, >1000 rows, concurrent refresh, login isolation, expiry, retry and immutable bounded receipt cache passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
