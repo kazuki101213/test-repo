@@ -24,7 +24,8 @@ export async function readSellerStructure(){
   return {tag:e.tagName,type:e.type||null,role:e.getAttribute('role'),name:e.name||null,id:e.id||null,testId:e.getAttribute('data-testid'),section:section(e),label:text,optionValue:e.type==='radio'||e.type==='checkbox'?e.getAttribute('value'):undefined,disabled:e.disabled===true,required:e.required===true,accept:e.type==='file'?e.accept:null,options:e.tagName==='SELECT'?[...e.options].slice(0,60).map(o=>norm(o.text).slice(0,60)):undefined};
  }).filter(Boolean).slice(0,100);
  const links=[...root.querySelectorAll('a[href]')].filter(visible).flatMap(e=>{const text=norm(e.innerText);if(!/^(出品|出品する|出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|取引ナビ|発送する|配送方法を選択する)$/.test(text))return [];try{const x=new URL(e.href);return [{text,host:x.hostname,path:x.pathname,queryKeys:[...x.searchParams.keys()]}];}catch{return [];}}).slice(0,30);
- return {host:u.hostname,path:u.pathname.replace(/\b(?:m[0-9]{7,}|[a-z][0-9]{8,})\b/gi,'[item]'),queryKeys:[...u.searchParams.keys()],controls,links,headings:[...root.querySelectorAll('h1,h2,h3')].filter(visible).map(e=>norm(e.innerText)).filter(t=>recognized.test(t)&&t.length<80).slice(0,12),fileInputs:[...root.querySelectorAll('input[type="file"]')].map(e=>({accept:e.accept,multiple:e.multiple,disabled:e.disabled,id:e.id||null,name:e.name||null,visible:visible(e),section:section(e)})),backingFields:[...root.querySelectorAll('select,textarea')].filter(e=>!visible(e)).map(e=>({tag:e.tagName,id:e.id||null,name:e.name||null,section:section(e)})).slice(0,30),editorFrames:[...root.querySelectorAll('iframe')].map(e=>({id:e.id||null,title:e.title||null})),shippingCodesVisible:!!root.querySelector('canvas[aria-label*="QR"],img[alt*="QR"],img[alt*="2次元"]')};
+ const notices=[...root.querySelectorAll('p,[role="status"],h2,h3,span')].filter(e=>visible(e)&&!e.children.length).map(e=>norm(e.innerText)).filter(t=>t.length<100&&/商品.*(?:ありません|ない|ございません)|取引.*(?:ありません|ない|ございません)|読み込み中|エラー|発送して|発送待ち|支払い待ち|チャージ完了/.test(t)).slice(0,12);
+ return {host:u.hostname,path:u.pathname.replace(/\b(?:m[0-9]{7,}|[a-z][0-9]{8,})\b/gi,'[item]'),queryKeys:[...u.searchParams.keys()],notices,controls,links,headings:[...root.querySelectorAll('h1,h2,h3')].filter(visible).map(e=>norm(e.innerText)).filter(t=>recognized.test(t)&&t.length<80).slice(0,12),fileInputs:[...root.querySelectorAll('input[type="file"]')].map(e=>({accept:e.accept,multiple:e.multiple,disabled:e.disabled,id:e.id||null,name:e.name||null,visible:visible(e),section:section(e)})),backingFields:[...root.querySelectorAll('select,textarea')].filter(e=>!visible(e)).map(e=>({tag:e.tagName,id:e.id||null,name:e.name||null,section:section(e)})).slice(0,30),editorFrames:[...root.querySelectorAll('iframe')].map(e=>({id:e.id||null,title:e.title||null})),shippingCodesVisible:!!root.querySelector('canvas[aria-label*="QR"],img[alt*="QR"],img[alt*="2次元"]')};
 }
 /** Borrow registered seller tabs once; no form input, clicks, RPC writes or new tabs. */
 export async function runSellerReadOnlyInspection({settings,profileId,storage,fetchRequest,openSession,log}){
@@ -42,7 +43,17 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
   if(list){await session.go(list.url);evidence.pages.push({kind:'seller-list',...await session.structure()});const current=await session.links();links=[...links,...current];}
   if(form){await session.go(form.url);evidence.pages.push({kind:'listing-form',...await session.structure()});const direct=(await session.links()).filter(link=>/^(出品|出品する|出品フォーム)$/.test(link.text)&&link.url!==form.url);if(direct.length===1){await session.go(direct[0].url);evidence.pages.push({kind:'listing-form-detail',...await session.structure()});}}else evidence.listing='出品フォームへの実リンクを取得できません';
   const trading=links.find(link=>/^(取引中|出品終了分)$/.test(link.text));
-  if(trading){await session.go(trading.url);const page=await session.read(trading.text);if(!page||!Array.isArray(page.rows))throw Error('出品取引一覧の読み込み結果を確認できません');evidence.pages.push({kind:'seller-trades',...await session.structure(),rowCount:page.rows.length,statuses:[...new Set(page.rows.map(row=>row.status))]});const row=page.rows.find(value=>value.status==='取引中');if(row){await session.go(row.detail_url);evidence.pages.push({kind:'shipping',...await session.structure()});}else evidence.shipping=page.empty?'取引中の商品がないため配送画面を確認できません':'発送対象の行を特定できないため配送画面は未確認です';}
+  if(trading){
+   await session.go(trading.url);const page=await session.read(trading.text);if(!page||!Array.isArray(page.rows))throw Error('出品取引一覧の読み込み結果を確認できません');
+   evidence.pages.push({kind:'seller-trades',...await session.structure(),rowCount:page.rows.length,itemCount:page.itemCount,statuses:[...new Set(page.rows.map(row=>row.status))]});
+   const row=page.rows.find(value=>value.status==='取引中');
+   // Inspection can open one actual seller trade link even when the list does not expose its state.
+   // This never changes an inventory status, fills a form or presses a shipping button.
+   const candidates=row?[{url:row.detail_url}]:await session.inspectionTrades?.()||[];
+   evidence.tradeLinkCount=candidates.length;
+   if(candidates.length){await session.go(candidates[0].url);evidence.pages.push({kind:'shipping',...await session.structure()});}
+   else evidence.shipping=page.empty?'取引中の商品がないため配送画面を確認できません':'発送対象の行を特定できないため配送画面は未確認です';
+  }
   evidence.status='completed';
  }catch(error){evidence.status='stopped';evidence.error=error.message;await log('info',account.label+'の読取診断を停止しました。自動再試行しません：'+error.message);}
  finally{await session?.close();await storage.set({sellerInspectionEvidence:evidence});}
