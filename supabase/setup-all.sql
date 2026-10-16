@@ -11657,3 +11657,10 @@ language sql stable security invoker set search_path=pg_catalog,app as $$
 $$;
 
 
+-- ▼▼▼ 20261016131500_reuse_seller_history_index.sql ▼▼▼
+
+-- The original seller migration already provides the same per-item history index.
+-- Remove only the redundant index introduced by the shipping preferences migration.
+drop index if exists app.seller_history_by_item;
+
+
