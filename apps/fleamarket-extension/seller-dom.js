@@ -1,51 +1,102 @@
 /** Executed in an isolated extension world. Unknown/ambiguous controls stop before submission. */
 export async function sellerDomOperation({job,phase,files=[]}){
- const norm=value=>(value||'').replace(/\s+/g,' ').trim(),visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
- const root=document.querySelector('main')||document.body,text=()=>norm(root.innerText),payload=job.payload;
+ const norm=value=>String(value??'').replace(/\s+/g,' ').trim(),visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
+ let root=document.querySelector('main')||document.body;const text=()=>norm((document.querySelector('main')||document.body).innerText),payload=job.payload;
  const hosts=job.channel==='メルカリ'?['jp.mercari.com']:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp'];
  if(location.protocol!=='https:'||!hosts.includes(location.hostname)||document.querySelector('input[type="password"],input[autocomplete="one-time-code"]')||/文字認証|認証コードを入力|ロボットではない|セキュリティチェック/.test(text()))throw Error('販売サイトへのログイン・追加認証が必要です');
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
- const controls=()=>[...root.querySelectorAll('button,input[type="submit"],[role="button"]')].filter(visible);
+ const controls=()=>[...root.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')].filter(visible);
  const buttonLabel=e=>norm(e.innerText||e.getAttribute('aria-label')||e.value);
- function oneButton(names,scope=root){const values=[...scope.querySelectorAll('button,input[type="submit"],[role="button"]')].filter(e=>visible(e)&&names.includes(buttonLabel(e)));if(values.length!==1||values[0].disabled)throw Error('操作ボタンを1件に確認できません：'+names[0]);return values[0];}
+ function oneButton(names,scope=root){const values=[...scope.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')].filter(e=>visible(e)&&names.includes(buttonLabel(e)));if(values.length!==1||values[0].disabled)throw Error('操作ボタンを1件に確認できません：'+names[0]);return values[0];}
  const fields=()=>[...root.querySelectorAll('input:not([type="hidden"]):not([type="file"]),textarea,select')].filter(visible);
  function label(field){return norm([field.getAttribute('aria-label'),...(field.labels?[...field.labels].map(e=>e.innerText):[]),field.getAttribute('placeholder')].filter(Boolean).join(' '));}
- function field(names,aliases=[]){const exact=fields().filter(e=>names.some(name=>label(e).startsWith(name))||aliases.includes(e.name)||aliases.includes(e.id));if(exact.length!==1)throw Error('入力欄を1件に確認できません：'+names[0]);return exact[0];}
+ function candidates(names,aliases=[]){
+  const known=[...aliases,...(/状態/.test(names[0])?['istatus']: /送料/.test(names[0])?['shippingPayer','shipping_dummy']: /配送の方法|配送方法/.test(names[0])?['shipmethod_dummy']: /発送元/.test(names[0])?['loc_cd','shippingFromArea']: /発送まで/.test(names[0])?['shipschedule','shippingDuration']:[])];
+  const named=fields().filter(e=>known.includes(e.name)||known.includes(e.id));
+  return named.length?named:fields().filter(e=>names.some(name=>label(e).startsWith(name)));
+ }
+ function field(names,aliases=[]){const exact=candidates(names,aliases);if(exact.length!==1)throw Error('入力欄を1件に確認できません：'+names[0]);return exact[0];}
  function setValue(element,value){const prototype=element.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:element.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype;const setter=Object.getOwnPropertyDescriptor(prototype,'value')?.set;if(!setter)throw Error('入力形式に対応していません');setter.call(element,String(value));element.dispatchEvent(new Event('input',{bubbles:true}));element.dispatchEvent(new Event('change',{bubbles:true}));if(element.value!==String(value))throw Error('入力結果が一致しません');}
- const choiceText=value=>norm(value).replace(/[（）()・\s]/g,'').replace(/[〜～]/g,'-');
+ function descriptionField(){
+  const known=job.channel==='ヤフオク'?root.querySelector('textarea#fleaDescription[name="Description_plain_work"]'):null;
+  if(known){const editor=root.querySelector('iframe#rteEditorComposition0');if(!editor?.contentDocument?.body?.isContentEditable)throw Error('説明文エディターを確認できません');return known;}
+  return field(['商品の説明','商品説明','説明文'],['description','Description']);
+ }
+ function descriptionEditor(){return job.channel==='ヤフオク'?root.querySelector('iframe#rteEditorComposition0')?.contentDocument?.body:null;}
+ function setDescription(target,value){const editor=descriptionEditor();if(editor){editor.replaceChildren(editor.ownerDocument.createTextNode(value));editor.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));editor.dispatchEvent(new Event('change',{bubbles:true}));}setValue(target,value);}
+ const choiceText=value=>norm(value).replace(/[（）()・\s]/g,'').replace(/[〜～~]/g,'-');
+ const choiceNames=names=>/カテゴリ/.test(names.join(' '))?['カテゴリーを選択する','カテゴリを選択する']:/状態/.test(names[0])?['商品の状態を選択する']:/配送/.test(names[0])?['配送の方法を選択する']:[];
+ function choiceTrigger(names){const labels=choiceNames(names);const options=[...root.querySelectorAll('a,button,input[type="button"]')].filter(e=>visible(e)&&(labels.includes(buttonLabel(e))||/カテゴリ/.test(names.join(' '))&&e.id==='acMdCateChange'));if(options.length!==1)return null;return options[0];}
+ async function chooseLinked(names,value){
+  const trigger=choiceTrigger(names);if(!trigger)throw Error('選択画面を1件に確認できません：'+names[0]);
+  trigger.click();
+  const category=/カテゴリ/.test(names.join(' '));
+  const target=String(value).split(/\s*[>＞]\s*/).filter(Boolean).at(-1),wanted=choiceText(target);
+  if(category){const search=await waitFor(()=>[...document.querySelectorAll('input')].filter(e=>visible(e)&&/カテゴリー名を検索|カテゴリ名を検索/.test(label(e))).find(e=>e.type==='text'||e.type==='search'),'カテゴリー検索欄を確認できません');setValue(search,target);}
+  const selected=await waitFor(()=>{
+   const scopes=[...document.querySelectorAll('[role="dialog"]')].filter(visible),scope=scopes.at(-1)||document.querySelector('main')||document.body;
+   const options=[...scope.querySelectorAll('a,button,[role="option"],label')].filter(e=>visible(e)&&!e.disabled&&e!==trigger&&choiceText(buttonLabel(e))===wanted);
+   return options.length===1?options[0]:null;
+  },'選択肢を1件に確認できません：'+names[0]);
+  selected.click();await sleep(500);root=document.querySelector('main')||document.body;
+ }
  async function choose(names,value,aliases=[]){
+  const matches=candidates(names,aliases);
+  if(!matches.length&&choiceTrigger(names))return chooseLinked(names,value);
+  if(matches.length&&matches.every(e=>e.type==='radio')&&new Set(matches.map(e=>e.name)).size===1){
+   const wanted=choiceText(value);const options=matches.filter(e=>{
+    if(e.name==='shipping_dummy')return /購入者|落札者/.test(value)?e.value==='buyer':/出品者/.test(value)&&e.value==='seller';
+    if(e.name==='shipmethod_dummy'&&/日本郵便/.test(value))return /^ゆうパック(?:\s|$)/.test(label(e));
+    if(e.name==='shipmethod_dummy'&&/ヤマト運輸/.test(value))return /^宅急便[（(]EAZY[）)].*60[〜～-]160/.test(label(e));
+    return choiceText(label(e))===wanted||e.value===String(value);
+   });
+   if(options.length!==1||options[0].disabled)throw Error('ラジオの選択肢を1件に確認できません：'+names[0]);
+   if(!options[0].checked)options[0].click();if(!options[0].checked)throw Error('選択結果を確認できません');return options[0];
+  }
   const target=field(names,aliases);
-  if(target.tagName==='SELECT'){const wanted=choiceText(value);const options=[...target.options].filter(option=>choiceText(option.text)===wanted||choiceText(option.text).includes(wanted)||option.value===String(value));if(options.length!==1)throw Error('選択肢を1件に確認できません：'+names[0]);setValue(target,options[0].value);return target;}
+  if(target.tagName==='SELECT'){const wanted=choiceText(value);const options=[...target.options].filter(option=>{
+   if(target.name==='ClosingYMD'||target.id==='ClosingYMD'){const m=String(value).match(/^(\d{4})-(\d\d)-(\d\d)$/);return m&&(option.value===m.slice(1).join('')||new RegExp('^'+Number(m[2])+'月'+Number(m[3])+'日').test(norm(option.text)));}
+   if(target.name==='ClosingTime'||target.id==='ClosingTime'){const hour=Number(value),prefix=(hour<12?'午前':'午後')+(hour%12)+'時';return option.value===String(value)||norm(option.text).startsWith(prefix+'から')||norm(option.text).startsWith(prefix+'（正午）から');}
+   return choiceText(option.text)===wanted||choiceText(option.text).includes(wanted)||option.value===String(value);
+  });if(options.length!==1)throw Error('選択肢を1件に確認できません：'+names[0]);setValue(target,options[0].value);return target;}
   if(target.tagName==='INPUT'&&target.type!=='radio'){setValue(target,value);return target;}
   throw Error('選択欄の形式に対応していません：'+names[0]);
  }
  function checkbox(names,checked){const target=field(names);if(target.type!=='checkbox')throw Error('チェック欄の形式に対応していません');if(target.checked!==checked)target.click();if(target.checked!==checked)throw Error('チェックの結果を確認できません');}
- const formSignature=()=>JSON.stringify(fields().map(e=>({id:e.id,name:e.name,label:label(e),value:e.value,checked:e.type==='checkbox'||e.type==='radio'?e.checked:null})));
+ const formSignature=()=>JSON.stringify({fields:fields().map(e=>({id:e.id,name:e.name,label:label(e),value:e.value,checked:e.type==='checkbox'||e.type==='radio'?e.checked:null})),editor:descriptionEditor()?.innerText??null});
  const current=()=>globalThis.__bussanSellerOperation;
  function reserve(){if(current()?.id===job.id&&current()?.submitted)throw Error('この操作は送信を試行済みです。自動再送しません');globalThis.__bussanSellerOperation={...current(),id:job.id,submitted:true};}
  function tradeGuard(){if(!job.external_id||!job.trade_key||!text().includes(job.external_id)||!/取引画面|取引情報|取引ナビ|発送|配送/.test(text()))throw Error('対象の出品者取引を確認できません');if(/この商品を購入|購入手続きへ|受け取り評価をする|受取連絡をする/.test(controls().map(buttonLabel).join(' ')))throw Error('購入者側の操作画面のため停止しました');}
  async function waitFor(check,note,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const result=check();if(result)return result;if(/エラーが発生|操作に失敗|時間をおいて/.test(text()))throw Error('販売サイトがエラーを返しました');await sleep(250);}throw Error(note);}
  const statusValues=()=>[...root.querySelectorAll('[role="status"],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')).map(e=>norm(e.innerText));
- const expectedValues=()=>[payload.title,payload.description,String(payload.price),payload.condition,payload.shippingPayer,payload.shippingMethod,payload.origin,payload.dispatchDays];
+ const expectedValues=()=>[payload.title,payload.description,String(payload.price),payload.condition,payload.shippingPayer,payload.shippingMethod,payload.origin,payload.dispatchDays,payload.listingCategory||payload.category];
  if(phase==='prepare_listing'){
   if(!/出品|商品情報/.test(text()))throw Error('出品フォームではありません');
-  const title=field(['商品名','タイトル'],['name','Title','title']),description=field(['商品の説明','商品説明','説明文'],['description','Description']),price=field(['販売価格','開始価格','開始時の価格','価格'],['price','Price','StartPrice']);
+  let title=field(['商品名','タイトル'],['name','Title','title']),description=descriptionField(),price=field(['販売価格','開始価格','開始時の価格','価格'],['price','Price','StartPrice']);
   // Resolve every required field before setting file inputs or attempting a submit.
-  for(const names of [['商品の状態','商品状態'],['送料の負担','送料負担'],['配送の方法','配送方法'],['発送元の地域','発送元','商品の所在地'],['発送までの日数','発送までの期間'],['カテゴリー','カテゴリ']])field(names);
+  for(const names of [['商品の状態','商品状態'],['送料の負担','送料負担'],['配送の方法','配送方法'],['発送元の地域','発送元','商品の所在地'],['発送までの日数','発送までの期間'],['カテゴリー','カテゴリ']]){
+   const matches=candidates(names);if(!matches.length&&!choiceTrigger(names)||matches.length>1&&!matches.every(e=>e.type==='radio'&&e.name===matches[0].name))throw Error('入力欄を確認できません：'+names[0]);
+  }
   if((title.value&&title.value!==payload.title)||(description.value&&description.value!==payload.description))throw Error('サイトに別の下書きがあるため上書きしません');
-  setValue(title,payload.title);setValue(description,payload.description);setValue(price,payload.price);
-  await choose(['商品の状態','商品状態'],payload.condition);await choose(['送料の負担','送料負担'],payload.shippingPayer);await choose(['配送の方法','配送方法'],payload.shippingMethod);await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);await choose(['カテゴリー','カテゴリ'],payload.category);
+  if(descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('説明文エディターに別の下書きがあるため上書きしません');
+  await choose(['カテゴリー','カテゴリ'],payload.listingCategory||payload.category);
+  await choose(['商品の状態','商品状態'],payload.condition);await choose(['送料の負担','送料負担'],payload.shippingPayer);await choose(['配送の方法','配送方法'],payload.shippingMethod);await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);
   if(job.channel==='ヤフオク'){
+   const auction=root.querySelector('input[name="salesmode"][value="auction"]');if(auction&&!auction.checked){auction.click();if(!auction.checked)throw Error('オークション形式を確認できません');}
    const end=new Date(Date.now()+Number(payload.auctionDays)*86400000),date=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(end);
    await choose(['終了日','開催期間'],date,['ClosingYMD','ClosingDate']);await choose(['終了時間','終了時刻'],Number(payload.closingHour),['ClosingTime']);checkbox(['自動延長'],payload.autoExtend===true);
    const relist=field(['自動再出品']);if(relist.type==='checkbox'){if(relist.checked!==payload.autoRelist)relist.click();}else await choose(['自動再出品'],payload.autoRelist?'1回':'0回');
+  }else{
+   const fixed=root.querySelector('input[name="listingType"][value="setPrice"]');if(fixed&&!fixed.checked){fixed.click();if(!fixed.checked)throw Error('価格設定方式を確認できません');}
   }
+  title=field(['商品名','タイトル'],['name','Title','title']);description=descriptionField();price=field(['販売価格','開始価格','開始時の価格','価格'],['price','Price','StartPrice']);
+  setValue(title,payload.title);setDescription(description,payload.description);setValue(price,payload.price);
   const inputs=[...root.querySelectorAll('input[type="file"]')].filter(input=>!input.disabled&&(!input.accept||/image/.test(input.accept)));const multiple=inputs.filter(input=>input.multiple);if(inputs.length!==1){if(multiple.length!==1)throw Error('写真の追加欄を1件に確認できません');inputs.splice(0,inputs.length,multiple[0]);}
   const photoZone=inputs[0].closest('[data-testid*="photo"],[data-testid*="image"],[aria-label*="画像"],[aria-label*="写真"]')||inputs[0].parentElement;
   if(!files.length||files.length>10)throw Error('出品写真を確認してください');const transfer=new DataTransfer();for(const file of files)transfer.items.add(new File([new Uint8Array(file.bytes)],file.name,{type:file.type}));inputs[0].files=transfer.files;inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
   await waitFor(()=>!root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)).length>=files.length,'写真のアップロード完了を確認できません');
-  if(field(['商品名','タイトル'],['name','Title','title']).value!==payload.title||field(['商品の説明','商品説明','説明文'],['description','Description']).value!==payload.description||Number(field(['販売価格','開始価格','開始時の価格','価格'],['price','Price','StartPrice']).value)!==payload.price)throw Error('出品内容が入力値と一致しません');
-  globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),expected:expectedValues(),title:field(['商品名','タイトル'],['name','Title','title']),description:field(['商品の説明','商品説明','説明文'],['description','Description']),price:field(['販売価格','開始価格','開始時の価格','価格'],['price','Price','StartPrice'])};return {prepared:true};
+  if(title.value!==payload.title||descriptionField().value!==payload.description||Number(price.value)!==payload.price||descriptionEditor()&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('出品内容が入力値と一致しません');
+  globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),expected:expectedValues(),title,description:descriptionField(),price};return {prepared:true};
  }
  if(phase==='publish'){
   const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||prepared.title.value!==payload.title||prepared.description.value!==payload.description||Number(prepared.price.value)!==payload.price)throw Error('出品直前の内容を確認できません');

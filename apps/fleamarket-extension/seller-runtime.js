@@ -83,6 +83,19 @@ export async function openSellerSession(account,{tabs,scripting,identity}){
  try{await go(account.identity.pageUrl||account.listUrl);const verified=await identity(borrowed.id,account);if(verified?.confirmed!==true)throw Error('出品アカウントを確認できません');}catch(error){await restoreSiteTab(tabs,borrowed).catch(()=>{});throw error;}
  const raw=()=>execute(function(){const text=document.body.innerText;if(document.querySelector('input[type="password"],input[autocomplete="one-time-code"]')||/文字認証|ロボットではない|認証コードを入力/.test(text))throw Error('追加認証が必要です');return {text,url:location.href,links:[...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length).map(a=>({text:a.innerText.trim(),url:a.href}))};},null);
  return {go,loaded,structure:()=>execute(readSellerStructure,null),
+  inspectChoice:async kind=>{
+   const opened=await execute(async function(kind){
+    const names={category:['カテゴリーを選択する','カテゴリを選択する'],condition:['商品の状態を選択する'],shipping:['配送の方法を選択する']};
+    if(!names[kind])throw Error('未対応の選択画面です');
+    let candidates=[];const readyBy=Date.now()+10000;
+    while(Date.now()<readyBy){candidates=[...document.querySelectorAll('a,button,input[type="button"]')].filter(e=>e.getClientRects().length&&(names[kind].includes((e.innerText||e.getAttribute('aria-label')||'').trim())||(kind==='category'&&e.id==='acMdCateChange')));if(candidates.length)break;await new Promise(resolve=>setTimeout(resolve,250));}
+    if(!candidates.length)return false;if(candidates.length!==1||candidates[0].disabled)throw Error('選択画面の入口が曖昧です');
+    const before=document.body.innerText;candidates[0].click();
+    for(let n=0;n<40;n++){await new Promise(resolve=>setTimeout(resolve,250));if(document.body.innerText!==before)return true;}
+    throw Error('選択画面の表示を確認できません。再試行しません');
+   },kind);
+   if(opened)await loaded();return opened;
+  },
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
   read:phase=>execute(readSellerPage,{site:account.site,phase}),
