@@ -1,3 +1,4 @@
+import {readSellerStructure} from './seller-inspection.js';
 import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
 import {sellerDomOperation} from './seller-dom.js';
@@ -78,9 +79,9 @@ export async function openSellerSession(account,{tabs,scripting,identity}){
  async function loaded(){for(let n=0;n<60;n++){const tab=await tabs.get(borrowed.id);if(tab.status==='complete'){sellerUrl(account,tab.url);last=tab.url;borrowed.lastUrl=last;await pause(800);return;}await pause(300);}throw Error('販売画面の読み込みが時間切れになりました');}
  async function go(url){sellerUrl(account,url);const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('利用者が画面を変更したため停止しました');await tabs.update(borrowed.id,{url,active:account.site==='mercari'});last=url;borrowed.lastUrl=url;await loaded();}
  async function execute(func,args){const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('利用者が画面を変更したため停止しました');const results=await scripting.executeScript({target:{tabId:borrowed.id},func,args:[args]});if(results[0]?.result===undefined)throw Error('販売画面から結果を取得できません');if(results[0]?.result?.__error)throw Error(results[0].result.__error);return results[0]?.result;}
- try{await go(account.identity.pageUrl||account.listUrl);await identity(borrowed.id,account);}catch(error){await restoreSiteTab(tabs,borrowed).catch(()=>{});throw error;}
+ try{await go(account.identity.pageUrl||account.listUrl);const verified=await identity(borrowed.id,account);if(verified?.confirmed!==true)throw Error('出品アカウントを確認できません');}catch(error){await restoreSiteTab(tabs,borrowed).catch(()=>{});throw error;}
  const raw=()=>execute(function(){const text=document.body.innerText;if(document.querySelector('input[type="password"],input[autocomplete="one-time-code"]')||/文字認証|ロボットではない|認証コードを入力/.test(text))throw Error('追加認証が必要です');return {text,url:location.href,links:[...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length).map(a=>({text:a.innerText.trim(),url:a.href}))};},null);
- return {go,loaded,
+ return {go,loaded,structure:()=>execute(readSellerStructure,null),
   links:async()=> (await raw()).links.filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
   read:phase=>execute(readSellerPage,{site:account.site,phase}),
   selectTab:label=>execute(async function(label){const candidates=[...document.querySelectorAll('button,[role="tab"]')].filter(e=>e.getClientRects().length&&e.innerText.trim()===label);if(candidates.length!==1)return false;const before=document.body.innerText;const button=candidates[0];button.click();for(let n=0;n<20;n++){await new Promise(resolve=>setTimeout(resolve,200));if(button.getAttribute('aria-selected')==='true'||document.body.innerText!==before)return true;}throw Error('一覧タブの切り替え結果を確認できません');},label),
