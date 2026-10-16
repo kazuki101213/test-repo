@@ -1,8 +1,13 @@
-import {readSellerStructure} from './seller-inspection.js?v=0.1.72';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.72';
+import {readSellerStructure} from './seller-inspection.js?v=0.1.73';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.73';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.72';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.73';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+export async function normalizeSellerPhoto({file,site}){
+ if(site!=='auctions'||file.type==='image/jpeg')return file;
+ const bitmap=await createImageBitmap(new Blob([new Uint8Array(file.bytes)],{type:file.type}));
+ try{if(bitmap.width*bitmap.height>40000000)throw Error('出品写真の解像度が大きすぎます');const canvas=new OffscreenCanvas(bitmap.width,bitmap.height),context=canvas.getContext('2d');if(!context)throw Error('写真の形式を変換できません');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(bitmap,0,0);const blob=await canvas.convertToBlob({type:'image/jpeg',quality:.95});if(blob.size>8*1024*1024)throw Error('変換後の写真が8MBを超えています');return {...file,name:file.name.replace(/\.[^.]+$/,'.jpg'),type:'image/jpeg',bytes:[...new Uint8Array(await blob.arrayBuffer())]};}finally{bitmap.close();}
+}
 /** Return before a full-page category navigation destroys this execution frame. */
 export async function clickSellerChoice(kind){
  const names={category:['カテゴリーを選択する','カテゴリを選択する'],condition:['商品の状態を選択する'],shipping:['配送の方法を選択する'],'category-search':['キーワードから選択する（出品カテゴリ検索）']};
@@ -88,9 +93,9 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
    const entry=await session.structure();if(!entry.fileInputs?.length){const direct=(await session.links()).filter(link=>/^(出品|出品する|出品フォーム)$/.test(link.text)&&link.url!==listing.url);if(direct.length!==1)throw Error('出品入力画面への実リンクを1件に確認できません');await session.go(direct[0].url);}
    await session.operation(job,'listing_preflight');
    if(account.site==='auctions')await session.prepareCategory(job.payload.listingCategory||job.payload.category);
-   const files=[];let total=0;for(const [index,url] of job.payload.photos.entries()){
+   const files=[];let total=0,convertedTotal=0;for(const [index,url] of job.payload.photos.entries()){
     const source=new URL(url);if(source.protocol!=='https:'||!['xgoppuqoqeppckyunnvx.supabase.co','lh3.googleusercontent.com','drive.google.com','drive.usercontent.google.com','drive.googleusercontent.com'].includes(source.hostname))throw Error('写真の取得先を確認できません');
-    const response=await fetch(url,{credentials:'omit',signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error('写真を取得できません');const blob=await response.blob();if(!['image/jpeg','image/png','image/webp'].includes(blob.type)||blob.size>8*1024*1024)throw Error('写真の形式・容量を確認してください');total+=blob.size;if(total>20*1024*1024)throw Error('出品写真の合計容量が20MBを超えています');files.push({name:`photo-${index+1}.`+(blob.type==='image/png'?'png':blob.type==='image/webp'?'webp':'jpg'),type:blob.type,bytes:[...new Uint8Array(await blob.arrayBuffer())]});
+    const response=await fetch(url,{credentials:'omit',signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error('写真を取得できません');const blob=await response.blob();if(!['image/jpeg','image/png','image/webp'].includes(blob.type)||blob.size>8*1024*1024)throw Error('写真の形式・容量を確認してください');total+=blob.size;if(total>20*1024*1024)throw Error('出品写真の合計容量が20MBを超えています');const photo=await normalizeSellerPhoto({site:account.site,file:{name:`photo-${index+1}.`+(blob.type==='image/png'?'png':blob.type==='image/webp'?'webp':'jpg'),type:blob.type,bytes:[...new Uint8Array(await blob.arrayBuffer())]}});convertedTotal+=photo.bytes.length;if(convertedTotal>20*1024*1024)throw Error('変換後の出品写真の合計容量が20MBを超えています');files.push(photo);
    }
    await session.operation(job,'prepare_listing',{files});
    // Persisting the claim precedes the only publish attempt. A timeout is uncertain, never retried.

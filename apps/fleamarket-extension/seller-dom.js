@@ -76,7 +76,9 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  function tradeGuard(){if(!job.external_id||!job.trade_key||!text().includes(job.external_id)||!/取引画面|取引情報|取引ナビ|発送|配送/.test(text()))throw Error('対象の出品者取引を確認できません');if(/この商品を購入|購入手続きへ|受け取り評価をする|受取連絡をする/.test(controls().map(buttonLabel).join(' ')))throw Error('購入者側の操作画面のため停止しました');}
  async function waitFor(check,note,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const result=check();if(result)return result;if(/エラーが発生|操作に失敗|時間をおいて/.test(text()))throw Error('販売サイトがエラーを返しました');await sleep(250);}throw Error(note);}
  const statusValues=()=>[...root.querySelectorAll('[role="status"],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')).map(e=>norm(e.innerText));
- const expectedValues=()=>[payload.title,payload.description,String(payload.price),payload.condition,payload.shippingPayer,payload.shippingMethod,payload.origin,payload.dispatchDays,payload.listingCategory||payload.category];
+ const postalMethod=()=>['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size)?payload.size:'ゆうパック';
+ const expectedValues=()=>[payload.title,payload.description,String(payload.price),payload.condition,job.channel==='ヤフオク'&&/購入者/.test(payload.shippingPayer)?'落札者':payload.shippingPayer,job.channel==='ヤフオク'&&/日本郵便/.test(payload.shippingMethod)?postalMethod():payload.shippingMethod,payload.origin,payload.dispatchDays,...String(payload.listingCategory||payload.category).split(/\s*[>＞]\s*/)];
+ function confirmationSetting(name){const values=[];for(const row of root.querySelectorAll('tr')){const cells=[...row.children];if(cells.length>=2&&norm(cells[0].innerText).replace(/[（(]無料[）)]/g,'')===name)values.push(norm(cells.slice(1).map(e=>e.innerText).join(' ')));}for(const label of root.querySelectorAll('dt'))if(norm(label.innerText)===name&&label.nextElementSibling?.tagName==='DD')values.push(norm(label.nextElementSibling.innerText));if(values.length!==1)return null;return values[0];}
  if(phase==='listing_preflight'){
   const title=field(['商品名','タイトル'],['name','Title','title']),description=descriptionField();
   if((title.value&&title.value!==payload.title)||(description.value&&description.value!==payload.description)||descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('サイトに別の下書きがあるため上書きしません');return {ready:true};
@@ -92,13 +94,15 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('説明文エディターに別の下書きがあるため上書きしません');
   if(!categoryResolved)await choose(['カテゴリー','カテゴリ'],payload.listingCategory||payload.category);
   await choose(['商品の状態','商品状態'],payload.condition);await choose(['送料の負担','送料負担'],payload.shippingPayer);await choose(['配送の方法','配送方法'],payload.shippingMethod);await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);
+  let auctionOptionsConfirmed=true;
   if(job.channel==='ヤフオク'){
    if(/日本郵便/.test(payload.shippingMethod)&&/^\d+$/.test(String(payload.size))){if(!['2','5','10','15','20','25'].includes(String(payload.weightKg)))throw Error('梱包後の重さを選択してください');await choose(['配送サイズ'],payload.size+'cm以内',['ship_delivery_yupack_size_select']);await choose(['配送重量'],payload.weightKg+'kg以内',['ship_delivery_yupack_weight_select']);}
    else if(!['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size))throw Error('ヤフオクの配送サイズを選択してください');
    const auction=root.querySelector('input[name="salesmode"][value="auction"]');if(auction&&!auction.checked){auction.click();if(!auction.checked)throw Error('オークション形式を確認できません');}
    const end=new Date(Date.now()+Number(payload.auctionDays)*86400000),date=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(end);
-   await choose(['終了日','開催期間'],date,['ClosingYMD','ClosingDate']);await choose(['終了時間','終了時刻'],Number(payload.closingHour),['ClosingTime']);checkbox(['自動延長'],payload.autoExtend===true);
-   const relist=field(['自動再出品']);if(relist.type==='checkbox'){if(relist.checked!==payload.autoRelist)relist.click();}else await choose(['自動再出品'],payload.autoRelist?'1回':'0回');
+   await choose(['終了日','開催期間'],date,['ClosingYMD','ClosingDate']);await choose(['終了時間','終了時刻'],Number(payload.closingHour),['ClosingTime']);
+   if(candidates(['自動延長']).length)checkbox(['自動延長'],payload.autoExtend===true);else{if(payload.autoExtend!==true)throw Error('この画面では自動延長を変更できません');auctionOptionsConfirmed=false;}
+   if(candidates(['自動再出品']).length){const relist=field(['自動再出品']);if(relist.type==='checkbox'){if(relist.checked!==payload.autoRelist)relist.click();}else await choose(['自動再出品'],payload.autoRelist?'1回':'0回');}else{if(payload.autoRelist!==false)throw Error('この画面では自動再出品を変更できません');auctionOptionsConfirmed=false;}
   }else{
    const fixed=root.querySelector('input[name="listingType"][value="setPrice"]');if(fixed&&!fixed.checked){fixed.click();if(!fixed.checked)throw Error('価格設定方式を確認できません');}
   }
@@ -109,18 +113,21 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(!files.length||files.length>10)throw Error('出品写真を確認してください');const transfer=new DataTransfer();for(const file of files)transfer.items.add(new File([new Uint8Array(file.bytes)],file.name,{type:file.type}));inputs[0].files=transfer.files;inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
   await waitFor(()=>!root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)).length>=files.length,'写真のアップロード完了を確認できません');
   if(title.value!==payload.title||descriptionField().value!==payload.description||Number(price.value)!==payload.price||descriptionEditor()&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('出品内容が入力値と一致しません');
-  globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),expected:expectedValues(),title,description:descriptionField(),price};return {prepared:true};
+  globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),expected:expectedValues(),title,description:descriptionField(),price,auctionOptionsConfirmed};return {prepared:true};
  }
  if(phase==='publish'){
   const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||prepared.title.value!==payload.title||prepared.description.value!==payload.description||Number(prepared.price.value)!==payload.price)throw Error('出品直前の内容を確認できません');
   const forms=[...root.querySelectorAll('form')].filter(visible);if(forms.some(form=>!form.checkValidity()))throw Error('出品に必要な項目が不足しています');
   const confirm=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));
   if(confirm.length===1){confirm[0].click();return {confirmation:true};}
+  if(job.channel==='ヤフオク'&&!prepared.auctionOptionsConfirmed)throw Error('自動延長・再出品の設定を確認できません。出品は送信しません');
   const button=oneButton(['出品する','出品']);reserve();button.click();return {submitted:true};
  }
  if(phase==='publish_confirmation'){
   if(!/確認|出品/.test(text()))throw Error('出品の確認画面ではありません');
-  const normalized=choiceText(text()).replaceAll(',','');for(const value of expectedValues()){if(!normalized.includes(choiceText(value).replaceAll(',','')))throw Error('確認画面で出品内容が一致しません');}
+  const frames=[...root.querySelectorAll('iframe')].flatMap(frame=>{try{return [frame.contentDocument?.body?.innerText||''];}catch{return [];}}).join(' ');
+  const normalized=choiceText(text()+' '+frames).replaceAll(',','');for(const value of expectedValues()){if(!normalized.includes(choiceText(value).replaceAll(',','')))throw Error('確認画面で出品内容が一致しません');}
+  if(job.channel==='ヤフオク'&&(!['あり','する','有効'].includes(confirmationSetting('自動延長'))||!['なし','しない','0回','設定しない'].includes(confirmationSetting('自動再出品'))))throw Error('確認画面で自動延長あり・自動再出品なしを確認できません。出品は送信しません');
   const button=oneButton(['出品する','ガイドラインに同意して出品する']);reserve();button.click();return {submitted:true};
  }
  if(phase==='listing_result'){
