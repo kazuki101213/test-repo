@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget} from './seller-inspection.js?v=0.1.78';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.78';
+import {readSellerStructure,readInspectionTarget} from './seller-inspection.js?v=0.1.79';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.79';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.78';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.79';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -130,7 +130,7 @@ export async function openSellerSession(account,{tabs,scripting,identity,executi
  async function execute(func,args){
   const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');let timer;
   try{
-   const timeout=args?.phase==='prepare_listing'?Math.max(executionTimeoutMs,120000):executionTimeoutMs;
+   const timeout=args?.phase==='prepare_listing'?Math.max(executionTimeoutMs,120000):func===readSellerPage&&executionTimeoutMs===30000?60000:executionTimeoutMs;
    const results=await Promise.race([scripting.executeScript({target:{tabId:borrowed.id},func,args:[args]}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('販売画面の確認が時間切れになりました。自動再試行しません')),timeout);})]);
    if(results[0]?.result==null)throw Error('販売画面から結果を取得できません');if(results[0]?.result?.__error)throw Error(results[0].result.__error);return results[0]?.result;
   }finally{clearTimeout(timer);}
