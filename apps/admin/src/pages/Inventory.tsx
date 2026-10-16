@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, matchesInventoryFilters } from '@bussan/shared';
 import type { PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
-import { deleteInventoryItem, dismissPurchaseDraft, fetchInventoryItem, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
+import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
 import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
@@ -300,6 +300,22 @@ const fullEditFields: (keyof InventoryEdit)[] = [
 ];
 
 function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onClose: () => void; onSaved: () => void }) {
+  const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
+  const [cardId, setCardId] = useState('');
+  const [paymentReady, setPaymentReady] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([fetchCards(), fetchInventoryPaymentCard(item.id)]).then(([options, currentId]) => {
+      if (cancelled) return;
+      // Keep an inactive payment method visible until the user explicitly changes it.
+      setCards(currentId && !options.some(option => option.id === currentId)
+        ? [...options, { id: currentId, name: item.card_name ?? '現在の支払い方法' }] : options);
+      setCardId(currentId ?? '');
+      setPaymentReady(true);
+    }).catch(cause => { if (!cancelled) setPaymentError(inventoryError(cause)); });
+    return () => { cancelled = true; };
+  }, [item.id, item.card_name]);
   const [identity, setIdentity] = useState({ sku: item.sku, lot_seq: item.lot_seq, model_no: item.model_no, product_no: item.product_no });
   const [values, setValues] = useState<InventoryEdit>(() => ({
     is_accessory: item.is_accessory, title: item.title, asin: item.asin, tracking_no: item.tracking_no, purchased_at: item.purchased_at,
@@ -331,6 +347,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     setValues(current => ({ ...current, [field]: value }) as InventoryEdit);
   }
   async function save() {
+    if (!paymentReady) return;
     setBusy(true); setError('');
     try {
       let current = item;
@@ -342,7 +359,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         await updateInventoryField(current, 'sku', identity.sku);
         current = await fetchInventoryItem(item.id);
       }
-      await updateInventoryItem(current, values);
+      await updateInventoryItem(current, { ...values, card_id: cardId || null });
       if (identity.product_no !== item.product_no) await updateInventoryField(current, 'product_no', String(identity.product_no ?? ''));
       if (identity.model_no !== item.model_no) await updateInventoryField(current, 'model_no', String(identity.model_no ?? ''));
       onSaved();
@@ -363,6 +380,10 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         <label className="field"><span>SKU</span><input value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
         <label className="field"><span>品番</span><input type="number" min={1} step={1} value={identity.product_no ?? ''} onChange={event => setIdentity(current => ({ ...current, product_no: event.target.value ? Number(event.target.value) : null }))} /></label>
         <label className="field"><span>型番</span><input value={identity.model_no ?? ''} onChange={event => setIdentity(current => ({ ...current, model_no: event.target.value || null }))} /></label>
+        <label className="field"><span>支払い方法</span><select value={cardId} disabled={!paymentReady || busy} onChange={event => setCardId(event.target.value)}>
+          <option value="">{paymentReady ? '未設定' : '読み込み中…'}</option>
+          {cards.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}
+        </select></label>
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
         return <label className="field" key={field}><span>{fieldLabels[field]}</span>
@@ -374,7 +395,8 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         </label>;
       })}</div>
       {error && <div className="error" role="alert">{error}</div>}
-      <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button>{canDelete && <button className="btn" disabled={busy} onClick={() => void remove()} style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>削除</button>}<button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
+      {paymentError && <div className="error" role="alert">支払い方法を読み込めませんでした。画面を開き直してください。{paymentError}</div>}
+      <div className="toolbar"><button className="btn primary" disabled={busy || !paymentReady} onClick={() => void save()}>保存</button>{canDelete && <button className="btn" disabled={busy} onClick={() => void remove()} style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>削除</button>}<button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
     </div>
   </div>;
 }
