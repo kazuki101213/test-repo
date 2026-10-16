@@ -42,6 +42,7 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/paged_inventory_sync.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/resource_snapshot.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/state_specific_actions.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/seller_shipping_preferences.sql"
 
 # アプリが読む列・関数がこのスキーマに存在するかを突き合わせる
 DB="$DB" "$HERE/check-app-schema.py"

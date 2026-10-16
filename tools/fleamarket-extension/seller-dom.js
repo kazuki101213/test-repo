@@ -71,6 +71,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  }
  function checkbox(names,checked){const target=field(names);if(target.type!=='checkbox')throw Error('チェック欄の形式に対応していません');if(target.checked!==checked)target.click();if(target.checked!==checked)throw Error('チェックの結果を確認できません');}
  const formSignature=()=>JSON.stringify({fields:fields().map(e=>({id:e.id,name:e.name,label:label(e),value:e.value,checked:e.type==='checkbox'||e.type==='radio'?e.checked:null})),editor:descriptionEditor()?.innerText??null});
+ const imageSignature=zone=>JSON.stringify([...zone.querySelectorAll('img')].filter(visible).map(image=>image.src));
  const current=()=>globalThis.__bussanSellerOperation;
  function reserve(){if(current()?.id===job.id&&current()?.submitted)throw Error('この操作は送信を試行済みです。自動再送しません');globalThis.__bussanSellerOperation={...current(),id:job.id,submitted:true};}
  function tradeGuard(){if(!job.external_id||!job.trade_key||!text().includes(job.external_id)||!/取引画面|取引情報|取引ナビ|発送|配送/.test(text()))throw Error('対象の出品者取引を確認できません');if(/この商品を購入|購入手続きへ|受け取り評価をする|受取連絡をする/.test(controls().map(buttonLabel).join(' ')))throw Error('購入者側の操作画面のため停止しました');}
@@ -109,14 +110,16 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   title=field(['商品名','タイトル'],['name','Title','title']);description=descriptionField();price=field(['販売価格','開始価格','開始時の価格','価格'],['price','Price','StartPrice']);
   setValue(title,payload.title);setDescription(description,payload.description);setValue(price,payload.price);
   const inputs=[...root.querySelectorAll('input[type="file"]')].filter(input=>!input.disabled&&(!input.accept||/image/.test(input.accept)));const multiple=inputs.filter(input=>input.multiple);if(inputs.length!==1){if(multiple.length!==1)throw Error('写真の追加欄を1件に確認できません');inputs.splice(0,inputs.length,multiple[0]);}
-  const photoZone=inputs[0].closest('[data-testid*="photo"],[data-testid*="image"],[aria-label*="画像"],[aria-label*="写真"]')||inputs[0].parentElement;
+  const photoZone=job.channel==='ヤフオク'?root.querySelector('#ImageList'):inputs[0].closest('[data-testid*="photo"],[data-testid*="image"],[aria-label*="画像"],[aria-label*="写真"]')||inputs[0].parentElement;
+  if(!photoZone)throw Error('出品写真の表示領域を確認できません');
+  if([...photoZone.querySelectorAll('img')].some(image=>visible(image)&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)))throw Error('既存の出品写真があるため上書きしません');
   if(!files.length||files.length>10)throw Error('出品写真を確認してください');const transfer=new DataTransfer();for(const file of files)transfer.items.add(new File([new Uint8Array(file.bytes)],file.name,{type:file.type}));inputs[0].files=transfer.files;inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
-  await waitFor(()=>!root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)).length>=files.length,'写真のアップロード完了を確認できません');
+  await waitFor(()=>{const images=[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&image.complete&&image.naturalWidth>0&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)&&!/削除|回転|拡大/.test(image.alt));const count=job.channel==='ヤフオク'?new Set(images.map(image=>image.closest('li')).filter(Boolean)).size:images.length;return !root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&count===files.length;},'写真のアップロード完了を確認できません');
   if(title.value!==payload.title||descriptionField().value!==payload.description||Number(price.value)!==payload.price||descriptionEditor()&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('出品内容が入力値と一致しません');
-  globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),expected:expectedValues(),title,description:descriptionField(),price,auctionOptionsConfirmed};return {prepared:true};
+  globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),photoZone,photos:imageSignature(photoZone),expected:expectedValues(),title,description:descriptionField(),price,auctionOptionsConfirmed};return {prepared:true};
  }
  if(phase==='publish'){
-  const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||prepared.title.value!==payload.title||prepared.description.value!==payload.description||Number(prepared.price.value)!==payload.price)throw Error('出品直前の内容を確認できません');
+  const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||!prepared.photoZone?.isConnected||prepared.photos!==imageSignature(prepared.photoZone)||prepared.title.value!==payload.title||prepared.description.value!==payload.description||Number(prepared.price.value)!==payload.price)throw Error('出品直前の内容を確認できません');
   const forms=[...root.querySelectorAll('form')].filter(visible);if(forms.some(form=>!form.checkValidity()))throw Error('出品に必要な項目が不足しています');
   const confirm=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));
   if(confirm.length===1){confirm[0].click();return {confirmation:true};}

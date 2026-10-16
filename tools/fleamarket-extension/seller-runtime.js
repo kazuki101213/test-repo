@@ -1,7 +1,7 @@
-import {readSellerStructure} from './seller-inspection.js?v=0.1.73';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.73';
+import {readSellerStructure} from './seller-inspection.js?v=0.1.74';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.74';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.73';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.74';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -115,9 +115,9 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
 export async function openSellerSession(account,{tabs,scripting,identity,executionTimeoutMs=30000}){
  const borrowed=await borrowSiteTab(tabs,account.site);let last=borrowed.originalUrl,categoryResolution=null;
  async function loaded(){for(let n=0;n<60;n++){const tab=await tabs.get(borrowed.id);if(tab.status==='complete'){sellerUrl(account,tab.url);last=tab.url;borrowed.lastUrl=last;await pause(800);return;}await pause(300);}throw Error('販売画面の読み込みが時間切れになりました');}
- async function go(url){sellerUrl(account,url);const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('利用者が画面を変更したため停止しました');await tabs.update(borrowed.id,{url,active:account.site==='mercari'});last=url;borrowed.lastUrl=url;await loaded();}
+ async function go(url){sellerUrl(account,url);const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');await tabs.update(borrowed.id,{url,active:account.site==='mercari'});last=url;borrowed.lastUrl=url;await loaded();}
  async function execute(func,args){
-  const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('利用者が画面を変更したため停止しました');let timer;
+  const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');let timer;
   try{
    const timeout=args?.phase==='prepare_listing'?Math.max(executionTimeoutMs,120000):executionTimeoutMs;
    const results=await Promise.race([scripting.executeScript({target:{tabId:borrowed.id},func,args:[args]}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('販売画面の確認が時間切れになりました。自動再試行しません')),timeout);})]);
