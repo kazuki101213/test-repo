@@ -1,7 +1,7 @@
-import {readSellerStructure} from './seller-inspection.js?v=0.1.69';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.69';
+import {readSellerStructure} from './seller-inspection.js?v=0.1.70';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.70';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.69';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.70';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 /** Return before a full-page category navigation destroys this execution frame. */
 export async function clickSellerChoice(kind){
@@ -9,8 +9,20 @@ export async function clickSellerChoice(kind){
  if(!names[kind])throw Error('未対応の選択画面です');
  const norm=s=>String(s||'').replace(/\s+/g,'').trim();let candidates=[];const end=Date.now()+10000;
  while(Date.now()<end){candidates=[...document.querySelectorAll('a,button,input[type="button"]')].filter(e=>e.getClientRects().length&&(names[kind].some(name=>norm(name)===norm(e.innerText||e.getAttribute('aria-label')||e.value))||(kind==='category'&&e.id==='acMdCateChange')));if(candidates.length)break;await new Promise(resolve=>setTimeout(resolve,250));}
- if(!candidates.length)return null;if(candidates.length!==1||candidates[0].disabled)throw Error('選択画面の入口が曖昧です');
+ if(!candidates.length)return false;if(candidates.length!==1||candidates[0].disabled)throw Error('選択画面の入口が曖昧です');
  const before={url:location.href,text:document.body.innerText};setTimeout(()=>candidates[0].click(),100);return before;
+}
+/** Only the site's public category search; never a listing form submit. */
+export function searchSellerCategory(term){
+ if(typeof term!=='string'||!term.trim()||term.length>200)throw Error('出品カテゴリを確認してください');
+ const yahoo=location.hostname==='auctions.yahoo.co.jp'&&/\/show\/topsubmit$/.test(location.pathname),mercari=location.hostname==='jp.mercari.com'&&location.pathname==='/sell/categories';
+ if(!yahoo&&!mercari)throw Error('カテゴリ検索画面ではありません');
+ const inputs=[...document.querySelectorAll(yahoo?'input#category-search-keyword':'input')].filter(e=>e.getClientRects().length&&(yahoo||/カテゴリー名を検索/.test(e.getAttribute('placeholder')||e.getAttribute('aria-label')||'')));
+ if(inputs.length!==1)throw Error('カテゴリ検索欄を1件に確認できません');
+ const input=inputs[0];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,term);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
+ const before={url:location.href,text:document.body.innerText};
+ if(yahoo){const buttons=[...input.form.querySelectorAll('input[type=submit],button')].filter(e=>e.getClientRects().length&&(e.innerText||e.value||'').replace(/\s/g,'')==='検索');if(buttons.length!==1)throw Error('カテゴリ検索ボタンを1件に確認できません');setTimeout(()=>buttons[0].click(),100);}
+ return before;
 }
 export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log}){
  if(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day))return;
@@ -98,12 +110,11 @@ export async function openSellerSession(account,{tabs,scripting,identity,executi
  }
  try{await go(account.identity.pageUrl||account.listUrl);const verified=await identity(borrowed.id,account);if(verified?.confirmed!==true)throw Error('出品アカウントを確認できません');}catch(error){await restoreSiteTab(tabs,borrowed).catch(()=>{});throw error;}
  const raw=()=>execute(function(){const text=document.body.innerText;if(document.querySelector('input[type="password"],input[autocomplete="one-time-code"]')||/文字認証|ロボットではない|認証コードを入力/.test(text))throw Error('追加認証が必要です');return {text,url:location.href,links:[...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length).map(a=>({text:a.innerText.trim(),url:a.href}))};},null);
+ async function finishChoice(before){if(!before)return false;await pause(350);await loaded();for(let n=0;n<20;n++){if(await execute(function(before){return location.href!==before.url||document.body.innerText!==before.text;},before))return true;await pause(250);}throw Error('選択画面の表示を確認できません。再試行しません');}
  return {go,loaded,structure:()=>execute(readSellerStructure,null),
+  searchCategory:async term=>finishChoice(await execute(searchSellerCategory,term)),
   inspectChoice:async kind=>{
-   const before=await execute(clickSellerChoice,kind);if(!before)return false;
-   await pause(350);await loaded();
-   const changed=await execute(function(before){return location.href!==before.url||document.body.innerText!==before.text;},before);
-   if(!changed)throw Error('選択画面の表示を確認できません。再試行しません');return true;
+   return finishChoice(await execute(clickSellerChoice,kind));
   },
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
