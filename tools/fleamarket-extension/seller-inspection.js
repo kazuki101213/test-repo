@@ -1,11 +1,12 @@
 const PROFILE_ACCOUNTS={
  'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':'auctions-1',
  'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1',
+ '51502a66-28a6-4af0-81ea-660e63d8b66c':'mercari-2',
 };
 export function sellerInspectionApplies(request,profileId,previous,now=Date.now()){
  if(!request||!PROFILE_ACCOUNTS[profileId]||request.id===previous||!/^[-0-9a-f]{36}$/i.test(request.id||''))return false;
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
- return request.kind==='seller-readonly-structure'&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&profileId==='f29f12b6-35f2-4e9f-8312-a8321ddf3c12')&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
+ return request.kind==='seller-readonly-structure'&&(profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||!!request.targetItemId)&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&['f29f12b6-35f2-4e9f-8312-a8321ddf3c12','51502a66-28a6-4af0-81ea-660e63d8b66c'].includes(profileId))&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
 }
 /** User-supplied item ID: exact transaction and serial checks, no form entry or clicks. */
 export async function readShippingInspectionTarget({serial,itemId}){
@@ -59,7 +60,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
   if(request.targetItemId){
-   if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリ1のみです');
+   if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリのみです');
    await session.go('https://jp.mercari.com/transaction/'+request.targetItemId);
    evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
    evidence.pages.push({kind:'target-shipping',...await session.structure()});
