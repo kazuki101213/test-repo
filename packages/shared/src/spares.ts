@@ -49,7 +49,7 @@ export async function fetchSpareAccessories(ownerStaffId?: string): Promise<Spar
   const rows = [...await readResourceSnapshot<SpareAccessory & {_owner_code?:string}>('spares', {owner:ownerStaffId??''})];
   const owners = rows.flatMap(row=>row.owner_staff_id?[{id:row.owner_staff_id,code:row._owner_code,name:row.owner_name??''}]:[]);
   // Preserve the previous stable tie order within owner/manufacturer groups.
-  rows.sort((a,b)=>(b.source_sheet_row??-Infinity)-(a.source_sheet_row??-Infinity)||a.id.localeCompare(b.id));
+  rows.sort((a,b)=>(b.source_sheet_row??Infinity)-(a.source_sheet_row??Infinity)||a.id.localeCompare(b.id));
   return sortSpareAccessories(rows.map(row=>({...row,usage_note:usageRecordText(row.usage_note)})),owners);
 }
 

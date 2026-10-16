@@ -26,15 +26,15 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
 (async()=>{
  await settle();
  assert.equal(field('支払い方法').props.value,'amex');assert.equal(field('作業ライン').props.value,'ブルーレイ');
- for(const [label,value] of [['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）','43210'],['商品ID','body-id'],['追跡番号','body-track'],['作業ライン','ブルーレイ']]){field(label).props.onChange({target:{value}});await settle();}
+ for(const [label,value] of [['納品担当者','DD'],['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）','43210'],['商品ID','body-id'],['追跡番号','body-track'],['作業ライン','ブルーレイ']]){field(label).props.onChange({target:{value}});await settle();}
  all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
- for(const [label,value] of [['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）',43210],['商品ID','body-id'],['追跡番号','body-track']])assert.equal(field(label).props.value,value,label+' must stay unchanged');
+ for(const [label,value] of [['納品担当者','DD'],['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）',43210],['商品ID','body-id'],['追跡番号','body-track']])assert.equal(field(label).props.value,value,label+' must stay unchanged');
  assert.deepEqual(all(field('納品担当者')).filter(n=>n.type==='option'&&n.props.value).map(n=>n.props.value),codes);
  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
  assert(saved);assert.equal(saved.id,'spare');assert.equal(saved.payload.title,'本体型番');assert.equal(saved.payload.cost_amount,43210);assert.equal(saved.payload.is_accessory,false);
  // A reserve allocated in another screen is rejected before registration, without clearing body inputs.
  hooks.splice(0);cursor=0;pending=[];saved=undefined;dirty=true;await settle();
- for(const [label,value] of [['型番','維持する本体'],['ASIN','B000000002'],['仕入金額（円）','24409'],['商品ID','c1243675380'],['追跡番号','body-track']]){field(label).props.onChange({target:{value}});await settle();}
+ for(const [label,value] of [['納品担当者','DD'],['型番','維持する本体'],['ASIN','B000000002'],['仕入金額（円）','24409'],['商品ID','c1243675380'],['追跡番号','body-track']]){field(label).props.onChange({target:{value}});await settle();}
  all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
  currentSpares=[{...spare,used_for_item_id:'other-item'}];
  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();

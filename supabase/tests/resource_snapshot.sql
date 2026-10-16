@@ -31,8 +31,8 @@ update app.spare_accessories set manufacturer='Panasonic' where title='resource 
 delete from app.spare_accessories where title='resource sync spare 2';
 update app.items set description='updated detail' where lot_seq=991001;
 do $$declare q jsonb;p jsonb;begin
- q:=app.read_resource_snapshot('spares','{}',(select p->'fingerprints' from resource_probe));
- if jsonb_array_length(q->'rows')<>1 or q->'rows'->0->>'manufacturer'<>'Panasonic' or jsonb_array_length(q->'ids')<>(select jsonb_array_length(p->'ids')-1 from resource_probe) then raise exception 'Change/deletion diff incorrect';end if;
+ q:=app.read_resource_snapshot('spares','{}',(select resource_probe.p->'fingerprints' from resource_probe));
+ if jsonb_array_length(q->'rows')<>1 or q->'rows'->0->>'manufacturer'<>'Panasonic' or jsonb_array_length(q->'ids')<>(select jsonb_array_length(resource_probe.p->'ids')-1 from resource_probe) then raise exception 'Change/deletion diff incorrect';end if;
  select detail_probe.p into p from detail_probe;
  q:=app.read_inventory_page('delivery','{"queryField":"serial","query":"991001","status":"all"}',50,(p->'fingerprints')||jsonb_build_object('__revision',p->>'revision'));
  if jsonb_array_length(q->'rows')<>1 or q->'rows'->0->>'detail_revision'=p->'rows'->0->>'detail_revision' then raise exception 'Detail text revision not propagated';end if;

@@ -11045,7 +11045,7 @@ begin
  when 'shipping' then source:=$q$select to_jsonb(s) d from app.v_spare_shipping_tasks s where completed_at is null$q$;
  when 'actions' then source:=$q$select to_jsonb(s) d from app.v_item_action_tasks s where task_completed_at is null$q$;
  when 'malfunctions' then source:=$q$select to_jsonb(s) d from (select i.id,i.sku,i.lot_seq,i.title,i.asin,i.marketplace_item_id,i.purchaser_id,i.deliverer_id,i.malfunction_comment,i.malfunction_reported_at,i.malfunction_reported_by,
- jsonb_build_array(jsonb_build_object('model_no',p.model_no)) products,coalesce(p.maker,a.maker) maker,
+ jsonb_build_array(jsonb_build_object('model_no',p.model_no)) products,a.maker maker,
  jsonb_build_array(jsonb_build_object('id',b.id,'name',b.name),jsonb_build_object('id',d.id,'name',d.name),jsonb_build_object('id',r.id,'name',r.name)) people
  from app.items i left join app.products p on p.id=i.product_id left join app.products a on a.asin=i.asin and a.is_active
  left join app.staff b on b.id=i.purchaser_id left join app.staff d on d.id=i.deliverer_id left join app.staff r on r.id=i.malfunction_reported_by
