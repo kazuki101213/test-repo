@@ -65,6 +65,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
    evidence.pages.push({kind:'target-shipping',...await session.structure()});
    if(evidence.target.serialMatches!==true||!evidence.target.sellerShipping||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定商品に発送待ちの出品者画面を確認できません');
+   if(session.inspectChoice&&await session.inspectChoice('shipping-details'))evidence.pages.push({kind:'shipping-choices',...await session.structure()});
    evidence.status='completed';return true;
   }
   let links=await session.links();
