@@ -11764,7 +11764,7 @@ begin
 end $$;
 revoke all on function app.sync_spare_shipping_holder() from public,anon,authenticated;
 create trigger spare_sync_shipping_holder
-after update of owner_staff_id on app.spare_accessories
+after update on app.spare_accessories
 for each row execute function app.sync_spare_shipping_holder();
 
 -- Repair uniquely named holders, including legacy allocations without a task.
