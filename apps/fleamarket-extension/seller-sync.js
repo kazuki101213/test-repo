@@ -26,11 +26,12 @@ export function parseSellerSaleDetail(channel,text,externalId){
  return {sold_on,sold_price:amount(channel==='メルカリ'?'商品代金':'決済金額'),payout_amount:amount(channel==='メルカリ'?'販売利益':'受取金額'),trade_key:externalId+':'+sold_on+(m[4]?`T${m[4].padStart(2,'0')}:${m[5]}`:'')};
 }
 /** Runs inside a merchant tab; every field returned is derived from visible seller-page DOM. */
-export function readSellerPage({site,phase=null}={}){
+export async function readSellerPage({site,phase=null}={}){
  const norm=value=>(value||'').replace(/\s+/g,' ').trim(),visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
- const root=document.querySelector('main')||document.body,text=norm(root.innerText);
+ let root=document.querySelector('main')||document.body,text=norm(root.innerText);
  if(/\/(?:purchases|purchase|won)(\/|$)/.test(location.pathname))throw Error('購入一覧ではなく出品一覧を開いてください');
  if(document.querySelector('input[type="password"],input[autocomplete="one-time-code"]')||/ログインしてください|認証コードを入力|文字認証|ロボットではない|セキュリティチェック/.test(text))throw Error('ログイン・追加認証が必要です。今回の取得を停止しました');
+ if(site==='mercari'&&location.pathname.startsWith('/mypage/listings')){const end=Date.now()+10000;while(Date.now()<end){root=document.querySelector('main')||document.body;text=norm(root.innerText);if(/商品(?:が|は)ありません|商品はまだありません|該当する商品はありません/.test(text)||[...root.querySelectorAll('a[href]')].some(a=>/\/(?:item|transaction)\/m[0-9]+/.test(a.href)))break;if(/ログインしてください|認証コードを入力|文字認証|セキュリティチェック/.test(text))throw Error('ログイン・追加認証が必要です。今回の取得を停止しました');await new Promise(resolve=>setTimeout(resolve,250));}}
  if(!/出品した商品|出品一覧|出品中|取引中の商品|出品終了分|売上金管理|受け取り一覧|受け取り明細|取引画面|取引情報/.test(text))throw Error('販売側の画面を確認できません');
  const links=[...document.querySelectorAll('a[href]')].filter(visible),idOf=url=>{try{const u=new URL(url,location.href);return site==='mercari'?(u.hostname==='jp.mercari.com'&&u.pathname.match(/\/(?:item|transaction)\/(m[0-9]+)/)?.[1]):u.pathname.match(/\/(?:jp\/)?auction\/([a-z][0-9]+)/i)?.[1]?.toLowerCase()||['aID','aid','auctionID','auctionId'].map(key=>u.searchParams.get(key)).find(value=>/^[a-z][0-9]+$/i.test(value||''))?.toLowerCase();}catch{return null;}};
  const allowed=url=>{try{const u=new URL(url,location.href);return u.protocol==='https:'&&(site==='mercari'?u.hostname==='jp.mercari.com':['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','salesmanagement.yahoo.co.jp','aucpay.yahoo.co.jp'].includes(u.hostname));}catch{return false;}};
@@ -43,9 +44,10 @@ export function readSellerPage({site,phase=null}={}){
   for(let parent=box.parentElement,depth=0;parent&&depth<5;parent=parent.parentElement,depth++){
    const body=norm(parent.innerText);const ids=new Set([...parent.querySelectorAll('a[href]')].map(a=>idOf(a.href)).filter(Boolean));
    if(ids.size>1||body.length>5000)break;
-   if(/商品を発送して|支払い待ち|支払いをお待ち|チャージ完了|キャンセルが成立|入金期限.*(?:過ぎ|切れ)|取引中|売却済み/.test(body))box=parent;
+   if(ids.size===1)box=parent;
   }
-  const body=norm(box.innerText),serial=body.match(/[【\[]([0-9]+[a-z]*)[】\]]/i)?.[1]?.toLowerCase();
+  const labels=[...box.querySelectorAll('img[alt],[aria-label],[title]')].filter(visible).map(e=>e.getAttribute('alt')||e.getAttribute('aria-label')||e.getAttribute('title')||'').filter(value=>/発送|支払|落札|入金|取引|チャージ/.test(value));
+  const body=norm(box.innerText+' '+labels.join(' ')),serial=body.match(/[【\[]([0-9]+[a-z]*)[】\]]/i)?.[1]?.toLowerCase();
   let status=null;
   if(site==='mercari')status=/キャンセルが成立|取引がキャンセルされました/.test(body)?'キャンセル':/支払い待ち|支払いをお待ち|お支払い待ち/.test(body)?'支払い待ち':effectivePhase==='売却済み'?'販売済':effectivePhase==='取引中'?'取引中':effectivePhase==='出品中'?'出品中':null;
   else status=/チャージ完了/.test(body)?'販売済':/入金期限.*(?:過ぎ|切れ)|取引が中止されました/.test(body)?'キャンセル':/商品を発送して(?:下さい|ください)/.test(body)&&!/落札者なし|落札されませんでした/.test(body)?'取引中':effectivePhase==='出品中'?'出品中':null;

@@ -360,7 +360,7 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  if(error)throw error;
 }
 export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}
-export interface SellerContext {revision:string;assignee?:string|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
+export interface SellerContext {revision:string;assignee?:string|null;shipping_defaults?:Partial<Pick<import('@bussan/shared').SellerDraft,'shippingMethod'|'size'|'weightKg'|'dropoff'|'category'>>|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
 export async function fetchSellerContext(itemId:string):Promise<SellerContext>{
  const {data,error}=await getSupabase().rpc('seller_operation_context',{p_item_id:itemId});if(error)throw error;return data as SellerContext;
 }
