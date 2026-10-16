@@ -1,7 +1,7 @@
-import {readSellerStructure} from './seller-inspection.js?v=0.1.74';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.74';
+import {readSellerStructure} from './seller-inspection.js?v=0.1.75';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.75';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.74';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.75';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -20,7 +20,7 @@ export async function clickSellerChoice(kind){
 /** Only the site's public category search; never a listing form submit. */
 export function searchSellerCategory(term){
  if(typeof term!=='string'||!term.trim()||term.length>200)throw Error('出品カテゴリを確認してください');
- const yahoo=location.hostname==='auctions.yahoo.co.jp'&&/\/show\/topsubmit$/.test(location.pathname),mercari=location.hostname==='jp.mercari.com'&&location.pathname==='/sell/categories';
+ const yahoo=location.hostname==='auctions.yahoo.co.jp'&&/\/show\/topsubmit$/.test(location.pathname),mercari=location.hostname==='jp.mercari.com'&&['/sell/categories','/sell/create'].includes(location.pathname);
  if(!yahoo&&!mercari)throw Error('カテゴリ検索画面ではありません');
  const inputs=[...document.querySelectorAll(yahoo?'input#category-search-keyword':'input')].filter(e=>e.getClientRects().length&&(yahoo||/カテゴリー名を検索/.test(e.getAttribute('placeholder')||e.getAttribute('aria-label')||'')));
  if(inputs.length!==1)throw Error('カテゴリ検索欄を1件に確認できません');
@@ -37,6 +37,17 @@ export async function resolveYahooCategory(target){
   if(radios.length){const matches=radios.filter(e=>{const path=norm([...e.labels].map(l=>l.innerText).join(' '));return path===wanted||path.endsWith('>'+wanted);});if(matches.length!==1||!/^\d+$/.test(matches[0].value))throw Error('出品カテゴリを1件に特定できません。メーカーまで指定してください');return {categoryId:matches[0].value};}
   await new Promise(resolve=>setTimeout(resolve,250));
  }throw Error('カテゴリの検索結果を確認できません');
+}
+export function sellerChoiceReady(kind){
+ const visible=e=>!!e&&e.getClientRects().length>0;
+ if(location.hostname==='jp.mercari.com'){
+  if(kind==='category')return [...document.querySelectorAll('input')].some(e=>visible(e)&&/カテゴリー名を検索/.test((e.getAttribute('placeholder')||'')+' '+(e.getAttribute('aria-label')||'')));
+  if(kind==='condition')return [...document.querySelectorAll('[data-testid^="condition-"]')].some(visible);
+  if(kind==='shipping')return [...document.querySelectorAll('input[name="selectedShippingMethod"]')].some(visible);
+ }else if(location.hostname==='auctions.yahoo.co.jp'){
+  if(kind==='category')return /\/show\/topsubmit$/.test(location.pathname)&&[...document.querySelectorAll('a')].some(e=>visible(e)&&/キーワードから選択する/.test(e.innerText));
+  if(kind==='category-search')return visible(document.querySelector('#category-search-keyword'));
+ }return false;
 }
 export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log}){
  if(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day))return;
@@ -114,7 +125,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
 }
 export async function openSellerSession(account,{tabs,scripting,identity,executionTimeoutMs=30000}){
  const borrowed=await borrowSiteTab(tabs,account.site);let last=borrowed.originalUrl,categoryResolution=null;
- async function loaded(){for(let n=0;n<60;n++){const tab=await tabs.get(borrowed.id);if(tab.status==='complete'){sellerUrl(account,tab.url);last=tab.url;borrowed.lastUrl=last;await pause(800);return;}await pause(300);}throw Error('販売画面の読み込みが時間切れになりました');}
+ async function loaded(){for(let n=0;n<60;n++){const tab=await tabs.get(borrowed.id);if(tab.status==='complete'){await pause(800);const settled=await tabs.get(borrowed.id);if(settled.status==='complete'&&settled.url===tab.url){sellerUrl(account,settled.url);last=settled.url;borrowed.lastUrl=last;return;}}await pause(300);}throw Error('販売画面の読み込みが時間切れになりました');}
  async function go(url){sellerUrl(account,url);const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');await tabs.update(borrowed.id,{url,active:account.site==='mercari'});last=url;borrowed.lastUrl=url;await loaded();}
  async function execute(func,args){
   const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');let timer;
@@ -126,7 +137,7 @@ export async function openSellerSession(account,{tabs,scripting,identity,executi
  }
  try{await go(account.identity.pageUrl||account.listUrl);const verified=await identity(borrowed.id,account);if(verified?.confirmed!==true)throw Error('出品アカウントを確認できません');}catch(error){await restoreSiteTab(tabs,borrowed).catch(()=>{});throw error;}
  const raw=()=>execute(function(){const text=document.body.innerText;if(document.querySelector('input[type="password"],input[autocomplete="one-time-code"]')||/文字認証|ロボットではない|認証コードを入力/.test(text))throw Error('追加認証が必要です');return {text,url:location.href,links:[...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length).map(a=>({text:a.innerText.trim(),url:a.href}))};},null);
- async function finishChoice(before){if(!before)return false;await pause(350);await loaded();for(let n=0;n<20;n++){if(await execute(function(before){return location.href!==before.url||document.body.innerText!==before.text||[...document.querySelectorAll('input,select,textarea')].filter(e=>e.getClientRects().length).map(e=>[e.id,e.name,e.type].join('|')).join(';')!==before.controls;},before))return true;await pause(250);}throw Error('選択画面の表示を確認できません。再試行しません');}
+ async function finishChoice(before,kind=null){if(!before)return false;await pause(350);await loaded();const end=Date.now()+15000;while(Date.now()<end){if(kind?await execute(sellerChoiceReady,kind):await execute(function(before){return location.href!==before.url||document.body.innerText!==before.text||[...document.querySelectorAll('input,select,textarea')].filter(e=>e.getClientRects().length).map(e=>[e.id,e.name,e.type].join('|')).join(';')!==before.controls;},before))return true;await pause(250);await loaded();}throw Error('選択画面の表示を確認できません。再試行しません');}
  async function categoryForm(target,formUrl){
   sellerUrl(account,formUrl);if(account.site!=='auctions'||!/\/show\/submit$/.test(new URL(formUrl).pathname))throw Error('出品入力画面ではありません');
   const {categoryId}=await execute(resolveYahooCategory,target);const next=new URL(formUrl);next.searchParams.set('category',categoryId);await go(next.href);
@@ -137,13 +148,13 @@ export async function openSellerSession(account,{tabs,scripting,identity,executi
   categoryFormFromResults:categoryForm,
   prepareCategory:async target=>{
    const formUrl=last;if(account.site!=='auctions'||!/\/show\/submit$/.test(new URL(formUrl).pathname))throw Error('出品入力画面ではありません');
-   if(!await finishChoice(await execute(clickSellerChoice,'category'))||!await finishChoice(await execute(clickSellerChoice,'category-search')))throw Error('カテゴリ検索の入口を確認できません');
+   if(!await finishChoice(await execute(clickSellerChoice,'category'),'category')||!await finishChoice(await execute(clickSellerChoice,'category-search'),'category-search'))throw Error('カテゴリ検索の入口を確認できません');
    const parts=String(target).split(/\s*[>＞]\s*/).filter(Boolean);await finishChoice(await execute(searchSellerCategory,parts.length>1?parts.at(-2):parts[0]));
    return categoryForm(target,formUrl);
   },
   searchCategory:async term=>finishChoice(await execute(searchSellerCategory,term)),
   inspectChoice:async kind=>{
-   return finishChoice(await execute(clickSellerChoice,kind));
+   return finishChoice(await execute(clickSellerChoice,kind),kind);
   },
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),

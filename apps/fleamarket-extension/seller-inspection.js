@@ -33,7 +33,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  const request=await fetchRequest(),previous=(await storage.get('sellerInspectionRequest')).sellerInspectionRequest;
  if(!sellerInspectionApplies(request,profileId,previous))return false;
  const account=settings.accounts.find(a=>a.enabled&&a.id===PROFILE_ACCOUNTS[profileId]);if(!account)return false;
- const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-9'};let session;
+ const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-10'};let session;
  await storage.set({sellerInspectionRequest:request.id,sellerInspectionEvidence:{...evidence,status:'running'}});
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});

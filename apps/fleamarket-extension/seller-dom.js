@@ -110,7 +110,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   title=field(['商品名','タイトル'],['name','Title','title']);description=descriptionField();price=field(['販売価格','開始価格','開始時の価格','価格'],['price','Price','StartPrice']);
   setValue(title,payload.title);setDescription(description,payload.description);setValue(price,payload.price);
   const inputs=[...root.querySelectorAll('input[type="file"]')].filter(input=>!input.disabled&&(!input.accept||/image/.test(input.accept)));const multiple=inputs.filter(input=>input.multiple);if(inputs.length!==1){if(multiple.length!==1)throw Error('写真の追加欄を1件に確認できません');inputs.splice(0,inputs.length,multiple[0]);}
-  const photoZone=job.channel==='ヤフオク'?root.querySelector('#ImageList'):inputs[0].closest('[data-testid*="photo"],[data-testid*="image"],[aria-label*="画像"],[aria-label*="写真"]')||inputs[0].parentElement;
+  const photoZone=job.channel==='ヤフオク'?root.querySelector('#ImageList'):inputs[0].closest('section')||inputs[0].closest('[data-testid*="photo"],[data-testid*="image"],[aria-label*="画像"],[aria-label*="写真"]')||inputs[0].parentElement;
   if(!photoZone)throw Error('出品写真の表示領域を確認できません');
   if([...photoZone.querySelectorAll('img')].some(image=>visible(image)&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)))throw Error('既存の出品写真があるため上書きしません');
   if(!files.length||files.length>10)throw Error('出品写真を確認してください');const transfer=new DataTransfer();for(const file of files)transfer.items.add(new File([new Uint8Array(file.bytes)],file.name,{type:file.type}));inputs[0].files=transfer.files;inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
