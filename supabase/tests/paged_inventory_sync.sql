@@ -13,6 +13,7 @@ do $$declare p jsonb;q jsonb;begin
  if jsonb_array_length(q->'rows')<>0 or q->'ids'<>p->'ids' then raise exception 'Unchanged page repeated full rows';end if;
  q:=app.read_inventory_page('delivery','{"queryField":"serial","query":"990201","status":"検品中"}',1,(p->'fingerprints')||jsonb_build_object('__revision',p->>'revision'));
  if not (q->>'unchanged')::boolean or octet_length(q::text)>250 then raise exception 'Unchanged revision repeated its manifest';end if;
+ if exists(select 1 from jsonb_array_elements(p->'rows') d where not d ? 'original_marketplace_item_id') then raise exception 'Origin ID missing from paged response';end if;
  if not exists(select 1 from jsonb_array_elements(p->'rows') d where nullif(d->>'deliverer_name','') is not null) then raise exception 'Assignee missing from paged response';end if;
  if has_function_privilege('anon','app.read_inventory_page(text,jsonb,integer,jsonb)','EXECUTE') then raise exception 'Anonymous inventory reader exposed';end if;
  if exists(select 1 from pg_proc where oid='app.read_inventory_page(text,jsonb,integer,jsonb)'::regprocedure and prosecdef) then raise exception 'Page reader bypasses RLS';end if;
