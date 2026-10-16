@@ -36,7 +36,7 @@ const react={useState(v){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof v=
 react.useCallback=(fn,deps)=>react.useMemo(()=>fn,deps);
 let initialRead=true, finishInitial;
 const jsx=(type,props)=>({type,props});const api={fetchItems:async (q,signal,progress)=>{lastRequest=q;if(initialRead){initialRead=false;progress?.({items:rows,count:2});return new Promise(resolve=>{finishInitial=()=>resolve({items:rows,count:2})});}return{items:rows,count:2};},fetchStaff:async()=>[],fetchPurchaseDrafts:async()=>[]};
-const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:name==='../inventorySearch'?search.exports:{default:name.includes('InventoryStateFilter')?'state-filter':name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
+const context={exports:{},require:name=>name==='../hooks/useInventoryPage'?{useInventoryPage:(_scope,_owner,q)=>{lastRequest=q;return {rows,total:2,loading:initialRead,more:false,error:null,refresh:async()=>{},loadMore:()=>{}};}}:name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:name==='../inventorySearch'?search.exports:{default:name.includes('InventoryStateFilter')?'state-filter':name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
 vm.runInNewContext(compile('apps/admin/src/pages/Inventory.tsx'),context);
 function render(){cursor=0;dirty=false;tree=context.exports.default({me:{role:'admin',id:'AA'}});pending.splice(0).forEach(fn=>fn());}
 async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.resolve();}}
@@ -45,7 +45,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  await settle();
  assert(all(tree).some(n=>n.type==='table'&&n.props.className==='inventory-table'),'Show first batch while remaining rows load');
  assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='一覧をCSV').props.disabled,true,'Do not export an incomplete result');
- finishInitial();await settle();
+ initialRead=false;dirty=true;await settle();
  const commentHeadings=all(tree).filter(n=>n.type==='button'&&['仕入担当者からのコメントのフィルター','納品担当者からのコメントのフィルター'].includes(n.props['aria-label']));assert.equal(commentHeadings[0].props['aria-label'],'仕入担当者からのコメントのフィルター');
  const commentButtons=all(tree).filter(n=>n.type==='button'&&n.props.className==='inventory-comment');assert.equal(commentButtons.length,6);
  commentButtons[0].props.onClick();await settle();assert(all(tree).some(n=>n.type==='p'&&n.props.children===row.memo));
@@ -83,7 +83,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.onChange({target:{value:'search'}});await settle();
  all(tree).find(n=>n.type==='button'&&n.props.children==='フィルターをすべて解除').props.onClick();await settle();
  assert.equal(lastRequest.queryField,'serial');assert.equal(selector().props.value,'serial');
- assert.equal(lastRequest.query,undefined);assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds,undefined);assert.equal(lastRequest.purchasedFrom,'');assert.equal(lastRequest.purchasedTo,'');
+ assert.equal(lastRequest.query,'');assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds,undefined);assert.equal(lastRequest.from,'');assert.equal(lastRequest.to,'');
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
  console.log('34 headings, combined filters, signed ranges, dates, empty values, all fetched rows, zero-match recovery and clear-all UI passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
