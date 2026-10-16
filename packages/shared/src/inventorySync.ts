@@ -1,9 +1,10 @@
 import {getSupabase} from './supabase';
 import {staffDisplayName} from './staffNames';
 export type InventoryScope='delivery'|'management';
-export interface InventorySnapshot<T>{rows:T[];ids:string[];fingerprints:Record<string,string>;total:number}
+export interface InventorySnapshot<T>{rows:T[];ids:string[];fingerprints:Record<string,string>;total:number;unchanged?:boolean;revision?:string}
 export interface InventoryPage<T>{rows:T[];fingerprints:Record<string,string>;total:number;limit:number;checkedAt:number}
 export function mergeInventoryPage<T extends {id:string}>(previous:T[],snapshot:InventorySnapshot<T>):T[]{
+ if(snapshot.unchanged)return previous;
  const rows=new Map(previous.map(row=>[row.id,row]));
  for(const row of snapshot.rows)rows.set(row.id,row);
  return snapshot.ids.map(id=>{const row=rows.get(id);if(!row)throw new Error('在庫の差分を復元できません。再読み込みしてください。');return row;});

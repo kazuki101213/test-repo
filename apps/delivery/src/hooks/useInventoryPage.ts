@@ -18,7 +18,7 @@ export function useInventoryPage<T extends {id:string}>(scope:InventoryScope,own
     const snapshot=await fetchInventoryPage<T>(scope,JSON.parse(serialized),limit,page?.fingerprints??{},controller.signal);
     if(!active)return;
     if(all&&snapshot.total>10000)throw new Error('対象が多いため、検索条件を絞り込んでください。');
-    page={rows:mergeInventoryPage(page?.rows??[],snapshot),fingerprints:snapshot.fingerprints,total:snapshot.total,limit,checkedAt:Date.now()};
+    page={rows:mergeInventoryPage(page?.rows??[],snapshot),fingerprints:snapshot.unchanged?(page?.fingerprints??{}):{...snapshot.fingerprints,...(snapshot.revision?{__revision:snapshot.revision}:{})},total:snapshot.total,limit,checkedAt:Date.now()};
     rememberInventoryPage(key,page);lastCheck=Date.now();setState({key,page,loading:false,error:null});
    }catch(cause){if(active)setState(current=>({...current,key,loading:false,error:cause instanceof Error?cause.message:typeof cause==='object'&&cause&&'message' in cause?String(cause.message):String(cause)}));}
    finally{busy=false;}

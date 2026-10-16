@@ -194,7 +194,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
-      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount || hasInventoryFilters ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
+      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
 
       {(error||inventory.error)&&<div className="error">{error||inventory.error}</div>}
       {loading && items.length === 0 && <div className="empty">読み込み中…</div>}

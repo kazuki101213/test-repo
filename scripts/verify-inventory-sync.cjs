@@ -5,6 +5,7 @@ const sync={exports:{},require:name=>name==='./staffNames'?{staffDisplayName:x=>
 const {mergeInventoryPage,cachedInventoryPage,rememberInventoryPage,fetchInventoryPage}=sync.exports;
 const plain=x=>JSON.parse(JSON.stringify(x));
 assert.deepEqual(plain(mergeInventoryPage([{id:'a',title:'old'},{id:'gone'}],{ids:['b','a'],rows:[{id:'b'},{id:'a',title:'new'}]})),[{id:'b'},{id:'a',title:'new'}]);
+assert.deepEqual(plain(mergeInventoryPage([{id:'same'}],{unchanged:true,ids:[],rows:[]})),[{id:'same'}]);
 assert.throws(()=>mergeInventoryPage([],{ids:['missing'],rows:[]}),/差分/);
 rememberInventoryPage('user-a:delivery', {rows:[{id:'private'}],checkedAt:Date.now()});assert.equal(cachedInventoryPage('user-b:delivery'),undefined);
 rememberInventoryPage('expired',{rows:[],checkedAt:Date.now()-300001});assert.equal(cachedInventoryPage('expired'),undefined);
@@ -19,9 +20,9 @@ let owner='hook-user',filters={status:'検品中'},view;
 async function settle(){for(let i=0;i<25;i++){if(dirty){dirty=false;cursor=0;view=hook.exports.useInventoryPage('delivery',owner,filters);effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
 async function initial(){await settle();for(const [id,fn]of [...timers]){timers.delete(id);fn();}await settle();}
 (async()=>{
-response={data:{ids:['a'],rows:[{id:'a'}],fingerprints:{a:'v1'},total:100},error:null};await initial();assert.equal(view.rows.length,1);assert.equal(calls.at(-1).args.p_limit,50);
+response={data:{ids:['a'],rows:[{id:'a'}],fingerprints:{a:'v1'},revision:'page-v1',total:100},error:null};await initial();assert.equal(view.rows.length,1);assert.equal(calls.at(-1).args.p_limit,50);
 const before=calls.length;document.visibilityState='hidden';clock+=30000;intervals.forEach(fn=>fn());await settle();assert.equal(calls.length,before,'Hidden inventory must not poll');
-document.visibilityState='visible';response={data:{ids:['a'],rows:[],fingerprints:{a:'v1'},total:100},error:null};intervals.forEach(fn=>fn());await settle();assert.equal(view.rows[0].id,'a');assert.equal(calls.at(-1).args.p_known.a,'v1');
+document.visibilityState='visible';response={data:{ids:[],rows:[],fingerprints:{},unchanged:true,revision:'page-v1',total:100},error:null};intervals.forEach(fn=>fn());await settle();assert.equal(view.rows[0].id,'a');assert.equal(calls.at(-1).args.p_known.a,'v1');assert.equal(calls.at(-1).args.p_known.__revision,'page-v1');
 const once=calls.length;listeners.focus();await settle();assert.equal(calls.length,once,'Focus immediately after poll must be deduplicated');
 response={data:{ids:['a','b'],rows:[{id:'b'}],fingerprints:{a:'v1',b:'v2'},total:100},error:null};view.loadMore();await initial();assert.equal(calls.at(-1).args.p_limit,100);assert.equal(view.rows.length,2);
 response={data:null,error:{message:'temporary network failure'}};await view.refresh();await settle();assert.equal(view.rows.length,2,'Keep visible data after a failed refresh');assert.equal(view.error,'temporary network failure');
