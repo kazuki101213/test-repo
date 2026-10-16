@@ -1,5 +1,5 @@
 /** Executed in an isolated extension world. Unknown/ambiguous controls stop before submission. */
-export async function sellerDomOperation({job,phase,files=[]}){
+export async function sellerDomOperation({job,phase,files=[],categoryResolved=false}){
  const norm=value=>String(value??'').replace(/\s+/g,' ').trim(),visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
  let root=document.querySelector('main')||document.body;const text=()=>norm((document.querySelector('main')||document.body).innerText),payload=job.payload;
  const hosts=job.channel==='メルカリ'?['jp.mercari.com']:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp'];
@@ -77,6 +77,10 @@ export async function sellerDomOperation({job,phase,files=[]}){
  async function waitFor(check,note,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const result=check();if(result)return result;if(/エラーが発生|操作に失敗|時間をおいて/.test(text()))throw Error('販売サイトがエラーを返しました');await sleep(250);}throw Error(note);}
  const statusValues=()=>[...root.querySelectorAll('[role="status"],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')).map(e=>norm(e.innerText));
  const expectedValues=()=>[payload.title,payload.description,String(payload.price),payload.condition,payload.shippingPayer,payload.shippingMethod,payload.origin,payload.dispatchDays,payload.listingCategory||payload.category];
+ if(phase==='listing_preflight'){
+  const title=field(['商品名','タイトル'],['name','Title','title']),description=descriptionField();
+  if((title.value&&title.value!==payload.title)||(description.value&&description.value!==payload.description)||descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('サイトに別の下書きがあるため上書きしません');return {ready:true};
+ }
  if(phase==='prepare_listing'){
   if(!/出品|商品情報/.test(text()))throw Error('出品フォームではありません');
   let title=field(['商品名','タイトル'],['name','Title','title']),description=descriptionField(),price=field(['販売価格','開始価格','開始時の価格','価格'],['price','Price','StartPrice']);
@@ -86,7 +90,7 @@ export async function sellerDomOperation({job,phase,files=[]}){
   }
   if((title.value&&title.value!==payload.title)||(description.value&&description.value!==payload.description))throw Error('サイトに別の下書きがあるため上書きしません');
   if(descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('説明文エディターに別の下書きがあるため上書きしません');
-  await choose(['カテゴリー','カテゴリ'],payload.listingCategory||payload.category);
+  if(!categoryResolved)await choose(['カテゴリー','カテゴリ'],payload.listingCategory||payload.category);
   await choose(['商品の状態','商品状態'],payload.condition);await choose(['送料の負担','送料負担'],payload.shippingPayer);await choose(['配送の方法','配送方法'],payload.shippingMethod);await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);
   if(job.channel==='ヤフオク'){
    const auction=root.querySelector('input[name="salesmode"][value="auction"]');if(auction&&!auction.checked){auction.click();if(!auction.checked)throw Error('オークション形式を確認できません');}
