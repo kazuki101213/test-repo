@@ -387,7 +387,7 @@ const fieldLabels: Record<InventoryField, string> = {
   purchaser_id: '仕入担当者', deliverer_id: '納品担当者', marketplace: '仕入先',
   condition: '商品状態', sales_channel: '販売先', sold_on: '販売日',
   sold_price: '販売金額', payout_amount: '振込金額', amazon_refund_amount: 'Amazon返金金額',
-  non_amazon_refund_amount: 'Amazon以外からの返金', product_no: '品番', model_no: '型番',
+  non_amazon_refund_amount: 'Amazon以外からの補填', product_no: '品番', model_no: '型番',
   lot_seq: '通番号', sku: 'SKU', marketplace_item_id: '商品ID', refund_amount: '返金合計', inventory_refund_amount: '在庫の払い戻し',
 };
 

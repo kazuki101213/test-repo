@@ -37,7 +37,7 @@ export const inventoryColumns: Record<string, InventoryColumn> = {
   profit: { label: '利益額', kind: 'number', value: i => i.product_profit },
   rate: { label: '利益率', kind: 'number', value: i => i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? Number((i.product_profit / i.product_sold_price * 100).toFixed(1)) : null },
   inventory_refund: { label: '在庫の払い戻し', kind: 'number', value: i => i.inventory_refund_amount },
-  other_refund: { label: 'Amazon以外からの返金', kind: 'number', value: i => i.non_amazon_refund_amount },
+  other_refund: { label: 'Amazon以外からの補填', kind: 'number', value: i => i.non_amazon_refund_amount },
   amazon_refund: { label: 'Amazon返金金額', kind: 'number', value: i => i.amazon_refund_amount },
   purchaser_comment: { label: '仕入担当者からのコメント', value: i => i.memo },
   comment: { label: '納品担当者からのコメント', value: i => i.latest_comment },
