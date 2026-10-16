@@ -17,3 +17,5 @@ export * from './invoicePdf';
 export * from './applicationSwitch';
 
 export * from './inventorySync';
+
+export * from './resourceSync';

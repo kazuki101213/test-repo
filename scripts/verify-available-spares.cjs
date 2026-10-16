@@ -5,7 +5,7 @@ const names={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNa
 let database=Array.from({length:1003},(_,i)=>({id:String(i),title:'spare-'+i,owner_staff_id:'EE',owner_name:'石川秀櫢',manufacturer:'Panasonic',used_for_item_id:i===800?'body':null}));
 const queries=[];
 const sb={from(table){const filters=[];let start=0,end=499;const query={select(){return query;},order(){return query;},range(a,b){start=a;end=b;return query;},is(k,v){filters.push([k,v]);return query;},eq(k,v){filters.push([k,v]);return query;},in(){return query;},then(resolve){queries.push({table,filters,start});const rows=table==='staff'?[{id:'EE',code:'EE',name:'石川秀櫢'}]:database.filter(row=>filters.every(([k,v])=>row[k]===v)).slice(start,end+1);return Promise.resolve({data:rows,error:null}).then(resolve);}};return query;}};
-const moduleContext={exports:{},require:id=>id==='./staffNames'?names.exports:{getSupabase:()=>sb},Intl};
+const moduleContext={exports:{},require:id=>id==='./staffNames'?names.exports:id==='./resourceSync'?{readResourceSnapshot:async(resource,filters)=>{let q=sb.from('spare_accessories').is('used_for_item_id',null);if(filters.owner)q=q.eq('owner_staff_id',filters.owner);await q;return database.filter(row=>row.used_for_item_id===null&&(!filters.owner||row.owner_staff_id===filters.owner)).map(row=>({...row,_owner_code:'EE'}));}}:{getSupabase:()=>sb},Intl};
 vm.runInNewContext(compile('packages/shared/src/spares.ts'),moduleContext);
 const jsx=(type,props)=>({type,props});
 const allText=n=>n==null?'':Array.isArray(n)?n.map(allText).join(''):typeof n==='object'?allText(n.props?.children):String(n);

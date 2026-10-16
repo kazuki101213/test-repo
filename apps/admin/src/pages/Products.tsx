@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { Product } from '@bussan/shared';
-import { createProduct, fetchProductSaleHistory, fetchProducts, updateProductField, type ProductField, type ProductSaleHistory } from '../api';
+import { createProduct, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductSaleSummary, fetchProducts, updateProductField, type ProductField, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
 import ColoredLabel from '../components/ColoredLabel';
 
 export default function Products() {
   const [rows, setRows] = useState<Product[]>([]);
   const [salesByProduct, setSalesByProduct] = useState<Record<string, ProductSaleHistory[]>>({});
+  const [summaries,setSummaries]=useState<Record<string,ProductSaleSummary>>({});
+  const [historyLoading,setHistoryLoading]=useState(false);
+  const [historyError,setHistoryError]=useState('');
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -24,16 +27,25 @@ export default function Products() {
         .then(async products => {
           if (cancelled) return;
           setRows(products);
-          const sales = await fetchProductSaleHistory(products);
+          const summaries = await fetchProductSaleSummaries(products);
           if (cancelled) return;
-          const grouped: Record<string, ProductSaleHistory[]> = {};
-          for (const sale of sales) (grouped[sale.product_id] ??= []).push(sale);
-          setSalesByProduct(grouped);
+          setSummaries(Object.fromEntries(summaries.map(row=>[row.product_id,row])));
+          setError(null);
         })
         .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
     }, 250);
     return () => { cancelled = true; clearTimeout(id); };
   }, [query, revision]);
+
+  useEffect(()=>{
+    if(!historyProduct)return;
+    let active=true;setHistoryLoading(true);setHistoryError('');
+    void fetchProductSaleHistory([historyProduct]).then(rows=>{
+      if(active)setSalesByProduct({[historyProduct.id]:rows.sort((a,b)=>b.sold_on.localeCompare(a.sold_on)||a.id.localeCompare(b.id))});
+    }).catch(e=>{if(active)setHistoryError(e instanceof Error?e.message:String(e));})
+      .finally(()=>{if(active)setHistoryLoading(false);});
+    return()=>{active=false;};
+  },[historyProduct,revision]);
 
   async function saveEdit() {
     if (!editing) return;
@@ -58,12 +70,8 @@ export default function Products() {
   const startEdit = (product: Product, field: ProductField) => setEditing({ product, field, value: String(product[field] ?? '') });
   const cell = (product: Product, field: ProductField, label: string) => <button className="inventory-cell-edit" onClick={() => startEdit(product, field)}>{label}</button>;
   const recentAmazonAverage = (productId: string) => {
-    const sales = (salesByProduct[productId] ?? [])
-      .filter(sale => (sale.sales_channel === 'FBA' || sale.sales_channel === '自己発送') && sale.sold_price !== null)
-      .sort((a, b) => b.sold_on.localeCompare(a.sold_on) || a.id.localeCompare(b.id))
-      .slice(0, 3);
-    if (sales.length === 0) return null;
-    return { amount: Math.round(sales.reduce((sum, sale) => sum + (sale.sold_price ?? 0), 0) / sales.length), count: sales.length };
+    const summary=summaries[productId];
+    return summary?.amazon_count && summary.amazon_average!==null ? {amount:summary.amazon_average,count:summary.amazon_count}:null;
   };
 
   return (
@@ -109,7 +117,7 @@ export default function Products() {
                 <td>{cell(p, 'turnover', p.turnover ?? '—')}</td>
                 <td>{(() => {
                   const average = recentAmazonAverage(p.id);
-                  const historyCount = salesByProduct[p.id]?.length ?? 0;
+                  const historyCount = summaries[p.id]?.history_count ?? 0;
                   return historyCount > 0
                     ? <button className="inventory-cell-edit" title={average ? '直近' + average.count + '件のAmazon販売金額の平均' : '販売履歴を表示'} onClick={() => setHistoryProduct(p)}>
                         {average ? yen(average.amount) : '—'}{average ? <small>（{average.count}件）</small> : null}
@@ -138,9 +146,10 @@ export default function Products() {
         <div className="card inventory-comment-panel product-history-panel">
           <h3>過去の販売履歴</h3>
           <p className="sub">{historyProduct.product_no ? '品番 ' + historyProduct.product_no + ' ・ ' : ''}{historyProduct.model_no || historyProduct.asin}</p>
+          {historyLoading&&<p role="status">読み込み中…</p>}{historyError&&<p className="error" role="alert">{historyError}</p>}
           <div className="scroll"><table className="products-table">
             <thead><tr><th>販売日</th><th>SKU</th><th>販売先</th><th className="num">販売金額</th><th className="num">振込金額</th></tr></thead>
-            <tbody>{(salesByProduct[historyProduct.id] ?? []).map(sale => <tr key={sale.id}>
+            <tbody>{(!historyLoading&&!historyError?salesByProduct[historyProduct.id] ?? []:[]).map(sale => <tr key={sale.id}>
               <td>{sale.sold_on}</td><td>{sale.sku}</td><td><ColoredLabel value={sale.sales_channel ?? '—'} /></td>
               <td className="num">{yen(sale.sold_price)}</td><td className="num">{yen(sale.payout_amount)}</td>
             </tr>)}</tbody>

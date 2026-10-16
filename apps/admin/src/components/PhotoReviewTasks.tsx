@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
 import { createPortal } from 'react-dom';
-import { getSupabase, PHOTO_BUCKET } from '@bussan/shared';
+import { getSupabase, PHOTO_BUCKET, readResourceSnapshot } from '@bussan/shared';
 import { preparePhotoFiles, savePhotoFiles } from '../photoSave';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
@@ -30,32 +30,14 @@ export default function PhotoReviewTasks() {
   useEffect(() => {
     let active = true;
     (async () => {
-      const { data, error: readError } = await getSupabase().from('photo_reviews')
-        .select('item_id,drive_folder_id,submitted_at,exported_photo_count')
-        .is('approved_at', null).order('submitted_at', { ascending: false });
-      if (readError) throw readError;
-      const rows = (data ?? []) as Review[];
-      let byId: Record<string, Item> = {};
-      if (rows.length) {
-        const { data: found, error: itemError } = await getSupabase().from('items')
-          .select('id,sku,title,lot_seq').in('id', rows.map(row => row.item_id));
-        if (itemError) throw itemError;
-        byId = Object.fromEntries(((found ?? []) as Item[]).map(item => [item.id, item]));
-      }
-      const { data: approved, error: approvedError } = await getSupabase().from('photo_reviews')
-        .select('item_id').not('approved_at', 'is', null);
-      if (approvedError) throw approvedError;
-      const approvedIds = (approved ?? []).map(row => row.item_id as string);
-      let nextListingTasks: ListingTask[] = [];
-      if (approvedIds.length) {
-        const { data: candidates, error: candidateError } = await getSupabase().from('items')
-          .select('id,sku,lot_seq,sales_channel').in('id', approvedIds)
-          .in('sales_channel', ['メルカリ', 'ヤフオク']).eq('status', '商品登録前').is('sold_on', null);
-        if (candidateError) throw candidateError;
-        nextListingTasks = (candidates ?? []) as ListingTask[];
-      }
+      const [rows,nextListingTasks] = await Promise.all([
+        readResourceSnapshot<Review & {id:string;item:Item}>('photo_reviews'),
+        readResourceSnapshot<ListingTask>('listing_tasks'),
+      ]);
+      const byId:Record<string,Item>=Object.fromEntries(rows.map(row=>[row.item_id,row.item]));
+
       if (active) {
-        setReviews(rows); setListingTasks(nextListingTasks); setItems(byId); setError('');
+        setReviews([...rows].sort((a,b)=>b.submitted_at.localeCompare(a.submitted_at))); setListingTasks(nextListingTasks); setItems(byId); setError('');
         if (!noticeHandled.current && notice?.kind === 'photo_review') {
           noticeHandled.current = true;
           const target = rows.find(row => row.item_id === notice.itemId);

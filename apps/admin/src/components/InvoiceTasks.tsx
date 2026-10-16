@@ -1,4 +1,4 @@
-import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
+import { readResourceSnapshot, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import { useEffect, useRef, useState } from 'react';
 import { getSupabase, yen, loadInvoiceReceipts, releaseReceiptImages } from '@bussan/shared';
 import type { InvoiceReceipt, Staff } from '@bussan/shared';
@@ -18,29 +18,14 @@ interface Invoice {
  delivery_invoice_approvals:Approval|Approval[]|null;
 }
 interface Submission {staff_id:string;billing_month:string;files:Omit<InvoiceReceipt,'url'>[];version:number;submitted_at:string}
-interface Task {id:string;staff_id:string;month:string;name:string;updated:string;invoice?:Invoice;receipts?:Submission}
 interface Person {staff_id:string;details:{issuer_name:string}}
+interface Task {id:string;staff_id:string;month:string;name:string;updated:string;invoice?:Invoice;receipts?:Submission}
 const approval=(row?:Invoice)=>row?(Array.isArray(row.delivery_invoice_approvals)?row.delivery_invoice_approvals[0]:row.delivery_invoice_approvals):null;
 const messageOf=(e:unknown)=>e instanceof Error?e.message:(e as {message?:string})?.message??'処理に失敗しました。';
 const monthEnd=(month:string)=>{const date=new Date(month+'T00:00:00Z');date.setUTCMonth(date.getUTCMonth()+1,0);return date.toISOString().slice(0,10);};
 
 async function fetchTasks():Promise<Task[]> {
- const invoices:Invoice[]=[]; const submissions:Submission[]=[];
- for(let start=0;;start+=500){
-  const {data,error}=await getSupabase().from('delivery_invoices').select('id,staff_id,billing_month,issued_on,total,version,updated_at,note,snapshot,delivery_invoice_approvals(approved_at,expense_id)').order('id').range(start,start+499);
-  if(error)throw error;invoices.push(...data as unknown as Invoice[]);if(data.length<500)break;
- }
- for(let start=0;;start+=500){
-  const {data,error}=await getSupabase().from('invoice_receipt_submissions').select('*').order('staff_id').order('billing_month').range(start,start+499);
-  if(error)throw error;submissions.push(...data as Submission[]);if(data.length<500)break;
- }
- const {data:profiles,error}=await getSupabase().from('delivery_invoice_profiles').select('staff_id,details');
- if(error)throw error;
- const names=new Map((profiles as Person[]).map(p=>[p.staff_id,p.details.issuer_name]));
- const tasks=new Map<string,Task>();
- for(const inv of invoices){const id=inv.staff_id+'/'+inv.billing_month;tasks.set(id,{id,staff_id:inv.staff_id,month:inv.billing_month,name:inv.snapshot.profile.issuer_name ?? '担当者',updated:inv.updated_at,invoice:inv});}
- for(const rec of submissions){const id=rec.staff_id+'/'+rec.billing_month;const task=tasks.get(id)??{id,staff_id:rec.staff_id,month:rec.billing_month,name:names.get(rec.staff_id)??'担当者',updated:rec.submitted_at};task.receipts=rec;if(rec.submitted_at>task.updated)task.updated=rec.submitted_at;tasks.set(id,task);}
- return [...tasks.values()].sort((a,b)=>b.updated.localeCompare(a.updated));
+ return [...await readResourceSnapshot<Task>('invoice_tasks')].sort((a,b)=>b.updated.localeCompare(a.updated));
 }
 
 function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;onApproved:()=>void}) {
