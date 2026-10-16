@@ -31,6 +31,7 @@ do $$declare q jsonb;begin
 end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare q jsonb;begin
+ begin perform app.read_inventory_page('management','{}',50,'{}');raise exception 'Deliverer can use management reader';exception when insufficient_privilege then null;end;
  q:=app.read_inventory_page('delivery','{"queryField":"serial","query":"990202"}',50,'{}');
  if q->'ids'<>'[]'::jsonb or (q->>'total')::integer<>0 then raise exception 'Another deliverer leaked through pagination';end if;
  q:=app.read_inventory_page('delivery','{"queryField":"serial","query":"990201"}',50,'{}');
