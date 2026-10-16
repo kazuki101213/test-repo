@@ -53,7 +53,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(matches.length&&matches.every(e=>e.type==='radio')&&new Set(matches.map(e=>e.name)).size===1){
    const wanted=choiceText(value);const options=matches.filter(e=>{
     if(e.name==='shipping_dummy')return /購入者|落札者/.test(value)?e.value==='buyer':/出品者/.test(value)&&e.value==='seller';
-    if(e.name==='shipmethod_dummy'&&/日本郵便/.test(value))return /^ゆうパック(?:\s|$)/.test(label(e));
+    if(e.name==='shipmethod_dummy'&&/日本郵便/.test(value)){const method=['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size)?payload.size:'ゆうパック';return label(e).startsWith(method+' ')||label(e)===method;}
     if(e.name==='shipmethod_dummy'&&/ヤマト運輸/.test(value))return /^宅急便[（(]EAZY[）)].*60[〜～-]160/.test(label(e));
     return choiceText(label(e))===wanted||e.value===String(value);
    });
@@ -93,6 +93,8 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(!categoryResolved)await choose(['カテゴリー','カテゴリ'],payload.listingCategory||payload.category);
   await choose(['商品の状態','商品状態'],payload.condition);await choose(['送料の負担','送料負担'],payload.shippingPayer);await choose(['配送の方法','配送方法'],payload.shippingMethod);await choose(['発送元の地域','発送元','商品の所在地'],payload.origin);await choose(['発送までの日数','発送までの期間'],payload.dispatchDays);
   if(job.channel==='ヤフオク'){
+   if(/日本郵便/.test(payload.shippingMethod)&&/^\d+$/.test(String(payload.size))){if(!['2','5','10','15','20','25'].includes(String(payload.weightKg)))throw Error('梱包後の重さを選択してください');await choose(['配送サイズ'],payload.size+'cm以内',['ship_delivery_yupack_size_select']);await choose(['配送重量'],payload.weightKg+'kg以内',['ship_delivery_yupack_weight_select']);}
+   else if(!['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size))throw Error('ヤフオクの配送サイズを選択してください');
    const auction=root.querySelector('input[name="salesmode"][value="auction"]');if(auction&&!auction.checked){auction.click();if(!auction.checked)throw Error('オークション形式を確認できません');}
    const end=new Date(Date.now()+Number(payload.auctionDays)*86400000),date=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(end);
    await choose(['終了日','開催期間'],date,['ClosingYMD','ClosingDate']);await choose(['終了時間','終了時刻'],Number(payload.closingHour),['ClosingTime']);checkbox(['自動延長'],payload.autoExtend===true);

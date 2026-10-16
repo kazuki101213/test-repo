@@ -1,7 +1,7 @@
 import type {DeliveryTask} from './types';
 export interface SellerDraft {
  title:string;description:string;price:number;condition:string;shippingMethod:string;shippingPayer:string;dispatchDays:string;origin:string;
- category:'ブルーレイレコーダー'|'テレビ'|'モニター'|'小物';listingCategory?:string;size:string;dropoff:string;auctionDays:number;closingHour:number;autoExtend:boolean;autoRelist:boolean;
+ category:'ブルーレイレコーダー'|'テレビ'|'モニター'|'小物';listingCategory?:string;size:string;weightKg?:string;dropoff:string;auctionDays:number;closingHour:number;autoExtend:boolean;autoRelist:boolean;
 }
 export const SMALL_PACKAGES=[
  {name:'宅急便コンパクト',dimensions:'専用BOX：25×20×5cm'},

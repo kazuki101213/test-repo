@@ -1,7 +1,7 @@
-import {readSellerStructure} from './seller-inspection.js?v=0.1.71';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.71';
+import {readSellerStructure} from './seller-inspection.js?v=0.1.72';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.72';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.71';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.72';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 /** Return before a full-page category navigation destroys this execution frame. */
 export async function clickSellerChoice(kind){
@@ -128,6 +128,7 @@ export async function openSellerSession(account,{tabs,scripting,identity,executi
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
  return {go,loaded,structure:()=>execute(readSellerStructure,null),
+  inspectAuctionOptions:async()=>{const selected=await execute(function(){if(location.hostname!=='auctions.yahoo.co.jp'||!/\/show\/submit$/.test(location.pathname))throw Error('出品入力画面ではありません');const radio=document.querySelector('input[name="salesmode"][value="auction"]');if(!radio||radio.disabled)throw Error('オークション形式を確認できません');if(!radio.checked)radio.click();return radio.checked;},null);if(!selected)throw Error('オークション形式を確認できません');await pause(500);return true;},
   categoryFormFromResults:categoryForm,
   prepareCategory:async target=>{
    const formUrl=last;if(account.site!=='auctions'||!/\/show\/submit$/.test(new URL(formUrl).pathname))throw Error('出品入力画面ではありません');
