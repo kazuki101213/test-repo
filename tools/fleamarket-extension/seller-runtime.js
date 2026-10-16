@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.84';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.84';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.86';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.86';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.84';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.86';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -44,11 +44,32 @@ export function sellerChoiceReady(kind){
   if(kind==='category')return [...document.querySelectorAll('input')].some(e=>visible(e)&&/カテゴリー名を検索/.test((e.getAttribute('placeholder')||'')+' '+(e.getAttribute('aria-label')||'')));
   if(kind==='condition')return [...document.querySelectorAll('[data-testid^="condition-"]')].some(visible);
   if(kind==='shipping-details')return location.pathname.startsWith('/transaction/')&&[...document.querySelectorAll('[role=dialog],select,input[type=radio]')].some(visible);
+  if(kind==='shipping-place')return location.pathname.startsWith('/transaction/')&&[...document.querySelectorAll('h1,h2,h3')].some(e=>visible(e)&&/発送場所/.test(e.innerText));
+  if(kind==='shipping-code-ready')return /^\/transaction\/m[0-9]+$/.test(location.pathname)&&[...document.querySelectorAll('button')].some(e=>visible(e)&&['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示'].includes(e.innerText.trim()));
   if(kind==='shipping')return [...document.querySelectorAll('input[name="selectedShippingMethod"]')].some(visible);
  }else if(location.hostname==='auctions.yahoo.co.jp'){
   if(kind==='category')return /\/show\/topsubmit$/.test(location.pathname)&&[...document.querySelectorAll('a')].some(e=>visible(e)&&/キーワードから選択する/.test(e.innerText));
   if(kind==='category-search')return visible(document.querySelector('#category-search-keyword'));
  }return false;
+}
+/** Advance only the size step, never the place confirmation or QR issuance. */
+export function advanceMercariShippingSize({itemId,size,shippingMethod='らくらくメルカリ便'}){
+ if(location.hostname!=='jp.mercari.com'||location.pathname!=='/transaction/'+itemId+'/shipping_class'||!/^m[0-9]{8,14}$/.test(itemId))throw Error('対象取引のサイズ選択画面ではありません');
+ const norm=s=>String(s||'').replace(/\s/g,'').replace(/[〜～−–]/g,'-'),visible=e=>e.getClientRects().length>0;
+ const wanted=['100','140'].includes(String(size))?shippingMethod==='らくらくメルカリ便'?'宅急便60-160':shippingMethod==='ゆうゆうメルカリ便'?'ゆうパック':null:['宅急便コンパクト','ゆうパケットプラス','ゆうパケット'].includes(size)?size:null;if(!wanted)throw Error('配送サイズを確認できません');
+ const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&(norm(e.value)===wanted||wanted==='ゆうパック'&&/^ゆうパック60-170$/.test(norm(e.value))));
+ const buttons=[...document.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled&&e.innerText.trim()==='選択して次へ');if(radios.length!==1||buttons.length!==1)throw Error('サイズ選択の項目を1件に確認できません');
+ const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('サイズ選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
+}
+/** Called only for an app-requested shipping operation, not a display inspection. */
+export function advanceMercariShippingPlace({itemId,dropoff}){
+ if(location.hostname!=='jp.mercari.com'||location.pathname!=='/transaction/'+itemId+'/shipping_facilities'||!/^m[0-9]{8,14}$/.test(itemId))throw Error('対象取引の発送場所選択画面ではありません');
+ const visible=e=>e.getClientRects().length>0,norm=s=>String(s||'').replace(/[\s\-−–]/g,'');
+ const values={'セブンイレブン':'SEVEN_ELEVEN','ヤマト営業所':'YAMATO_OFFICE'},postal={'ローソン':'ローソン','郵便局':'郵便局'};
+ const wanted=values[dropoff],label=postal[dropoff];if(!wanted&&!label)throw Error('発送場所を確認できません');
+ const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&(wanted?e.value===wanted:norm([...e.labels].map(l=>l.innerText).join(''))===label));
+ const buttons=[...document.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled&&e.innerText.trim()==='選択して完了する');if(radios.length!==1||buttons.length!==1)throw Error('発送場所の選択肢を1件に確認できません');
+ const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('発送場所の選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
 }
 export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log}){
  if(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day))return;
@@ -116,8 +137,10 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
    await session.loaded();const listingResult=await session.operation(job,'listing_result');result=listingResult;
   }else{
    if(!job.url)throw Error('取引URLを取得できません');await session.go(job.url);
+   let shippingPrepared=false;
+   if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor){mutating=true;await session.prepareShipping(job);shippingPrepared=true;}}
    mutating=['register_package','ship_notice','message_send','shipping_code'].includes(job.kind);
-   result=await session.operation(job,job.kind);
+   result=await session.operation(job,job.kind,{shippingPrepared});
   }
   status='succeeded';
  }catch(error){status=mutating?'uncertain':'failed';result={note:error.message};await log('error','販売サイトの操作を停止しました。自動再送はしません：'+error.message);}
@@ -159,6 +182,8 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   },
   inspectionTarget:serial=>execute(readInspectionTarget,serial),
   inspectionShippingTarget:target=>execute(readShippingInspectionTarget,target),
+  inspectionShippingPlace:async target=>finishChoice(await execute(advanceMercariShippingSize,target),'shipping-place'),
+  prepareShipping:async job=>{if(account.site!=='mercari'||!await finishChoice(await execute(clickSellerChoice,'shipping-details'),'shipping-details'))throw Error('配送サイズの選択画面を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
   read:phase=>execute(readSellerPage,{site:account.site,phase}),

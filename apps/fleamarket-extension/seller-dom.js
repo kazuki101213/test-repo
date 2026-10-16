@@ -1,5 +1,5 @@
 /** Executed in an isolated extension world. Unknown/ambiguous controls stop before submission. */
-export async function sellerDomOperation({job,phase,files=[],categoryResolved=false}){
+export async function sellerDomOperation({job,phase,files=[],categoryResolved=false,shippingPrepared=false}){
  const norm=value=>String(value??'').replace(/\s+/g,' ').trim(),visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
  let root=document.querySelector('main')||document.body;const text=()=>norm((document.querySelector('main')||document.body).innerText),payload=job.payload;
  const hosts=job.channel==='メルカリ'?['jp.mercari.com']:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp'];
@@ -74,7 +74,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  const imageSignature=zone=>JSON.stringify([...zone.querySelectorAll('img')].filter(visible).map(image=>image.src));
  const current=()=>globalThis.__bussanSellerOperation;
  function reserve(){if(current()?.id===job.id&&current()?.submitted)throw Error('この操作は送信を試行済みです。自動再送しません');globalThis.__bussanSellerOperation={...current(),id:job.id,submitted:true};}
- function tradeGuard(){if(!job.external_id||!job.trade_key||!text().includes(job.external_id)||!/取引画面|取引情報|取引ナビ|発送|配送/.test(text()))throw Error('対象の出品者取引を確認できません');if(/この商品を購入|購入手続きへ|受け取り評価をする|受取連絡をする/.test(controls().map(buttonLabel).join(' ')))throw Error('購入者側の操作画面のため停止しました');}
+ function tradeGuard(){const exactMercari=job.channel==='メルカリ'&&/^m[0-9]+$/.test(job.external_id||'')&&(location.pathname==='/transaction/'+job.external_id||location.pathname.startsWith('/transaction/'+job.external_id+'/'));if(!job.external_id||!job.trade_key||!exactMercari&&!text().includes(job.external_id)||!/取引画面|取引情報|取引ナビ|発送|配送/.test(text()))throw Error('対象の出品者取引を確認できません');if(/この商品を購入|購入手続きへ|受け取り評価をする|受取連絡をする/.test(controls().map(buttonLabel).join(' ')))throw Error('購入者側の操作画面のため停止しました');}
  async function waitFor(check,note,timeout=20000){const end=Date.now()+timeout;while(Date.now()<end){const result=check();if(result)return result;if(/エラーが発生|操作に失敗|時間をおいて/.test(text()))throw Error('販売サイトがエラーを返しました');await sleep(250);}throw Error(note);}
  const statusValues=()=>[...root.querySelectorAll('[role="status"],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')).map(e=>norm(e.innerText));
  const postalMethod=()=>['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size)?payload.size:'ゆうパック';
@@ -141,6 +141,9 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   },'出品結果を確認できません。サイトで確認するまで再実行しません');
  }
  tradeGuard();
+ if(phase==='shipping_preflight'){
+  const entries=controls().filter(e=>buttonLabel(e)==='商品サイズと発送場所を選択する');if(entries.length>1)throw Error('配送設定の入口が曖昧です');if(entries.length&&payload.shippingMethod&&!text().includes(norm(payload.shippingMethod)))throw Error('サイトの配送方法がアプリの設定と一致しません');return {needsEditor:entries.length===1};
+ }
  if(phase==='message_sync'){
   const nodes=[...root.querySelectorAll('[data-testid*="message" i],[class*="message" i]')].filter(e=>visible(e)&&!e.matches('textarea,input,button,form')&&norm(e.innerText)&&![...e.querySelectorAll('[data-testid*="message" i],[class*="message" i]')].some(child=>visible(child)&&norm(child.innerText).length>10));
   const messages=nodes.map(e=>({body:norm(e.innerText).slice(0,10000)})).filter(value=>value.body).slice(-100);return {messages,attention:messages.some(value=>/キャンセル|中止/.test(value.body))};
@@ -152,7 +155,8 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  if(phase==='verify_shipping'){const accepted=[...root.querySelectorAll('[role="status"],[data-testid="shipping-status"],[data-testid="delivery-status"]')].filter(visible).some(element=>/^(店舗で受付済み|受付完了|荷物受付|発送済み|配送中|発送通知をしました)$/.test(norm(element.innerText)));return {accepted,note:accepted?'受付を確認しました':'店舗での受付はまだ確認できません'};}
  if(phase==='shipping_code'){
   if((/ローソン/.test(payload.dropoff)&&!/日本郵便|ゆうゆう/.test(payload.shippingMethod))||(/宅急便コンパクト/.test(payload.size)&&/日本郵便|ゆうゆう/.test(payload.shippingMethod)))throw Error('配送方法・サイズ・発送場所の組み合わせを確認してください');
-  await choose(['サイズ','配送サイズ'],payload.size);await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);
+  if(shippingPrepared){if(job.channel!=='メルカリ'||location.pathname!=='/transaction/'+job.external_id)throw Error('配送設定後の取引画面ではありません');const name=field(['品名','商品名'],['itemName']);if(name.readOnly||name.disabled)throw Error('配送用の商品名を入力できません');await choose(['品名','商品名'],payload.category,['itemName']);}
+  else{await choose(['サイズ','配送サイズ'],payload.size);await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);}
   const button=oneButton(['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示']);reserve();button.click();
   const code=await waitFor(()=>{const canvases=[...root.querySelectorAll('canvas')].filter(canvas=>visible(canvas)&&/QR|2次元|二次元/.test(canvas.getAttribute('aria-label')||canvas.id||''));const images=[...root.querySelectorAll('img')].filter(image=>visible(image)&&/QR|2次元|二次元|配送コード/.test(image.alt));if(canvases.length===1)return canvases[0].toDataURL('image/png');if(images.length===1&&images[0].src.startsWith('data:image/png;base64,'))return images[0].src;return null;},'配送コードの発行結果を確認できません');return {qr_code:code};
  }
