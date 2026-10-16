@@ -126,7 +126,7 @@ export async function sellerDomOperation({job,phase,files=[]}){
   const candidates=[...root.querySelectorAll('form')].filter(visible).map(form=>({form,fields:[...form.querySelectorAll('textarea')].filter(visible),buttons:[...form.querySelectorAll('button,input[type="submit"]')].filter(visible)})).filter(value=>value.fields.length===1&&value.buttons.length===1&&/メッセージ|取引連絡|コメント/.test(label(value.fields[0])+' '+buttonLabel(value.buttons[0]))&&/^(送信|送る|投稿|メッセージを送信する|取引メッセージを送信)$/.test(buttonLabel(value.buttons[0])));
   if(candidates.length!==1)throw Error('取引メッセージの送信欄を1件に確認できません');const {fields:[input],buttons:[button]}=candidates[0];if(input.value)throw Error('入力済みの文章があるため停止しました');setValue(input,payload.body);tradeGuard();reserve();button.click();await waitFor(()=>input.value===''&&text().includes(norm(payload.body)),'送信結果を確認できません。再送しません');return {sent:true,note:'メッセージを送信しました'};
  }
- if(phase==='verify_shipping'){const accepted=statusValues().some(value=>/^(店舗で受付済み|受付完了|荷物受付|発送済み|配送中|発送通知をしました)$/.test(value));return {accepted,note:accepted?'受付を確認しました':'店舗での受付はまだ確認できません'};}
+ if(phase==='verify_shipping'){const accepted=[...root.querySelectorAll('[role="status"],[data-testid="shipping-status"],[data-testid="delivery-status"]')].filter(visible).some(element=>/^(店舗で受付済み|受付完了|荷物受付|発送済み|配送中|発送通知をしました)$/.test(norm(element.innerText)));return {accepted,note:accepted?'受付を確認しました':'店舗での受付はまだ確認できません'};}
  if(phase==='shipping_code'){
   if((/ローソン/.test(payload.dropoff)&&!/日本郵便|ゆうゆう/.test(payload.shippingMethod))||(/宅急便コンパクト/.test(payload.size)&&/日本郵便|ゆうゆう/.test(payload.shippingMethod)))throw Error('配送方法・サイズ・発送場所の組み合わせを確認してください');
   await choose(['サイズ','配送サイズ'],payload.size);await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);
@@ -138,7 +138,7 @@ export async function sellerDomOperation({job,phase,files=[]}){
   const input=field(['発送用コード','2次元コード','専用資材コード','ポスト発送確認用番号']);setValue(input,payload.code);const button=oneButton(['登録する','コードを登録','読み取り内容を登録']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(登録完了|読み取り完了|登録が完了しました|読み取りが完了しました)$/.test(value)),'専用資材の登録結果を確認できません');return {registered:true,note:'専用資材を対象取引へ登録しました'};
  }
  if(phase==='ship_notice'){
-  const button=oneButton(['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(発送通知をしました|発送通知が完了しました|商品の発送を通知しました|発送済み|配送中)$/.test(value))&&(!button.isConnected||button.disabled),'発送通知の結果を確認できません。再送しません');return {notified:true,note:'発送通知を送信しました'};
+  const button=oneButton(['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(発送通知をしました|発送通知が完了しました|商品の発送を通知しました|発送済み|配送中)$/.test(value))&&(!button.isConnected||button.disabled),'発送通知の結果を確認できません。再送しません');return {notified:true,note:'発送通知を送信しました'};
  }
  throw Error('未対応の販売サイト操作です');
 }

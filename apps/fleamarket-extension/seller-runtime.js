@@ -1,7 +1,7 @@
-import {readSellerStructure} from './seller-inspection.js';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js';
+import {readSellerStructure} from './seller-inspection.js?v=0.1.67';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.67';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.67';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log}){
  if(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day))return;

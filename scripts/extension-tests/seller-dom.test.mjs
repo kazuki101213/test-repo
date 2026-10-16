@@ -38,3 +38,8 @@ test('メルカリのリンク式選択と波ダッシュ違いの日数を扱�
  let html=form().replace(field('カテゴリー',listing.payload.category),linked('カテゴリーを選択する',listing.payload.category,'category')).replace(field('商品の状態',listing.payload.condition),linked('商品の状態を選択する',listing.payload.condition,'condition')).replace(field('配送の方法',listing.payload.shippingMethod),linked('配送の方法を選択する',listing.payload.shippingMethod,'method')).replace('2〜3日</option>','2~3日で発送</option>');
  const p=await page(html,'https://jp.mercari.com/sell/create');await p.evaluate(sellerDomOperation,{job:listing,phase:'prepare_listing',files:[{name:'photo.png',type:'image/png',bytes:[1,2,3]}]});assert.equal(await p.locator('#counter').innerText(),'0');assert.equal(await p.locator('[name=price]').inputValue(),'1000');await p.close();
 });
+
+test('ヤフオクの画像altで表示される発送待ちを読み、非表示の支払待ちは状態に混ぜない',async()=>{
+ const p=await page('<h1>出品終了分</h1><ul><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/u123">【2417】商品</a><img width="24" height="24" alt="商品を発送して下さい"><span hidden aria-label="支払い待ち"></span></li><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/u124">【2418】商品</a><img width="24" height="24" alt="落札者なし"></li></ul>','https://auctions.yahoo.co.jp/my/closed');
+ const result=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品終了分'});assert.deepEqual(result.rows.map(row=>[row.external_id,row.status]),[['u123','取引中']]);await p.close();
+});

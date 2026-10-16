@@ -34,9 +34,9 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  if(!sellerInspectionApplies(request,profileId,previous))return false;
  const account=settings.accounts.find(a=>a.enabled&&a.id===PROFILE_ACCOUNTS[profileId]);if(!account)return false;
  await storage.set({sellerInspectionRequest:request.id});
- const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true};let session;
+ const evidence={requestId:request.id,accountId:account.id,at:new Date().toISOString(),pages:[],readOnly:true,adapterRevision:'native-choices-20261016-2'};let session;
  try{
-  session=await openSession(account);evidence.pages.push({kind:'identity',...await session.structure()});
+  session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
   let links=await session.links();
   if(!links.some(link=>/出品/.test(link.text))){await session.go(account.site==='mercari'?'https://jp.mercari.com/mypage':'https://auctions.yahoo.co.jp/my');links=await session.links();evidence.pages.push({kind:'seller-menu',...await session.structure()});}
   const form=links.find(link=>/^(出品|出品する|出品フォーム)$/.test(link.text));
