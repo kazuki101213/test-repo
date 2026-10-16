@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=f=>ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 let calls=[],response;const sb={rpc:(name,args)=>{const call={name,args};calls.push(call);return {abortSignal(signal){call.signal=signal;return this;},then(resolve){return Promise.resolve(response).then(resolve);}};}};
-const sync={exports:{},require:()=>({getSupabase:()=>sb}),Date,Map,Error};vm.runInNewContext(compile('packages/shared/src/inventorySync.ts'),sync);
+const sync={exports:{},require:name=>name==='./staffNames'?{staffDisplayName:x=>x||''}:{getSupabase:()=>sb},Date,Map,Error};vm.runInNewContext(compile('packages/shared/src/inventorySync.ts'),sync);
 const {mergeInventoryPage,cachedInventoryPage,rememberInventoryPage,fetchInventoryPage}=sync.exports;
 const plain=x=>JSON.parse(JSON.stringify(x));
 assert.deepEqual(plain(mergeInventoryPage([{id:'a',title:'old'},{id:'gone'}],{ids:['b','a'],rows:[{id:'b'},{id:'a',title:'new'}]})),[{id:'b'},{id:'a',title:'new'}]);

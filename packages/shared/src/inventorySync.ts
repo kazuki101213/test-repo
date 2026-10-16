@@ -1,4 +1,5 @@
 import {getSupabase} from './supabase';
+import {staffDisplayName} from './staffNames';
 export type InventoryScope='delivery'|'management';
 export interface InventorySnapshot<T>{rows:T[];ids:string[];fingerprints:Record<string,string>;total:number}
 export interface InventoryPage<T>{rows:T[];fingerprints:Record<string,string>;total:number;limit:number;checkedAt:number}
@@ -18,7 +19,10 @@ export async function fetchInventoryPage<T extends {id:string}>(scope:InventoryS
  if(filters.from&&filters.to&&String(filters.from)>String(filters.to))throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
  let request=getSupabase().rpc('read_inventory_page',{p_scope:scope,p_filters:filters,p_limit:limit,p_known:known});
  if(signal)request=request.abortSignal(signal);
- const {data,error}=await request;if(error)throw error;return data as InventorySnapshot<T>;
+ const {data,error}=await request;if(error)throw error;
+ const snapshot=data as InventorySnapshot<T>;
+ if(scope==='delivery')snapshot.rows=snapshot.rows.map(row=>{const task=row as T & {deliverer_name?:string|null};return {...row,deliverer_name:staffDisplayName(task.deliverer_name)};});
+ return snapshot;
 }
 export async function fetchCompleteInventory<T extends {id:string}>(scope:InventoryScope,filters:Record<string,unknown>):Promise<T[]>{
  const page=await fetchInventoryPage<T>(scope,filters,10000);
