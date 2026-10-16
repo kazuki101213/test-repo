@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.86';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.86';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.91';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.91';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.86';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.91';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -13,7 +13,8 @@ export async function clickSellerChoice(kind){
  const names={category:['カテゴリーを選択する','カテゴリを選択する'],condition:['商品の状態を選択する'],shipping:['配送の方法を選択する'],'category-search':['キーワードから選択する（出品カテゴリ検索）'],'shipping-details':['商品サイズと発送場所を選択する']};
  if(!names[kind])throw Error('未対応の選択画面です');
  const norm=s=>String(s||'').replace(/\s+/g,'').trim();let candidates=[];const end=Date.now()+10000;
- while(Date.now()<end){candidates=[...document.querySelectorAll('a,button,input[type="button"]')].filter(e=>e.getClientRects().length&&(names[kind].some(name=>norm(name)===norm(e.innerText||e.getAttribute('aria-label')||e.value))||(kind==='category'&&e.id==='acMdCateChange')));if(candidates.length)break;await new Promise(resolve=>setTimeout(resolve,250));}
+ const shippingEdit=e=>kind==='shipping-details'&&e.tagName==='A'&&location.hostname==='jp.mercari.com'&&/^\/transaction\/m[0-9]+$/.test(location.pathname)&&e.origin===location.origin&&e.pathname===location.pathname+'/shipping_class';
+ while(Date.now()<end){candidates=[...document.querySelectorAll('a,button,input[type="button"]')].filter(e=>e.getClientRects().length&&(names[kind].some(name=>norm(name)===norm(e.innerText||e.getAttribute('aria-label')||e.value))||(kind==='category'&&e.id==='acMdCateChange')||shippingEdit(e)));if(candidates.length)break;await new Promise(resolve=>setTimeout(resolve,250));}
  if(!candidates.length)return false;if(candidates.length!==1||candidates[0].disabled)throw Error('選択画面の入口が曖昧です');
  const before={url:location.href,text:document.body.innerText,controls:[...document.querySelectorAll('input,select,textarea')].filter(e=>e.getClientRects().length).map(e=>[e.id,e.name,e.type].join('|')).join(';')};setTimeout(()=>candidates[0].click(),100);return before;
 }
@@ -45,7 +46,7 @@ export function sellerChoiceReady(kind){
   if(kind==='condition')return [...document.querySelectorAll('[data-testid^="condition-"]')].some(visible);
   if(kind==='shipping-details')return location.pathname.startsWith('/transaction/')&&[...document.querySelectorAll('[role=dialog],select,input[type=radio]')].some(visible);
   if(kind==='shipping-place')return location.pathname.startsWith('/transaction/')&&[...document.querySelectorAll('h1,h2,h3')].some(e=>visible(e)&&/発送場所/.test(e.innerText));
-  if(kind==='shipping-code-ready')return /^\/transaction\/m[0-9]+$/.test(location.pathname)&&[...document.querySelectorAll('button')].some(e=>visible(e)&&['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示'].includes(e.innerText.trim()));
+  if(kind==='shipping-code-ready')return /^\/transaction\/m[0-9]+$/.test(location.pathname)&&[...document.querySelectorAll('button')].some(e=>visible(e)&&['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行'].includes(e.innerText.trim()));
   if(kind==='shipping')return [...document.querySelectorAll('input[name="selectedShippingMethod"]')].some(visible);
  }else if(location.hostname==='auctions.yahoo.co.jp'){
   if(kind==='category')return /\/show\/topsubmit$/.test(location.pathname)&&[...document.querySelectorAll('a')].some(e=>visible(e)&&/キーワードから選択する/.test(e.innerText));
@@ -138,9 +139,10 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
   }else{
    if(!job.url)throw Error('取引URLを取得できません');await session.go(job.url);
    let shippingPrepared=false;
-   if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor){mutating=true;await session.prepareShipping(job);shippingPrepared=true;}}
+   if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor){mutating=true;await session.prepareShipping(job);shippingPrepared=true;}else if(preflight.readyForCode){if(preflight.configuredDropoff!==job.payload.dropoff)throw Error('サイトの発送場所がアプリ設定と一致しません');shippingPrepared=true;}}
    mutating=['register_package','ship_notice','message_send','shipping_code'].includes(job.kind);
    result=await session.operation(job,job.kind,{shippingPrepared});
+   if(job.kind==='shipping_code'&&result.code_requested){await session.loaded();result=await session.operation(job,'read_shipping_code',{waitForShippingCode:true});}
   }
   status='succeeded';
  }catch(error){status=mutating?'uncertain':'failed';result={note:error.message};await log('error','販売サイトの操作を停止しました。自動再送はしません：'+error.message);}
@@ -182,7 +184,6 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   },
   inspectionTarget:serial=>execute(readInspectionTarget,serial),
   inspectionShippingTarget:target=>execute(readShippingInspectionTarget,target),
-  inspectionShippingPlace:async target=>finishChoice(await execute(advanceMercariShippingSize,target),'shipping-place'),
   prepareShipping:async job=>{if(account.site!=='mercari'||!await finishChoice(await execute(clickSellerChoice,'shipping-details'),'shipping-details'))throw Error('配送サイズの選択画面を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
