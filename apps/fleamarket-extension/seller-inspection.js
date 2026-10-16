@@ -40,9 +40,9 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
   const form=links.find(link=>/^(出品|出品する|出品フォーム)$/.test(link.text));
   const list=links.find(link=>/^(出品した商品|出品一覧|出品中)$/.test(link.text));
   if(list){await session.go(list.url);evidence.pages.push({kind:'seller-list',...await session.structure()});const current=await session.links();links=[...links,...current];}
-  const trading=links.find(link=>/^(取引中|出品終了分)$/.test(link.text));
-  if(trading){await session.go(trading.url);const page=await session.read(trading.text);evidence.pages.push({kind:'seller-trades',...await session.structure(),rowCount:page.rows.length,statuses:[...new Set(page.rows.map(row=>row.status))]});const row=page.rows.find(value=>value.status==='取引中');if(row){await session.go(row.detail_url);evidence.pages.push({kind:'shipping',...await session.structure()});}else evidence.shipping='取引中の対象行がないため配送画面を確認できません';}
   if(form){await session.go(form.url);evidence.pages.push({kind:'listing-form',...await session.structure()});const direct=(await session.links()).filter(link=>/^(出品|出品する|出品フォーム)$/.test(link.text)&&link.url!==form.url);if(direct.length===1){await session.go(direct[0].url);evidence.pages.push({kind:'listing-form-detail',...await session.structure()});}}else evidence.listing='出品フォームへの実リンクを取得できません';
+  const trading=links.find(link=>/^(取引中|出品終了分)$/.test(link.text));
+  if(trading){await session.go(trading.url);const page=await session.read(trading.text);if(!page||!Array.isArray(page.rows))throw Error('出品取引一覧の読み込み結果を確認できません');evidence.pages.push({kind:'seller-trades',...await session.structure(),rowCount:page.rows.length,statuses:[...new Set(page.rows.map(row=>row.status))]});const row=page.rows.find(value=>value.status==='取引中');if(row){await session.go(row.detail_url);evidence.pages.push({kind:'shipping',...await session.structure()});}else evidence.shipping=page.empty?'取引中の商品がないため配送画面を確認できません':'発送対象の行を特定できないため配送画面は未確認です';}
   evidence.status='completed';
  }catch(error){evidence.status='stopped';evidence.error=error.message;await log('info',account.label+'の読取診断を停止しました。自動再試行しません：'+error.message);}
  finally{await session?.close();await storage.set({sellerInspectionEvidence:evidence});}

@@ -40,7 +40,7 @@ export async function sellerDomOperation({job,phase,files=[]}){
    await choose(['終了日','開催期間'],date,['ClosingYMD','ClosingDate']);await choose(['終了時間','終了時刻'],Number(payload.closingHour),['ClosingTime']);checkbox(['自動延長'],payload.autoExtend===true);
    const relist=field(['自動再出品']);if(relist.type==='checkbox'){if(relist.checked!==payload.autoRelist)relist.click();}else await choose(['自動再出品'],payload.autoRelist?'1回':'0回');
   }
-  const inputs=[...root.querySelectorAll('input[type="file"]')].filter(input=>!input.disabled&&(!input.accept||/image/.test(input.accept)));if(inputs.length!==1)throw Error('写真の追加欄を1件に確認できません');
+  const inputs=[...root.querySelectorAll('input[type="file"]')].filter(input=>!input.disabled&&(!input.accept||/image/.test(input.accept)));const multiple=inputs.filter(input=>input.multiple);if(inputs.length!==1){if(multiple.length!==1)throw Error('写真の追加欄を1件に確認できません');inputs.splice(0,inputs.length,multiple[0]);}
   const photoZone=inputs[0].closest('[data-testid*="photo"],[data-testid*="image"],[aria-label*="画像"],[aria-label*="写真"]')||inputs[0].parentElement;
   if(!files.length||files.length>10)throw Error('出品写真を確認してください');const transfer=new DataTransfer();for(const file of files)transfer.items.add(new File([new Uint8Array(file.bytes)],file.name,{type:file.type}));inputs[0].files=transfer.files;inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
   await waitFor(()=>!root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)).length>=files.length,'写真のアップロード完了を確認できません');

@@ -26,11 +26,12 @@ export function parseSellerSaleDetail(channel,text,externalId){
  return {sold_on,sold_price:amount(channel==='メルカリ'?'商品代金':'決済金額'),payout_amount:amount(channel==='メルカリ'?'販売利益':'受取金額'),trade_key:externalId+':'+sold_on+(m[4]?`T${m[4].padStart(2,'0')}:${m[5]}`:'')};
 }
 /** Runs inside a merchant tab; every field returned is derived from visible seller-page DOM. */
-export function readSellerPage({site,phase=null}={}){
+export async function readSellerPage({site,phase=null}={}){
  const norm=value=>(value||'').replace(/\s+/g,' ').trim(),visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
- const root=document.querySelector('main')||document.body,text=norm(root.innerText);
+ let root=document.querySelector('main')||document.body,text=norm(root.innerText);
  if(/\/(?:purchases|purchase|won)(\/|$)/.test(location.pathname))throw Error('購入一覧ではなく出品一覧を開いてください');
  if(document.querySelector('input[type="password"],input[autocomplete="one-time-code"]')||/ログインしてください|認証コードを入力|文字認証|ロボットではない|セキュリティチェック/.test(text))throw Error('ログイン・追加認証が必要です。今回の取得を停止しました');
+ if(site==='mercari'&&location.pathname.startsWith('/mypage/listings')){const end=Date.now()+10000;while(Date.now()<end){root=document.querySelector('main')||document.body;text=norm(root.innerText);if(/商品(?:が|は)ありません|商品はまだありません|該当する商品はありません/.test(text)||[...root.querySelectorAll('a[href]')].some(a=>/\/(?:item|transaction)\/m[0-9]+/.test(a.href)))break;if(/ログインしてください|認証コードを入力|文字認証|セキュリティチェック/.test(text))throw Error('ログイン・追加認証が必要です。今回の取得を停止しました');await new Promise(resolve=>setTimeout(resolve,250));}}
  if(!/出品した商品|出品一覧|出品中|取引中の商品|出品終了分|売上金管理|受け取り一覧|受け取り明細|取引画面|取引情報/.test(text))throw Error('販売側の画面を確認できません');
  const links=[...document.querySelectorAll('a[href]')].filter(visible),idOf=url=>{try{const u=new URL(url,location.href);return site==='mercari'?(u.hostname==='jp.mercari.com'&&u.pathname.match(/\/(?:item|transaction)\/(m[0-9]+)/)?.[1]):u.pathname.match(/\/(?:jp\/)?auction\/([a-z][0-9]+)/i)?.[1]?.toLowerCase()||['aID','aid','auctionID','auctionId'].map(key=>u.searchParams.get(key)).find(value=>/^[a-z][0-9]+$/i.test(value||''))?.toLowerCase();}catch{return null;}};
  const allowed=url=>{try{const u=new URL(url,location.href);return u.protocol==='https:'&&(site==='mercari'?u.hostname==='jp.mercari.com':['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','salesmanagement.yahoo.co.jp','aucpay.yahoo.co.jp'].includes(u.hostname));}catch{return false;}};
