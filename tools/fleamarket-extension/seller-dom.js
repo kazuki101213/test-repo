@@ -66,7 +66,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
    if(target.name==='ClosingYMD'||target.id==='ClosingYMD'){const m=String(value).match(/^(\d{4})-(\d\d)-(\d\d)$/);return m&&(option.value===m.slice(1).join('')||new RegExp('^'+Number(m[2])+'月'+Number(m[3])+'日').test(norm(option.text)));}
    if(target.name==='ClosingTime'||target.id==='ClosingTime'){const hour=Number(value),prefix=(hour<12?'午前':'午後')+(hour%12)+'時';return option.value===String(value)||norm(option.text).startsWith(prefix+'から')||norm(option.text).startsWith(prefix+'（正午）から');}
    return choiceText(option.text)===wanted||choiceText(option.text).includes(wanted)||option.value===String(value);
-  });const exact=options.filter(o=>choiceText(o.text)===wanted||o.value===String(value)),selected=exact.length?exact:options;if(selected.length!==1)throw Error('選択肢を1件に確認できません：'+names[0]);setValue(target,selected[0].value);return target;}
+  });const exact=options.filter(o=>choiceText(o.text)===wanted||o.value===String(value)),selected=exact.length?exact:options;if(selected.length!==1)throw Error('選択肢を1件に確認できません：'+names[0]);if(target.value!==selected[0].value)setValue(target,selected[0].value);return target;}
   if(target.tagName==='INPUT'&&target.type!=='radio'){setValue(target,value);return target;}
   throw Error('選択欄の形式に対応していません：'+names[0]);
  }
@@ -98,6 +98,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  const postalMethod=()=>['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size)?payload.size:'ゆうパック';
  const expectedValues=()=>[payload.title,payload.description,String(payload.price),payload.condition,job.channel==='ヤフオク'&&/購入者/.test(payload.shippingPayer)?'落札者':payload.shippingPayer,job.channel==='ヤフオク'?/日本郵便/.test(payload.shippingMethod)?postalMethod():payload.size==='宅急便コンパクト'?'宅急便コンパクト':'宅急便':payload.shippingMethod,payload.origin,payload.dispatchDays,...String(payload.listingCategory||payload.category).split(/\s*[>＞]\s*/)];
  function confirmationSetting(name){const values=[];for(const row of root.querySelectorAll('tr')){const cells=[...row.children];if(cells.length>=2&&norm(cells[0].innerText).replace(/[（(]無料[）)]/g,'')===name)values.push(norm(cells.slice(1).map(e=>e.innerText).join(' ')));}for(const label of root.querySelectorAll('dt'))if(norm(label.innerText)===name&&label.nextElementSibling?.tagName==='DD')values.push(norm(label.nextElementSibling.innerText));if(values.length!==1)return null;return values[0];}
+ if(phase==='prepare_listing_payer'){await choose(['送料の負担','送料負担'],payload.shippingPayer);return {ready:true};}
  if(phase==='listing_preflight'){
   const title=field(['商品名','タイトル'],['name','Title','title']),description=descriptionField();
   if((title.value&&title.value!==payload.title)||(description.value&&description.value!==payload.description)||descriptionEditor()&&norm(descriptionEditor().innerText)&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('サイトに別の下書きがあるため上書きしません');return {ready:true};
@@ -155,7 +156,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  if(phase==='publish_confirmation'||phase==='check_listing_confirmation'){
   if(!/確認|出品/.test(text()))throw Error('出品の確認画面ではありません');
   const frames=[...root.querySelectorAll('iframe')].flatMap(frame=>{try{return [frame.contentDocument?.body?.innerText||''];}catch{return [];}}).join(' ');
-  const normalized=choiceText(text()+' '+frames).replaceAll(',','');for(const value of expectedValues()){if(!normalized.includes(choiceText(value).replaceAll(',','')))throw Error('確認画面で出品内容が一致しません');}
+  const normalized=choiceText(text()+' '+frames).replaceAll(',','');const missing=expectedValues().flatMap((value,index)=>normalized.includes(choiceText(value).replaceAll(',',''))?[]:[['商品名','説明文','価格','商品状態','送料負担','配送方法','発送元','発送日数'][index]||'カテゴリ']);if(missing.length)throw Error('確認画面で出品内容が一致しません：'+missing.join('・'));
   if(job.channel==='ヤフオク'&&(!['あり','する','有効'].includes(confirmationSetting('自動延長'))||!['なし','しない','0回','設定しない'].includes(confirmationSetting('自動再出品'))))throw Error('確認画面で自動延長あり・自動再出品なしを確認できません。出品は送信しません');
   if(phase==='check_listing_confirmation')return {verified:true,stoppedBeforePublish:true};
   const button=oneButton(['出品する','ガイドラインに同意して出品する']);reserve();button.click();return {submitted:true};

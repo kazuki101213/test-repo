@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.100';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.100';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.101';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.101';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.100';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.101';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -203,7 +203,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
    const parts=String(target).split(/\s*[>＞]\s*/).filter(Boolean);await finishChoice(await execute(searchSellerCategory,parts.length>1?parts.at(-2):parts[0]));
    return categoryForm(target,formUrl);
   },
-  prepareListingChoices:async job=>{if(account.site!=='mercari')throw Error('メルカリの出品設定ではありません');for(const [kind,value] of [['category',job.payload.listingCategory||job.payload.category],['condition',job.payload.condition],['shipping',job.payload.shippingMethod]]){if(await execute(mercariListingChoiceSelected,{kind,value}))continue;if(!await finishChoice(await execute(clickSellerChoice,kind),kind))throw Error('出品条件の選択画面を開けません：'+kind);if(kind==='category')await finishChoice(await execute(searchSellerCategory,value));await finishChoice(await execute(selectMercariListingChoice,{kind,value}),kind==='category'?'listing-category-return':'listing-form');if(kind==='category'){const back=await execute(returnMercariListingForm,null);if(back)await finishChoice(back,'listing-form');}}listingChoices={id:job.id,values:JSON.stringify([job.payload.listingCategory||job.payload.category,job.payload.condition,job.payload.shippingMethod]),url:last};},
+  prepareListingChoices:async job=>{if(account.site!=='mercari')throw Error('メルカリの出品設定ではありません');await execute(sellerDomOperation,{job,phase:'prepare_listing_payer',reportErrors:true});for(const [kind,value] of [['category',job.payload.listingCategory||job.payload.category],['condition',job.payload.condition],['shipping',job.payload.shippingMethod]]){if(await execute(mercariListingChoiceSelected,{kind,value}))continue;if(!await finishChoice(await execute(clickSellerChoice,kind),kind))throw Error('出品条件の選択画面を開けません：'+kind);if(kind==='category')await finishChoice(await execute(searchSellerCategory,value));await finishChoice(await execute(selectMercariListingChoice,{kind,value}),kind==='category'?'listing-category-return':'listing-form');if(kind==='category'){const back=await execute(returnMercariListingForm,null);if(back)await finishChoice(back,'listing-form');}}listingChoices={id:job.id,values:JSON.stringify([job.payload.listingCategory||job.payload.category,job.payload.condition,job.payload.shippingMethod]),url:last};},
   searchCategory:async term=>finishChoice(await execute(searchSellerCategory,term)),
   inspectChoice:async kind=>{
    return finishChoice(await execute(clickSellerChoice,kind),kind);
