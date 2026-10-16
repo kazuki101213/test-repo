@@ -83,4 +83,3 @@ jobs:
       # ダッシュボードに貼り付ける setup-all.sql が migrations とずれていないか
       - name: SQL バンドルが最新か確認
         run: scripts/build-sql-bundle.sh --check
-

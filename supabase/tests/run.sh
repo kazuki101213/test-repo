@@ -43,4 +43,3 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/paged_inventory_sync.sql"
 DB="$DB" "$HERE/check-app-schema.py"
 
 echo "すべて成功しました"
-

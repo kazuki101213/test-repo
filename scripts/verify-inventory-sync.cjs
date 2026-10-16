@@ -27,8 +27,10 @@ response={data:{ids:['a','b'],rows:[{id:'b'}],fingerprints:{a:'v1',b:'v2'},total
 response={data:null,error:{message:'temporary network failure'}};await view.refresh();await settle();assert.equal(view.rows.length,2,'Keep visible data after a failed refresh');assert.equal(view.error,'temporary network failure');
 response={data:{ids:['b'],rows:[],fingerprints:{b:'v2'},total:1},error:null};await view.refresh();await settle();assert.equal(view.rows.length,1);assert.equal(view.rows[0].id,'b','Deleted/out-of-filter rows must disappear');assert.equal(view.error,null);
 owner='different-user';dirty=true;response={data:{ids:[],rows:[],fingerprints:{},total:0},error:null};await initial();assert.deepEqual(plain(calls.at(-1).args.p_known),{},'No cached fingerprints or rows cross users');
+let releaseOld;response=new Promise(resolve=>releaseOld=resolve);const oldRequest=view.refresh();await settle();filters={status:'出品中'};dirty=true;response={data:{ids:['new-filter'],rows:[{id:'new-filter'}],fingerprints:{'new-filter':'v1'},total:1},error:null};await initial();releaseOld({data:{ids:['stale'],rows:[{id:'stale'}],fingerprints:{stale:'old'},total:1},error:null});await oldRequest;await settle();assert.equal(view.rows[0].id,'new-filter','Late responses must not overwrite a new filter');
 const signal=new AbortController().signal;await fetchInventoryPage('delivery',{},50,{},signal);assert.equal(calls.at(-1).signal,signal);
 await assert.rejects(fetchInventoryPage('management',{from:'2026-10-20',to:'2026-10-01'},50),/終了日/);
 console.log('Inventory transport: 50/100 paging, fingerprints, deletion, ordering, retained errors/recovery, hidden/focus dedup, per-user cache and abort passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
 
