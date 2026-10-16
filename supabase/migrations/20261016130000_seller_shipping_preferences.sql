@@ -1,5 +1,6 @@
 -- Keep reviewed listing/shipping choices when the operator opens the panel again.
 -- Invoker security and all existing row policies remain in force.
+create index if not exists seller_history_by_item on app.seller_operations(item_id,created_at desc);
 create or replace function app.seller_operation_context(p_item_id uuid) returns jsonb
 language sql stable security invoker set search_path=pg_catalog,app as $$
  select jsonb_build_object(
