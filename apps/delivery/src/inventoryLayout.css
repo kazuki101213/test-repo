@@ -203,3 +203,10 @@
  .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
  .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:1 / -1; grid-row:2; }
 }
+/* Keep selection fixed and place the thumbnail below it on the same left edge. */
+@media screen and (max-width:1279px) {
+ .task-product-summary .task-photo-action { position:relative; left:-34px; padding-top:30px; }
+}
+@media screen and (max-width:1023px) {
+ .task-product-summary .task-photo-action { left:-30px; }
+}
