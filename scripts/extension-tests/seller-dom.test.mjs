@@ -102,3 +102,5 @@ test('実画面の出品中の商品はありませんを空一覧と認識し�
  for(const phrase of ['出品中の商品はありません','出品中の商品がありません','出品中の商品はございません']){const p=await page('<main><h1>出品中</h1><p>'+phrase+'</p><a href="/my/closed?hasWinner=1">出品終了分</a></main>','https://auctions.yahoo.co.jp/my/selling');const result=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品中'});assert.equal(result.empty,true);assert.equal(result.itemCount,0);assert.equal(result.rows.length,0);assert.equal(result.navigation[0].text,'出品終了分');await p.close();}
  const p=await page('<main><h1>出品中</h1><p>読み込み中です</p></main>','https://auctions.yahoo.co.jp/my/selling');assert.equal((await p.evaluate(readSellerPage,{site:'auctions',phase:'出品中'})).empty,false);await p.close();
 });
+
+test('ヤフオクの実際の売上金管理ラベルを販売済み一覧へのリンクとして取得する',async()=>{const p=await page('<h1>出品中</h1><p>出品中の商品はありません</p><a href="https://salesmanagement.yahoo.co.jp/list">売上金管理 Yahoo!かんたん決済</a>','https://auctions.yahoo.co.jp/my/selling');const r=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品中'});assert.deepEqual(r.navigation,[{text:'売上金管理',url:'https://salesmanagement.yahoo.co.jp/list'}]);await p.close();});

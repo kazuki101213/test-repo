@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.108';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.108';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.109';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.109';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.108';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.109';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -212,7 +212,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   inspectionShippingTarget:target=>execute(readShippingInspectionTarget,target),
   prepareShipping:async job=>{if(account.site!=='mercari'||!await finishChoice(await execute(clickSellerChoice,'shipping-details'),'shipping-details'))throw Error('配送サイズの選択画面を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
-  links:async()=> (await raw()).links.filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
+  links:async()=> (await raw()).links.map(link=>{const u=new URL(link.url);return u.hostname==='salesmanagement.yahoo.co.jp'&&u.pathname==='/list'&&/^売上金管理(?:\s+Yahoo!かんたん決済)?$/.test(link.text)?{...link,text:'売上金管理'}:link;}).filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
   read:phase=>execute(readSellerPage,{site:account.site,phase}),
   selectTab:label=>execute(async function(label){const candidates=[...document.querySelectorAll('button,[role="tab"]')].filter(e=>e.getClientRects().length&&e.innerText.trim()===label);if(candidates.length!==1)return false;const before=document.body.innerText;const button=candidates[0];button.click();for(let n=0;n<20;n++){await new Promise(resolve=>setTimeout(resolve,200));if(button.getAttribute('aria-selected')==='true'||document.body.innerText!==before)return true;}throw Error('一覧タブの切り替え結果を確認できません');},label),
   detail:async(url,id)=>{await go(url);let page=await raw();if(!/取引画面|取引情報|受け取り明細/.test(page.text)){const options=page.links.filter(link=>/取引画面|取引ナビ|取引情報|詳細/.test(link.text)&&link.url.includes(id));if(options.length!==1)throw Error('販売明細へのリンクを特定できません');await go(options[0].url);page=await raw();}if(!page.text.includes(id))throw Error('取引の商品IDを確認できません');return page;},

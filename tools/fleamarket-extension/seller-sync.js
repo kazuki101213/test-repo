@@ -36,7 +36,7 @@ export async function readSellerPage({site,phase=null}={}){
  if(!/出品した商品|出品一覧|出品中|取引中の商品|出品終了分|売上金管理|受け取り一覧|受け取り明細|取引画面|取引情報/.test(text))throw Error('販売側の画面を確認できません');
  const links=[...document.querySelectorAll('a[href]')].filter(visible),idOf=url=>{try{const u=new URL(url,location.href);return site==='mercari'?(u.hostname==='jp.mercari.com'&&u.pathname.match(/\/(?:item|transaction)\/(m[0-9]+)/)?.[1]):u.pathname.match(/\/(?:jp\/)?auction\/([a-z][0-9]+)/i)?.[1]?.toLowerCase()||['aID','aid','auctionID','auctionId'].map(key=>u.searchParams.get(key)).find(value=>/^[a-z][0-9]+$/i.test(value||''))?.toLowerCase();}catch{return null;}};
  const allowed=url=>{try{const u=new URL(url,location.href);return u.protocol==='https:'&&(site==='mercari'?u.hostname==='jp.mercari.com':['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','salesmanagement.yahoo.co.jp','aucpay.yahoo.co.jp'].includes(u.hostname));}catch{return false;}};
- const navigation=links.filter(link=>/^(出品中|取引中|売却済み|出品終了分|売上金管理|次へ|次のページ|次)$/.test(norm(link.innerText))&&allowed(link.href)).map(link=>({text:norm(link.innerText),url:link.href}));
+ const navigation=links.filter(link=>/^(出品中|取引中|売却済み|出品終了分|売上金管理(?: Yahoo!かんたん決済)?|次へ|次のページ|次)$/.test(norm(link.innerText))&&allowed(link.href)).map(link=>({text:/^売上金管理(?: Yahoo!かんたん決済)?$/.test(norm(link.innerText))?'売上金管理':norm(link.innerText),url:link.href}));
  const active=[...document.querySelectorAll('[aria-selected="true"],[aria-current="page"],[aria-pressed="true"],[data-state="active"]')].filter(visible).map(e=>norm(e.innerText)).find(value=>['出品中','取引中','売却済み','出品終了分','売上金管理'].includes(value));
  const effectivePhase=active||phase;
  let itemCount=0;const rows=new Map();
