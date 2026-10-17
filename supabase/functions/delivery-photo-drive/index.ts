@@ -9,7 +9,7 @@ const cors = {
 };
 const json = (status: number, value: unknown) => new Response(JSON.stringify(value), { status, headers: cors });
 class RequestError extends Error { constructor(readonly status: number, message: string) { super(message); } }
-type Photo = { id: string; item_id: string; storage_path: string; drive_file_id: string | null; uploaded_by: string | null };
+type Photo = { id: string; item_id: string; storage_path: string; drive_file_id: string | null; uploaded_by: string | null; photo_kind?: 'product'|'packing' };
 type DriveFile = { id: string; name?: string; parents?: string[] };
 
 async function allRows<T>(read: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
@@ -114,7 +114,8 @@ export async function handler(req: Request): Promise<Response> {
     const authorization = req.headers.get('authorization') ?? '';
     if (!/^Bearer\s+\S+$/i.test(authorization)) throw new RequestError(401, 'ログインが必要です。');
     const token = authorization.replace(/^Bearer\s+/i, '');
-    const { itemId, action = 'save' } = await req.json().catch(() => ({}));
+    const { itemId, action = 'save', purpose = 'product' } = await req.json().catch(() => ({}));
+    if (purpose !== 'product' && purpose !== 'packing') throw new RequestError(400, '写真の種類が不正です。');
     if (action !== 'list' && action !== 'save') throw new RequestError(400, '写真の操作が不正です。');
     if (typeof itemId !== 'string' || !/^[\da-f-]{36}$/i.test(itemId)) throw new RequestError(400, '商品の指定が不正です。');
     const url = Deno.env.get('SUPABASE_URL')!;
@@ -130,8 +131,9 @@ export async function handler(req: Request): Promise<Response> {
     if (profileError || !profile) throw new RequestError(403, '担当者を確認できません。');
     const { data: staff, error: staffError } = await service.from('staff').select('role,is_active').eq('id', profile.staff_id).maybeSingle();
     if (staffError || !staff?.is_active) throw new RequestError(403, '担当者の権限がありません。');
-    const { data: item, error: itemError } = await service.from('items').select('id,sku,lot_seq,deliverer_id').eq('id', itemId).maybeSingle();
+    const { data: item, error: itemError } = await service.from('items').select('id,sku,lot_seq,deliverer_id,status,sales_channel').eq('id', itemId).maybeSingle();
     if (itemError || !item || (staff.role !== 'admin' && item.deliverer_id !== profile.staff_id && !(action === 'list' && staff.role === 'purchaser'))) throw new RequestError(403, 'この商品の写真を扱う権限がありません。');
+    if(purpose==='packing' && action==='save' && !(item.sales_channel==='FBA'?item.status==='商品登録前':['自己発送','メルカリ','ヤフオク'].includes(item.sales_channel)&&item.status==='出品中')) throw new RequestError(409,'現在の販売状態では梱包写真を追加できません。');
     // Authorize the requested item first, then expose only its own lot's photos.
     const members = await allRows<{ id: string }>((from, to) => service.from('items')
       .select('id').eq('lot_seq', item.lot_seq).order('id').range(from, to));
@@ -139,9 +141,11 @@ export async function handler(req: Request): Promise<Response> {
     const photos: Photo[] = [];
     for (let start = 0; start < memberIds.length; start += 100) {
       photos.push(...await allRows<Photo>((from, to) => service.from('item_photos')
-        .select('id,item_id,storage_path,drive_file_id,uploaded_by').in('item_id', memberIds.slice(start, start + 100))
+        .select('id,item_id,storage_path,drive_file_id,uploaded_by,photo_kind').in('item_id', memberIds.slice(start, start + 100))
         .order('created_at').order('id').range(from, to)));
     }
+    const selectedPhotos=photos.filter(photo=>(photo.photo_kind??'product')===purpose && (purpose!=='packing'||photo.item_id===itemId));
+    photos.splice(0,photos.length,...selectedPhotos);
     if (action === 'list') {
       const urls: Array<{ id: string; url: string; canDelete: boolean }> = [];
       for (let start = 0; start < photos.length; start += 100) {
@@ -191,11 +195,11 @@ export async function handler(req: Request): Promise<Response> {
       added++;
     }
     // Keep per-item approval and counts; only the physical folder is shared.
-    for (let start = 0; start < memberIds.length; start += 100) {
+    for (let start = 0; purpose==='product' && start < memberIds.length; start += 100) {
       const { error } = await service.from('photo_reviews').update({ drive_folder_id: folderId }).in('item_id', memberIds.slice(start, start + 100));
       if (error) throw error;
     }
-    if (added > 0 || !review) {
+    if (purpose==='product' && (added > 0 || !review)) {
       const { error: taskError } = await service.from('photo_reviews').upsert({
         item_id: itemId, drive_folder_id: folderId, exported_photo_count: photos.filter(photo => photo.item_id === itemId).length,
         submitted_at: new Date().toISOString(), approved_at: null, approved_by: null, updated_at: new Date().toISOString(),

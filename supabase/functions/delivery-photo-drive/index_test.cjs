@@ -109,3 +109,32 @@ test('working Amazon return defaults to Mercari while ordinary defaults are reta
   assert.equal(initialTarget({marketplace:'Amazon返品',sales_channel:'FBA'}),'amazon');
   assert.equal(initialTarget({marketplace:'ヤフオク',sales_channel:'ヤフオク'}),'yahoo-auction');
 });
+
+test('packing evidence shares the existing Drive folder without entering listing photos or resetting approval',async()=>{
+ const {state,call}=setup();Object.assign(state.items[1],{status:'出品中',sales_channel:'メルカリ'});
+ state.photo_reviews.push({item_id:itemId,drive_folder_id:'shared',approved_at:'approved',exported_photo_count:1});
+ state.item_photos.push({id:'packed',item_id:itemId,storage_path:'photos/packed.jpg',photo_kind:'packing',drive_file_id:null,uploaded_by:'staff'});
+ state.item_photos.push({id:'other-packed',item_id:'original',storage_path:'photos/other-packed.jpg',photo_kind:'packing',drive_file_id:null,uploaded_by:'other'});
+ assert.deepEqual((await (await call('list')).json()).photos.map(p=>p.id),['p1','p2']);
+ assert.deepEqual((await (await call('list',{purpose:'packing'})).json()).photos.map(p=>p.id),['packed']);
+ assert.equal(state.google.length,0);
+ const before=JSON.stringify(state.photo_reviews);
+ const response=await call('save',{purpose:'packing'});assert.equal(response.status,200);
+ assert.deepEqual(await response.json(),{folderId:'shared',added:1,total:1});
+ assert.deepEqual(state.downloads,['photos/packed.jpg']);
+ assert.equal(JSON.stringify(state.photo_reviews),before);
+ const upload=state.google.find(req=>req.url.includes('/upload/drive/'));
+ assert.deepEqual(JSON.parse(upload.body).parents,['shared']);
+});
+test('packing export accepts only the configured pre-transition stage and retains authorization',async()=>{
+ for(const sales_channel of ['FBA','自己発送','メルカリ','ヤフオク']){
+  for(const status of ['検品中','商品登録前','出品中','取引中','販売済']){
+   const {state,call}=setup();Object.assign(state.items[1],{status,sales_channel});
+   state.item_photos.push({id:'packed',item_id:itemId,storage_path:'packed.jpg',photo_kind:'packing',drive_file_id:null,uploaded_by:'staff'});
+   const allowed=sales_channel==='FBA'?status==='商品登録前':status==='出品中';
+   assert.equal((await call('save',{purpose:'packing'})).status,allowed?200:409,sales_channel+status);
+   if(!allowed)assert.equal(state.google.length,0);
+  }
+ }
+ const {call}=setup({assigned:false});assert.equal((await call('save',{purpose:'packing'})).status,403);
+});

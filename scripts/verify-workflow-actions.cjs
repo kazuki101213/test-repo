@@ -18,3 +18,10 @@ for(const [name,origin,dropoff] of [['石川秀樹','山梨県','ヤマト営業
 assert.equal(seller.sellerDefaults({...base,title:'液晶モニター',model_no:null}).size,'140');assert.equal(seller.sellerDefaults({...base,title:'ヘッドホン',model_no:null}).category,'小物');assert.equal(seller.sellerDefaults({...base,condition:null}).condition,'');
 const parsed=seller.sellerDefaults({...base,description:'商品名（メルカリ）\n出品の商品名\n\n説明文\n説明の本文'});assert.equal(parsed.title,'出品の商品名');assert.equal(parsed.description,'説明の本文');
 console.log('PASS: per-product state actions, reversals, compensation authority, exact seller presets, ceil pricing and saved listing text');
+
+for(const channel of ['FBA','自己発送','メルカリ','ヤフオク']){
+ for(const status of ['受取前','検品中','商品登録前','出品中','取引中','販売済']){
+  const expected=channel==='FBA'?status==='商品登録前':status==='出品中';
+  assert.equal(keys(status,{sales_channel:channel}).includes('packingPhotos'),expected,channel+':'+status);
+ }
+}

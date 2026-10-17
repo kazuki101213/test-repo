@@ -3,7 +3,7 @@ import {deliveryWorkflowButtons} from '@bussan/shared';
 import type {DeliveryTask,InventoryAction,ProductPanel,WorkflowButton} from '@bussan/shared';
 import {performInventoryAction} from '../api';
 
-const panels=new Set(['photos','description','messages','comments','listing','shipping']);
+const panels=new Set(['photos','packingPhotos','description','messages','comments','listing','shipping']);
 export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void;onPanel?:(panel:ProductPanel)=>void}){
  const [busy,setBusy]=useState(false),[form,setForm]=useState<WorkflowButton|null>(null),[note,setNote]=useState('');
  const lock=useRef(false),request=useRef(crypto.randomUUID());
