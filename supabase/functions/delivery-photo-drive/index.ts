@@ -9,7 +9,7 @@ const cors = {
 };
 const json = (status: number, value: unknown) => new Response(JSON.stringify(value), { status, headers: cors });
 class RequestError extends Error { constructor(readonly status: number, message: string) { super(message); } }
-type Photo = { id: string; item_id: string; storage_path: string; drive_file_id: string | null; uploaded_by: string | null; photo_kind?: 'product'|'packing' };
+type Photo = { id: string; item_id: string; storage_path: string; drive_file_id: string | null; uploaded_by: string | null; created_at?: string; photo_kind?: 'product'|'packing' };
 type DriveFile = { id: string; name?: string; parents?: string[] };
 
 async function allRows<T>(read: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
@@ -141,9 +141,11 @@ export async function handler(req: Request): Promise<Response> {
     const photos: Photo[] = [];
     for (let start = 0; start < memberIds.length; start += 100) {
       photos.push(...await allRows<Photo>((from, to) => service.from('item_photos')
-        .select('id,item_id,storage_path,drive_file_id,uploaded_by,photo_kind').in('item_id', memberIds.slice(start, start + 100))
+        .select('id,item_id,storage_path,drive_file_id,uploaded_by,created_at,photo_kind').in('item_id', memberIds.slice(start, start + 100))
         .order('created_at').order('id').range(from, to)));
     }
+    // Batches of related items must share the same oldest-first addition order.
+    photos.sort((a,b)=>(a.created_at??'').localeCompare(b.created_at??'')||a.id.localeCompare(b.id));
     const selectedPhotos=photos.filter(photo=>(photo.photo_kind??'product')===purpose && (purpose!=='packing'||photo.item_id===itemId));
     photos.splice(0,photos.length,...selectedPhotos);
     if (action === 'list') {

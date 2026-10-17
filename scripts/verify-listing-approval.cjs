@@ -16,7 +16,7 @@ for(const channel of ['メルカリ','ヤフオク']){
 }
 const jsx=(type,props)=>({type,props}),react={useState:v=>[v,()=>{}],useRef:v=>({current:v})};
 const Controls=load('apps/delivery/src/components/WorkflowControls.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':workflow}).default;
-function all(n){return !n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(n.props?.children)];}
+function all(n){return !n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(typeof n.type==='function'?n.type(n.props):n.props?.children)];}
 for(const channel of ['FBA','自己発送','メルカリ','ヤフオク'])for(const approval of [undefined,false,true]){
  const tree=Controls({task:{...base,sales_channel:channel,photo_review_approved:approval},onChanged:async()=>{},onError:()=>{}});
  const button=all(tree).find(n=>['listing','listing_complete'].includes(n.props?.['data-action']));
@@ -26,7 +26,7 @@ for(const channel of ['FBA','自己発送','メルカリ','ヤフオク'])for(co
 async function panelCheck(approved,saved){
  let cursor=0,hooks=[],pending=[],tree,dirty=true,queued;
  const hookReact={useRef(v){return hooks[cursor++]??={current:v};},useState(v){const n=cursor++;hooks[n]??={value:v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};pending.push(fn);}}};
- const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,canViewDeliveryAssignee:()=>false},'../listingDraft':{listingDraft},'../api':{
+ const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,canViewDeliveryAssignee:()=>false},'./DescriptionEditor':{default:({embedded})=>jsx('div',{children:[jsx('input',{maxLength:128,value:embedded.value.title,disabled:embedded.disabled}),jsx('textarea',{maxLength:5000,value:embedded.value.description,disabled:embedded.disabled})]})},'../listingDraft':{listingDraft},'../api':{
   fetchTask:async()=>({...base,description:saved}),fetchSellerContext:async()=>({revision:'one',operations:[],photo_review_approved:approved}),fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
  }}).default;
  const props={mode:'listing',task:{...base,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(){},onClose(){}};

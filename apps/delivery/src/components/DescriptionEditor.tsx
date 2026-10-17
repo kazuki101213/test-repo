@@ -1,6 +1,6 @@
 import ColoredSelect from './ColoredSelect';
 import { useEffect, useState, type FormEvent } from 'react';
-import { productModelText, type DeliveryTask } from '@bussan/shared';
+import { productModelText, type DeliveryTask, type SellerDraft } from '@bussan/shared';
 import { fetchProductMaker, saveDeliveryDescription } from '../api';
 import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, type DescriptionTarget } from '../description';
 
@@ -34,13 +34,13 @@ function CopyIconButton({ label, copied, disabled, onClick, className = '' }: {
   </button>;
 }
 
-export default function DescriptionEditor({ task, listingSkus, onSaved }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void> }) {
-  const [product, setProduct] = useState(task.description_template ?? (task.work_stream === 'テレビ' ? 'テレビ' : task.work_stream === 'ブルーレイ' ? 'ブルーレイレコーダー' : ''));
-  const [target, setTarget] = useState<DescriptionTarget>(() => initialTarget(task));
-  const [condition, setCondition] = useState(() => conditionForTarget(initialTarget(task), task.condition));
+export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void} }) {
+  const [product, setProduct] = useState(embedded?.value.category??task.description_template ?? (task.work_stream === 'テレビ' ? 'テレビ' : task.work_stream === 'ブルーレイ' ? 'ブルーレイレコーダー' : ''));
+  const [target, setTarget] = useState<DescriptionTarget>(() => embedded?(task.sales_channel==='メルカリ'?'mercari':task.sales_channel==='ヤフオク'?'yahoo-auction':'amazon'):initialTarget(task));
+  const [condition, setCondition] = useState(() => embedded?.value.condition??conditionForTarget(initialTarget(task), task.condition));
   const [accessories, setAccessories] = useState(task.accessories ?? '');
   const [year, setYear] = useState(task.manufacture_year?.toString() ?? '');
-  const [manufacturer, setManufacturer] = useState('');
+  const [manufacturer, setManufacturer] = useState(embedded?.manufacturer??'');
   const [manual, setManual] = useState<string | null>(task.description || null);
   const [saved, setSaved] = useState(Boolean(task.description));
   const [notice, setNotice] = useState('');
@@ -49,6 +49,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved }: { task
   const [copiedField, setCopiedField] = useState<'title' | 'body' | null>(null);
 
   useEffect(() => {
+    if(embedded)return;
     let active = true;
     void fetchProductMaker(task.asin).then(value => { if (active) setManufacturer(value); })
       .catch(() => { if (active) setManufacturer(''); });
@@ -61,14 +62,17 @@ export default function DescriptionEditor({ task, listingSkus, onSaved }: { task
     inspected: task.inspected, cleaned: task.cleaned, sku: task.sku, listingSkus,
     itemNumber: serial, modelNo: productModelText(task), manufacturer,
   });
-  const description = manual ?? generated;
+  const description = embedded?(target==='amazon'?embedded.value.description:joinMarketplaceListing(target,embedded.value.title,embedded.value.description)):manual ?? generated;
   const generatedListing = splitMarketplaceListing(generated);
   const listing = splitMarketplaceListing(description);
-  const listingTitle = listing.title || generatedListing.title;
+  const listingTitle = embedded?embedded.value.title:listing.title || generatedListing.title;
   const selected = accessories.split(/[、,\n]+/).map(value => value.trim()).filter(Boolean);
-  const updateSelection = () => { setManual(null); setSaved(false); setNotice(''); };
+  const [regenerate,setRegenerate] = useState(false);
+  useEffect(()=>{if(!embedded||!regenerate)return;const next=splitMarketplaceListing(generated);embedded.onChange({title:target==='amazon'?embedded.value.title:next.title,description:target==='amazon'?generated:next.body,condition,...(PRODUCT_TYPES.includes(product as typeof PRODUCT_TYPES[number])?{category:product as SellerDraft['category']}:{})});setRegenerate(false);},[generated,regenerate]);
+  const updateSelection = () => { setManual(null); setSaved(false); setNotice('');if(embedded)setRegenerate(true); };
 
   function updateListing(title: string, body: string) {
+    embedded?.onChange({title,description:body});
     setManual(joinMarketplaceListing(target, title, body)); setSaved(false); setNotice('');
   }
 
@@ -106,7 +110,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved }: { task
   async function save(e: FormEvent) {
     e.preventDefault(); setError(''); setNotice('');
     if (!description.trim()) { setError('商品・コンディション・付属品を入力してください。'); return; }
-    setBusy(true);
+    setBusy(true); embedded?.onSaving(true);
     try {
       await saveDeliveryDescription(task.id, {
         condition: storedCondition(target, condition), accessories, description,
@@ -114,19 +118,19 @@ export default function DescriptionEditor({ task, listingSkus, onSaved }: { task
       });
       await onSaved(); setSaved(true); setNotice('保存しました。');
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
+    finally { setBusy(false); embedded?.onSaving(false); }
   }
 
   return <form className="card description-editor" onSubmit={e => void save(e)}>
-    <h2>商品説明文</h2>
-    <fieldset disabled={busy}>
+    {!embedded&&<h2>商品説明文</h2>}
+    <fieldset disabled={busy||embedded?.disabled}>
       <div className="description-options">
-        <label>販売先<ColoredSelect value={target} onChange={e => {
+        {!embedded&&<label>販売先<ColoredSelect value={target} onChange={e => {
           const nextTarget = e.target.value as DescriptionTarget;
           setTarget(nextTarget);
           if (!CONDITIONS_BY_TARGET[nextTarget].includes(condition)) setCondition(conditionForTarget(nextTarget, storedCondition(target, condition)) || CONDITIONS_BY_TARGET[nextTarget][0] || '');
           updateSelection();
-        }}><option value="amazon">Amazon</option><option value="mercari">メルカリ</option><option value="yahoo-auction">ヤフオク</option></ColoredSelect></label>
+        }}><option value="amazon">Amazon</option><option value="mercari">メルカリ</option><option value="yahoo-auction">ヤフオク</option></ColoredSelect></label>}
         <label>商品<select value={product} onChange={e => { setProduct(e.target.value); updateSelection(); }}><option value="">選択してください</option>{PRODUCT_TYPES.map(value => <option key={value}>{value}</option>)}</select></label>
         <label>コンディション<ColoredSelect value={condition} onChange={e => { setCondition(e.target.value); updateSelection(); }}><option value="">選択してください</option>{CONDITIONS_BY_TARGET[target].map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
         {target !== 'amazon' && <label>メーカー<input value={manufacturer} onChange={e => { setManufacturer(e.target.value); updateSelection(); }} placeholder="商品リストから取得・必要に応じて修正" /></label>}
@@ -138,12 +142,12 @@ export default function DescriptionEditor({ task, listingSkus, onSaved }: { task
       </>}
       {target !== 'amazon' && description ? <div className="marketplace-listing-fields">
         <label><span className="marketplace-listing-heading">商品名<CopyIconButton label="商品名" copied={copiedField === 'title'} disabled={!listingTitle.trim()} onClick={() => void copyField('title', listingTitle)} /></span>
-          <textarea className="marketplace-title-text" rows={2} maxLength={500} value={listingTitle} onChange={e => updateListing(e.target.value, listing.body)} /></label>
+          <input className="marketplace-title-text" type="text" maxLength={embedded?128:500} value={listingTitle} onChange={e => updateListing(e.target.value, listing.body)} /></label>
         <label><span className="marketplace-listing-heading">説明文<CopyIconButton label="説明文" copied={copiedField === 'body'} disabled={!listing.body.trim()} onClick={() => void copyField('body', listing.body)} /></span>
-          <textarea className="description-text marketplace-body-text" maxLength={10000} value={listing.body} onChange={e => updateListing(listingTitle, e.target.value)} /></label>
-      </div> : description ? <label>商品名・説明文（自動生成）<textarea className="description-text" maxLength={10000} value={description} onChange={e => { setManual(e.target.value); setSaved(false); setNotice(''); }} /></label>
+          <textarea className="description-text marketplace-body-text" maxLength={embedded?5000:10000} value={listing.body} onChange={e => updateListing(listingTitle, e.target.value)} /></label>
+      </div> : description ? <label>商品名・説明文（自動生成）<textarea className="description-text" maxLength={10000} value={description} onChange={e => { embedded?.onChange({description:e.target.value});setManual(e.target.value); setSaved(false); setNotice(''); }} /></label>
         : <p className="muted">販売先・商品・コンディションを選ぶと、商品名と説明文を生成します。</p>}
-      {manual !== null && description && <div className="row"><span className="muted">手入力の文章を表示しています。</span><button type="button" className="btn" disabled={!generated} onClick={() => { setManual(null); setSaved(false); setNotice(''); }}>選択内容から再生成</button></div>}
+      {manual !== null && description && <div className="row"><span className="muted">手入力の文章を表示しています。</span><button type="button" className="btn" disabled={!generated} onClick={updateSelection}>選択内容から再生成</button></div>}
       <button className="btn primary" type="submit">{busy ? '保存中…' : saved ? '上書き保存' : '説明文を保存'}</button>
     </fieldset>
     {notice && <p role="status">{notice}</p>}{error && <div className="error" role="alert">{error}</div>}

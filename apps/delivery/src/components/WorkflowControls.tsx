@@ -27,6 +27,7 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
   finally{lock.current=false;setBusy(false);setConfirming(null);}
  }
  function choose(button:WorkflowButton){
+  if(button.key==='listing_complete'){onPanel?.('listing');return;}
   if(panels.has(button.key)){onPanel?.(button.key as ProductPanel);return;}
   request.current=crypto.randomUUID();
   if(isReversal(button)){setForm(null);setNote('');setConfirming(button);return;}

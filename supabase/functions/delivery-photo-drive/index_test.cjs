@@ -67,6 +67,19 @@ test('return lists all original and return photos in its lot, without Drive writ
   assert.deepEqual(body.photos.map(p=>p.canDelete),[false,true]);
   assert.equal(state.google.length,0);
 });
+
+test('photos from separate related-item batches are displayed in addition order',async()=>{
+  const {state,call}=setup();
+  state.items.push(...Array.from({length:101},(_,n)=>({id:'member-'+n,lot_seq:123})));
+  state.item_photos=[
+    {id:'last',item_id:'original',storage_path:'last.jpg',created_at:'2026-10-17T02:00:00Z'},
+    {id:'first',item_id:'member-100',storage_path:'first.jpg',created_at:'2026-10-17T01:00:00Z'},
+    {id:'middle',item_id:itemId,storage_path:'middle.jpg',created_at:'2026-10-17T01:30:00Z'},
+  ];
+  const response=await call('list');assert.equal(response.status,200);
+  assert.deepEqual((await response.json()).photos.map(photo=>photo.id),['first','middle','last']);
+  assert.equal(state.google.length,0);
+});
 test('save reuses lot folder, moves older file and uploads every new photo',async()=>{
   const {state,call}=setup(); const response=await call('save');
   assert.equal(response.status,200);

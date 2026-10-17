@@ -51,7 +51,7 @@
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons { grid-template-columns:repeat(2,1fr); }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="photos"] { grid-column:1; grid-row:1; }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="description"] { grid-column:2; grid-row:1; }
-  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:1; grid-row:2; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:2; grid-row:2; }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="packingPhotos"] { grid-column:1; grid-row:3; }
 }
