@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.112';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.112';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.113';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.113';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.112';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.113';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -109,7 +109,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
   try{
    session=await openSession(account);
    const queue=[],seen=new Set(),processed=new Set(),pending=[],fullScan=baselines[account.id]!=='serial-case-v2';
-   let registeredRun=0,salesStopped=false,salesSeen=false,batches=0;
+   let registeredRun=0,salesStopped=false,salesSeen=false,batches=0;const auctionSaleIds=new Set();
    const salePhase=phase=>phase==='売却済み'||phase==='売上金管理';
    const enqueue=links=>{for(const link of links){let phase=link.text;if(phase==='出品した商品'||phase==='出品一覧')phase=null;if(![null,'出品中','取引中','売却済み','出品終了分','売上金管理'].includes(phase))continue;if(salesStopped&&salePhase(phase))continue;const url=sellerUrl(account,link.url);if(!seen.has(url)&&!queue.some(v=>v.url===url))queue.push({url,phase});}queue.sort((a,b)=>(salePhase(a.phase)?1:0)-(salePhase(b.phase)?1:0));};
    enqueue(await session.links());if(!queue.length){await session.go(account.site==='mercari'?'https://jp.mercari.com/mypage':'https://auctions.yahoo.co.jp/my');enqueue(await session.links());}
@@ -123,7 +123,17 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
      if(!data.rows.length&&!data.empty&&page.phase&&session.selectTab){if(await session.selectTab(page.phase))data=await session.read(page.phase);}
      if(page.phase&&!data.rows.length&&!data.empty&&!data.itemCount)throw Error('商品一覧を確認できません：'+page.phase+' ('+new URL(page.url).pathname+')');
      if(salePhase(page.phase))salesSeen=true;
-     const rows=data.rows.filter(row=>!processed.has(row.external_id+'/'+row.status));
+     // Count all visible sale-management products, including unpaid/unsettled rows.
+     if(account.site==='auctions'&&page.phase==='売上金管理'){
+      for(const id of data.itemIds||data.rows.map(row=>row.external_id)){
+       if(auctionSaleIds.has(id))continue;
+       if(auctionSaleIds.size>=40)break;
+       auctionSaleIds.add(id);
+      }
+      if(auctionSaleIds.size>=40)salesStopped=true;
+     }
+     const rows=data.rows.filter(row=>!processed.has(row.external_id+'/'+row.status)
+      &&(account.site!=='auctions'||page.phase!=='売上金管理'||auctionSaleIds.has(row.external_id)));
      const plans=new Map();
      for(let offset=0;offset<rows.length;offset+=100){
       const batch=rows.slice(offset,offset+100),result=await rpc('seller_observation_plan',{p_account_id:account.id,p_rows:batch});
