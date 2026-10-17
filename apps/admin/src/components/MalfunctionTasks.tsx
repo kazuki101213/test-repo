@@ -1,6 +1,7 @@
 import { readResourceSnapshot } from '@bussan/shared';
 import { managementWorkflowButtons, staffDisplayName } from '@bussan/shared';
 import { deliveryAppUrl } from '../appUrls';
+import { purchaseItemUrl } from '../purchaseUrl';
 import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
 import { getSupabase } from '@bussan/shared';
@@ -19,6 +20,7 @@ interface MalfunctionTask {
   purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
   products: { model_no: string | null }[];
 }
+type PurchaseSource = { id: string; marketplace: string | null; marketplace_item_id: string | null; marketplace_url: string | null };
 interface TaskComment {
   id: string; item_id: string; author_id: string; body: string; created_at: string;
   task_kind?: TaskKind | null; task_completed_at?: string | null;
@@ -199,6 +201,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
   const [loaded, setLoaded] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState('');
   const [rows, setRows] = useState<MalfunctionTask[]>([]);
+  const [purchaseSources, setPurchaseSources] = useState<Map<string, PurchaseSource>>(new Map());
   const [actionTasks, setActionTasks] = useState<ActionTask[]>([]);
   const [makersByAsin, setMakersByAsin] = useState<Map<string, string>>(new Map());
   const [names, setNames] = useState<Map<string, string>>(new Map());
@@ -214,12 +217,16 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       readResourceSnapshot<MalfunctionTask & {maker:string|null;people:{id:string|null;name:string|null}[]}>('malfunctions'),
       staff.role==='admin'?readResourceSnapshot<ActionTask & {id:string;created_at:string}>('actions'):Promise.resolve([]),
     ]);
+    const references = tasks.length ? await getSupabase().from('items')
+      .select('id,marketplace,marketplace_item_id,marketplace_url').in('id', tasks.map(row => row.id))
+      : { data: [], error: null };
     if(!alive.current)return;
+    setPurchaseSources(new Map((references.data ?? []).map(row => [row.id, row as PurchaseSource])));
     setRows([...tasks].sort((a,b)=>b.malfunction_reported_at.localeCompare(a.malfunction_reported_at)));
     setMakersByAsin(new Map(tasks.flatMap(row=>row.asin&&row.maker?[[row.asin.trim(),row.maker] as [string,string]]:[])));
     setNames(new Map(tasks.flatMap(row=>row.people.flatMap(person=>person.id?[[person.id,staffDisplayName(person.name)] as [string,string]]:[]))));
     setActionTasks([...actions].sort((a,b)=>b.created_at.localeCompare(a.created_at)));
-    setError('');
+    setError(references.error ? '仕入先リンクを取得できませんでした。次回更新時に再取得します。' : '');
     setLoaded(true);
     };
     const request=load();pendingRefresh.current=request;
@@ -271,11 +278,15 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       <div className="task-action-details"><strong>【{task.lot_seq}】</strong> <a className="btn ghost" href={deliveryAppUrl + '?itemId=' + encodeURIComponent(task.item_id) + (task.task_kind === '仕入先確認' ? '&openMessages=1' : '')} target="_blank" rel="noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a> {task.task_kind.includes('ヤフオク') ? 'ヤフオク販売' : task.task_kind}<small>{task.sku} {task.task_kind.includes('ヤフオク') ? task.task_kind : ''}</small></div>
       <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeTask(task.id)}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
-    {rows.map(row => <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className="malfunction-task-row">
+    {rows.map(row => {
+      const source = purchaseSources.get(row.id);
+      const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, source?.marketplace_item_id ?? row.marketplace_item_id, source?.marketplace_url ?? null);
+      return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className="malfunction-task-row">
       <div className="malfunction-task-content">
         <strong className="malfunction-task-heading">{row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
         <div className="malfunction-task-metadata">
           <div><span>通番号</span><span>{row.lot_seq}</span></div>
+          <div><span>商品ID</span><span>{row.marketplace_item_id || '—'}</span>{sourceUrl && <a className="malfunction-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先の商品ページを開く"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11" /><path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg></a>}</div>
           <div><span>SKU</span><span>{row.sku}</span></div>
           <div><span>型番</span><span>{row.products?.[0]?.model_no || row.title || '—'}</span></div>
           <div><span>メーカー</span><span>{makersByAsin.get(row.asin?.trim() ?? '') || '—'}</span></div>
@@ -287,6 +298,6 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
         {row.status === '動作不良' && <MalfunctionConversation item={row} staff={staff} onReplied={refresh} />}
       </div>
       {(staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).map(button=><button key={button.key} className="btn" disabled={busy !== null} onClick={()=>void resolve(row,button.key as InventoryAction)}>{button.label}</button>)}</div>}
-    </li>)}
+    </li>;})}
   </>;
 }
