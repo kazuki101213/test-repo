@@ -1,3 +1,4 @@
+.workflow-photo-buttons { display:contents; }
 /* Approved inventory sample: shared state cells on desktop, one common mobile grid. */
 @media screen {
   .app .delivery-navigation { display:flex; flex-wrap:nowrap; gap:24px; justify-content:flex-start; border:0; background:transparent; padding:8px 0; margin:0 0 12px; }
@@ -47,13 +48,13 @@
 @media screen and (min-width:1280px) {
   .app .task-card .workflow-buttons { grid-template-columns:max-content; }
   .app .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons { display:grid; grid-template-columns:1fr; width:max-content; }
-  .app .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons > .btn { width:100% !important; justify-self:stretch; grid-column:1; }
+  .app .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons .btn { width:100% !important; justify-self:stretch; grid-column:1; }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons { grid-template-columns:repeat(2,1fr); }
-  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="photos"] { grid-column:1; grid-row:1; }
-  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="description"] { grid-column:2; grid-row:1; }
-  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
-  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:2; grid-row:2; }
-  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="packingPhotos"] { grid-column:1; grid-row:3; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons [data-action="photos"] { grid-column:1; grid-row:1; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons [data-action="description"] { grid-column:2; grid-row:1; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:2; grid-row:2; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons [data-action="packingPhotos"] { grid-column:1; grid-row:3; }
 }
 @media screen and (max-width:1279px) {
   .app .delivery-navigation { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) max-content; gap:4px 8px; justify-items:start; }
@@ -175,7 +176,30 @@
   .task-product-summary .task-photo-action { align-content:start; }
   .task-card[data-item-status="検品中"] .task-content { position:relative; }
   .app .task-card[data-item-status="検品中"] .workflow-buttons { position:absolute; right:0; top:0; display:grid; grid-template-columns:max-content; gap:6px; width:max-content; max-width:calc(100% - 136px); margin:0; }
-  .app .task-card[data-item-status="検品中"] .workflow-buttons > .btn { grid-column:1; width:100% !important; justify-self:stretch; }
+  .app .task-card[data-item-status="検品中"] .workflow-buttons .btn { grid-column:1; width:100% !important; justify-self:stretch; }
   .task-card[data-item-status="検品中"] .task-photo-action { min-height:94px; }
   .task-card[data-item-status="検品中"]:has([data-action="return_request_cancel"]) .task-photo-action { min-height:120px; }
+}
+
+/* Keep only the selected state actions beside the photo; extra actions stay below the details. */
+@media screen and (max-width:1279px) {
+ .task-card:has(.workflow-photo-buttons) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:8px; align-items:start; }
+ .task-card:has(.workflow-photo-buttons) .task-product-summary,
+ .task-card:has(.workflow-photo-buttons) .task-card-overview,
+ .task-card:has(.workflow-photo-buttons) .workflow-controls,
+ .task-card:has(.workflow-photo-buttons) .workflow-buttons { display:contents; }
+ .task-card:has(.workflow-photo-buttons) .task-photo-action { grid-column:1; grid-row:1; width:min(120px,100%); min-width:0; }
+ .task-card:has(.workflow-photo-buttons) .task-card-photo-button,
+ .task-card:has(.workflow-photo-buttons) .task-card-photo { width:100%; max-width:120px; }
+ .task-card:has(.workflow-photo-buttons) .task-card-info { grid-column:1 / -1; grid-row:2; }
+ .task-card:has(.workflow-photo-buttons) .task-members { grid-column:1 / -1; grid-row:3; }
+ .task-card:has(.workflow-photo-buttons) .task-content > .error,
+ .task-card:has(.workflow-photo-buttons) .workflow-action-form,
+ .task-card:has(.workflow-photo-buttons) .workflow-buttons > .btn { grid-column:1 / -1; }
+ .app .task-card .workflow-photo-buttons { display:grid; grid-column:2; grid-row:1; grid-template-columns:max-content; gap:6px; justify-self:end; align-self:start; }
+ .app .task-card .workflow-photo-buttons > .btn { width:100% !important; justify-self:stretch; grid-column:1; margin:0; }
+ .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons { grid-template-columns:max-content max-content; }
+ .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > [data-action="photos"] { grid-column:1; grid-row:1; }
+ .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
+ .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:1 / -1; grid-row:2; }
 }

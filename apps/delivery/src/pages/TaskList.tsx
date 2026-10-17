@@ -156,7 +156,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
         } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); setSelected(new Set()); }} />
       </div>
 
-      <h3 className="delivery-task-heading" id="delivery-task-heading">やることリスト</h3>
+      <h3 className="delivery-task-heading" id="delivery-task-heading">やること</h3>
       <section ref={sectionRef} className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading" tabIndex={0} style={{ maxHeight: viewportHeight }}>
         <ul ref={shippingRef} className="invoice-task-rows" aria-label="発送関連"><SpareShippingTasks staff={staff} /></ul>
       </section>
