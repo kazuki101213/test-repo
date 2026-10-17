@@ -105,8 +105,6 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
           </button>
         </div>
       </div>
-      <WorkflowControls task={task} onChanged={refreshAction} onError={setActionError} onPanel={openPanel} />
-      {actionError&&<p className="error" role="alert">{actionError}</p>}
       {members.length > 1 && <div className="task-members">
         {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className={`task-member-row${member.is_accessory ? ' task-member-accessory' : ''}`}>
           {member.is_accessory ? <>
@@ -132,6 +130,8 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
           </>}
         </div>)}
       </div>}
+      <WorkflowControls task={task} onChanged={refreshAction} onError={setActionError} onPanel={openPanel} />
+      {actionError&&<p className="error" role="alert">{actionError}</p>}
       </div>
       {expandedId && (panel==='listing'||panel==='shipping'||panel==='messages'&&(task.status==='取引中'||task.status==='出品中') ? <Suspense fallback={<p>読み込み中…</p>}><SellerPanel mode={panel} task={members.find(member=>member.id===expandedId)??task} staff={staff} onClose={onClose} onChanged={onTaskChange}/></Suspense> : <TaskDetail mode={panel} key={`${expandedId}-${detailRevision}-${panel}`} itemId={expandedId} latestTask={members.find(member => member.id === expandedId)} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />)}
     </div>
