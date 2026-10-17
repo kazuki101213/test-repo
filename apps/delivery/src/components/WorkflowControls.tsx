@@ -6,11 +6,11 @@ import {performInventoryAction} from '../api';
 const panels=new Set(['photos','packingPhotos','description','messages','comments','listing','shipping']);
 const isReversal=(button:WorkflowButton)=>button.key.endsWith('_cancel')||button.key==='resell';
 function ReversalConfirmation({button,busy,onConfirm,onCancel}:{button:WorkflowButton;busy:boolean;onConfirm:()=>void;onCancel:()=>void}){
- const dialog=useRef<HTMLDialogElement>(null);
- useEffect(()=>{const element=dialog.current;element?.showModal();return()=>element?.close();},[]);
+ const dialog=useRef<HTMLDialogElement>(null),cancel=useRef<HTMLButtonElement>(null);
+ useEffect(()=>{const element=dialog.current;element?.showModal();cancel.current?.focus();return()=>element?.close();},[]);
  return <dialog ref={dialog} className="workflow-confirmation" aria-label="取消操作の確認" onCancel={event=>{event.preventDefault();if(!busy)onCancel();}}>
   <h3>実行しますか</h3><p>{button.label}</p>{button.confirmation&&<p>{button.confirmation}</p>}
-  <div className="workflow-confirmation-buttons"><button type="button" className="btn primary" disabled={busy} onClick={onConfirm}>{busy?'実行中…':'はい'}</button><button type="button" className="btn" autoFocus disabled={busy} onClick={onCancel}>キャンセル</button></div>
+  <div className="workflow-confirmation-buttons"><button type="button" className="btn primary" disabled={busy} onClick={onConfirm}>{busy?'実行中…':'はい'}</button><button ref={cancel} type="button" className="btn" disabled={busy} onClick={onCancel}>キャンセル</button></div>
  </dialog>;
 }
 export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void;onPanel?:(panel:ProductPanel)=>void}){
