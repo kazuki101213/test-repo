@@ -73,7 +73,7 @@ set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at,product_registered_at)
 select 992003,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-5,'seller sync regression',1000,'ヤフオク','メルカリ','123456',now(),now();
 do $$declare obs jsonb:=jsonb_build_object('external_id','m992003','serial','992003','status','取引中','trade_key','m992003:one','observed_at',now()+interval '1 second');item uuid:=(select id from app.items where lot_seq=992003);begin
- begin perform app.sync_seller_observation('mercari-1',obs);raise exception 'Retired seller account accepted';exception when raise_exception then if sqlerrm='Retired seller account accepted' then raise;end if;end;
+ begin perform app.sync_seller_observation('flea-1',obs);raise exception 'Unsupported seller account accepted';exception when raise_exception then if sqlerrm='Unsupported seller account accepted' then raise;end if;end;
  if jsonb_array_length(app.seller_sync_context(array['mercari-1']))<>0 then raise exception 'Retired account received seller inventory';end if;
  if app.sync_seller_observation('mercari-2',obs)<>'updated' then raise exception 'Seller status not updated';end if;
  if app.sync_seller_observation('mercari-2',obs)<>'stale' then raise exception 'Stale seller status accepted';end if;

@@ -1,5 +1,5 @@
 import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from '../../tools/fleamarket-extension/seller-inspection.js';
-import {clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
+import {advanceSellerList,clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
 import test,{before,after} from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
 import {readSellerPage} from '../../tools/fleamarket-extension/seller-sync.js';import {sellerDomOperation} from '../../tools/fleamarket-extension/seller-dom.js';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/長部一輝/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');let browser;
@@ -104,3 +104,5 @@ test('実画面の出品中の商品はありませんを空一覧と認識し�
 });
 
 test('ヤフオクの実際の売上金管理ラベルを販売済み一覧へのリンクとして取得する',async()=>{const p=await page('<h1>出品中</h1><p>出品中の商品はありません</p><a href="https://salesmanagement.yahoo.co.jp/list">売上金管理 Yahoo!かんたん決済</a>','https://auctions.yahoo.co.jp/my/selling');const r=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品中'});assert.deepEqual(r.navigation,[{text:'売上金管理',url:'https://salesmanagement.yahoo.co.jp/list'}]);await p.close();});
+
+test('売却済み一覧のもっと見るは読み取り行を増やすだけで出品・通知は押さない',async()=>{const p=await page('<main><h1>出品した商品 売却済み</h1><a href="/item/m11001">【11001】商品</a><button id="more" onclick="const a=document.createElement(\'a\');a.href=\'/item/m11002\';a.textContent=\'【11002】商品\';document.querySelector(\'main\').append(a);this.remove()">もっと見る</button><button onclick="throw Error(\'business action\')">発送通知をする</button></main>','https://jp.mercari.com/mypage/listings/completed');assert.equal(await p.evaluate(advanceSellerList),true);const r=await p.evaluate(readSellerPage,{site:'mercari',phase:'売却済み'});assert.equal(r.rows.length,2);await p.close();});
