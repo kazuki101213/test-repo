@@ -189,3 +189,7 @@
   .invoice-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .invoice-tabs > .btn:nth-child(3) { grid-column:1 / -1; }
 }
+@media screen {
+  .app button.btn { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:44px; padding-inline:12px !important; white-space:nowrap; }
+  .invoice-tabs > .btn:nth-child(3) { padding-inline:12px; }
+}

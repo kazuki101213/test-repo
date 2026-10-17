@@ -106,3 +106,14 @@
   .layout .ledger-toolbar > :nth-child(3) { grid-column:2; grid-row:2; }
   .layout .ledger-toolbar > .btn, .layout .ledger-toolbar > span:nth-child(5) { grid-column:2; }
 }
+@media screen {
+  .layout .inventory-toolbar > .inventory-clear-filters { grid-column:span 2; }
+  .layout .field > input[type=number] { width:min(100%,14ch); }
+}
+@media screen and (max-width:1023px) {
+  .layout .inventory-toolbar > .btn:last-child { grid-column:1/-1; }
+}
+/* Keep the explicit grid rows, but size each command by its label. */
+@media screen {
+  .layout button.btn, .layout button.nav { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:44px; padding-inline:12px !important; white-space:nowrap; }
+}

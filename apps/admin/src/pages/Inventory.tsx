@@ -166,7 +166,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </div>
         {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
         <button className="btn" onClick={() => void load()}>再読込</button>
-        <button type="button" className="btn" onClick={clearFilters}>フィルターをすべて解除</button>
+        <button type="button" className="btn inventory-clear-filters" onClick={clearFilters}>フィルターをすべて解除</button>
         {activeColumnCount > 0 && <span className="sub">項目フィルター {activeColumnCount}件</span>}
         <span style={{ flex: 1 }} />
         <button className="btn" disabled={loading} onClick={()=>void exportInventory()}>
