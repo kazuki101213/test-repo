@@ -194,6 +194,7 @@
   .invoice-tabs > .btn:nth-child(3) { padding-inline:12px; }
 }
 .seller-photo { min-width:0; display:grid; align-content:start; justify-items:center; gap:6px; }
+.product-photos .photos, .seller-photos { direction:ltr; grid-auto-flow:row; }
 .seller-photo label { width:100%; display:grid; justify-items:center; gap:4px; }
 .seller-photo-order { display:flex; gap:6px; }
 .seller-photo-order .btn { min-width:44px; min-height:44px; padding:4px 10px; }

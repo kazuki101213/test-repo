@@ -51,7 +51,7 @@
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons { grid-template-columns:repeat(2,1fr); }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="photos"] { grid-column:1; grid-row:1; }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="description"] { grid-column:2; grid-row:1; }
-  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:1; grid-row:2; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:2; grid-row:2; }
   .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="packingPhotos"] { grid-column:1; grid-row:3; }
 }
@@ -168,4 +168,12 @@
   .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > .workflow-controls { display:contents; }
   .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons { grid-column:2; grid-row:1; display:flex; gap:6px; margin-top:0; flex-wrap:nowrap; }
   .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-action-form { grid-column:1 / -1; }
+}
+@media screen and (max-width:1279px) {
+  .task-product-summary .task-section-title { transform:translateX(-1em); }
+  .task-card[data-item-status="検品中"] .task-content { position:relative; }
+  .app .task-card[data-item-status="検品中"] .workflow-buttons { position:absolute; right:0; top:0; display:grid; grid-template-columns:max-content; gap:6px; width:max-content; max-width:calc(100% - 136px); margin:0; }
+  .app .task-card[data-item-status="検品中"] .workflow-buttons > .btn { grid-column:1; width:100% !important; justify-self:stretch; }
+  .task-card[data-item-status="検品中"] .task-photo-action { min-height:94px; }
+  .task-card[data-item-status="検品中"]:has([data-action="return_request_cancel"]) .task-photo-action { min-height:144px; }
 }

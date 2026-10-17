@@ -12,7 +12,7 @@ export function deliveryWorkflowButtons(task:DeliveryTask):WorkflowButton[]{
  case 'Amazon返送依頼':return [{key:'return_request_complete',label:'返送依頼済み'}];
  case '検品中':return [{key:'inspection_complete',label:'検品完了'},{key:'report',label:amazon?'破損報告':'動作不良',note:true},...(amazon?[{key:'return_request_cancel' as const,label:'返送依頼取消'}]:[])];
  case '商品登録前':return [
-  {key:'photos',label:'商品写真'},{key:'description',label:'説明文'},
+  {key:'photos',label:'商品写真'},
   ...(canAddPackingPhotos(task)?[{key:'packingPhotos' as const,label:'梱包写真'}]:[]),
   ...(task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク'?[{key:'listing' as const,label:'出品'}]:task.sales_channel==='FBA'||task.sales_channel==='自己発送'?[{key:'listing_complete' as const,label:'出品完了'}]:[]),
   ...(task.workflow_decision==='yahoo'?[{key:'yahoo_instruction_cancel' as const,label:'販売不可取消'}]:!task.workflow_decision?[{key:'inspection_cancel' as const,label:'検品完了取消'}]:[])];
