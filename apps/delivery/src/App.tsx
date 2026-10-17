@@ -73,21 +73,18 @@ export default function App() {
     <div className={tab === 'bid-calculator' && compactBidViewport ? 'app app-bid-calculator' : 'app'}>
       <div className="topbar">
         <div>
-          <h1>納品アプリ</h1>
           <span className="who">{staffDisplayName(session.staff)}</span>
         </div>
         <div className="app-switch-actions">{canOpenManagement(session.staff) && <button type="button" className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => { if (canLeave()) switchApplication('management'); }}>管理アプリへ</button>}
         <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button></div>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      <nav className="row invoice-tabs no-print" aria-label="納品アプリのメニュー">
-        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => navigate('tasks')}>在庫</button>
-        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'spares' ? 'page' : undefined} onClick={() => navigate('spares')}>予備</button>
-        {['admin','purchaser'].includes(session.staff.role) && <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'bid-calculator' ? 'page' : undefined} onClick={() => navigate('bid-calculator')}>入札計算ツール</button>}
-        <div className="invoice-notification-actions">
-          <button className="btn ghost" aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => navigate('invoices')}>請求書・領収書</button>
-          {['admin','deliverer'].includes(session.staff.role) && <button className="btn ghost" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'notifications' ? 'page' : undefined} aria-controls="notification-settings" onClick={() => navigate('notifications')}>通知設定</button>}
-        </div>
+      <nav className="row invoice-tabs delivery-navigation no-print" aria-label="納品アプリのメニュー">
+        <button className="btn ghost" data-tab="tasks" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => navigate('tasks')}>在庫</button>
+        <button className="btn ghost" data-tab="spares" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'spares' ? 'page' : undefined} onClick={() => navigate('spares')}>予備</button>
+        <button className="btn ghost" data-tab="invoices" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => navigate('invoices')}>請求書・領収書</button>
+        {['admin','purchaser'].includes(session.staff.role) && <button className="btn ghost" data-tab="bid-calculator" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'bid-calculator' ? 'page' : undefined} onClick={() => navigate('bid-calculator')}>入札計算ツール</button>}
+        {['admin','deliverer'].includes(session.staff.role) && <button className="btn ghost" data-tab="notifications" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'notifications' ? 'page' : undefined} aria-controls="notification-settings" onClick={() => navigate('notifications')}>通知設定</button>}
       </nav>
       {tab === 'notifications' && ['admin','deliverer'].includes(session.staff.role) && <div id="notification-settings">
         <PushSettings key={session.user.id} userId={session.user.id} />

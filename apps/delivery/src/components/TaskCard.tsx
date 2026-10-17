@@ -1,8 +1,7 @@
 import { lazy, Suspense, useState, type SyntheticEvent, type KeyboardEvent } from 'react';
-import { jpDate, yen, canViewDeliveryAssignee, productModelText } from '@bussan/shared';
+import { jpDate, canViewDeliveryAssignee, productModelText } from '@bussan/shared';
 import type { DeliveryTask, Staff, ProductPanel } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
-import ColoredLabel from './ColoredLabel';
 import WorkflowControls from './WorkflowControls';
 import {fetchTask} from '../api';
 const SellerPanel=lazy(()=>import('./SellerPanel')); 
@@ -61,7 +60,7 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
   }
 
   return <span className="copyable-text" role="button" tabIndex={0} aria-label={`${label}をコピー`} aria-live="polite" title={`${label}をクリックしてコピー`} onClick={copy} onKeyDown={handleKeyDown}>
-    {state === 'copied' ? `${label}✓` : state === 'failed' ? `${label}（コピー失敗）` : `${label} ${(displayValue ?? value) || '—'}`}
+    {state === 'ready' ? <><span>{label}</span>{' '}<span>{(displayValue ?? value) || '—'}</span></> : state === 'copied' ? `${label}✓` : `${label}（コピー失敗）`}
   </span>;
 }
 
@@ -84,19 +83,22 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
       {members.some(member => unreadItemIds.has(member.id)) && <span className="photo-approval-mark" role="img" aria-label="未確認のメッセージまたは写真承認があります" />}
       <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
       <div className="task-content">
+      <div className="task-product-summary">
       <div className="task-card-overview">
         <div className="task-card-info">
-          <span className="badge">{task.status}</span><span className="muted">仕入日 {jpDate(task.purchased_at)}</span>
-          <span className="muted">仕入先 <ColoredLabel value={task.marketplace} /></span>
-          <span className="muted">販売先 <ColoredLabel value={task.sales_channel || '—'} /></span>
-          <span className="muted">コンディション <ColoredLabel value={task.condition || '—'} /></span>
-          <CopyableText label="販売金額" value={task.planned_price == null ? '' : String(task.planned_price)} displayValue={yen(task.planned_price)} />
+          <span className="task-section-title">{task.is_accessory ? '付属品' : '本体'}</span>
+          {task.is_accessory && <span className="task-detail-field"><span>品名</span><span>{task.title}</span></span>}
           <CopyableText label="SKU" value={task.sku} />
-          <span className="title">{task.is_accessory && <span className="badge" style={{ marginRight: 6 }}>付属品</span>}<CopyableText label="型番" value={modelFor(task)} /></span>
-          <CopyableText label="ASIN" value={task.asin || '—'} />
-          <span className="task-item-id-line"><CopyableText label={itemIdLabel(task)} value={productIdFor(task)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
+          <span className="task-item-id-line"><CopyableText label={itemIdLabel(task)} value={productIdFor(task)} /><button type="button" className="task-item-page-link" aria-label="仕入先の商品ページを開く" disabled={!isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)} title={isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(task.marketplace, task.marketplace_url)) window.open(task.marketplace_url!, '_blank', 'noopener,noreferrer'); }}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg></button></span>
           <CopyableText label={trackingLabel(task)} value={task.tracking_no || '—'} />
-          {canViewDeliveryAssignee(staff) && <span>納品担当者 {task.deliverer_name || '未設定'}</span>}
+          <CopyableText label="型番" value={modelFor(task)} />
+          <CopyableText label="ASIN" value={task.asin || '—'} />
+          <span className="task-detail-field"><span>コンディション</span><span>{task.condition || '—'}</span></span>
+          <span className="task-detail-field"><span>販売先</span><span>{task.sales_channel || '—'}</span></span>
+          <span className="task-detail-field"><span>仕入日</span><span>{jpDate(task.purchased_at)}</span></span>
+          <span className="task-detail-field"><span>仕入先</span><span>{task.marketplace}</span></span>
+          <span className="task-detail-field"><span>状態</span><span>{task.status}</span></span>
+          {canViewDeliveryAssignee(staff) && <span className="task-detail-field task-assignee"><span>納品担当者</span><span>{task.deliverer_name || '未設定'}</span></span>}
           {task.memo?.trim() && <span className="purchaser-comment">仕入担当者からのコメント：{task.memo}</span>}
         </div>
         <div className="task-photo-action">
@@ -108,16 +110,15 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
       {members.length > 1 && <div className="task-members">
         {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className={`task-member-row${member.is_accessory ? ' task-member-accessory' : ''}`}>
           {member.is_accessory ? <>
-            <span className="badge">付属品</span>
-            <span className="muted task-member-date">仕入日 {jpDate(member.purchased_at)}</span>
-            <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => {setPanel('photos');onOpenMember(member.id);}}>
-              品名 {member.title}
-            </button>
-            <span className="task-item-id-line"><CopyableText label={itemIdLabel(member)} value={productIdFor(member)} /><button type="button" className="task-item-page-link" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}>仕入先URL</button></span>
+            <span className="task-section-title">付属品</span>
+            <button type="button" className="task-member-open task-detail-field" aria-expanded={expandedId === member.id} onClick={() => {setPanel('photos');onOpenMember(member.id);}}><span>品名</span><span>{member.title}</span></button>
+            <span className="task-item-id-line"><CopyableText label={itemIdLabel(member)} value={productIdFor(member)} /><button type="button" className="task-item-page-link" aria-label="仕入先の商品ページを開く" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg></button></span>
             <CopyableText label={trackingLabel(member)} value={member.tracking_no || '—'} />
-            {canViewDeliveryAssignee(staff) && <span>納品担当者 {member.deliverer_name || '未設定'}</span>}
+            <span className="task-detail-field"><span>仕入日</span><span>{jpDate(member.purchased_at)}</span></span>
+            <span className="task-detail-field"><span>仕入先</span><span>{member.marketplace}</span></span>
+            <span className="task-detail-field"><span>利用記録</span><span>{member.lot_seq}</span></span>
+            {canViewDeliveryAssignee(staff) && <span className="task-detail-field task-assignee"><span>納品担当者</span><span>{member.deliverer_name || '未設定'}</span></span>}
             {member.memo?.trim() && <span className="purchaser-comment">仕入担当者からのコメント：{member.memo}</span>}
-            <span>利用記録 {member.lot_seq}</span>
           </> : <>
             <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
               同じ商品：{modelFor(member)}
@@ -130,6 +131,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
           </>}
         </div>)}
       </div>}
+      </div>
       <WorkflowControls task={task} onChanged={refreshAction} onError={setActionError} onPanel={openPanel} />
       {actionError&&<p className="error" role="alert">{actionError}</p>}
       </div>

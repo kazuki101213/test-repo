@@ -15,3 +15,4 @@ createRoot(document.getElementById('root')!).render(
     {setup ? <PasswordSetup /> : <App />}
   </React.StrictMode>,
 );
+import './inventoryLayout.css';

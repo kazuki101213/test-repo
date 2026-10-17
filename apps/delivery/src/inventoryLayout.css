@@ -1,0 +1,82 @@
+/* Approved inventory sample: shared state cells on desktop, one common mobile grid. */
+@media screen {
+  .app .delivery-navigation { display:flex; flex-wrap:nowrap; gap:24px; justify-content:center; border:0; background:transparent; padding:8px 0; margin:0 0 12px; }
+  .app .delivery-navigation > .btn { border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--text); box-shadow:none; font-size:15px; font-weight:400; padding:8px 4px !important; }
+  .app .delivery-navigation > .btn[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
+  .topbar { position:static; border:0; background:transparent; }
+  .app .inventory-workflow-menu { display:grid; grid-template-columns:116px minmax(140px,1fr) minmax(74px,1fr) minmax(148px,1.3fr) repeat(4,minmax(90px,1fr)); grid-template-rows:repeat(5,44px) 12px 44px; gap:8px; padding:16px; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:visible; }
+  .inventory-workflow-lane { grid-column:1; position:relative; display:flex; align-items:center; padding-left:16px; font-size:15px; font-weight:400; white-space:nowrap; }
+  .inventory-workflow-lane::before { content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:3px; background:var(--lane-color); }
+  .inventory-workflow-lane[data-lane="0"] { grid-row:1; --lane-color:#71836a; }
+  .inventory-workflow-lane[data-lane="1"] { grid-row:2; --lane-color:#789ac8; }
+  .inventory-workflow-lane[data-lane="2"] { grid-row:3; --lane-color:#c37c7c; }
+  .inventory-workflow-lane[data-lane="3"] { grid-row:4; --lane-color:#c79c44; }
+  .inventory-workflow-lane[data-lane="4"] { grid-row:5; --lane-color:#a18abf; }
+  .app .inventory-workflow-menu > .btn { width:100% !important; height:100%; align-self:stretch; min-width:0; padding-inline:6px !important; font-size:15px; font-weight:400; line-height:1.35; white-space:nowrap; }
+  .inventory-workflow-menu > [data-status="受取前"] { grid-column:2; grid-row:1 / 5; }
+  .inventory-workflow-menu > [data-status="Amazon返送依頼"] { grid-column:2; grid-row:5; }
+  .inventory-workflow-menu > [data-status="検品中"] { grid-column:3; grid-row:1 / 6; }
+  .inventory-workflow-menu > [data-status="Amazon補填申請中"] { grid-column:4; grid-row:5; }
+  .inventory-workflow-menu > [data-status="商品登録前"] { grid-column:5; grid-row:1 / 6; }
+  .inventory-workflow-menu > [data-status="出品中"] { grid-column:6; grid-row:1 / 6; }
+  .inventory-workflow-menu > [data-status="取引中"] { grid-column:7; grid-row:2 / 6; }
+  .inventory-workflow-menu > [data-status="販売済"] { grid-column:8; grid-row:1 / 6; }
+  .inventory-workflow-menu > [data-status="all"] { grid-column:1; grid-row:7; }
+  .inventory-workflow-menu > [data-status="動作不良"] { grid-column:6 / 8; grid-row:7; }
+  .inventory-workflow-menu > [data-status="返品処理"] { grid-column:8; grid-row:7; }
+  .task-product-summary { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:24px; align-items:start; }
+  .task-product-summary:not(:has(.task-members)) { grid-template-columns:minmax(0,1fr); }
+  .task-product-summary .task-card-overview { display:grid; grid-template-columns:120px minmax(0,1fr); gap:16px; }
+  .task-product-summary .task-photo-action { grid-column:1; grid-row:1; }
+  .task-product-summary .task-card-info { grid-column:2; grid-row:1; }
+  .task-product-summary .task-card-info, .task-product-summary .task-members, .task-product-summary .task-member-row { min-width:0; display:grid; gap:4px; margin:0; padding:0; }
+  .app .task-product-summary, .app .task-product-summary .task-section-title, .app .task-product-summary .task-detail-field, .app .task-product-summary .copyable-text, .app .task-product-summary .task-member-row > * { font-size:15px; font-weight:400; color:var(--text); line-height:1.6; }
+  .task-product-summary .task-section-title { margin:0 0 4px; }
+  .app .task-product-summary .task-card-info > span { white-space:normal; overflow:visible; text-overflow:clip; }
+  .app .task-product-summary .copyable-text, .app .task-product-summary .task-detail-field { display:grid; grid-template-columns:112px minmax(0,1fr); column-gap:8px; padding:0; min-width:0; overflow-wrap:anywhere; }
+  .task-product-summary .task-detail-field > span:first-child, .task-product-summary .copyable-text > span:first-child { white-space:nowrap; }
+  .app .task-product-summary .task-item-id-line { display:flex !important; gap:4px; align-items:start; min-width:0; }
+  .task-product-summary .task-item-id-line > .copyable-text { flex:0 1 auto; }
+  .app .task-product-summary .task-item-page-link { display:inline-flex; justify-content:center; align-items:center; width:28px; min-height:28px; flex:none; padding:2px; border:0; background:transparent; color:var(--accent); }
+  .task-product-summary .task-item-page-link:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .task-product-summary .task-item-page-link:disabled { opacity:.4; }
+  .task-product-summary .purchaser-comment { grid-column:1 / -1; margin-top:6px; }
+  .app .task-product-summary .task-member-open { width:100%; min-height:0; background:transparent; border:0; padding:0; margin:0; }
+}
+@media screen and (max-width:1023px) {
+  .app .delivery-navigation { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) max-content; gap:4px 8px; justify-items:start; }
+  .app .delivery-navigation > .btn { font-size:14px; grid-column:auto; grid-row:1; padding-inline:0 !important; }
+  .app .delivery-navigation > [data-tab="tasks"] { grid-column:1; }
+  .app .delivery-navigation > [data-tab="spares"] { grid-column:2; }
+  .app .delivery-navigation > [data-tab="invoices"] { grid-column:3; }
+  .app .delivery-navigation > [data-tab="bid-calculator"] { grid-column:1 / 3; grid-row:2; }
+  .app .delivery-navigation > [data-tab="notifications"] { grid-column:3; grid-row:2; }
+  .app .inventory-workflow-menu { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(6,44px); gap:8px; padding:8px; }
+  .inventory-workflow-lane { display:none; }
+  .app .inventory-workflow-menu > .btn { grid-column:auto; grid-row:auto; font-size:14px; padding-inline:2px !important; }
+  .inventory-workflow-menu > [data-status="受取前"] { order:1; }
+  .inventory-workflow-menu > [data-status="検品中"] { order:2; }
+  .inventory-workflow-menu > [data-status="Amazon返送依頼"] { order:3; }
+  .inventory-workflow-menu > [data-status="Amazon補填申請中"] { order:4; }
+  .inventory-workflow-menu > [data-status="商品登録前"] { order:5; }
+  .inventory-workflow-menu > [data-status="出品中"] { order:6; }
+  .inventory-workflow-menu > [data-status="取引中"] { order:7; }
+  .inventory-workflow-menu > [data-status="販売済"] { order:8; }
+  .inventory-workflow-menu > [data-status="返品処理"] { order:9; }
+  .inventory-workflow-menu > [data-status="動作不良"] { order:10; }
+  .app .inventory-workflow-menu > [data-status="all"] { order:11; grid-column:1 / -1; }
+  .task-product-summary { display:block; }
+  .task-product-summary .task-card-overview { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .task-product-summary .task-photo-action { grid-column:1; grid-row:1; justify-items:start; }
+  .task-product-summary .task-card-info { grid-column:1; grid-row:2; }
+  .task-product-summary .task-card-photo-button, .task-product-summary .task-card-photo { width:120px; }
+  .task-product-summary .task-card-photo { height:80px; }
+  .task-product-summary .task-members { margin-top:16px; }
+  .app .task-product-summary .copyable-text, .app .task-product-summary .task-detail-field { grid-template-columns:106px minmax(0,1fr); gap:4px; }
+}
+@media screen and (min-width:1024px) and (max-width:1199px) {
+  .task-product-summary { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
+  .task-product-summary .task-card-overview { grid-template-columns:minmax(0,1fr); }
+  .task-product-summary .task-photo-action { grid-column:1; grid-row:1; }
+  .task-product-summary .task-card-info { grid-column:1; grid-row:2; }
+}
