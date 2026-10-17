@@ -41,7 +41,7 @@ begin
    else action:='detail';end if;
   elsif i.sold_on is not null or i.status in ('販売済','返品処理','動作不良','Amazon補填申請中') then action:='protected';
   elsif l.active and l.observed_status=row->>'status' and i.sales_channel=ch
-   and i.status::text=case when row->>'status'='支払い待ち' then '出品中' else row->>'status' end
+   and i.status::text=(case when row->>'status'='支払い待ち' then '出品中' else row->>'status' end)
    and i.seller_message_attention=coalesce((row->>'attention')::boolean,false) then action:='unchanged';
   elsif row->>'status' in ('取引中','キャンセル') then action:='detail';
   else action:='apply';end if;

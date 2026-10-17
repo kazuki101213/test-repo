@@ -145,7 +145,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
      const next=data.navigation.filter(link=>['次へ','次のページ','次'].includes(link.text));
      enqueue(data.navigation.filter(link=>!['次へ','次のページ','次'].includes(link.text)));
      if(next.length){for(const link of next.reverse()){const url=sellerUrl(account,link.url);if(seen.has(url))throw Error('一覧のページ送りが循環しています');queue.unshift({url,phase:page.phase});}break;}
-     if(account.site!=='mercari'||!session.advanceList||!await session.advanceList(page.phase))break;
+     if(account.site!=='mercari'||!['出品中','取引中','売却済み'].includes(page.phase)||!session.advanceList||!await session.advanceList(page.phase))break;
      const after=await session.read(page.phase);
      if(!after.rows.some(row=>!processed.has(row.external_id+'/'+row.status)))throw Error('追加の一覧を確認できません。再試行しません');
     }
