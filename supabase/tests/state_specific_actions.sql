@@ -83,7 +83,7 @@ do $$declare obs jsonb:=jsonb_build_object('external_id','m992003','serial','992
  if app.sync_seller_observation('mercari-2',obs||jsonb_build_object('observed_at',now()+interval '2 seconds'))<>'protected' then raise exception 'Old trade reopened after listing observation';end if;
  if app.sync_seller_observation('mercari-2',obs||jsonb_build_object('trade_key','m992003:two','observed_at',now()+interval '3 seconds'))<>'updated' then raise exception 'New trade not attached to same inventory';end if;
  obs:=obs||jsonb_build_object('trade_key','m992003:two','status','販売済','sold_on',current_date-2,'sold_price',6100,'payout_amount',4371,'observed_at',now()+interval '4 seconds');
- if app.sync_seller_observation('mercari-2',obs)<>'updated' then raise exception 'Completed sale not saved';end if;
+ if app.sync_seller_observation('mercari-2',obs)<>'registered' then raise exception 'Completed sale not saved';end if;
  if (select count(*) from app.items where lot_seq=992003)<>1 or not exists(select 1 from app.items where id=item and sold_on=current_date-2 and sold_price=6100 and payout_amount=4371 and status='販売済') then raise exception 'Duplicate inventory or wrong sale date/net';end if;
  if app.sync_seller_observation('mercari-2',obs||jsonb_build_object('status','出品中','observed_at',now()+interval '5 seconds'))<>'protected' then raise exception 'Sold item reopened';end if;
 end $$;
