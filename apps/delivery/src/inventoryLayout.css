@@ -25,7 +25,7 @@
   .inventory-workflow-footer { grid-column:1 / -1; grid-row:7; display:flex; gap:6px; align-items:stretch; }
   .app .inventory-workflow-footer > .btn { width:max-content !important; height:44px; font-size:15px; font-weight:400; padding-inline:12px !important; }
   .inventory-mobile-label { display:none; }
-  .task-product-summary { display:grid; grid-template-columns:minmax(0,520px) minmax(0,1fr); gap:24px; align-items:start; }
+  .task-product-summary { display:grid; grid-template-columns:minmax(0,480px) minmax(0,1fr); gap:24px; align-items:start; }
   .task-product-summary:not(:has(.task-members)) { grid-template-columns:minmax(0,1fr); }
   .task-product-summary .task-card-overview { display:grid; grid-template-columns:120px minmax(0,1fr); gap:16px; }
   .task-product-summary .task-photo-action { grid-column:1; grid-row:1; }
@@ -149,4 +149,12 @@
   .delivery-inventory-sidebar .delivery-inventory-search > input,
   .delivery-inventory-sidebar .delivery-inventory-search > select[aria-label="納品担当者で検索"] { grid-column:1 / -1; grid-row:2; }
   .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:2; grid-row:1; }
+}
+@media screen and (min-width:1280px) {
+  .task-card[data-item-status="検品中"] .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; column-gap:16px; align-items:start; }
+  .task-card[data-item-status="検品中"] .task-content > * { grid-column:1 / -1; }
+  .task-card[data-item-status="検品中"] .task-content > .task-product-summary { grid-column:1; grid-row:1; }
+  .task-card[data-item-status="検品中"] .task-content > .workflow-controls { display:contents; }
+  .task-card[data-item-status="検品中"] .workflow-buttons { grid-column:2; grid-row:1; display:flex; gap:6px; margin-top:0; flex-wrap:nowrap; }
+  .task-card[data-item-status="検品中"] .workflow-action-form { grid-column:1 / -1; }
 }
