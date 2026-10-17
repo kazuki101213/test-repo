@@ -11,7 +11,8 @@ for(const channel of ['メルカリ','ヤフオク']){
  assert(!draft.description.startsWith('商品名（'));assert(draft.description.length>100);
  const saved='商品名（'+channel+'）\n手入力タイトル\n\n説明文\n手入力本文';
  const edited=listingDraft({...base,sales_channel:channel,description:saved},'東芝');assert.equal(edited.title,'手入力タイトル');assert.equal(edited.description,'手入力本文');
- assert.equal(listingDraft({...base,sales_channel:channel,description:'保存した文章'},'東芝').description,'保存した文章');
+ const legacy=listingDraft({...base,sales_channel:channel,description:'保存した文章'},'東芝');
+ assert.equal(legacy.description,'保存した文章');assert(legacy.title.includes('【2407b】'));assert(legacy.title.includes('東芝'));
 }
 const jsx=(type,props)=>({type,props}),react={useState:v=>[v,()=>{}],useRef:v=>({current:v})};
 const Controls=load('apps/delivery/src/components/WorkflowControls.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':workflow}).default;
@@ -28,7 +29,7 @@ async function panelCheck(approved,saved){
  const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,canViewDeliveryAssignee:()=>false},'../listingDraft':{listingDraft},'../api':{
   fetchTask:async()=>({...base,description:saved}),fetchSellerContext:async()=>({revision:'one',operations:[],photo_review_approved:approved}),fetchPhotoUrls:async()=>[{id:'one',url:'photo'}],fetchProductMaker:async()=>'東芝'
  }}).default;
- const props={mode:'listing',task:base,staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(){},onClose(){}};
+ const props={mode:'listing',task:{...base,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(){},onClose(){}};
  for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=Panel(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}
  const title=all(tree).find(n=>n.type==='input'&&n.props.maxLength===128);
  const body=all(tree).find(n=>n.type==='textarea'&&n.props.maxLength===5000);
