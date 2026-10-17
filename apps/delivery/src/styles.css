@@ -101,7 +101,7 @@ button, input, select, textarea { font: inherit; }
 .progress span { flex: 1; height: 4px; border-radius: 2px; background: var(--border); }
 .progress span[data-done='true'] { background: var(--ok); }
 
-input[type='text'], input[type='email'], input[type='password'], input[type='search'], input[type='number'],
+input:not([type]), input[type='text'], input[type='email'], input[type='password'], input[type='search'], input[type='number'],
 select, textarea {
   width: 100%; padding: 11px 12px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
