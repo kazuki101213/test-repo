@@ -171,9 +171,11 @@
 }
 @media screen and (max-width:1279px) {
   .task-product-summary .task-section-title { transform:translateX(-1em); }
+  .task-card > input[type="checkbox"] { margin:0; }
+  .task-product-summary .task-photo-action { align-content:start; }
   .task-card[data-item-status="検品中"] .task-content { position:relative; }
   .app .task-card[data-item-status="検品中"] .workflow-buttons { position:absolute; right:0; top:0; display:grid; grid-template-columns:max-content; gap:6px; width:max-content; max-width:calc(100% - 136px); margin:0; }
   .app .task-card[data-item-status="検品中"] .workflow-buttons > .btn { grid-column:1; width:100% !important; justify-self:stretch; }
   .task-card[data-item-status="検品中"] .task-photo-action { min-height:94px; }
-  .task-card[data-item-status="検品中"]:has([data-action="return_request_cancel"]) .task-photo-action { min-height:144px; }
+  .task-card[data-item-status="検品中"]:has([data-action="return_request_cancel"]) .task-photo-action { min-height:120px; }
 }
