@@ -27,7 +27,12 @@ for(const app of ['admin','delivery']){
   assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task']);
   if(app==='delivery'){
     await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'}});
-    assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other','sent']);
+    assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other']);
+    // Simulate a successful row action followed by a stale in-flight server response.
+    all(tree).find(n=>typeof n.type==='function'&&n.props.task.id==='task').props.onChanged();await settle();
+    assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['other'],'Successful send must stay dismissed even if refresh returns old unsent rows');
+    await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
+    assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other','sent'],'Management confirmation history remains available');
     await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
     button('発送').props.onClick();await settle();
