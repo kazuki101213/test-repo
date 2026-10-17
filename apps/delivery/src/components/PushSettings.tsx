@@ -39,7 +39,7 @@ export default function PushSettings({ userId }: { userId: string }) {
       const subscription = await registration.pushManager.getSubscription()
         || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
       await pushRequest('subscribe', { subscription: subscription.toJSON(), baseUrl: new URL(import.meta.env.BASE_URL, location.origin).href });
-      setEnabled(true); setMessage('新しいタスクの通知を有効にしました。');
+      setEnabled(true); setMessage('やることリストの通知を有効にしました。');
     } catch (cause) { setMessage(cause instanceof Error ? cause.message : '通知を有効にできませんでした。'); }
     finally { setBusy(false); }
   }

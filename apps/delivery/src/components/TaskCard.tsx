@@ -79,7 +79,7 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
   ].filter(Boolean)));
 
   return (
-    <div id={`delivery-task-${task.id}`} className="card task-card" data-expanded={!!expandedId}>
+    <div id={`delivery-task-${task.id}`} className="card task-card" data-expanded={!!expandedId} data-item-status={task.status}>
       {members.some(member => unreadItemIds.has(member.id)) && <span className="photo-approval-mark" role="img" aria-label="未確認のメッセージまたは写真承認があります" />}
       <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
       <div className="task-content">
