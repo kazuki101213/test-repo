@@ -258,7 +258,7 @@ export async function requestMarketplaceMessageSync(itemId: string): Promise<str
   return data as string;
 }
 
-export async function uploadPhoto(sku: string, itemId: string, staffId: string, originalFile: File) {
+export async function uploadPhoto(sku: string, itemId: string, staffId: string, originalFile: File, purpose: 'product'|'packing' = 'product') {
   const sb = getSupabase();
   const file = await preparePhotoForUpload(originalFile);
   const path = `${sku}/${crypto.randomUUID()}.jpg`;
@@ -275,6 +275,7 @@ export async function uploadPhoto(sku: string, itemId: string, staffId: string, 
       item_id: itemId,
       storage_path: path,
       uploaded_by: staffId,
+      photo_kind: purpose,
     });
     if (error) throw error;
   } catch (error) {
@@ -289,8 +290,8 @@ export interface ItemPhoto {
   canDelete?: boolean;
 }
 
-export async function fetchPhotoUrls(itemId: string): Promise<ItemPhoto[]> {
-  const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, action: 'list' } });
+export async function fetchPhotoUrls(itemId: string, purpose: 'product'|'packing' = 'product'): Promise<ItemPhoto[]> {
+  const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, action: 'list', purpose } });
   if (error) {
     const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
     throw new Error(message || error.message);
@@ -327,8 +328,8 @@ export async function fetchPhotoReviewPolicy(): Promise<boolean> {
   return data === true;
 }
 
-export async function addPhotosToDrive(itemId: string): Promise<{ added: number; total: number }> {
-  const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId } });
+export async function addPhotosToDrive(itemId: string, purpose: 'product'|'packing' = 'product'): Promise<{ added: number; total: number }> {
+  const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, purpose } });
   if (error) {
     const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
     throw new Error(message || error.message);

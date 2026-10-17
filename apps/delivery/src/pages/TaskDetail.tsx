@@ -1,6 +1,6 @@
 import ColoredLabel from '../components/ColoredLabel';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { jpDate, canViewDeliveryAssignee } from '@bussan/shared';
+import { jpDate, canViewDeliveryAssignee, canAddPackingPhotos } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff } from '@bussan/shared';
 import {
   addPhotosToDrive, deletePhoto, fetchComments, fetchSupplierConversation, fetchSupplierOperation, fetchPhotoReview, fetchPhotoUrls, fetchTask, postComment,
@@ -12,7 +12,10 @@ import DescriptionEditor from '../components/DescriptionEditor';
 
 export default function TaskDetail({
   itemId, latestTask, staff, listingSkus, mode = 'photos', onClose, onChanged, onOpened,
-}: { mode?: 'photos'|'description'|'messages'|'comments'; itemId: string; latestTask?: DeliveryTask; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
+}: { mode?: 'photos'|'packingPhotos'|'description'|'messages'|'comments'; itemId: string; latestTask?: DeliveryTask; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
+  const packing=mode==='packingPhotos';
+  const photoMode=mode==='photos'||packing;
+  const purpose=packing?'packing':'product';
   const [task, setTask] = useState<DeliveryTask | null>(null);
   const openedReported = useRef(false);
   const [supplierAccount,setSupplierAccount]=useState('');
@@ -41,7 +44,7 @@ export default function TaskDetail({
   const reload = useCallback(async () => {
     try {
       const [t, c, p, review] = await Promise.all([
-        fetchTask(itemId, canViewDeliveryAssignee(staff)), mode === 'messages'||mode === 'comments' ? fetchComments(itemId) : Promise.resolve([]), mode === 'photos' ? fetchPhotoUrls(itemId) : Promise.resolve([]), mode === 'photos' ? fetchPhotoReview(itemId) : Promise.resolve(null),
+        fetchTask(itemId, canViewDeliveryAssignee(staff)), mode === 'messages'||mode === 'comments' ? fetchComments(itemId) : Promise.resolve([]), photoMode ? fetchPhotoUrls(itemId,purpose) : Promise.resolve([]), mode === 'photos' ? fetchPhotoReview(itemId) : Promise.resolve(null),
       ]);
       if (!t) throw new Error('商品が見つかりません。');
       setTask(t);
@@ -108,7 +111,7 @@ export default function TaskDetail({
     let uploadedCount = 0;
     try {
       for (const file of Array.from(files)) {
-        await uploadPhoto(task.sku, task.id, staff.id, file);
+        await uploadPhoto(task.sku, task.id, staff.id, file,purpose);
         uploadedCount++;
       }
       setDriveMessage('新しい写真があります。Googleドライブ追加してください。');
@@ -120,7 +123,7 @@ export default function TaskDetail({
     } finally {
       // Reflect successfully saved photos even if a later progress update failed.
       if (uploadedCount > 0) {
-        try { if (!task.photo_uploaded) await recordListingPhotoUpload(task.id); }
+        try { if (!packing && !task.photo_uploaded) await recordListingPhotoUpload(task.id); }
         catch (cause) { setError(current => current ?? (cause instanceof Error ? cause.message : String(cause))); }
         await reload();
       }
@@ -131,8 +134,8 @@ export default function TaskDetail({
     if (!task) return;
     setDriveBusy(true); setError(null); setDriveMessage('');
     try {
-      const result = await addPhotosToDrive(task.id);
-      setDriveMessage(`${result.total}枚を通番号${task.lot_seq}の共通フォルダに保存しました。管理アプリで写真確認を待っています。`);
+      const result = await addPhotosToDrive(task.id,purpose);
+      setDriveMessage(packing?`梱包写真${result.total}枚を商品写真と同じ保存先に追加しました。`:`${result.total}枚を通番号${task.lot_seq}の共通フォルダに保存しました。管理アプリで写真確認を待っています。`);
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setDriveBusy(false); }
@@ -177,7 +180,7 @@ export default function TaskDetail({
     setDeletingPhotoId(photo.id); setError(null); setDriveMessage('');
     try {
       await deletePhoto(photo.id);
-      setDriveMessage('写真を削除しました。残りの写真は「Googleドライブ追加」から確認へ再提出してください。');
+      setDriveMessage(packing?'梱包写真を削除しました。':'写真を削除しました。残りの写真は「Googleドライブ追加」から確認へ再提出してください。');
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setDeletingPhotoId(null); }
@@ -229,7 +232,7 @@ export default function TaskDetail({
   }
 
   const supplierAccounts=task.marketplace==='メルカリ'?[['mercari-1','メルカリ1'],['mercari-2','メルカリ2']]:task.marketplace==='ヤフオク'?[['auctions-1','ヤフオク1'],['auctions-2','ヤフオク2']]:task.marketplace==='ラクマ'?[['rakuma-1','ラクマ1']]:[['flea-1','Yahoo!フリマ1'],['flea-2','Yahoo!フリマ2']];
-  const canEditPhotos=task.status==='商品登録前';
+  const canEditPhotos=packing?canAddPackingPhotos(task):task.status==='商品登録前';
   const isWorkingAmazonReturn = task.marketplace === '動作品Amazon返品';
 
   return (
@@ -241,11 +244,11 @@ export default function TaskDetail({
       </div>
 
       {error && <div className="error" role="alert">{error}</div>}
-      {mode === 'photos' && <>
+      {photoMode && <>
       <div className="card photo-control-row">
-        <span className="muted">写真 {photos.length}枚</span>
-        {canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : '写真追加'}
-          <input type="file" aria-label="商品写真追加" accept="image/*" multiple disabled={uploading || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+        <span className="muted">{packing?'梱包写真':'写真'} {photos.length}枚</span>
+        {canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : packing?'梱包写真追加':'写真追加'}
+          <input type="file" aria-label={packing?'梱包写真追加':'商品写真追加'} accept="image/*" multiple disabled={uploading || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>}
         {canEditPhotos&&<button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
           onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブ追加中…' : 'Googleドライブ追加'}</button>}
@@ -258,7 +261,7 @@ export default function TaskDetail({
       <div className="product-photos">
         {photos.length > 0 && <div className="photos">{photos.map((photo, index) => <div className="uploaded-photo" key={photo.id}>
           <a href={photo.url} target="_blank" rel="noreferrer">
-            <img src={photo.url} alt={`登録した商品写真 ${index + 1}`} loading="lazy" />
+            <img src={photo.url} alt={`登録した${packing?'梱包写真':'商品写真'} ${index + 1}`} loading="lazy" />
           </a>
                     <div className="uploaded-photo-actions">{canEditPhotos&&<button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={photo.canDelete === false || deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
               {deletingPhotoId === photo.id ? '削除中…' : '削除'}
@@ -266,7 +269,7 @@ export default function TaskDetail({
           </div>
         </div>)}</div>}
       </div>
-      {!isWorkingAmazonReturn && photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
+      {!packing && !isWorkingAmazonReturn && photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
         写真確認：{photoReview.approved_at ? '完了' : '確認待ち'}
       </p>}
 
