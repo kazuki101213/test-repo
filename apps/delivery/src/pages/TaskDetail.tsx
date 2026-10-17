@@ -11,7 +11,7 @@ import DescriptionEditor from '../components/DescriptionEditor';
 
 
 export default function TaskDetail({
-  itemId, latestTask, staff, listingSkus, mode = 'photos', onClose, onChanged, onOpened,
+  itemId, latestTask, staff, listingSkus, mode = 'photos', onChanged, onOpened,
 }: { mode?: 'photos'|'packingPhotos'|'description'|'messages'|'comments'; itemId: string; latestTask?: DeliveryTask; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
   const packing=mode==='packingPhotos';
   const photoMode=mode==='photos'||packing;
@@ -237,12 +237,6 @@ export default function TaskDetail({
 
   return (
     <section className="task-detail-inline" aria-label={`${task.sku}の詳細`}>
-      <div className="row inline-detail-header">
-        <button type="button" className="btn ghost" onClick={onClose}>詳細を閉じる</button>
-        <span className="badge">{task.status}</span>
-
-      </div>
-
       {error && <div className="error" role="alert">{error}</div>}
       {photoMode && <>
       <div className="card photo-control-row">
