@@ -161,10 +161,10 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
 <body>
 
 <div class="tab-header">
-  <button class="tab-btn active" onclick="showTab('calc', this)">ブルーレイレコーダー計算ツール</button>
-  <button class="tab-btn" onclick="showTab('manual', this)">マニュアル(ブルーレイレコーダー)</button>
-  <button class="tab-btn" onclick="showTab('calc_m', this)">モニター計算ツール</button>
-  <button class="tab-btn" onclick="showTab('manual_m', this)">マニュアル(モニター)</button>
+  <button class="tab-btn active" onclick="showTab('calc', this)">ブルーレイ</button>
+  <button class="tab-btn" onclick="showTab('manual', this)">使い方（ブルーレイ）</button>
+  <button class="tab-btn" onclick="showTab('calc_m', this)">モニター</button>
+  <button class="tab-btn" onclick="showTab('manual_m', this)">使い方（モニター）</button>
 </div>
 
 <section id="sourceFeedback" aria-label="データ取得の確認事項">
@@ -176,12 +176,10 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
 
   <!-- Data load -->
   <div class="load-card">
-    <div style="font-size:13px; color:#5d8aa8; margin-bottom:8px;">価格・在庫を更新するときは商品データを再読み込みしてください</div>
     <div class="load-row">
       <button class="load-btn" onclick="loadData()">🔄 商品データ読込</button>
       <span id="loadStatus" class="load-status"></span>
     </div>
-    <div style="font-size:12px; color:#5d8aa8; margin-top:7px;">作業開始時に読み込み、価格・在庫の更新時は再読み込みしてください</div>
   </div>
 
   <!-- STEP 1: Model Number -->
@@ -431,12 +429,10 @@ body, button, input, select, textarea, pre, code { font-family: inherit; }
 <div id="calc_m" class="tab-content">
 
   <div class="load-card">
-    <div style="font-size:13px; color:#5d8aa8; margin-bottom:8px;">価格・在庫を更新するときは商品データを再読み込みしてください</div>
     <div class="load-row">
       <button class="load-btn" onclick="loadData_m()">🔄 商品データ読込</button>
       <span id="loadStatus_m" class="load-status"></span>
     </div>
-    <div style="font-size:12px; color:#5d8aa8; margin-top:7px;">作業開始時に読み込み、価格・在庫の更新時は再読み込みしてください</div>
   </div>
 
   <div class="card">
