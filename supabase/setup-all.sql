@@ -12188,8 +12188,8 @@ where e.action='inspection_complete' and i.inspected_at is not null and i.cleane
 and i.marketplace in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') group by e.item_id;
 
 create view app.v_receipt_evaluation_tasks with(security_invoker=true) as
-select t.item_id as id,t.item_id,t.requested_at,i.sku,i.lot_seq,i.title,i.model_no,i.asin,i.marketplace,i.marketplace_item_id,i.marketplace_url
-from app.receipt_evaluation_tasks t join app.items i on i.id=t.item_id
+select t.item_id as id,t.item_id,t.requested_at,i.sku,i.lot_seq,i.title,p.model_no,i.asin,i.marketplace,i.marketplace_item_id,i.marketplace_url
+from app.receipt_evaluation_tasks t join app.items i on i.id=t.item_id left join app.products p on p.id=i.product_id
 where t.completed_at is null and i.inspected_at is not null and i.cleaned_at is not null
 and i.marketplace in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ')
 and not exists(select 1 from app.marketplace_extension_receipts r
