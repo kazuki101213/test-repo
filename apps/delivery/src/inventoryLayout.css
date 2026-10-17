@@ -5,7 +5,7 @@
   .app .delivery-navigation > .btn[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
   .topbar { position:static; border:0; background:transparent; }
   .delivery-inventory-workspace, .delivery-inventory-sidebar { display:contents; }
-  .app .inventory-workflow-menu { display:grid; grid-template-columns:106px 140px 100px 156px repeat(4,100px); grid-template-rows:repeat(5,30px) 8px 44px; gap:6px; padding:12px; align-content:center; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:visible; }
+  .app .inventory-workflow-menu { display:grid; grid-template-columns:106px 140px 100px 156px repeat(4,100px); grid-template-rows:repeat(4,30px) 44px 8px 44px; gap:6px; padding:12px; align-content:center; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:visible; }
   .inventory-workflow-lane { height:30px; align-self:center; grid-column:1; position:relative; display:flex; align-items:center; padding-left:16px; font-size:15px; font-weight:400; white-space:nowrap; }
   .inventory-workflow-lane::before { content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:3px; background:var(--lane-color); }
   .inventory-workflow-lane[data-lane="0"] { grid-row:1; --lane-color:#71836a; }
@@ -87,7 +87,7 @@
 @media screen and (min-width:1280px) {
   .delivery-inventory-workspace { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:16px; align-items:stretch; }
   .delivery-inventory-sidebar { display:flex; flex-direction:column; min-width:0; }
-  .delivery-inventory-sidebar .delivery-inventory-search { display:grid; grid-template-columns:90px minmax(50px,1fr) auto; gap:8px; margin-top:0; }
+  .delivery-inventory-sidebar .delivery-inventory-search { display:grid; grid-template-columns:148px minmax(0,1fr) auto; gap:8px; margin-top:0; }
   .delivery-inventory-sidebar .delivery-inventory-search > select { grid-column:1; grid-row:1; }
   .delivery-inventory-sidebar .delivery-inventory-search > input, .delivery-inventory-sidebar .delivery-inventory-search > select[aria-label="納品担当者で検索"] { grid-column:2; grid-row:1; }
   .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:3; grid-row:1; }
@@ -131,4 +131,22 @@
   .spare-shipping-item-id { display:inline-flex; align-items:center; gap:4px; }
   .spare-shipping-source-link { display:inline-flex; align-items:center; padding:2px; color:var(--accent); background:transparent; border:0; }
   .spare-shipping-source-link:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .spare-shipping-form { display:block; }
+  .spare-shipping-form > .spare-shipping-confirmation { margin-top:10px; }
+  .spare-shipping-actions { display:flex; align-items:center; gap:6px; margin-top:10px; max-width:100%; overflow-x:auto; }
+  .spare-shipping-actions > .field { display:flex; align-items:center; gap:6px; flex:none; min-width:0; margin:0; }
+  .spare-shipping-actions > .field > span { white-space:nowrap; }
+  .spare-shipping-actions input { width:176px; height:44px; box-sizing:border-box; }
+  .spare-shipping-actions > .btn { margin:0; }
+}
+@media screen and (max-width:1279px) {
+  .spare-shipping-actions { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:10px 6px; overflow:visible; }
+  .spare-shipping-actions > .field { grid-column:1 / -1; grid-row:1; }
+  .spare-shipping-actions > .btn { grid-row:2; justify-self:start; }
+}
+@media screen and (min-width:1280px) and (max-width:1399px) {
+  .delivery-inventory-sidebar .delivery-inventory-search { grid-template-columns:148px minmax(0,1fr); }
+  .delivery-inventory-sidebar .delivery-inventory-search > input,
+  .delivery-inventory-sidebar .delivery-inventory-search > select[aria-label="納品担当者で検索"] { grid-column:1 / -1; grid-row:2; }
+  .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:2; grid-row:1; }
 }

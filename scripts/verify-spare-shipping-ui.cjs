@@ -36,7 +36,7 @@ for(const app of ['admin','delivery']){
     await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
     button('発送').props.onClick();await settle();
-    all(tree).find(n=>n.type==='input').props.onChange({target:{value:'admin-tracking'}});await settle();
+    all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'admin-tracking'}});await settle();
     all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();
     all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
     assert.equal(sent.id,'task');assert.equal(sent.tracking,'admin-tracking');assert.equal(changed,1);changed=0;
@@ -57,7 +57,7 @@ for(const app of ['admin','delivery']){
   for(const value of ['MM 株式会社吉光へ発送お願いします。','リモコン','Panasonic純正','メルカリ','m123','1647 / 1723'])assert(text(tree).includes(value));
   button(app==='delivery'?'発送':'完了').props.onClick();await settle();
   assert(button('送信').props.disabled);
-  all(tree).find(n=>n.type==='input').props.onChange({target:{value:'  12345  '}});await settle();
+  all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'  12345  '}});await settle();
   assert(button('送信').props.disabled);sent=undefined;
   all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(sent,undefined);assert.equal(changed,0);
   assert(text(tree).includes('通番号/利用記録：2392 / 1647 / 1723'));

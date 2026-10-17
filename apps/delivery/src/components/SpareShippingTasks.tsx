@@ -3,7 +3,7 @@ import { completeSpareShipping, fetchSpareShippingTasks, sendSpareShipping, staf
 import type { SpareShippingTask, Staff } from '@bussan/shared';
 
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message
-  : (cause as {message?:string})?.message || '発送タスクを処理できませんでした。';
+  : (cause as {message?:string})?.message || '発送依頼を処理できませんでした。';
 
 function supplierItemUrl(task: SpareShippingTask): string | undefined {
   const id = task.marketplace_item_id?.trim();
@@ -58,14 +58,16 @@ function ShippingRow({task,staff,management,onChanged}:{
       </>}
     </div>
     {editing && canShip && <form className="spare-shipping-form" onSubmit={event=>{event.preventDefault();void act(true);}}>
-      <label className="field"><span>追跡番号</span><input value={tracking} autoFocus required maxLength={200}
-        disabled={busy} onChange={event=>setTracking(event.target.value)} /></label>
       <div className="spare-shipping-reference">通番号/利用記録：{task.lot_seq} / {task.usage_note || '—'}</div>
       <label className="spare-shipping-confirmation"><input type="checkbox" required checked={serialMarked}
         disabled={busy} onChange={event=>setSerialMarked(event.target.checked)} />
         <span>「通番号/利用記録」を記載し、通番号に◯をつけましたか？</span></label>
-      <button className="btn primary" disabled={busy || !tracking.trim() || !serialMarked}>送信</button>
-      <button type="button" className="btn" disabled={busy} onClick={()=>setEditing(false)}>キャンセル</button>
+      <div className="spare-shipping-actions">
+        <label className="field"><span>追跡番号</span><input value={tracking} autoFocus required maxLength={200}
+          disabled={busy} onChange={event=>setTracking(event.target.value)} /></label>
+        <button className="btn primary" disabled={busy || !tracking.trim() || !serialMarked}>送信</button>
+        <button type="button" className="btn" disabled={busy} onClick={()=>setEditing(false)}>キャンセル</button>
+      </div>
     </form>}
     {error && <p className="error" role="alert">{error}</p>}
   </li>;
