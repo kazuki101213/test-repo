@@ -31,6 +31,11 @@ select app.perform_inventory_action(id,'report_cancel',status) from app.items wh
 select app.perform_inventory_action(id,'inspection_complete',status) from app.items where lot_seq=992001 and not is_accessory;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 update app.items set sales_channel='FBA' where lot_seq=992001 and not is_accessory;
+set local role postgres;
+insert into app.item_photos(item_id,storage_path) select id,'test/listing-992001.jpg' from app.items where lot_seq=992001 and not is_accessory;
+insert into app.photo_reviews(item_id,drive_folder_id,exported_photo_count,approved_at) select id,'fixture-folder',1,now() from app.items where lot_seq=992001 and not is_accessory;
+set local role authenticated;
+
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 select app.perform_inventory_action(id,'listing_complete',status) from app.items where lot_seq=992001 and not is_accessory;
 select app.perform_inventory_action(id,'listing_cancel',status,'confirmed not listed') from app.items where lot_seq=992001 and not is_accessory;
@@ -93,6 +98,10 @@ set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at,marketplace_item_id)
 select 992004,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-5,'queued operation regression',1000,'ヤフオク','メルカリ','123456',now(),'u992004';
+set local role postgres;
+insert into app.item_photos(item_id,storage_path) select id,'test/listing-992004.jpg' from app.items where lot_seq=992004 and not is_accessory;
+insert into app.photo_reviews(item_id,drive_folder_id,exported_photo_count,approved_at) select id,'fixture-folder',1,now() from app.items where lot_seq=992004 and not is_accessory;
+set local role authenticated;
 create temporary table op_probe(id uuid,payload jsonb,request uuid,source_request uuid);
 insert into op_probe select id,jsonb_build_object('expected_revision',updated_at,'title','test','description','listing description','price',1000,'condition','目立った傷や汚れなし','origin','千葉県','shippingMethod','ゆうゆうメルカリ便','photos',jsonb_build_array('https://xgoppuqoqeppckyunnvx.supabase.co/storage/v1/object/sign/item-photos/test.jpg')),gen_random_uuid(),gen_random_uuid() from app.items where lot_seq=992004;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';

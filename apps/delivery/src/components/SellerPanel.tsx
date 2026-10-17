@@ -1,8 +1,9 @@
 import {useEffect,useRef,useState} from 'react';
 import {sellerDefaults,SMALL_PACKAGES,canViewDeliveryAssignee} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
-import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,queueSellerOperation} from '../api';
+import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
+import {listingDraft} from '../listingDraft';
 
 function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>void}){
  const video=useRef<HTMLVideoElement>(null),[error,setError]=useState('');
@@ -17,13 +18,14 @@ function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>
  return <div><video ref={video} className="seller-camera" playsInline muted aria-label="専用資材のコードを読み取るカメラ"/>{error&&<p className="error" role="alert">カメラを起動できません：{error}</p>}<button type="button" className="btn" onClick={onClose}>カメラを閉じる</button></div>;
 }
 function statusText(op:SellerOperation){return ({queued:'拡張機能の実行待ち',running:'実行中',succeeded:'完了',failed:'停止',uncertain:'結果の確認が必要'} as const)[op.status];}
-export default function SellerPanel({mode,task,staff,onClose,onChanged}:{mode:'listing'|'shipping'|'messages';task:DeliveryTask;staff:Staff;onClose:()=>void;onChanged:(task:DeliveryTask)=>void}){
+export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onChanged}:{mode:'listing'|'shipping'|'messages';task:DeliveryTask;staff:Staff;listingSkus?:string[];onClose:()=>void;onChanged:(task:DeliveryTask)=>void}){
  const [draft,setDraft]=useState<SellerDraft|null>(null),[photos,setPhotos]=useState<ItemPhoto[]>([]),[selected,setSelected]=useState<string[]>([]),[context,setContext]=useState<SellerContext|null>(null);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[camera,setCamera]=useState(false),[code,setCode]=useState(''),[posted,setPosted]=useState(false),[qr,setQr]=useState(''),[message,setMessage]=useState('');
  const lock=useRef(false),request=useRef(crypto.randomUUID()),lastFinished=useRef(''),readCode=useRef<(code:string)=>void>(()=>{});
  readCode.current=value=>{setCode(value);setCamera(false);};
+ const listingSkuKey=listingSkus.join('\n');
  const onRead=useRef((value:string)=>readCode.current(value)).current;
- useEffect(()=>{let active=true;void Promise.all([fetchTask(task.id,canViewDeliveryAssignee(staff)),fetchSellerContext(task.id),mode==='listing'?fetchPhotoUrls(task.id):Promise.resolve([])]).then(([full,info,images])=>{if(!active)return;if(!full||!info)throw new Error('商品が見つかりません');const defaults=sellerDefaults({...full,deliverer_name:info.assignee||full.deliverer_name||(full.deliverer_id===staff.id?staff.name:'')});setDraft(mode==='shipping'?{...defaults,...info.shipping_defaults}:defaults);setContext(info);setPhotos(images);setSelected(images.slice(0,10).map(photo=>photo.id));}).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:String(cause));});return()=>{active=false;};},[task.id,mode,staff.id,staff.name,staff.role]);
+ useEffect(()=>{let active=true;void Promise.all([fetchTask(task.id,canViewDeliveryAssignee(staff)),fetchSellerContext(task.id),mode==='listing'?fetchPhotoUrls(task.id):Promise.resolve([])]).then(async([full,info,images])=>{if(!active)return;if(!full||!info)throw new Error('商品が見つかりません');const maker=mode==='listing'&&!full.description?.trim()?await fetchProductMaker(full.asin).catch(()=>''):'';if(!active)return;const prepared={...full,deliverer_name:info.assignee||full.deliverer_name||(full.deliverer_id===staff.id?staff.name:'')};const defaults=mode==='listing'?listingDraft(prepared,maker,listingSkuKey?listingSkuKey.split('\n'):[]):sellerDefaults(prepared);setDraft(mode==='shipping'?{...defaults,...info.shipping_defaults}:defaults);setContext(info);setPhotos(images);setSelected(images.slice(0,10).map(photo=>photo.id));}).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:String(cause));});return()=>{active=false;};},[task.id,mode,staff.id,staff.name,staff.role,listingSkuKey]);
  const pending=context?.operations.some(op=>['queued','running','uncertain'].includes(op.status))??false;
  const watching=context?.operations.find(op=>op.status==='queued'||op.status==='running');
  useEffect(()=>{if(!watching)return;let active=true,inFlight=false;
@@ -39,13 +41,14 @@ export default function SellerPanel({mode,task,staff,onClose,onChanged}:{mode:'l
  useEffect(()=>{let active=true;const value=latestCode?.result.qr_code;if(typeof value!=='string'){setQr('');return;}if(value.startsWith('data:image/png;base64,')){setQr(value);return;}void import('qrcode').then(module=>module.toDataURL(value,{width:260,margin:2})).then(url=>{if(active)setQr(url);}).catch(()=>{if(active)setError('配送コードを表示できません');});return()=>{active=false;};},[latestCode?.id]);
  async function submit(kind:string,payload:Record<string,unknown>){if(lock.current||pending)return;lock.current=true;setBusy(true);setError('');try{await queueSellerOperation(task.id,kind,{...payload,expected_revision:context?.revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));setMessage('');}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
  function change<K extends keyof SellerDraft>(field:K,value:SellerDraft[K]){setDraft(current=>current?{...current,[field]:value}:current);request.current=crypto.randomUUID();}
- const disabled=busy||pending,trade=context?.listing?.trade_key;
+ const disabled=busy||pending||(mode==='listing'&&context?.photo_review_approved!==true),trade=context?.listing?.trade_key;
  const tradePayload={trade_key:trade,size:draft?.size,dropoff:draft?.dropoff,shippingMethod:draft?.shippingMethod,category:draft?.category};
  const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key)?.result.messages;
  if(mode==='listing'&&task.status!=='商品登録前')return <section className="task-detail-inline seller-panel"><button type="button" className="btn ghost" onClick={onClose}>閉じる</button><p>現在の状態：{task.status}</p>{context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}</section>;
  return <section className="task-detail-inline seller-panel" aria-label={`${task.sku}の${mode==='listing'?'出品':mode==='shipping'?'発送':'取引メッセージ'}`}>
   <button type="button" className="btn ghost" onClick={onClose}>閉じる</button>
   {error&&<p className="error" role="alert">{error}</p>}
+  {mode==='listing'&&context&&context.photo_review_approved!==true&&<p role="status">管理アプリで商品写真の承認が必要です。</p>}
   {!draft?<p>読み込み中…</p>:mode==='listing'?<>
    <div className="seller-form">
     <label className="wide">商品名<input value={draft.title} maxLength={128} disabled={disabled} onChange={event=>change('title',event.target.value)}/></label>
