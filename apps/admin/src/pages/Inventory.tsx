@@ -147,7 +147,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
 
 
-      <div className="toolbar">
+      <div className="toolbar inventory-toolbar">
         <div className="inventory-search" role="group" aria-label="在庫検索">
           <select aria-label="検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as InventorySearchField); setQuery(''); }}>
             {inventorySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}

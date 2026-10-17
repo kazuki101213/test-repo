@@ -37,7 +37,7 @@ export default function Ledger() {
         古物営業法施行規則 第16条の記載事項に対応した帳簿です。最終取引日から3年間は保存してください。
       </p>
 
-      <div className="toolbar">
+      <div className="toolbar ledger-toolbar">
         <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
         <span className="sub" style={{ margin: 0 }}>〜</span>
         <DateInput value={to} onChange={(e) => setTo(e.target.value)} />

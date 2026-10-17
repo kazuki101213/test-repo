@@ -1,0 +1,108 @@
+/* Screen-only layout: keep document/PDF/print styles untouched. */
+@media screen {
+  .layout { width:100%; grid-template-columns:208px minmax(0,1fr); }
+  .layout > main { width:100%; padding:20px 24px 64px; }
+  .layout main > *, .layout .card, .layout .grid > *, .layout fieldset, .layout label { min-width:0; }
+  .layout main input, .layout main select, .layout main textarea { min-width:0; max-width:100%; }
+  .layout .btn, .layout .nav { min-height:44px; white-space:nowrap; }
+  .layout main input:not([type=checkbox]):not([type=radio]):not([type=hidden]), .layout main select { min-height:44px; }
+  .layout main .btn { padding:8px 10px; }
+  .layout .toolbar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:end; gap:8px; }
+  .layout .toolbar > :empty:not(input):not(button) { display:none; }
+  .layout .toolbar > input, .layout .toolbar > select { width:100%; min-width:0 !important; }
+  .layout .toolbar > .sub { margin:0; overflow-wrap:anywhere; }
+  .layout .toolbar:has(> h2), .layout .toolbar:has(> h3) { grid-template-columns:minmax(0,1fr) auto auto; align-items:center; }
+  .layout .toolbar:has(> h2) > h2, .layout .toolbar:has(> h3) > h3 { grid-column:1; }
+  .layout .inventory-toolbar { grid-template-columns:repeat(6,minmax(0,1fr)); margin-top:12px; }
+  .layout .inventory-toolbar > .inventory-search { grid-column:span 3; width:100%; max-width:none; }
+  .layout .inventory-toolbar > .inventory-date-range { grid-column:span 2; width:100%; }
+  .layout .inventory-toolbar > .btn { width:100%; }
+  .layout .inventory-toolbar > .sub { grid-column:span 2; }
+  .layout .inventory-search { display:grid; grid-template-columns:100px minmax(0,1fr); }
+  .layout .inventory-date-range { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:4px; }
+  .layout .inventory-date-field { min-width:0; width:auto; }
+  .layout .inventory-search > input, .layout .inventory-search > select { width:100%; min-width:0; }
+  .layout .inventory-date-field > span { max-width:100%; }
+  .layout .spare-search { display:grid; grid-template-columns:150px minmax(0,1fr); max-width:none; }
+  .layout .spare-search > * { width:100%; min-width:0; }
+  .layout .grid.cols2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .layout .grid.kpi { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .layout .invoice-tasks { grid-column:span 2; }
+  .layout .inventory-workspace.with-purchase { grid-template-columns:minmax(0,1fr) minmax(300px,380px); }
+  .layout .dashboard-workspace.with-expense { grid-template-columns:minmax(0,1fr) minmax(280px,360px); overflow:visible; }
+  .layout .purchase-registration-screen { max-width:none; width:100%; }
+  .layout .expense-columns { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .layout .expense-entry-top { display:grid; grid-template-columns:minmax(0,1fr) auto; }
+  .layout .expense-entry-top > * { min-width:0; overflow-wrap:anywhere; }
+  .layout .amazon-sales-update { display:grid; grid-template-columns:auto minmax(0,1fr); }
+  .layout .notification-controls { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; }
+  .layout .spare-shipping-form { display:grid; grid-template-columns:minmax(0,1fr) auto auto; }
+  .layout .spare-shipping-reference, .layout .spare-shipping-confirmation { grid-column:1/-1; }
+  .layout .purchase-draft-actions { display:grid; grid-template-columns:auto auto; }
+  .layout .sales-summary, .layout .monthly-detail-totals { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+  .layout .scroll, .layout .inventory-top-scroll, .layout .inventory-bottom-scroll, .layout .expense-columns-scroll, .layout .sales-chart-scroll { min-width:0; max-width:100%; }
+  .layout .products-table { min-width:960px; }
+  .layout th, .layout td { padding:8px; }
+  .layout .inventory-edit-overlay > .card { max-width:calc(100vw - 24px); }
+  .layout .monthly-detail { max-width:calc(100vw - 24px); }
+  .layout .error, .layout .sku, .layout .sub, .layout .who { overflow-wrap:anywhere; }
+  .layout .ledger-toolbar { grid-template-columns:150px 16px 150px auto auto auto; }
+}
+@media screen and (max-width:1279px) and (min-width:1024px) {
+  .layout .grid.kpi { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .layout .inventory-workspace.with-purchase, .layout .dashboard-workspace.with-expense { grid-template-columns:minmax(0,1fr); }
+  .layout .expense-columns { grid-template-columns:minmax(0,1fr); }
+}
+@media screen and (max-width:1023px) {
+  .layout { grid-template-columns:minmax(0,1fr); }
+  .layout > main { padding:16px 12px 64px; }
+  .layout .sidebar { position:static; width:100%; height:auto; padding:12px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; border-right:0; border-bottom:1px solid var(--border); }
+  .layout .sidebar h1, .layout .sidebar .who { grid-column:1/-1; width:auto; margin:0 0 4px; }
+  .layout .sidebar > span:empty { display:none; }
+  .layout .sidebar .nav { width:100%; }
+  .layout input:not([type=checkbox]):not([type=radio]), .layout select, .layout textarea { font-size:16px; }
+  .layout .toolbar { grid-template-columns:minmax(0,1fr); }
+  .layout .toolbar:has(> h2), .layout .toolbar:has(> h3) { grid-template-columns:minmax(0,1fr); }
+  .layout .toolbar:has(> h2) > .btn, .layout .toolbar:has(> h3) > .btn { justify-self:start; }
+  .layout .inventory-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .layout .inventory-toolbar > .inventory-search, .layout .inventory-toolbar > .inventory-date-range, .layout .inventory-toolbar > .sub { grid-column:1/-1; }
+  .layout .inventory-toolbar > .btn { font-size:14px; padding:8px 4px; }
+  .layout .inventory-toolbar > .inventory-multi-filter { grid-column:1/-1; }
+  .layout .inventory-date-range { grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr); }
+  .layout .inventory-workspace.with-purchase, .layout .dashboard-workspace.with-expense, .layout .grid.cols2, .layout .dashboard-charts, .layout .document-review-columns { grid-template-columns:minmax(0,1fr); overflow:visible; }
+  .layout .purchase-panel { width:100%; }
+  .layout .purchase-panel .grid.cols2 { grid-template-columns:minmax(0,1fr); }
+  .layout .expense-columns { grid-template-columns:minmax(0,1fr); }
+  .layout .spare-search { grid-template-columns:minmax(0,1fr); }
+  .layout .notification-controls, .layout .amazon-sales-update, .layout .spare-shipping-form { grid-template-columns:minmax(0,1fr); }
+  .layout .review-receipts { grid-template-columns:minmax(0,1fr); }
+  .layout .monthly-detail-totals { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .layout .sales-summary { grid-template-columns:minmax(0,1fr); }
+  .layout .ledger-toolbar { grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr); }
+  .layout .ledger-toolbar > .btn { grid-column:span 1; }
+  .layout .ledger-toolbar > span:has(+ .btn) { grid-column:span 1; }
+  .layout .inventory-full-edit-panel { width:calc(100vw - 24px); }
+}
+@media screen and (max-width:599px) {
+  .layout .grid.kpi { grid-template-columns:minmax(0,1fr); }
+  .layout .invoice-tasks { grid-column:1; }
+  .layout .expense-fields { grid-template-columns:minmax(0,1fr); }
+}
+@media screen {
+  .layout .purchase-panel .grid.cols2 { grid-template-columns:minmax(0,1fr); }
+  .layout .inventory-toolbar > .inventory-date-range { grid-column:span 3; }
+}
+@media screen and (max-width:1023px) {
+  .layout .inventory-toolbar > .inventory-date-range { grid-column:1/-1; }
+}
+@media screen and (max-width:374px) {
+  .layout .inventory-date-range { grid-template-columns:12px minmax(0,1fr); }
+  .layout .inventory-date-range > label:first-child { grid-column:2; grid-row:1; }
+  .layout .inventory-date-range > span { grid-column:1; grid-row:2; }
+  .layout .inventory-date-range > label:last-child { grid-column:2; grid-row:2; }
+  .layout .ledger-toolbar { grid-template-columns:12px minmax(0,1fr); }
+  .layout .ledger-toolbar > :first-child { grid-column:2; grid-row:1; }
+  .layout .ledger-toolbar > span:nth-child(2) { grid-column:1; grid-row:2; }
+  .layout .ledger-toolbar > :nth-child(3) { grid-column:2; grid-row:2; }
+  .layout .ledger-toolbar > .btn, .layout .ledger-toolbar > span:nth-child(5) { grid-column:2; }
+}

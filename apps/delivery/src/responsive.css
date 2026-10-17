@@ -180,3 +180,12 @@
   .document-preview { height:auto !important; margin:0; }
   .document-preview-content { width:auto !important; transform:none !important; margin:0 !important; }
 }
+
+/* Keep complete accessory identifiers readable at narrow widths. */
+@media screen {
+  .task-member-row, .task-member-row .copyable-text, .spare-row, .spare-row a { min-width:0; overflow-wrap:anywhere; }
+}
+@media screen and (max-width:374px) {
+  .invoice-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .invoice-tabs > .btn:nth-child(3) { grid-column:1 / -1; }
+}
