@@ -46,6 +46,14 @@ for(const app of ['admin','delivery']){
     assert(text(tree).includes('発送済み'));assert(text(tree).includes('追跡番号：12345'));assert(!button('完了'));
   }
   await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
+  if(app==='delivery'){
+    const sourceLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']==='仕入先の商品ページを開く');
+    assert.equal(sourceLink.props.href,'https://jp.mercari.com/item/m123');
+    assert.equal(sourceLink.props.rel,'noopener noreferrer');
+    await mount(context.exports.ShippingRow,{task:{...task,marketplace_item_id:'javascript:alert(1)'},staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
+    assert(!all(tree).some(n=>n.type==='a'),'Invalid IDs must not create supplier links');
+    await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
+  }
   for(const value of ['MM 株式会社吉光へ発送お願いします。','リモコン','Panasonic純正','メルカリ','m123','1647 / 1723'])assert(text(tree).includes(value));
   button(app==='delivery'?'発送':'完了').props.onClick();await settle();
   assert(button('送信').props.disabled);

@@ -5,6 +5,15 @@ import type { SpareShippingTask, Staff } from '@bussan/shared';
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message
   : (cause as {message?:string})?.message || '発送タスクを処理できませんでした。';
 
+function supplierItemUrl(task: SpareShippingTask): string | undefined {
+  const id = task.marketplace_item_id?.trim();
+  if (!id) return;
+  if (task.marketplace === 'ヤフオク' && /^[a-z]\d+$/i.test(id)) return `https://auctions.yahoo.co.jp/jp/auction/${id}`;
+  if (task.marketplace === 'メルカリ' && /^m\d+$/.test(id)) return `https://jp.mercari.com/item/${id}`;
+  if (['ヤフフリ', 'PayPayフリマ'].includes(task.marketplace || '') && /^[a-z]\d+$/i.test(id)) return `https://paypayfleamarket.yahoo.co.jp/item/${id}`;
+  if (task.marketplace === 'ラクマ' && /^[a-f\d]{32}$/i.test(id)) return `https://item.fril.jp/${id}`;
+}
+
 function ShippingRow({task,staff,management,onChanged}:{
   task:SpareShippingTask;staff:Staff;management:boolean;onChanged:()=>void;
 }) {
@@ -18,6 +27,7 @@ function ShippingRow({task,staff,management,onChanged}:{
   const canShip=!task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
   const overview=management || canViewDeliveryAssignee(staff);
   const canComplete=management && staff.role==='admin' && !!task.sent_at;
+  const supplierUrl=supplierItemUrl(task);
   async function act(send:boolean) {
     if(busy || (send && (!canShip || !tracking.trim() || !serialMarked))) return;
     setBusy(true);setError('');
@@ -43,7 +53,7 @@ function ShippingRow({task,staff,management,onChanged}:{
       </> : <>
         <span>メーカー：{task.manufacturer || '未登録'}</span>
         <span>仕入先：{task.marketplace || '未登録'}</span>
-        <span>商品ID：{task.marketplace_item_id || '未登録'}</span>
+        <span className="spare-shipping-item-id">商品ID：{task.marketplace_item_id || '未登録'}{supplierUrl && <a className="spare-shipping-source-link" href={supplierUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先URL"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg></a>}</span>
         <span>利用記録：{task.usage_note || '—'}</span>
       </>}
     </div>
