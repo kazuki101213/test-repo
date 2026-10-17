@@ -197,6 +197,10 @@
 .seller-photo label { width:100%; display:grid; justify-items:center; gap:4px; }
 .seller-photo-order { display:flex; gap:6px; }
 .seller-photo-order .btn { min-width:44px; min-height:44px; padding:4px 10px; }
+.workflow-confirmation { width:min(420px,calc(100% - 24px)); max-height:calc(100dvh - 24px); overflow:auto; margin:auto; padding:20px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); }
+.workflow-confirmation::backdrop { background:#0005; }
+.workflow-confirmation h3 { margin:0 0 12px; font-size:18px; }
+.workflow-confirmation-buttons { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
 @media screen and (min-width:1024px) and (max-width:1279px) {
   .seller-photos { grid-template-columns:repeat(8,minmax(0,1fr)); }
 }

@@ -195,9 +195,9 @@ textarea { min-height: 80px; resize: vertical; }
 .copyable-text { cursor:pointer; border-radius:3px; }
 .copyable-text:hover { text-decoration:underline; text-decoration-style:dotted; }
 .copyable-text:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.task-detail-inline { grid-column:1 / -1; min-width:0; border-top:1px solid var(--border); padding-top:12px; }
+.task-detail-inline { grid-column:1 / -1; min-width:0; padding-top:12px; }
 .inline-detail-header { justify-content:space-between; }
-.task-detail-inline > .card { border:0; border-top:1px solid var(--border); border-radius:0; background:transparent; padding:14px 0 0; }
+.task-detail-inline > .card { border:0; border-radius:0; background:transparent; padding:14px 0 0; }
 .task-members { display: grid; gap: 6px; margin-top: 10px; }
 .task-member-row { display:grid; gap:4px; min-width:0; }
 .task-member-accessory { padding:0; border:0; border-radius:0; background:transparent; }
