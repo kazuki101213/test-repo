@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.106';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.106';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.108';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.108';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.106';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.108';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -121,7 +121,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
      const next=data.navigation.filter(link=>link.text==='次へ'||link.text==='次のページ'||link.text==='次');
      for(const link of next){const url=sellerUrl(account,link.url);if(seen.has(url))throw Error('一覧のページ送りが循環しています');queue.unshift({url,phase:page.phase});}
      if(!data.rows.length&&!data.empty&&page.phase){if(await session.selectTab(page.phase))data=await session.read(page.phase);}
-     if(page.phase&&!data.rows.length&&!data.empty&&!data.itemCount)throw Error('商品一覧を確認できません');
+     if(page.phase&&!data.rows.length&&!data.empty&&!data.itemCount)throw Error('商品一覧を確認できません：'+page.phase+' ('+new URL(page.url).pathname+')');
      const rows=sellerTarget(data.rows,targets);
      for(const row of rows){const key=row.external_id+'/'+row.status;if(processed.has(key))continue;processed.add(key);
       let extra={};if(['取引中','販売済','キャンセル'].includes(row.status)){
