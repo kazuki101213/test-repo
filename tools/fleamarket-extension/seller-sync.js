@@ -3,7 +3,7 @@ export function sellerScheduleReady(settings,records,day){
  if(settings.mode==='diagnostic'||records.job||records.sellerDailyAttempt?.day===day)return false;
  return ['tracking',...(settings.purchaseImportEnabled?['purchases']:[])].every(kind=>records.scheduledRuns?.[kind]?.day===day&&records.lastRun?.[kind]?.day===day);
 }
-export function sellerAccounts(settings){return settings.accounts.filter(account=>account.enabled&&['mercari-2','auctions-1'].includes(account.id));}
+export function sellerAccounts(settings){return settings.accounts.filter(account=>account.enabled&&['mercari-1','mercari-2','auctions-1','auctions-2'].includes(account.id));}
 export function sellerUrl(account,url){
  const value=new URL(url),hosts=account.site==='mercari'?['jp.mercari.com']:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','salesmanagement.yahoo.co.jp','aucpay.yahoo.co.jp'];
  if(value.protocol!=='https:'||!hosts.includes(value.hostname)||value.username||value.password||/login|signin|captcha|auth\//i.test(value.pathname))throw Error('対象の販売サイトを確認できません');return value.href;
@@ -58,5 +58,5 @@ export async function readSellerPage({site,phase=null}={}){
   const row={external_id,serial,status,trade_key:external_id,url:trade?.href||link.href,detail_url:detail?.href||trade?.href||link.href,attention:/キャンセル|中止/.test(body)};
   const previous=rows.get(external_id);if(previous&&previous.status!==status)throw Error('同じ商品IDに異なる状態があります');rows.set(external_id,row);
  }
- return {itemCount,rows:[...rows.values()],navigation,active:active||null,text,empty:/出品中の商品(?:は|が)(?:ありません|ございません)|出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
+ return {itemCount,rows:[...rows.values()],navigation,active:active||null,text,empty:/終了した商品はありません|お取り扱いはありません|出品中の商品(?:は|が)(?:ありません|ございません)|出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
 }

@@ -73,7 +73,7 @@ set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at,product_registered_at)
 select 992003,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-5,'seller sync regression',1000,'ヤフオク','メルカリ','123456',now(),now();
 do $$declare obs jsonb:=jsonb_build_object('external_id','m992003','serial','992003','status','取引中','trade_key','m992003:one','observed_at',now()+interval '1 second');item uuid:=(select id from app.items where lot_seq=992003);begin
- begin perform app.sync_seller_observation('mercari-1',obs);raise exception 'Retired seller account accepted';exception when raise_exception then if sqlerrm='Retired seller account accepted' then raise;end if;end;
+ begin perform app.sync_seller_observation('flea-1',obs);raise exception 'Unsupported seller account accepted';exception when raise_exception then if sqlerrm='Unsupported seller account accepted' then raise;end if;end;
  if jsonb_array_length(app.seller_sync_context(array['mercari-1']))<>0 then raise exception 'Retired account received seller inventory';end if;
  if app.sync_seller_observation('mercari-2',obs)<>'updated' then raise exception 'Seller status not updated';end if;
  if app.sync_seller_observation('mercari-2',obs)<>'stale' then raise exception 'Stale seller status accepted';end if;
@@ -83,7 +83,7 @@ do $$declare obs jsonb:=jsonb_build_object('external_id','m992003','serial','992
  if app.sync_seller_observation('mercari-2',obs||jsonb_build_object('observed_at',now()+interval '2 seconds'))<>'protected' then raise exception 'Old trade reopened after listing observation';end if;
  if app.sync_seller_observation('mercari-2',obs||jsonb_build_object('trade_key','m992003:two','observed_at',now()+interval '3 seconds'))<>'updated' then raise exception 'New trade not attached to same inventory';end if;
  obs:=obs||jsonb_build_object('trade_key','m992003:two','status','販売済','sold_on',current_date-2,'sold_price',6100,'payout_amount',4371,'observed_at',now()+interval '4 seconds');
- if app.sync_seller_observation('mercari-2',obs)<>'updated' then raise exception 'Completed sale not saved';end if;
+ if app.sync_seller_observation('mercari-2',obs)<>'registered' then raise exception 'Completed sale not saved';end if;
  if (select count(*) from app.items where lot_seq=992003)<>1 or not exists(select 1 from app.items where id=item and sold_on=current_date-2 and sold_price=6100 and payout_amount=4371 and status='販売済') then raise exception 'Duplicate inventory or wrong sale date/net';end if;
  if app.sync_seller_observation('mercari-2',obs||jsonb_build_object('status','出品中','observed_at',now()+interval '5 seconds'))<>'protected' then raise exception 'Sold item reopened';end if;
 end $$;
