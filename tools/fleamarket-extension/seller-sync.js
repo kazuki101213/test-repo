@@ -36,7 +36,7 @@ export async function readSellerPage({site,phase=null}={}){
  if(!/出品した商品|出品一覧|出品中|取引中の商品|出品終了分|売上金管理|受け取り一覧|受け取り明細|取引画面|取引情報/.test(text))throw Error('販売側の画面を確認できません');
  const links=[...document.querySelectorAll('a[href]')].filter(visible),idOf=url=>{try{const u=new URL(url,location.href);return site==='mercari'?(u.hostname==='jp.mercari.com'&&u.pathname.match(/\/(?:item|transaction)\/(m[0-9]+)/)?.[1]):u.pathname.match(/\/(?:jp\/)?auction\/([a-z][0-9]+)/i)?.[1]?.toLowerCase()||['aID','aid','auctionID','auctionId'].map(key=>u.searchParams.get(key)).find(value=>/^[a-z][0-9]+$/i.test(value||''))?.toLowerCase();}catch{return null;}};
  const allowed=url=>{try{const u=new URL(url,location.href);return u.protocol==='https:'&&(site==='mercari'?u.hostname==='jp.mercari.com':['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','salesmanagement.yahoo.co.jp','aucpay.yahoo.co.jp'].includes(u.hostname));}catch{return false;}};
- const navigation=links.filter(link=>/^(出品中|取引中|売却済み|出品終了分|売上金管理|次へ|次のページ|次)$/.test(norm(link.innerText))&&allowed(link.href)).map(link=>({text:norm(link.innerText),url:link.href}));
+ const navigation=links.filter(link=>/^(出品中|取引中|売却済み|出品終了分|売上金管理(?: Yahoo!かんたん決済)?|次へ|次のページ|次)$/.test(norm(link.innerText))&&allowed(link.href)).map(link=>({text:/^売上金管理(?: Yahoo!かんたん決済)?$/.test(norm(link.innerText))?'売上金管理':norm(link.innerText),url:link.href}));
  const active=[...document.querySelectorAll('[aria-selected="true"],[aria-current="page"],[aria-pressed="true"],[data-state="active"]')].filter(visible).map(e=>norm(e.innerText)).find(value=>['出品中','取引中','売却済み','出品終了分','売上金管理'].includes(value));
  const effectivePhase=active||phase;
  let itemCount=0;const rows=new Map();
@@ -58,5 +58,5 @@ export async function readSellerPage({site,phase=null}={}){
   const row={external_id,serial,status,trade_key:external_id,url:trade?.href||link.href,detail_url:detail?.href||trade?.href||link.href,attention:/キャンセル|中止/.test(body)};
   const previous=rows.get(external_id);if(previous&&previous.status!==status)throw Error('同じ商品IDに異なる状態があります');rows.set(external_id,row);
  }
- return {itemCount,rows:[...rows.values()],navigation,active:active||null,text,empty:/出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
+ return {itemCount,rows:[...rows.values()],navigation,active:active||null,text,empty:/出品中の商品(?:は|が)(?:ありません|ございません)|出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
 }

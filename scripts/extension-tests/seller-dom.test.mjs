@@ -97,3 +97,10 @@ test('ヤフオク確認画面の表示名と固定オプションを照合し�
 });
 
 test('再出品の表示と確認フォームの値が矛盾したら公開前で停止する',async()=>{const job={...listing,channel:'ヤフオク',payload:{...listing.payload,shippingPayer:'購入者負担',shippingMethod:'おてがる配送（日本郵便）',size:'100',autoExtend:true,autoRelist:false}};for(const [visibleValue,hiddenValue] of [['1回','0'],['0回','1']]){const p=await page('<h1>出品</h1><p>BD recorder body description 1,000 目立った傷や汚れなし 落札者 ゆうパック 千葉県 2〜3日 ブルーレイレコーダー</p><div><span>自動延長</span><span>：あり</span></div><div><span>自動再出品</span><span>'+visibleValue+'</span></div><input type="hidden" name="numResubmit" value="'+hiddenValue+'">','https://auctions.yahoo.co.jp/sell/jp/show/preview');await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'check_listing_confirmation'}),/自動延長あり・自動再出品なし/);await p.close();}});
+
+test('実画面の出品中の商品はありませんを空一覧と認識し、取得失敗と区別する',async()=>{
+ for(const phrase of ['出品中の商品はありません','出品中の商品がありません','出品中の商品はございません']){const p=await page('<main><h1>出品中</h1><p>'+phrase+'</p><a href="/my/closed?hasWinner=1">出品終了分</a></main>','https://auctions.yahoo.co.jp/my/selling');const result=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品中'});assert.equal(result.empty,true);assert.equal(result.itemCount,0);assert.equal(result.rows.length,0);assert.equal(result.navigation[0].text,'出品終了分');await p.close();}
+ const p=await page('<main><h1>出品中</h1><p>読み込み中です</p></main>','https://auctions.yahoo.co.jp/my/selling');assert.equal((await p.evaluate(readSellerPage,{site:'auctions',phase:'出品中'})).empty,false);await p.close();
+});
+
+test('ヤフオクの実際の売上金管理ラベルを販売済み一覧へのリンクとして取得する',async()=>{const p=await page('<h1>出品中</h1><p>出品中の商品はありません</p><a href="https://salesmanagement.yahoo.co.jp/list">売上金管理 Yahoo!かんたん決済</a>','https://auctions.yahoo.co.jp/my/selling');const r=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品中'});assert.deepEqual(r.navigation,[{text:'売上金管理',url:'https://salesmanagement.yahoo.co.jp/list'}]);await p.close();});
