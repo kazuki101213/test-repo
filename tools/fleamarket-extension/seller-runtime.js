@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.111';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.111';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.112';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.112';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.111';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.112';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -108,7 +108,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
  for(const account of accounts){let session;
   try{
    session=await openSession(account);
-   const queue=[],seen=new Set(),processed=new Set(),pending=[],fullScan=baselines[account.id]!==true;
+   const queue=[],seen=new Set(),processed=new Set(),pending=[],fullScan=baselines[account.id]!=='serial-case-v2';
    let registeredRun=0,salesStopped=false,salesSeen=false,batches=0;
    const salePhase=phase=>phase==='売却済み'||phase==='売上金管理';
    const enqueue=links=>{for(const link of links){let phase=link.text;if(phase==='出品した商品'||phase==='出品一覧')phase=null;if(![null,'出品中','取引中','売却済み','出品終了分','売上金管理'].includes(phase))continue;if(salesStopped&&salePhase(phase))continue;const url=sellerUrl(account,link.url);if(!seen.has(url)&&!queue.some(v=>v.url===url))queue.push({url,phase});}queue.sort((a,b)=>(salePhase(a.phase)?1:0)-(salePhase(b.phase)?1:0));};
@@ -161,7 +161,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
     const result=await rpc('sync_seller_observation',{p_account_id:account.id,p_observation:{...row,...extra,observed_at:new Date().toISOString()}});
     if(result==='updated'||result==='registered')updated++;else if(result==='unmatched')unmatched++;else if(result==='conflict')conflicts++;
    }
-   if(fullScan&&salesSeen){baselines[account.id]=true;await storage.set({sellerSaleBackfills:{...baselines}});}
+   if(fullScan&&salesSeen){baselines[account.id]='serial-case-v2';await storage.set({sellerSaleBackfills:{...baselines}});}
   }catch(error){errors++;await log('error',account.label+'の販売確認を停止しました。自動再試行はしません：'+error.message);}
   finally{await session?.close();}
  }

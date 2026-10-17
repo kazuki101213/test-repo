@@ -48,4 +48,20 @@ reset role;
 do $$begin
  if has_function_privilege('anon','app.seller_observation_plan(text,jsonb)','execute') or has_function_privilege('authenticated','app.resolve_seller_observation_item(text,jsonb)','execute') then raise exception 'Private resolution exposed';end if;
 end $$;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at,product_registered_at)
+select '996118'||suffix||'-AADD-20261001-1000',996118,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'suffix matching fixture',1000,'ヤフオク','FBA','123456',now(),now()
+from unnest(array['a','aa','b']) suffix;
+set local role authenticated;
+do $$declare suffix text;row jsonb;ext text;idx int:=0;begin
+ foreach suffix in array array['a','aa','B'] loop
+  idx:=idx+1;ext:='m996118'||idx;
+  row:=jsonb_build_object('serial','996118'||suffix,'external_id',ext,'status','販売済','trade_key',ext||':one','sold_on',current_date-1,'sold_price',5000,'payout_amount',4000,'observed_at',clock_timestamp()+interval '1 second');
+  if app.seller_observation_plan('mercari-2',jsonb_build_array(row))#>>'{0,action}'<>'detail' then raise exception 'Suffix positive match excluded %',suffix;end if;
+  if app.sync_seller_observation('mercari-2',row)<>'registered' then raise exception 'Suffix sale not registered %',suffix;end if;
+  if not exists(select 1 from app.items where lower(app.product_serial(sku,lot_seq))='996118'||lower(suffix) and sold_on=current_date-1 and sales_channel='メルカリ') then raise exception 'Wrong suffix updated';end if;
+ end loop;
+ if exists(select 1 from app.items where app.product_serial(sku,lot_seq)='996118' and sold_on is not null) then raise exception 'Numeric row was merged with suffixes';end if;
+end $$;
+reset role;
 rollback;

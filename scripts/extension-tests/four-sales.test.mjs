@@ -8,7 +8,7 @@ async function run({rows=[row(1)],actions={},full=false,site='mercari',pages=nul
  const acc={...account,...(site==='auctions'?{id:'auctions-2',site:'auctions'}:{})},phase=site==='mercari'?'売却済み':'売上金管理';
  const base=site==='mercari'?'https://jp.mercari.com/mypage/listings/completed':'https://salesmanagement.yahoo.co.jp/list';
  const list=pages||[rows];
- const records={scheduledRuns:{tracking:{day},purchases:{day}},lastRun:{tracking:{day},purchases:{day}},sellerSaleBackfills:full?{}:{[acc.id]:true}};
+ const records={scheduledRuns:{tracking:{day},purchases:{day}},lastRun:{tracking:{day},purchases:{day}},sellerSaleBackfills:full?{}:{[acc.id]:'serial-case-v2'}};
  const deps={settings:{mode:'tracking',purchaseImportEnabled:true,accounts:[acc]},records,day,profileId:'fixture',storage:{set:async v=>Object.assign(data,v)},log:async()=>{},
  rpc:async(name,args)=>{if(name==='extension_seller_daily_barrier')return true;if(name==='seller_observation_plan'){plans.push(args.p_rows);return args.p_rows.map(r=>({external_id:r.external_id,action:actions[r.external_id]||'registered'}));}if(name==='sync_seller_observation'){writes.push(args);return 'registered';}throw Error('Unexpected RPC '+name);},
  openSession:async()=>({links:async()=>[{text:phase,url:base}],go:async u=>{visits.push(u);pageNo=Number(new URL(u).searchParams.get('page')||0);},
@@ -18,7 +18,7 @@ async function run({rows=[row(1)],actions={},full=false,site='mercari',pages=nul
  await sellerDaily(deps);return {data,visits,details,writes,plans,deps};
 }
 test('販売確認は4アカウント、無関係なフリマは除外する',()=>assert.deepEqual(sellerAccounts({accounts:['mercari-1','mercari-2','auctions-1','auctions-2','flea-1'].map(id=>({id,enabled:true}))}).map(x=>x.id),['mercari-1','mercari-2','auctions-1','auctions-2']));
-test('メルカリ初回は登録済み5件を超えて最後まで照合し、成功後だけ初回完了を保存する',async()=>{const r=await run({full:true,pages:[[1,2,3,4,5,6].map(n=>row(n)),[row(7)]],actions:{m7:'detail'}});assert.equal(r.visits.filter(x=>x!=='restore').length,2);assert.deepEqual(r.details,['m7']);assert.equal(r.data.sellerSaleBackfills['mercari-1'],true);assert.equal(r.data.sellerDailyAttempt.errors,0);});
+test('メルカリ初回は登録済み5件を超えて最後まで照合し、成功後だけ初回完了を保存する',async()=>{const r=await run({full:true,pages:[[1,2,3,4,5,6].map(n=>row(n)),[row(7)]],actions:{m7:'detail'}});assert.equal(r.visits.filter(x=>x!=='restore').length,2);assert.deepEqual(r.details,['m7']);assert.equal(r.data.sellerSaleBackfills['mercari-1'],'serial-case-v2');assert.equal(r.data.sellerDailyAttempt.errors,0);});
 test('2回目のメルカリは登録済み5件連続で終了し、次ページも詳細も開かない',async()=>{const r=await run({pages:[[1,2,3,4,5,6].map(n=>row(n)),[row(7)]],actions:{m6:'detail'}});assert.equal(r.visits.filter(x=>x!=='restore').length,1);assert.deepEqual(r.details,[]);assert.equal(r.writes.length,0);});
 test('未一致は連続件数を0に戻し、再び5件揃うまで進む',async()=>{const r=await run({pages:[[1,2,3,4,5].map(n=>row(n)),[6,7,8,9,10,11].map(n=>row(n))],actions:{m3:'unmatched',m9:'detail'}});assert.equal(r.visits.filter(x=>x!=='restore').length,2);assert.deepEqual(r.details,[]);assert.equal(r.data.sellerDailyAttempt.unmatched,1);});
 test('新規登録後はその商品を既存登録済みに数えず、確認済み5件の後で止める',async()=>{const r=await run({rows:[1,2,3,4,5,6,7,8].map(n=>row(n)),actions:{m2:'detail',m8:'detail'}});assert.deepEqual(r.details,['m2']);assert.equal(r.writes[0].p_account_id,'mercari-1');assert.equal(r.writes[0].p_observation.sold_on,'2026-10-16');});
