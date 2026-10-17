@@ -44,6 +44,17 @@
   .task-product-summary .purchaser-comment { grid-column:1 / -1; margin-top:6px; }
   .app .task-product-summary .task-member-open { width:100%; min-height:0; background:transparent; border:0; padding:0; margin:0; }
 }
+@media screen and (min-width:1280px) {
+  .app .task-card .workflow-buttons { grid-template-columns:max-content; }
+  .app .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons { display:grid; grid-template-columns:1fr; width:max-content; }
+  .app .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons > .btn { width:100% !important; justify-self:stretch; grid-column:1; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons { grid-template-columns:repeat(2,1fr); }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="photos"] { grid-column:1; grid-row:1; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="description"] { grid-column:2; grid-row:1; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:1; grid-row:2; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:2; grid-row:2; }
+  .app .task-card[data-item-status="商品登録前"] .workflow-buttons > [data-action="packingPhotos"] { grid-column:1; grid-row:3; }
+}
 @media screen and (max-width:1279px) {
   .app .delivery-navigation { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) max-content; gap:4px 8px; justify-items:start; }
   .app .delivery-navigation > .btn { font-size:14px; grid-column:auto; grid-row:1; padding-inline:0 !important; }
@@ -151,10 +162,10 @@
   .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:2; grid-row:1; }
 }
 @media screen and (min-width:1280px) {
-  .task-card[data-item-status="検品中"] .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; column-gap:16px; align-items:start; }
-  .task-card[data-item-status="検品中"] .task-content > * { grid-column:1 / -1; }
-  .task-card[data-item-status="検品中"] .task-content > .task-product-summary { grid-column:1; grid-row:1; }
-  .task-card[data-item-status="検品中"] .task-content > .workflow-controls { display:contents; }
-  .task-card[data-item-status="検品中"] .workflow-buttons { grid-column:2; grid-row:1; display:flex; gap:6px; margin-top:0; flex-wrap:nowrap; }
-  .task-card[data-item-status="検品中"] .workflow-action-form { grid-column:1 / -1; }
+  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; column-gap:16px; align-items:start; }
+  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > * { grid-column:1 / -1; }
+  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > .task-product-summary { grid-column:1; grid-row:1; }
+  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > .workflow-controls { display:contents; }
+  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons { grid-column:2; grid-row:1; display:flex; gap:6px; margin-top:0; flex-wrap:nowrap; }
+  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-action-form { grid-column:1 / -1; }
 }
