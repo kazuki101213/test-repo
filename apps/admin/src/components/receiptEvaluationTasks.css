@@ -1,0 +1,4 @@
+.receipt-evaluation-task > p { margin:0 0 8px; }
+.receipt-evaluation-info { display:grid; gap:4px; overflow-wrap:anywhere; }
+.receipt-evaluation-actions { display:flex; align-items:center; gap:8px; margin-top:10px; }
+.receipt-evaluation-actions > a.btn { display:inline-flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; }
