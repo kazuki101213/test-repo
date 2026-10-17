@@ -151,3 +151,6 @@
 .receipt-optional-fields textarea { min-height:0; }
 .receipt-selected-file { margin:0; overflow-wrap:anywhere; font-size:13px; }
 @media print { .app:has(.invoices) { max-width:none; } }
+@media screen and (max-width:1023px) {
+ .invoice-toolbar input[type="month"] { width:calc(100% - 36px); }
+}
