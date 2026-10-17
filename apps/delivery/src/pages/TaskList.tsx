@@ -153,10 +153,11 @@ export default function TaskList({ staff }: { staff: Staff }) {
         <ul ref={shippingRef} className="invoice-task-rows" aria-label="発送関連"><SpareShippingTasks staff={staff} /></ul>
       </section>
 
-      <div className="filters task-filters">
+      <div className="filters task-filters inventory-workflow-menu" role="group" aria-label="販売状態で絞り込み">
+        {['FBA','自己発送','メルカリ','ヤフオク','Amazon返品'].map((channel,index) => <span key={channel} className="inventory-workflow-lane" data-lane={index}>{channel}</span>)}
         {FILTERS.map((f) => (
           <button
-            key={f.key} className="btn" data-active={filter === f.key}
+            key={f.key} type="button" className="btn" data-status={f.key} data-active={filter === f.key} aria-pressed={filter === f.key}
             onClick={() => setFilter(f.key)}
           >
             {f.label}
