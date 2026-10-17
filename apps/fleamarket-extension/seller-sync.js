@@ -39,8 +39,8 @@ export async function readSellerPage({site,phase=null}={}){
  const navigation=links.filter(link=>/^(出品中|取引中|売却済み|出品終了分|売上金管理(?: Yahoo!かんたん決済)?|次へ|次のページ|次)$/.test(norm(link.innerText))&&allowed(link.href)).map(link=>({text:/^売上金管理(?: Yahoo!かんたん決済)?$/.test(norm(link.innerText))?'売上金管理':norm(link.innerText),url:link.href}));
  const active=[...document.querySelectorAll('[aria-selected="true"],[aria-current="page"],[aria-pressed="true"],[data-state="active"]')].filter(visible).map(e=>norm(e.innerText)).find(value=>['出品中','取引中','売却済み','出品終了分','売上金管理'].includes(value));
  const effectivePhase=active||phase;
- let itemCount=0;const rows=new Map();
- for(const link of links){const external_id=idOf(link.href);if(!external_id)continue;itemCount++;
+ let itemCount=0;const rows=new Map(),itemIds=new Set();
+ for(const link of links){const external_id=idOf(link.href);if(!external_id)continue;itemCount++;itemIds.add(external_id);
   let box=link.closest('tr,li,article,[data-testid="item-cell"],[data-testid="item-container"]')||link;
   for(let parent=box.parentElement,depth=0;parent&&depth<5;parent=parent.parentElement,depth++){
    const body=norm(parent.innerText);const ids=new Set([...parent.querySelectorAll('a[href]')].map(a=>idOf(a.href)).filter(Boolean));
@@ -58,5 +58,5 @@ export async function readSellerPage({site,phase=null}={}){
   const row={external_id,serial,status,trade_key:external_id,url:trade?.href||link.href,detail_url:detail?.href||trade?.href||link.href,attention:/キャンセル|中止/.test(body)};
   const previous=rows.get(external_id);if(previous&&previous.status!==status)throw Error('同じ商品IDに異なる状態があります');rows.set(external_id,row);
  }
- return {itemCount,rows:[...rows.values()],navigation,active:active||null,text,empty:/終了した商品はありません|お取り扱いはありません|出品中の商品(?:は|が)(?:ありません|ございません)|出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
+ return {itemCount,itemIds:[...itemIds],rows:[...rows.values()],navigation,active:active||null,text,empty:/終了した商品はありません|お取り扱いはありません|出品中の商品(?:は|が)(?:ありません|ございません)|出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
 }

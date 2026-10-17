@@ -3,7 +3,7 @@ import {sellerDaily} from '../../tools/fleamarket-extension/seller-runtime.js';
 import {sellerAccounts} from '../../tools/fleamarket-extension/seller-sync.js';
 const day='2026-10-17',account={id:'mercari-1',site:'mercari',label:'メルカリ1',enabled:true};
 const row=(n,status='販売済')=>({external_id:'m'+n,serial:String(n),status,trade_key:'m'+n,detail_url:'https://jp.mercari.com/transaction/m'+n});
-async function run({rows=[row(1)],actions={},full=false,site='mercari',pages=null,detailError=false,more=null}={}){
+async function run({rows=[row(1)],actions={},full=false,site='mercari',pages=null,detailError=false,more=null,itemIds=null}={}){
  const data={},visits=[],details=[],writes=[],plans=[];let pageNo=0;
  const acc={...account,...(site==='auctions'?{id:'auctions-2',site:'auctions'}:{})},phase=site==='mercari'?'売却済み':'売上金管理';
  const base=site==='mercari'?'https://jp.mercari.com/mypage/listings/completed':'https://salesmanagement.yahoo.co.jp/list';
@@ -12,7 +12,7 @@ async function run({rows=[row(1)],actions={},full=false,site='mercari',pages=nul
  const deps={settings:{mode:'tracking',purchaseImportEnabled:true,accounts:[acc]},records,day,profileId:'fixture',storage:{set:async v=>Object.assign(data,v)},log:async()=>{},
  rpc:async(name,args)=>{if(name==='extension_seller_daily_barrier')return true;if(name==='seller_observation_plan'){plans.push(args.p_rows);return args.p_rows.map(r=>({external_id:r.external_id,action:actions[r.external_id]||'registered'}));}if(name==='sync_seller_observation'){writes.push(args);return 'registered';}throw Error('Unexpected RPC '+name);},
  openSession:async()=>({links:async()=>[{text:phase,url:base}],go:async u=>{visits.push(u);pageNo=Number(new URL(u).searchParams.get('page')||0);},
- read:async()=>({rows:list[pageNo],itemCount:list[pageNo].length,empty:!list[pageNo].length,navigation:pageNo+1<list.length?[{text:'次へ',url:base+'?page='+(pageNo+1)}]:[]}),
+ read:async()=>({rows:list[pageNo],itemIds:itemIds?.[pageNo],itemCount:list[pageNo].length,empty:!list[pageNo].length,navigation:pageNo+1<list.length?[{text:'次へ',url:base+'?page='+(pageNo+1)}]:[]}),
  advanceList:more?async()=>{pageNo++;return more(pageNo);}:undefined,
  detail:async(url,id)=>{details.push(id);if(detailError)throw Error('network');return {url:site==='mercari'?url:'https://aucpay.yahoo.co.jp/detail/'+id,text:site==='mercari'?'商品ID '+id+' 商品代金 1000 販売利益 800 購入日時 2026/10/16 12:00':'商品ID '+id+' 決済金額 1000 受取金額 800 取引日 2026/10/16 12:00'};},close:async()=>visits.push('restore')})};
  await sellerDaily(deps);return {data,visits,details,writes,plans,deps};
@@ -25,3 +25,17 @@ test('新規登録後はその商品を既存登録済みに数えず、確認�
 test('ヤフオク2は登録済みが何件続いても全ページを確認し、新規のみ詳細を開く',async()=>{const r=await run({site:'auctions',pages:[[1,2,3,4,5,6].map(n=>({...row(n),external_id:'u'+n})),[{...row(7),external_id:'u7'}]],actions:{u7:'detail'}});assert.equal(r.visits.filter(x=>x!=='restore').length,2);assert.deepEqual(r.details,['u7']);assert.equal(r.writes[0].p_account_id,'auctions-2');});
 test('詳細取得エラーはそのアカウントを停止し初回完了にせず、同日に再巡回しない',async()=>{const r=await run({full:true,actions:{m1:'detail'},detailError:true});assert.equal(r.details.length,1);assert.equal(r.data.sellerDailyAttempt.status,'failed');assert.equal(r.data.sellerSaleBackfills,undefined);await sellerDaily({...r.deps,records:{...r.deps.records,...r.data}});assert.equal(r.details.length,1);});
 test('取得上限や照合結果不明を登録済み扱いしない',async()=>{const r=await run({full:true,actions:{m1:'protected'}});assert.equal(r.writes.length,0);assert.equal(r.details.length,0);});
+
+test('ヤフオク売上金管理は先頭40件だけ照合し41件目の詳細と次ページを開かない',async()=>{
+ const r=await run({site:'auctions',pages:[Array.from({length:45},(_,i)=>({...row(i+1),external_id:'u'+(i+1)})),[{...row(46),external_id:'u46'}]],actions:{u40:'detail',u41:'detail'}});
+ assert.equal(r.plans.flat().length,40);assert.deepEqual(r.details,['u40']);assert.equal(r.visits.filter(x=>x!=='restore').length,1);
+});
+test('ヤフオク40件上限はページをまたいで数える',async()=>{
+ const r=await run({site:'auctions',pages:[Array.from({length:25},(_,i)=>({...row(i+1),external_id:'u'+(i+1)})),Array.from({length:25},(_,i)=>({...row(i+26),external_id:'u'+(i+26)})),[{...row(51),external_id:'u51'}]],actions:{u40:'detail',u41:'detail'}});
+ assert.equal(r.plans.flat().length,40);assert.deepEqual(r.details,['u40']);assert.equal(r.visits.filter(x=>x!=='restore').length,2);
+});
+
+test('未完了商品も40件に含み、41件目の販売済みは読まない',async()=>{
+ const r=await run({site:'auctions',rows:[{...row(40),external_id:'u40'},{...row(41),external_id:'u41'}],itemIds:[Array.from({length:45},(_,i)=>'u'+(i+1))],actions:{u40:'detail',u41:'detail'}});
+ assert.deepEqual(r.plans.flat().map(x=>x.external_id),['u40']);assert.deepEqual(r.details,['u40']);
+});
