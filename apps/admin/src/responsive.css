@@ -115,5 +115,5 @@
 }
 /* Keep the explicit grid rows, but size each command by its label. */
 @media screen {
-  .layout button.btn, .layout button.nav { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:44px; padding-inline:12px !important; white-space:nowrap; }
+  .layout .btn, .layout button.nav { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:44px; padding-inline:12px !important; white-space:nowrap; }
 }
