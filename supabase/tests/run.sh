@@ -51,6 +51,8 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/packing_photos.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/four_account_sales.sql"
 
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/listing_photo_approval.sql"
+
 # アプリが読む列・関数がこのスキーマに存在するかを突き合わせる
 DB="$DB" "$HERE/check-app-schema.py"
 
