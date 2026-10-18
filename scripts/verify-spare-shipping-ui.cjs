@@ -11,11 +11,12 @@ for(const app of ['admin','delivery']){
     useRef(value){const i=cursor++;return hooks[i]??={current:value};},
     useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
   };
-  const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}],
+  let fixtures=[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}],focus;
+  const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>fixtures,
     sendSpareShipping:async(id,tracking)=>{if(failed)throw{message:'送信に失敗しました'};sent={id,tracking};},
     completeSpareShipping:async id=>{completed=id;}};
   const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
-    window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},
+    window:{setInterval:()=>1,clearInterval(){},addEventListener(name,fn){if(name==='focus')focus=fn;},removeEventListener(){}},
     document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
   const source=fs.readFileSync('apps/'+app+'/src/components/SpareShippingTasks.tsx','utf8')+'\nexport { ShippingRow };';
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,context);
@@ -25,6 +26,16 @@ for(const app of ['admin','delivery']){
   const button=label=>all(tree).find(n=>n.type==='button'&&text(n)===label);
   await mount(context.exports.default,{staff:{id:'EE',role:'purchaser'}});
   assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task']);
+  await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
+  assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other'],'Sent tasks must not require admin completion');
+  fixtures=fixtures.map(row=>row.id==='task'?{...row,sent_at:'sent-elsewhere'}:row);
+  focus();await settle();
+  assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['other'],'Sending from another app automatically removes the task on refresh');
+  assert.equal(completed,undefined,'Automatic removal must not issue another completion write');
+  fixtures=[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}];
+  await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
+  all(tree).find(n=>typeof n.type==='function'&&n.props.task.id==='task').props.onChanged();await settle();
+  assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['other'],'A stale refresh must not restore a successfully sent task');
   if(app==='delivery'){
     await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'}});
     assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other']);
@@ -32,7 +43,7 @@ for(const app of ['admin','delivery']){
     all(tree).find(n=>typeof n.type==='function'&&n.props.task.id==='task').props.onChanged();await settle();
     assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['other'],'Successful send must stay dismissed even if refresh returns old unsent rows');
     await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
-    assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other','sent'],'Management confirmation history remains available');
+    assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other'],'Management hides sent tasks without another completion');
     await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
     button('発送').props.onClick();await settle();
@@ -77,7 +88,7 @@ for(const app of ['admin','delivery']){
   assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(!button('完了'));
   await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('発送済み'));assert(text(tree).includes('通番号：2392'));assert(text(tree).includes('追跡番号：12345'));assert(!text(tree).includes('利用記録'));
-  button('完了').props.onClick();await settle();assert.equal(completed,'task');assert.equal(changed,2);
+  assert(!button('完了'),'Sent tasks no longer offer a second completion button');assert.equal(completed,undefined);assert.equal(changed,1);
 }
-console.log('Both apps: holder scope, requested details, serial-before-title, unchecked-submit rejection, checked send, cancel reset, error retry, admin pending/sent/completion passed');
+console.log('Both apps: holder scope, requested details, checked shipping, cancel reset, error retry and automatic sent-task dismissal without extra completion passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
