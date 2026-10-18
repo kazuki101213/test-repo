@@ -261,6 +261,7 @@ export interface StockSummary {
 }
 
 export interface DelivererWorkload {
+  作業在庫: number;
   deliverer_id: string;
   deliverer_name: string;
   保有在庫: number;

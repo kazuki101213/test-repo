@@ -92,10 +92,10 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
         <div className="card workload-card">
           <h3>納品担当者の稼働</h3>
           {visibleWorkload.length === 0 && <p className="empty">データがありません。</p>}
-          <table>
+          <div className="scroll"><table>
             <thead>
               <tr>
-                <th>担当者</th><th className="num">保有在庫</th>
+                <th>担当者</th><th className="num">作業在庫</th><th className="num">保有在庫</th>
                 <th className="num">平均作業日数</th>
               </tr>
             </thead>
@@ -105,13 +105,13 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
                   <td>
                     {staffDisplayName(w.deliverer_name)}
                   </td>
-                  {(['保有在庫', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
+                  {(['作業在庫', '保有在庫', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
                     <button className="metric-link" aria-label={`${staffDisplayName(w.deliverer_name)} ${metric}の詳細`} onClick={() => setWorkloadDetail({ delivererId: w.deliverer_id, name: staffDisplayName(w.deliverer_name), metric })}>{w[metric] ?? '—'}</button>
                   </td>)}
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </div>
 

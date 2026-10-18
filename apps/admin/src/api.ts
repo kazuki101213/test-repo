@@ -134,7 +134,10 @@ export interface ItemFilter {
   purchasedTo?: string;
 }
 
-export type WorkloadMetric = '保有在庫' | '平均作業日数';
+export type WorkloadMetric = '作業在庫' | '保有在庫' | '平均作業日数';
+const WORKING_STATUSES = ['検品中', 'Amazon返送依頼', '商品登録前'] as const;
+const SELF_SHIPPING_CHANNELS = '自己発送,メルカリ,ヤフオク';
+const WORKLOAD_HELD_FILTER = 'status.in.(' + HELD_STATUSES.join(',') + '),and(sales_channel.in.(' + SELF_SHIPPING_CHANNELS + '),or(status.eq.出品中,and(status.eq.取引中,shipped_on.is.null)))';
 export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'packed_on' | 'shipped_on'>;
 
 export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric): Promise<WorkloadItem[]> {
@@ -143,7 +146,8 @@ export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadM
     let query = getSupabase().from('items')
       .select('id,lot_seq,sku,title,status,marketplace,purchased_at,packed_on,shipped_on')
       .eq('deliverer_id', delivererId).eq('is_accessory', false);
-    if (metric === '保有在庫') query = query.in('status', HELD_STATUSES);
+    if (metric === '作業在庫') query = query.in('status', WORKING_STATUSES);
+    else if (metric === '保有在庫') query = query.or(WORKLOAD_HELD_FILTER);
     else query = query.gte('packed_on', averageStart).lte('packed_on', today).not('purchased_at', 'is', null);
     const { data, error } = await query.order('lot_seq', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);
