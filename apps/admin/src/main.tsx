@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './responsive.css';
+import './adminTasks.css';
 import App from './App';
 import PasswordSetup from './components/PasswordSetup';
 

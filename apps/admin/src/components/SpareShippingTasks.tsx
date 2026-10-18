@@ -1,3 +1,4 @@
+import { purchaseItemUrl } from '../purchaseUrl';
 import { useEffect, useRef, useState } from 'react';
 import { fetchSpareShippingTasks, sendSpareShipping, staffDisplayName } from '@bussan/shared';
 import type { SpareShippingTask, Staff } from '@bussan/shared';
@@ -24,6 +25,13 @@ function ShippingRow({task,staff,management,onChanged}:{
       setEditing(false);onChanged();
     } catch(cause) {setError(messageOf(cause));}
     finally {setBusy(false);}
+  }
+  if (management && !task.sent_at) {
+    const sourceUrl=purchaseItemUrl(task.marketplace,task.marketplace_item_id,null);
+    return <li className="spare-shipping-row admin-task-card admin-shipping-task" id={`spare-shipping-${task.id}`}>
+      <strong>{owner}→{recipient}の発送準備中</strong>
+      <div className="admin-shipping-fields"><span>【利用記録：{task.usage_note||'—'}】</span><span>【通番号：{task.lot_seq}】</span>{sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id||'未登録'}】</a>:<span>【{task.marketplace_item_id||'未登録'}】</span>}<span>【{task.title}】</span><span>【{task.manufacturer||'未登録'}】</span></div>
+    </li>;
   }
   return <li className="spare-shipping-row" id={`spare-shipping-${task.id}`}>
     <div className="spare-shipping-heading">

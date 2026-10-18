@@ -16,7 +16,7 @@ for(const app of ['admin','delivery']){
   const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>{reads++;return fixtures;},
     sendSpareShipping:async(id,tracking)=>{if(failed)throw{message:'送信に失敗しました'};sent={id,tracking};},
     completeSpareShipping:async id=>{completed=id;}};
-  const context={Date:{now:()=>now},exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
+  const context={Date:{now:()=>now},exports:{},require:id=>id==='../purchaseUrl'?{purchaseItemUrl:(site,id)=>id==='m123'?'https://jp.mercari.com/item/m123':null}:id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
     window:{setInterval:(fn,ms)=>{tick=fn;intervalMs=ms;return 1;},clearInterval(){},addEventListener(name,fn){if(name==='focus')focus=fn;},removeEventListener(){}},
     document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
   const source=fs.readFileSync('apps/'+app+'/src/components/SpareShippingTasks.tsx','utf8')+'\nexport { ShippingRow };';
@@ -91,6 +91,12 @@ for(const app of ['admin','delivery']){
   all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();
   button('キャンセル').props.onClick();await settle();button(app==='delivery'?'発送':'完了').props.onClick();await settle();
   assert.equal(all(tree).find(n=>n.props?.type==='checkbox').props.checked,false);assert(button('送信').props.disabled);
+  if(app==='admin'){
+    await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'admin'},management:true,onChanged:()=>changed++});
+    assert(!button('完了'),'Management card has no duplicate shipping completion');
+    assert(text(tree).includes('【利用記録：1647 / 1723】【通番号：2392】【m123】【リモコン】【Panasonic純正】'));
+    assert.equal(all(tree).find(n=>n.type==='a').props.href,'https://jp.mercari.com/item/m123');
+  }
   await mount(context.exports.ShippingRow,{task,staff:{id:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(!button('完了'));
   await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',role:'admin'},management:true,onChanged:()=>changed++});
