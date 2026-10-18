@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {sellerDefaults,SMALL_PACKAGES,canViewDeliveryAssignee} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
-import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,performInventoryAction} from '../api';
+import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,requestListingResultCheck,performInventoryAction} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
 import {listingDraft} from '../listingDraft';
 import DescriptionEditor from './DescriptionEditor';
@@ -18,7 +18,8 @@ function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>
  },[onRead]);
  return <div><video ref={video} className="seller-camera" playsInline muted aria-label="専用資材のコードを読み取るカメラ"/>{error&&<p className="error" role="alert">カメラを起動できません：{error}</p>}<button type="button" className="btn" onClick={onClose}>カメラを閉じる</button></div>;
 }
-function statusText(op:SellerOperation){return ({queued:'拡張機能の実行待ち',running:'実行中',succeeded:'完了',failed:'停止',uncertain:'結果の確認が必要'} as const)[op.status];}
+function checking(op:SellerOperation){return op.status==='uncertain'&&['queued','running'].includes(String(op.result.read_check_state));}
+function statusText(op:SellerOperation){if(checking(op))return '出品済み商品を確認中';return ({queued:'拡張機能の実行待ち',running:'実行中',succeeded:'完了',failed:'停止',uncertain:'結果の確認が必要'} as const)[op.status];}
 export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onChanged}:{mode:'listing'|'shipping'|'messages';task:DeliveryTask;staff:Staff;listingSkus?:string[];onClose:()=>void;onChanged:(task:DeliveryTask)=>void}){
  const [draft,setDraft]=useState<SellerDraft|null>(null),[photos,setPhotos]=useState<ItemPhoto[]>([]),[selected,setSelected]=useState<string[]>([]),[context,setContext]=useState<SellerContext|null>(null);
  const [descriptionSource,setDescriptionSource]=useState<{task:DeliveryTask;maker:string}|null>(null);
@@ -29,19 +30,20 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const onRead=useRef((value:string)=>readCode.current(value)).current;
  useEffect(()=>{let active=true;void Promise.all([fetchTask(task.id,canViewDeliveryAssignee(staff)),fetchSellerContext(task.id),mode==='listing'?fetchPhotoUrls(task.id):Promise.resolve([])]).then(async([full,info,images])=>{if(!active)return;if(!full||!info)throw new Error('商品が見つかりません');const maker=mode==='listing'?await fetchProductMaker(full.asin).catch(()=>''):'';if(!active)return;const prepared={...full,deliverer_name:info.assignee||full.deliverer_name||(full.deliverer_id===staff.id?staff.name:'')};const defaults=mode==='listing'?listingDraft(prepared,maker,listingSkuKey?listingSkuKey.split('\n'):[]):sellerDefaults(prepared);setDraft(mode==='shipping'?{...defaults,...info.shipping_defaults}:defaults);setDescriptionSource({task:prepared,maker});setContext(info);setPhotos(images);setSelected(images.slice(0,10).map(photo=>photo.id));}).catch(cause=>{if(active)setError(cause instanceof Error?cause.message:String(cause));});return()=>{active=false;};},[task.id,mode,staff.id,staff.name,staff.role,listingSkuKey]);
  const pending=context?.operations.some(op=>['queued','running','uncertain'].includes(op.status))??false;
- const watching=context?.operations.find(op=>op.status==='queued'||op.status==='running');
+ const watching=context?.operations.find(op=>op.status==='queued'||op.status==='running'||checking(op));
  useEffect(()=>{if(!watching)return;let active=true,inFlight=false;
-  async function refresh(){if(!active||inFlight||document.visibilityState!=='visible')return;if(Date.now()-Date.parse(watching!.created_at)>600000){setError('実行結果の確認が必要です。自動再実行はしません。');return;}inFlight=true;
-   try{const state=await fetchSellerOperation(watching!.id);if(!active)return;
-    if(!['queued','running'].includes(state.status)){const info=await fetchSellerContext(task.id);if(!active)return;setContext(info);const finished=info.operations.find(op=>op.id===watching!.id&&op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){lastFinished.current=finished.id;const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(active&&full)onChanged(full);}}
+  async function refresh(){if(!active||inFlight||document.visibilityState!=='visible')return;if(Date.now()-Date.parse(checking(watching!)?String(watching!.result.read_check_requested_at):watching!.created_at)>600000){setError('実行結果の確認が必要です。自動再実行はしません。');return;}inFlight=true;
+   try{const state=checking(watching!)?{status:'uncertain'}:await fetchSellerOperation(watching!.id);if(!active)return;
+    if(checking(watching!)||!['queued','running'].includes(state.status)){const info=await fetchSellerContext(task.id);if(!active)return;setContext(info);const finished=info.operations.find(op=>op.id===watching!.id&&op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){lastFinished.current=finished.id;const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(active&&full)onChanged(full);}}
    }catch(cause){if(active)setError(cause instanceof Error?cause.message:String(cause));}finally{inFlight=false;}
   }
   const timer=window.setInterval(()=>void refresh(),15000);return()=>{active=false;window.clearInterval(timer);};
- },[watching?.id,task.id,staff.role,staff.code,onChanged]);
+ },[watching?.id,watching?.result.read_check_state,watching?.result.read_check_requested_at,task.id,staff.role,staff.code,onChanged]);
  useEffect(()=>{setCode('');setPosted(false);setCamera(false);setMessage('');},[context?.listing?.trade_key]);
  const operations=context?.operations??[],latestCode=operations.find(op=>op.kind==='shipping_code'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key),proof=operations.find(op=>op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key&&(op.kind==='register_package'||op.kind==='verify_shipping'&&op.result.accepted===true));
  useEffect(()=>{let active=true;const value=latestCode?.result.qr_code;if(typeof value!=='string'){setQr('');return;}if(value.startsWith('data:image/png;base64,')){setQr(value);return;}void import('qrcode').then(module=>module.toDataURL(value,{width:260,margin:2})).then(url=>{if(active)setQr(url);}).catch(()=>{if(active)setError('配送コードを表示できません');});return()=>{active=false;};},[latestCode?.id]);
  async function submit(kind:string,payload:Record<string,unknown>){if(lock.current||pending)return;lock.current=true;setBusy(true);setError('');try{await queueSellerOperation(task.id,kind,{...payload,expected_revision:context?.revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));setMessage('');}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
+ async function checkListing(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await requestListingResultCheck(task.id);setContext(await fetchSellerContext(task.id));}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
  function movePhoto(id:string,offset:number){setSelected(current=>{const from=current.indexOf(id),to=from+offset;if(from<0||to<0||to>=current.length)return current;const next=[...current];[next[from],next[to]]=[next[to]!,next[from]!];return next;});request.current=crypto.randomUUID();}
  function change<K extends keyof SellerDraft>(field:K,value:SellerDraft[K]){setDraft(current=>current?{...current,[field]:value}:current);request.current=crypto.randomUUID();}
  const amazonListing=mode==='listing'&&['FBA','自己発送'].includes(task.sales_channel??'');
@@ -91,6 +93,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <textarea aria-label="取引相手へのメッセージ" value={message} maxLength={2000} disabled={disabled} onChange={event=>{setMessage(event.target.value);request.current=crypto.randomUUID();}}/>
    <button type="button" className="btn primary" disabled={disabled||!message.trim()} onClick={()=>{if(window.confirm('取引相手へ送信しますか？'))void submit('message_send',{...tradePayload,body:message.trim()});}}>送信</button>
   </>}
-  <div className="seller-history" aria-live="polite">{operations.map(op=><p key={op.id}>{statusText(op)}{typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
+  {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button>}
+  <div className="seller-history" aria-live="polite">{operations.map(op=><p key={op.id}>{statusText(op)}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
  </section>;
 }

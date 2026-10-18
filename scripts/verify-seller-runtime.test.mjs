@@ -21,3 +21,21 @@ test('ヤフオク出品中が空でも出品終了分と売上金管理まで�
 });
 
 test('登録済みタブの実リンクを正規化し、売上金管理の後置説明を取得漏れにしない',async()=>{let tab={id:8,url:'https://auctions.yahoo.co.jp/my/won',status:'complete'};const tabs={query:async()=>[tab],get:async()=>tab,update:async(id,v)=>(tab={...tab,...v}),create:async()=>{throw Error('新規タブ禁止');}},links=[{text:'売上金管理 Yahoo!かんたん決済',url:'https://salesmanagement.yahoo.co.jp/list'},{text:'受取口座の管理 Yahoo!ウォレット',url:'https://aucpay.yahoo.co.jp/detail-front/BankAccountConfirm'}];const session=await openSellerSession({id:'auctions-1',site:'auctions',identity:{pageUrl:tab.url}},{tabs,scripting:{executeScript:async()=>[{result:{links}}]},identity:async()=>({confirmed:true})});assert.deepEqual(await session.links(),[{text:'売上金管理',url:links[0].url}]);await session.close();});
+
+for(const recover of [true,false])test('出品送信の応答消失は結果だけ確認し再送しない '+recover,async()=>{
+ let claimed=false,finished;const phases=[];const job={id:'publish-one',account_id:'mercari-2',channel:'メルカリ',kind:'listing',payload:{photos:[]}};
+ const deps={settings,rpc:async(name,args)=>{if(name==='extension_seller_queue')return[job];if(name==='extension_claim_seller_operation'){if(claimed)return false;claimed=true;return true;}if(name==='extension_finish_seller_operation'){finished=args;return;}throw Error(name);},openSession:async()=>({links:async()=>[{text:'出品',url:'https://jp.mercari.com/sell/create'}],go:async()=>{},structure:async()=>({fileInputs:[{}]}),loaded:async()=>{},operation:async(job,phase)=>{phases.push(phase);if(phase==='publish')throw Error('販売画面から結果を取得できません');if(phase==='listing_result'){if(!recover)throw Error('確認不可');return {external_id:'m123',url:'https://jp.mercari.com/item/m123'};}return {};},close:async()=>{}}),log:async()=>{}};
+ await sellerQueuedOperations(deps);await sellerQueuedOperations(deps);assert.equal(phases.filter(p=>p==='publish').length,1);assert.equal(phases.filter(p=>p==='listing_result').length,1);assert.equal(finished.p_status,recover?'succeeded':'uncertain');
+});
+for(const scenario of ['match','duplicate','suffix','account','claim'])test('不確定な出品は読み取りだけで照合 '+scenario,async()=>{
+ const phases=[],calls=[];let finished;const job={id:'check',kind:'listing',account_id:scenario==='account'?'missing':'mercari-2',inventory_sku:'1856b-EEII-20260927-0',read_only_listing_check:true};
+ const rows=scenario==='suffix'?[{serial:'1856',external_id:'m1',status:'出品中'}]:[{serial:'1856b',external_id:'m1',url:'https://jp.mercari.com/item/m1',status:'出品中'},...(scenario==='duplicate'?[{serial:'1856b',external_id:'m2',status:'出品中'}]:[])];
+ await sellerQueuedOperations({settings,rpc:async(name,args)=>{calls.push(name);if(name==='extension_seller_queue')return[job];if(name==='extension_claim_listing_result_check')return scenario!=='claim';if(name==='extension_finish_listing_result_check'){finished=args.p_result;return;}throw Error('Write RPC forbidden: '+name);},openSession:async()=>({links:async()=>[{text:'出品中',url:'https://jp.mercari.com/mypage/listings'}],go:async()=>{},read:async()=>({rows,navigation:[],active:'出品中'}),operation:async(job,phase)=>{phases.push(phase);return {external_id:'m1',verified_serial:'1856b'};},close:async()=>{}}),log:async()=>{}});
+ assert(!calls.includes('extension_claim_seller_operation'));assert(!phases.some(p=>p!=='listing_result'));if(scenario==='match')assert.equal(finished.external_id,'m1');else if(['duplicate','suffix'].includes(scenario)){assert(finished.note);assert.equal(phases.length,0);}else assert.equal(finished,undefined);
+});
+
+test('結果確認専用RPCを実API経路で送り、任意のRPCは拒否する',async()=>{
+ const {rpc}=await import('../tools/fleamarket-extension/api.js');const original=globalThis.fetch,requests=[];
+ globalThis.fetch=async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>true};};
+ try{for(const name of ['extension_claim_listing_result_check','extension_finish_listing_result_check'])assert.equal(await rpc(name,{p_id:'fixture'},'test-only-token'),true);await assert.rejects(rpc('delete_everything',{},'test-only-token'),/許可されていない/);assert.equal(requests.length,2);assert(requests.every(r=>r.url.endsWith('listing_result_check')&&r.body.p_id==='fixture'));}finally{globalThis.fetch=original;}
+});
