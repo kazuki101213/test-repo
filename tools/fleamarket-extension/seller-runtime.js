@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.113';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.113';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.114';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.114';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.113';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.114';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -178,12 +178,38 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
  if(unmatched||conflicts)await log('warning','販売情報の要確認：商品未一致 '+unmatched+'件、販売実績の不一致 '+conflicts+'件。自動上書きしていません');
  await storage.set({sellerDailyAttempt:{day,status:errors?'failed':'completed',updated,errors,unmatched,conflicts,at:new Date().toISOString()}});
 }
+/** Read an existing listing without opening or submitting a listing form. */
+export async function checkExistingListing(session,job,account){
+ const serial=String(job.inventory_sku||'').split('-')[0].toLowerCase();if(!/^[0-9]+[a-z]*$/.test(serial))throw Error('通番号を確認できません');
+ const queue=[],seen=new Set(),matches=new Map();
+ const enqueue=links=>{for(const link of links)if(['出品した商品','出品一覧','出品中','次へ','次のページ','次'].includes(link.text)){const url=sellerUrl(account,link.url);if(!seen.has(url)&&!queue.includes(url))queue.push(url);}};
+ enqueue(await session.links());if(!queue.length)throw Error('出品一覧へのリンクを確認できません');
+ let pages=0;
+ while(queue.length){if(++pages>5)throw Error('出品結果の確認上限に達しました');const url=queue.shift();seen.add(url);await session.go(url);
+  for(let batch=0;;batch++){
+   if(batch>5)throw Error('出品結果の確認上限に達しました');let data=await session.read('出品中');
+   if(data.active&&data.active!=='出品中'&&session.selectTab&&await session.selectTab('出品中'))data=await session.read('出品中');
+   for(const row of data.rows)if(row.status==='出品中'&&row.serial?.toLowerCase()===serial)matches.set(row.external_id,row);
+   enqueue(data.navigation.filter(link=>['出品中','次へ','次のページ','次'].includes(link.text)));
+   if(!session.advanceList||!await session.advanceList())break;
+  }
+ }
+ if(matches.size!==1)throw Error('同じ通番号の出品済み商品を1件に確認できません');
+ const row=[...matches.values()][0];await session.go(sellerUrl(account,row.url));
+ const result=await session.operation(job,'listing_result');if(result.external_id!==row.external_id||result.verified_serial?.toLowerCase()!==serial)throw Error('出品済み商品の照合結果が一致しません');return result;
+}
 /** A claimed write is never reclaimed after failure, suspension, or an uncertain outcome. */
 export async function sellerQueuedOperations({settings,rpc,openSession,log}){
  const accounts=sellerAccounts(settings);if(settings.mode==='diagnostic'||!accounts.length)return;
  const queue=await rpc('extension_seller_queue',{p_account_ids:accounts.map(a=>a.id)});if(!Array.isArray(queue)||!queue.length)return;
- const job=queue[0],account=accounts.find(value=>value.id===job.account_id);if(!account||!await rpc('extension_claim_seller_operation',{p_id:job.id,p_account_id:account.id}))return;
- let session,status='failed',result={},mutating=false;
+ const job=queue[0],account=accounts.find(value=>value.id===job.account_id);if(!account)return;
+ if(job.read_only_listing_check){
+  if(job.kind!=='listing'||!await rpc('extension_claim_listing_result_check',{p_id:job.id,p_account_id:account.id}))return;
+  let session,result;try{session=await openSession(account);result=await checkExistingListing(session,job,account);}catch(error){result={note:error.message};await log('warning','出品済み商品の確認を停止しました：'+error.message);}finally{await session?.close();}
+  try{await rpc('extension_finish_listing_result_check',{p_id:job.id,p_result:result});}catch(error){await rpc('extension_finish_listing_result_check',{p_id:job.id,p_result:{note:error.message}});}return;
+ }
+ if(!await rpc('extension_claim_seller_operation',{p_id:job.id,p_account_id:account.id}))return;
+ let session,status='failed',result={},mutating=false,phase='prepare';
  try{session=await openSession(account);
   if(job.kind==='listing'){
    const links=await session.links(),listing=links.find(link=>/^(出品|出品する|出品フォーム)$/.test(link.text));if(!listing)throw Error('出品フォームへのリンクを確認できません');await session.go(listing.url);
@@ -197,9 +223,9 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
    }
    await session.operation(job,'prepare_listing',{files});
    // Persisting the claim precedes the only publish attempt. A timeout is uncertain, never retried.
-   mutating=true;let sent=await session.operation(job,'publish');
-   if(sent.confirmation){await session.loaded();sent=await session.operation(job,'publish_confirmation');}
-   await session.loaded();const listingResult=await session.operation(job,'listing_result');result=listingResult;
+   mutating=true;phase='publish';let sent=await session.operation(job,'publish');
+   if(sent.confirmation){await session.loaded();phase='publish_confirmation';sent=await session.operation(job,'publish_confirmation');}
+   await session.loaded();phase='listing_result';const listingResult=await session.operation(job,'listing_result');result=listingResult;
   }else{
    if(!job.url)throw Error('取引URLを取得できません');await session.go(job.url);
    let shippingPrepared=false;
@@ -209,7 +235,11 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
    if(job.kind==='shipping_code'&&result.code_requested){await session.loaded();result=await session.operation(job,'read_shipping_code',{waitForShippingCode:true});}
   }
   status='succeeded';
- }catch(error){status=mutating?'uncertain':'failed';result={note:error.message};await log('error','販売サイトの操作を停止しました。自動再送はしません：'+error.message);}
+ }catch(error){status=mutating?'uncertain':'failed';result={note:error.message,phase};
+  // Navigation can destroy the submit frame. Read its settled result, never submit twice.
+  if(mutating&&job.kind==='listing'&&phase!=='listing_result'&&session){try{await session.loaded();result={...await session.operation(job,'listing_result'),recovered_after_navigation:true};status='succeeded';}catch(checkError){result={...result,result_check_note:checkError.message};}}
+  if(status!=='succeeded')await log('error','販売サイトの操作を停止しました。自動再送はしません：'+error.message);
+ }
  finally{await session?.close();}
  await rpc('extension_finish_seller_operation',{p_id:job.id,p_status:status,p_result:result});
 }
