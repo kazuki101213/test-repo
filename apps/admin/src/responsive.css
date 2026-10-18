@@ -128,9 +128,6 @@
   .layout .management-navigation > .nav { width:auto; flex:none; min-width:0; padding:8px 0; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--text); font-size:13px; font-weight:400; }
   .layout .management-navigation > .nav[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
   .layout > main { padding-top:0; }
-  .invoice-task-rows .task-action-details.listing-task-details { display:flex; flex-direction:column; gap:0; font-size:13.333px; line-height:1.5; }
-  .invoice-task-rows .listing-task-details > * { margin:0; padding:0; line-height:1.5; }
-  .invoice-task-rows .listing-task-details > small { font-size:inherit; }
 }
 @media screen and (max-width:359px) {
   .layout .management-navigation > .nav { font-size:12px; }

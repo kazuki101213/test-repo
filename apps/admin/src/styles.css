@@ -424,3 +424,11 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .management-desktop-logout { display:contents; }
 
 .invoice-task-rows .listing-inventory-link { color:var(--accent); text-decoration:underline; overflow-wrap:anywhere; }
+
+.invoice-task-rows .task-action-details:is(.listing-task-details,.malfunction-report-details) { display:flex; flex-direction:column; gap:0; font-size:13.333px; line-height:1.5; }
+.invoice-task-rows .task-action-details:is(.listing-task-details,.malfunction-report-details) > * { margin:0; padding:0; line-height:1.5; }
+.invoice-task-rows .task-action-details:is(.listing-task-details,.malfunction-report-details) > small { font-size:inherit; }
+
+.invoice-task-rows .malfunction-report-details .malfunction-source-link { min-width:20px; min-height:0; vertical-align:middle; }
+.malfunction-report-extra { margin-top:8px; font-size:13.333px; }
+.malfunction-report-extra summary { cursor:pointer; color:var(--muted); }

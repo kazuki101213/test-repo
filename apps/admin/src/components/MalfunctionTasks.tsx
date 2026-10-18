@@ -1,3 +1,4 @@
+import { productSerial } from '../inventory';
 import { readResourceSnapshot } from '@bussan/shared';
 import { managementWorkflowButtons, staffDisplayName, workflowButtonDirection } from '@bussan/shared';
 import { deliveryAppUrl } from '../appUrls';
@@ -283,17 +284,21 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, source?.marketplace_item_id ?? row.marketplace_item_id, source?.marketplace_url ?? null);
       return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className="malfunction-task-row">
       <div className="malfunction-task-content">
-        <strong className="malfunction-task-heading">{row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
+        <div className="task-action-details malfunction-report-details">
+          <strong>{row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
+          <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.id)} target="_blank" rel="noopener noreferrer" aria-label="報告商品の在庫を開く">【{productSerial(row.sku,row.lot_seq)}】</a>
+          <span>【{(source?.marketplace_item_id ?? row.marketplace_item_id) || '商品ID未登録'}】{sourceUrl && <a className="malfunction-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先の商品ページを開く"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11" /><path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg></a>}</span>
+          <small>{row.sku}</small>
+        </div>
+        <details className="malfunction-report-extra"><summary>報告の詳細</summary>
         <div className="malfunction-task-metadata">
-          <div><span>通番号</span><span>{row.lot_seq}</span></div>
-          <div><span>商品ID</span><span>{row.marketplace_item_id || '—'}</span>{sourceUrl && <a className="malfunction-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先の商品ページを開く"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11" /><path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg></a>}</div>
-          <div><span>SKU</span><span>{row.sku}</span></div>
           <div><span>型番</span><span>{row.products?.[0]?.model_no || row.title || '—'}</span></div>
           <div><span>メーカー</span><span>{makersByAsin.get(row.asin?.trim() ?? '') || '—'}</span></div>
           <div><span>納品担当者</span><span>{names.get(row.deliverer_id ?? '') ?? '未設定'}</span></div>
           <div><span>報告者</span><span>{names.get(row.malfunction_reported_by ?? '') ?? '不明'}</span></div>
           <div><span>送信時間</span><span>{new Date(row.malfunction_reported_at).toLocaleString('ja-JP')}</span></div>
         </div>
+        </details>
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
         {row.status === '動作不良' && <MalfunctionConversation item={row} staff={staff} onReplied={refresh} />}
       </div>
