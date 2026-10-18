@@ -14,7 +14,7 @@ const react={useState(initial){const i=cursor++;if(!slots[i])slots[i]={value:typ
 const document={visibilityState:'visible',addEventListener:(n,fn)=>listeners[n]=fn,removeEventListener:n=>delete listeners[n]};
 const window={addEventListener:(n,fn)=>listeners[n]=fn,removeEventListener:n=>delete listeners[n]};
 const hook={exports:{},require:name=>name==='react'?react:sync.exports,Date:{now:()=>Date.now()+clock},AbortController,JSON,globalThis:{window},document,
-setTimeout:(fn)=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),setInterval:fn=>{intervals.set(++timerId,fn);return timerId;},clearInterval:id=>intervals.delete(id)};
+setTimeout:(fn)=>{timers.set(++timerId,fn);return timerId;},clearTimeout:id=>timers.delete(id),setInterval:(fn,ms)=>{assert.equal(ms,300000,'Inventory uses five-minute background refresh');intervals.set(++timerId,fn);return timerId;},clearInterval:id=>intervals.delete(id)};
 vm.runInNewContext(compile('apps/delivery/src/hooks/useInventoryPage.ts'),hook);
 let owner='hook-user',filters={status:'検品中'},view;
 async function settle(){for(let i=0;i<25;i++){if(dirty){dirty=false;cursor=0;view=hook.exports.useInventoryPage('delivery',owner,filters);effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}

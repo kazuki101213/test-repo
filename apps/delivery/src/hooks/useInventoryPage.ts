@@ -27,7 +27,7 @@ export function useInventoryPage<T extends {id:string}>(scope:InventoryScope,own
   const visible=()=>{if(document.visibilityState==='visible')void refresh();};
   // Debounce typing, and reuse fingerprints on tab return instead of loading the catalog again.
   const initial=setTimeout(()=>void refresh(true),200);
-  const timer=setInterval(visible,30000);
+  const timer=setInterval(visible,300000);
   windowGlobal().addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
   return()=>{active=false;controller.abort();clearTimeout(initial);clearInterval(timer);windowGlobal().removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);};
  },[key,limit,all]);

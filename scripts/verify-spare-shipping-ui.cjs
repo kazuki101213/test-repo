@@ -11,12 +11,13 @@ for(const app of ['admin','delivery']){
     useRef(value){const i=cursor++;return hooks[i]??={current:value};},
     useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
   };
+  let now=1000000,tick,intervalMs,reads=0;
   let fixtures=[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}],focus;
-  const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>fixtures,
+  const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>{reads++;return fixtures;},
     sendSpareShipping:async(id,tracking)=>{if(failed)throw{message:'送信に失敗しました'};sent={id,tracking};},
     completeSpareShipping:async id=>{completed=id;}};
-  const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
-    window:{setInterval:()=>1,clearInterval(){},addEventListener(name,fn){if(name==='focus')focus=fn;},removeEventListener(){}},
+  const context={Date:{now:()=>now},exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
+    window:{setInterval:(fn,ms)=>{tick=fn;intervalMs=ms;return 1;},clearInterval(){},addEventListener(name,fn){if(name==='focus')focus=fn;},removeEventListener(){}},
     document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
   const source=fs.readFileSync('apps/'+app+'/src/components/SpareShippingTasks.tsx','utf8')+'\nexport { ShippingRow };';
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,context);
@@ -32,6 +33,12 @@ for(const app of ['admin','delivery']){
   focus();await settle();
   assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['other'],'Sending from another app automatically removes the task on refresh');
   assert.equal(completed,undefined,'Automatic removal must not issue another completion write');
+  assert.equal(intervalMs,300000,'Spare shipping must not poll every 30 seconds');
+  const before=reads;focus();focus();await settle();assert.equal(reads,before,'Repeated focus must not duplicate downloads');
+  context.document.visibilityState='hidden';now+=300000;tick();await settle();assert.equal(reads,before,'Hidden pages do not poll');
+  context.document.visibilityState='visible';
+  for(let n=0;n<12;n++){now+=300000;tick();await settle();}
+  assert.equal(reads-before,12,'One visible hour needs 12 checks instead of 120');
   fixtures=[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}];
   await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
   all(tree).find(n=>typeof n.type==='function'&&n.props.task.id==='task').props.onChanged();await settle();

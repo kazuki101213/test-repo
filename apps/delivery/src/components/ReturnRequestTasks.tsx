@@ -15,8 +15,9 @@ export default function ReturnRequestTasks() {
       catch (cause) { if (active) setError(messageOf(cause)); }
     };
     void refresh();
-    const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
-    const timer = window.setInterval(onVisible, 30000);
+    let lastAutomaticCheck = 0;
+    const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - lastAutomaticCheck >= 30000) { lastAutomaticCheck = Date.now(); void refresh(); } };
+    const timer = window.setInterval(onVisible,300000);
     window.addEventListener('focus', onVisible); document.addEventListener('visibilitychange', onVisible);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', onVisible); document.removeEventListener('visibilitychange', onVisible); };
   }, []);
