@@ -365,8 +365,8 @@ export interface SellerContext {photo_review_approved?:boolean;revision:string;a
 export async function fetchSellerContext(itemId:string):Promise<SellerContext>{
  const {data,error}=await getSupabase().rpc('seller_operation_context',{p_item_id:itemId});if(error)throw error;return data as SellerContext;
 }
-export async function requestListingResultCheck(itemId:string):Promise<string>{
- const {data,error}=await getSupabase().rpc('request_listing_result_check',{p_item_id:itemId});if(error)throw error;return data as string;
+export async function requestListingResultCheck(itemId:string,listingUrl=''):Promise<string>{
+ const {data,error}=await getSupabase().rpc('request_listing_result_check',{p_item_id:itemId,p_listing_url:listingUrl.trim()||null});if(error)throw error;return data as string;
 }
 export async function queueSellerOperation(itemId:string,kind:string,payload:Record<string,unknown>,requestId:string):Promise<string>{
  const {data,error}=await getSupabase().rpc('queue_seller_operation',{p_item_id:itemId,p_kind:kind,p_payload:payload,p_request_id:requestId});if(error)throw error;return data as string;

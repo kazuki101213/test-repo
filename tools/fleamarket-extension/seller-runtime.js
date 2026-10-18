@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.114';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.114';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.115';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.115';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.114';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.115';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -180,7 +180,9 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
 }
 /** Read an existing listing without opening or submitting a listing form. */
 export async function checkExistingListing(session,job,account){
- const serial=String(job.inventory_sku||'').split('-')[0].toLowerCase();if(!/^[0-9]+[a-z]*$/.test(serial))throw Error('通番号を確認できません');
+ const serial=String(job.inventory_sku||'').split('-')[0].toLowerCase(),target=job.result?.read_check_url;
+ const targetId=target?.match(account.site==='mercari'?/^https:\/\/jp[.]mercari[.]com\/item\/(m[0-9]+)$/:/^https:\/\/page[.]auctions[.]yahoo[.]co[.]jp\/jp\/auction\/([a-z][0-9]+)$/)?.[1];
+ if(target&&!targetId)throw Error('出品先の商品URLを確認してください');if(!targetId&&!/^[0-9]+[a-z]*$/.test(serial))throw Error('出品済み商品のURLを入力してください');
  const queue=[],seen=new Set(),matches=new Map();
  const enqueue=links=>{for(const link of links)if(['出品した商品','出品一覧','出品中','次へ','次のページ','次'].includes(link.text)){const url=sellerUrl(account,link.url);if(!seen.has(url)&&!queue.includes(url))queue.push(url);}};
  enqueue(await session.links());if(!queue.length)throw Error('出品一覧へのリンクを確認できません');
@@ -189,14 +191,14 @@ export async function checkExistingListing(session,job,account){
   for(let batch=0;;batch++){
    if(batch>5)throw Error('出品結果の確認上限に達しました');let data=await session.read('出品中');
    if(data.active&&data.active!=='出品中'&&session.selectTab&&await session.selectTab('出品中'))data=await session.read('出品中');
-   for(const row of data.rows)if(row.status==='出品中'&&row.serial?.toLowerCase()===serial)matches.set(row.external_id,row);
+   for(const row of data.rows)if(row.status==='出品中'&&(targetId?row.external_id===targetId:row.serial?.toLowerCase()===serial))matches.set(row.external_id,row);
    enqueue(data.navigation.filter(link=>['出品中','次へ','次のページ','次'].includes(link.text)));
    if(!session.advanceList||!await session.advanceList())break;
   }
  }
- if(matches.size!==1)throw Error('同じ通番号の出品済み商品を1件に確認できません');
+ if(matches.size!==1)throw Error('出品済み商品を1件に確認できません。商品URLを入力して確認してください');
  const row=[...matches.values()][0];await session.go(sellerUrl(account,row.url));
- const result=await session.operation(job,'listing_result');if(result.external_id!==row.external_id||result.verified_serial?.toLowerCase()!==serial)throw Error('出品済み商品の照合結果が一致しません');return result;
+ const result=await session.operation(job,'listing_result');if(result.external_id!==row.external_id)throw Error('出品済み商品の照合結果が一致しません');return result;
 }
 /** A claimed write is never reclaimed after failure, suspension, or an uncertain outcome. */
 export async function sellerQueuedOperations({settings,rpc,openSession,log}){
@@ -237,7 +239,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
   status='succeeded';
  }catch(error){status=mutating?'uncertain':'failed';result={note:error.message,phase};
   // Navigation can destroy the submit frame. Read its settled result, never submit twice.
-  if(mutating&&job.kind==='listing'&&phase!=='listing_result'&&session){try{await session.loaded();result={...await session.operation(job,'listing_result'),recovered_after_navigation:true};status='succeeded';}catch(checkError){result={...result,result_check_note:checkError.message};}}
+  if(mutating&&job.kind==='listing'&&session){try{await session.loaded();result={...await session.operation(job,'listing_result'),recovered_after_navigation:true};status='succeeded';}catch(checkError){result={...result,result_check_note:checkError.message};}}
   if(status!=='succeeded')await log('error','販売サイトの操作を停止しました。自動再送はしません：'+error.message);
  }
  finally{await session?.close();}
