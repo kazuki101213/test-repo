@@ -33,12 +33,12 @@ for(const app of ['admin','delivery']){
   focus();await settle();
   assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['other'],'Sending from another app automatically removes the task on refresh');
   assert.equal(completed,undefined,'Automatic removal must not issue another completion write');
-  assert.equal(intervalMs,300000,'Spare shipping must not poll every 30 seconds');
+  assert.equal(intervalMs,86400000,'Spare shipping periodically refreshes once per 24 hours');
   const before=reads;focus();focus();await settle();assert.equal(reads,before,'Repeated focus must not duplicate downloads');
-  context.document.visibilityState='hidden';now+=300000;tick();await settle();assert.equal(reads,before,'Hidden pages do not poll');
+  context.document.visibilityState='hidden';now+=intervalMs;tick();await settle();assert.equal(reads,before,'Hidden pages do not poll');
   context.document.visibilityState='visible';
-  for(let n=0;n<12;n++){now+=300000;tick();await settle();}
-  assert.equal(reads-before,12,'One visible hour needs 12 checks instead of 120');
+  now+=intervalMs;tick();await settle();
+  assert.equal(reads-before,1,'One visible day needs only one periodic shipping check');
   fixtures=[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}];
   await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
   all(tree).find(n=>typeof n.type==='function'&&n.props.task.id==='task').props.onChanged();await settle();
