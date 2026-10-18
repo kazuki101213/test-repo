@@ -5,7 +5,7 @@ import { expenseCategories, type ExpenseInput } from '../expenses';
 import DateInput from './DateInput';
 
 
-export default function ExpensePanel({ onSaved, onBusyChange, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; initial?: ExpenseInput; template?: { id: string; category: '固定費' | '外注費'; name: string; card_id: string | null; month: string } }) {
+export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; onClose?: () => void; initial?: ExpenseInput; template?: { id: string; category: '固定費' | '外注費'; name: string; card_id: string | null; month: string } }) {
   const [date, setDate] = useState(() => initial?.incurred_on ?? (template ? '' : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)));
   const [category, setCategory] = useState<ExpenseInput['category']>(initial?.category === '給与' ? '外注費' : initial?.category === '諸経費' ? '変動費' : initial?.category ?? template?.category ?? '変動費');
   const [name, setName] = useState(initial?.name ?? template?.name ?? '');
@@ -19,6 +19,10 @@ export default function ExpensePanel({ onSaved, onBusyChange, initial, template 
   const [busy, setBusy] = useState(false);
   const id = useRef(initial?.id ?? template?.id ?? crypto.randomUUID());
   const saving = useRef(false);
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (window.matchMedia('(max-width:1279px)').matches) panel.current?.scrollIntoView({ block: 'start' });
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -48,8 +52,8 @@ export default function ExpensePanel({ onSaved, onBusyChange, initial, template 
     finally { saving.current = false; setBusy(false); onBusyChange(false); }
   }
 
-  return <aside id="expense-panel" className="expense-panel card" aria-label="経費入力パネル">
-    <div className="toolbar"><h2>{original ? '経費編集' : '経費入力'}</h2></div>
+  return <aside ref={panel} id="expense-panel" className="expense-panel card" aria-label="経費入力パネル">
+    <div className="toolbar"><h2>{original ? '経費編集' : '経費入力'}</h2>{onClose && <button type="button" className="btn expense-panel-close" disabled={busy} onClick={onClose}>閉じる</button>}</div>
     {error && <div className="error" role="alert">{error}</div>}
     {done && <div className="ok" role="status">{done}</div>}
     <form onSubmit={submit}>
