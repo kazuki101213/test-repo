@@ -151,7 +151,7 @@
  .layout .sidebar .who { grid-column:1; margin:0; font-size:13px; }
  .layout .management-header-actions { grid-column:2; grid-row:1 / 3; display:flex; align-items:center; gap:8px; }
  .layout .management-header-actions .btn { background:transparent; }
- .layout .management-navigation { grid-column:1 / -1; display:flex; gap:24px; margin:12px 0 0; padding:8px 0; }
+ .layout .management-navigation { grid-column:1 / -1; display:flex; flex-direction:row; flex-wrap:nowrap; gap:24px; margin:12px 0 0; padding:8px 0; }
  .layout .management-navigation > .nav { padding:8px 0 !important; min-height:44px; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; font-size:15px; font-weight:400; color:var(--text); }
  .layout .management-navigation > .nav[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
  .layout > main { padding-top:0; }
