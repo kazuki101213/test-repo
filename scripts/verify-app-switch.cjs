@@ -18,6 +18,13 @@ const mocks={exports:{},window:w,require:name=>name==='react'?react:name==='reac
 vm.runInNewContext(compile('apps/'+kind+'/src/App.tsx'),mocks);
 async function settle(){for(let n=0;n<40;n++){if(dirty){cursor=0;dirty=false;tree=mocks.exports.default();pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
 await settle();
+if(kind==='admin'&&role!=='deliverer'){
+ const menu=all(tree).find(n=>n.type==='nav'&&n.props['aria-label']==='管理アプリのメニュー');assert(menu);
+ const pages=all(menu).filter(n=>n.type==='button');assert.deepEqual(pages.map(text),role==='admin'?['ダッシュボード','在庫','予備','経費','商品リスト','古物台帳']:['在庫','予備']);
+ pages.find(n=>text(n)==='在庫').props.onClick();await settle();assert(all(tree).some(n=>n.type==='Inventory'));
+ const active=all(tree).filter(n=>n.type==='button'&&n.props['aria-current']==='page');assert.equal(active.length,1);assert.equal(text(active[0]),'在庫');
+ all(tree).find(n=>n.type==='button'&&text(n)==='納品アプリへ').props.onClick();assert.deepEqual(switched,['delivery']);
+}
 if(kind==='admin'){const nav=all(tree).filter(n=>n.type==='button'&&n.props.className==='nav').map(text);if(role==='purchaser'){assert.deepEqual(nav,['在庫','予備','ログアウト']);assert(!all(tree).some(n=>n.type==='Dashboard'));assert(all(tree).some(n=>n.type==='Inventory'));}else if(role==='admin'){assert(nav.includes('ダッシュボード')&&nav.includes('経費')&&nav.includes('古物台帳'));}else{assert(!nav.length);assert(!all(tree).some(n=>n.type==='Inventory'));}}
 else{let button=()=>all(tree).find(n=>n.type==='button'&&text(n)==='管理アプリへ');assert.equal(!!button(),role!=='deliverer');if(role==='purchaser'){all(tree).find(n=>n.type==='button'&&text(n)==='請求書・領収書').props.onClick();await settle();const invoice=()=>all(tree).find(n=>n.type==='Invoices');invoice().props.onNavigationChange('busy');await settle();assert(button().props.disabled);invoice().props.onNavigationChange('dirty');await settle();button().props.onClick();assert.equal(switched.length,0);w.confirm=()=>true;button().props.onClick();assert.deepEqual(switched,['management']);}}}
 (async()=>{for(const role of ['admin','purchaser','deliverer']){await mount(role,'admin');await mount(role,'delivery')}console.log('App switch roles, purchaser-only inventory/spares, same URL, notification routing and unsaved invoice guard passed')})().catch(e=>{console.error(e);process.exitCode=1});

@@ -176,11 +176,13 @@
   .invoice-extra-label { position:static; width:auto; height:auto; padding:0; margin:0; overflow:visible; clip-path:none; }
   .invoice-extra:not(.invoice-extra-draft) .invoice-extra-label { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
   .invoice-note-input { width:100%; }
-  .receipt-entry-row { grid-template-columns:96px 60px max-content minmax(0,1fr); gap:8px; }
+  .receipt-entry-row { grid-template-columns:96px 44px max-content minmax(0,1fr); gap:8px; }
   .receipt-entry-row > label:nth-child(1) { grid-column:1 / -1; width:150px; }
   .receipt-entry-row > label:nth-child(2) { grid-column:1 / -1; }
   .receipt-entry-row > label:nth-child(3) { grid-column:1; }
-  .receipt-entry-row > .receipt-attachment { grid-column:2; }
+  .receipt-entry-row > .receipt-attachment { grid-column:2; min-width:0; width:44px; }
+  .receipt-entry-row .receipt-attachment > span { white-space:nowrap; justify-self:center; }
+  .app .receipt-entry-row .receipt-camera-btn { width:44px !important; max-width:44px; padding:0 !important; }
   .receipt-entry-row > .btn { grid-column:3; }
   .receipt-optional-fields { gap:8px; }
   .receipt-attachment-options { grid-template-columns:minmax(0,1fr); justify-content:stretch; }
