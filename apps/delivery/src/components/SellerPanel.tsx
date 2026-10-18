@@ -23,6 +23,7 @@ function statusText(op:SellerOperation){if(checking(op))return '出品済み商�
 export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onChanged}:{mode:'listing'|'shipping'|'messages';task:DeliveryTask;staff:Staff;listingSkus?:string[];onClose:()=>void;onChanged:(task:DeliveryTask)=>void}){
  const [draft,setDraft]=useState<SellerDraft|null>(null),[photos,setPhotos]=useState<ItemPhoto[]>([]),[selected,setSelected]=useState<string[]>([]),[context,setContext]=useState<SellerContext|null>(null);
  const [descriptionSource,setDescriptionSource]=useState<{task:DeliveryTask;maker:string}|null>(null);
+ const [listingUrl,setListingUrl]=useState('');
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[camera,setCamera]=useState(false),[code,setCode]=useState(''),[posted,setPosted]=useState(false),[qr,setQr]=useState(''),[message,setMessage]=useState('');
  const lock=useRef(false),request=useRef(crypto.randomUUID()),lastFinished=useRef(''),readCode=useRef<(code:string)=>void>(()=>{});
  readCode.current=value=>{setCode(value);setCamera(false);};
@@ -43,7 +44,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const operations=context?.operations??[],latestCode=operations.find(op=>op.kind==='shipping_code'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key),proof=operations.find(op=>op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key&&(op.kind==='register_package'||op.kind==='verify_shipping'&&op.result.accepted===true));
  useEffect(()=>{let active=true;const value=latestCode?.result.qr_code;if(typeof value!=='string'){setQr('');return;}if(value.startsWith('data:image/png;base64,')){setQr(value);return;}void import('qrcode').then(module=>module.toDataURL(value,{width:260,margin:2})).then(url=>{if(active)setQr(url);}).catch(()=>{if(active)setError('配送コードを表示できません');});return()=>{active=false;};},[latestCode?.id]);
  async function submit(kind:string,payload:Record<string,unknown>){if(lock.current||pending)return;lock.current=true;setBusy(true);setError('');try{await queueSellerOperation(task.id,kind,{...payload,expected_revision:context?.revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));setMessage('');}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
- async function checkListing(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await requestListingResultCheck(task.id);setContext(await fetchSellerContext(task.id));}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
+ async function checkListing(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await requestListingResultCheck(task.id,listingUrl);setContext(await fetchSellerContext(task.id));}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
  function movePhoto(id:string,offset:number){setSelected(current=>{const from=current.indexOf(id),to=from+offset;if(from<0||to<0||to>=current.length)return current;const next=[...current];[next[from],next[to]]=[next[to]!,next[from]!];return next;});request.current=crypto.randomUUID();}
  function change<K extends keyof SellerDraft>(field:K,value:SellerDraft[K]){setDraft(current=>current?{...current,[field]:value}:current);request.current=crypto.randomUUID();}
  const amazonListing=mode==='listing'&&['FBA','自己発送'].includes(task.sales_channel??'');
@@ -93,7 +94,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <textarea aria-label="取引相手へのメッセージ" value={message} maxLength={2000} disabled={disabled} onChange={event=>{setMessage(event.target.value);request.current=crypto.randomUUID();}}/>
    <button type="button" className="btn primary" disabled={disabled||!message.trim()} onClick={()=>{if(window.confirm('取引相手へ送信しますか？'))void submit('message_send',{...tradePayload,body:message.trim()});}}>送信</button>
   </>}
-  {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button>}
+  {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<div><label>出品済み商品のURL（任意）<input type="url" value={listingUrl} disabled={busy||!!watching} onChange={event=>setListingUrl(event.target.value)}/></label><button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button></div>}
   <div className="seller-history" aria-live="polite">{operations.map(op=><p key={op.id}>{statusText(op)}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
  </section>;
 }

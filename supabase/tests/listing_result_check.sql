@@ -19,7 +19,7 @@ set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 do $$declare p reconciliation_probe;begin
  for p in select * from reconciliation_probe loop
   if exists(select 1 from jsonb_array_elements(app.extension_seller_queue(array['mercari-2'])) q where q->>'id'=p.id::text) then raise exception 'Unrequested check queued';end if;
-  perform app.request_listing_result_check(p.item_id);
+  perform app.request_listing_result_check(p.item_id,p.proof->>'url');
   if app.extension_claim_seller_operation(p.id,'mercari-2') then raise exception 'Uncertain operation reclaimed for publishing';end if;
   if app.extension_claim_listing_result_check(p.id,'mercari-1') then raise exception 'Wrong account claimed';end if;
   if not app.extension_claim_listing_result_check(p.id,'mercari-2') then raise exception 'Result check not claimed';end if;
@@ -27,8 +27,9 @@ do $$declare p reconciliation_probe;begin
   if app.seller_operation_context(p.item_id)->'operations'->0->'result'->>'read_check_state' is distinct from 'running' then raise exception 'UI progress missing';end if;
  end loop;
  for p in select * from reconciliation_probe where lot_seq=993201 loop
-  perform pg_temp.reject_check(p.id,p.proof||jsonb_build_object('verified_title','wrong'));
-  perform pg_temp.reject_check(p.id,p.proof||jsonb_build_object('verified_serial','993201b'));
+  perform pg_temp.reject_check(p.id,p.proof||jsonb_build_object('external_id','m999','url','https://jp.mercari.com/item/m999'));
+  -- Product ID is authoritative even if the title/serial text has changed.
+  p.proof:=p.proof||jsonb_build_object('verified_title','edited title','verified_serial','different');
   perform pg_temp.reject_check(p.id,p.proof||jsonb_build_object('url','https://example.com/item/m993201'));
   perform pg_temp.reject_check(p.id,p.proof||jsonb_build_object('observed_at',clock_timestamp()-interval '1 hour'));
   perform app.extension_finish_listing_result_check(p.id,p.proof);
