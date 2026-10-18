@@ -194,3 +194,8 @@
  .invoice-task-rows > li > button:not(.btn) { border-bottom:0; }
  .malfunction-conversation-body { font-size:13.333px; line-height:1.5; }
 }
+
+@media screen and (min-width:1024px) {
+ .invoice-task-rows .listing-task-details { display:grid; grid-template-columns:max-content max-content minmax(0,1fr); column-gap:4px; row-gap:0; align-items:baseline; }
+ .invoice-task-rows .listing-task-details > strong { grid-column:1 / -1; }
+}
