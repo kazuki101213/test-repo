@@ -82,7 +82,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   useEffect(()=>{
     let active=true,busy=false;
     const refresh=async()=>{if(busy)return;busy=true;try{const rows=await fetchDeliveryItemNotices();if(active){setNotices(rows);setReplyTaskError(null);}}catch(cause){if(active)setReplyTaskError(deliveryErrorMessage(cause));}finally{busy=false;}};
-    void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},60000);
+    void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},300000);
     return()=>{active=false;window.clearInterval(timer);};
   },[staff.id]);
   useEffect(() => {

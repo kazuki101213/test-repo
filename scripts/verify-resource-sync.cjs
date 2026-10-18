@@ -21,7 +21,10 @@ const load=(file,require,extra={})=>{const ctx={exports:{},require,...extra};vm.
  await api.readResourceSnapshot('spares',{owner:'2'});assert.deepEqual(Object.keys(calls.at(-1).p_known),[]);
  user='second';await api.readResourceSnapshot('spares');assert.deepEqual(Object.keys(calls.at(-1).p_known),[],'Login isolation');
  fail=true;await assert.rejects(api.readResourceSnapshot('spares'),/offline/);fail=false;await api.readResourceSnapshot('spares');assert(calls.at(-1).p_known.__revision,'Failure preserves last good rows');
- now=300001;await api.readResourceSnapshot('spares');assert.deepEqual(Object.keys(calls.at(-1).p_known),[],'Expired baseline requests complete rows');
+ now=300001;await api.readResourceSnapshot('spares');assert(calls.at(-1).p_known.__revision,'Idle periods retain the diff baseline instead of downloading everything again');
+ database=[{id:'after-idle',text:'new'}];const afterIdle=await api.readResourceSnapshot('spares');assert.equal(afterIdle.length,1);assert.equal(afterIdle[0].id,'after-idle','Retained baseline still applies remote additions and removals');
+ for(let n=0;n<13;n++)await api.readResourceSnapshot('spares',{owner:String(n)});
+ await api.readResourceSnapshot('spares');assert.deepEqual(Object.keys(calls.at(-1).p_known),[],'Least-recently-used baselines are evicted to bound memory');
  user=null;await assert.rejects(api.readResourceSnapshot('spares'),/ログイン/);
  let downloads=0;const blobApi=load('packages/shared/src/receiptBlobCache.ts',()=>({}),{Date:{now:()=>now}});
  const blob=new Blob(['original pdf bytes'],{type:'application/pdf'});const download=async()=>{downloads++;return blob;};

@@ -45,8 +45,9 @@ export default function Spares({ me }: { me: Staff }) {
   }, []);
   useEffect(() => {
     void reload(); fetchStaff().then(setStaff).catch(() => undefined);
-    const refresh = () => { if (document.visibilityState === 'visible') void reload(); };
-    const timer = window.setInterval(refresh, 30000);
+    let lastAutomaticCheck = 0;
+    const refresh = () => { if (document.visibilityState === 'visible' && Date.now() - lastAutomaticCheck >= 30000) { lastAutomaticCheck = Date.now(); void reload(); } };
+    const timer = window.setInterval(refresh, 300000);
     window.addEventListener('focus', refresh); document.addEventListener('visibilitychange', refresh);
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, [reload]);

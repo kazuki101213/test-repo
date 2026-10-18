@@ -11,7 +11,7 @@ export default function ReceiptEvaluationTasks(){
  const lock=useRef(false);
  useEffect(()=>{let active=true,inFlight=false;
   async function refresh(){if(inFlight||document.visibilityState==='hidden')return;inFlight=true;try{const data=await readResourceSnapshot<ReceiptTask>('receipt_tasks');if(active){setRows([...data].sort((a,b)=>a.requested_at.localeCompare(b.requested_at)));setError('');}}catch(cause){if(active)setError(cause instanceof Error?cause.message:String(cause));}finally{inFlight=false;}}
-  void refresh();const timer=window.setInterval(()=>void refresh(),30000);window.addEventListener('focus',refresh);return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',refresh);};
+  void refresh();const timer=window.setInterval(()=>void refresh(),300000);window.addEventListener('focus',refresh);return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',refresh);};
  },[revision]);
  async function complete(row:ReceiptTask){if(lock.current||busy||!window.confirm('フリマサイトで受取評価が完了していることを確認しましたか？'))return;lock.current=true;setBusy(row.id);setError('');try{const {error}=await getSupabase().rpc('complete_receipt_evaluation_task',{p_item_id:row.item_id});if(error)throw error;setRows(current=>current.filter(value=>value.id!==row.id));setRevision(value=>value+1);}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(null);}}
  return <>{error&&<li className="error" role="alert">{error}</li>}{rows.map(row=>{const transaction=receiptTransactionUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);return <li key={row.id} className="receipt-evaluation-task">

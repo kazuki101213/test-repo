@@ -113,9 +113,10 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       } catch (cause) { if (active) setError(errorMessage(cause)); }
       finally { fetching = false; }
     };
-    const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    let lastAutomaticCheck = 0;
+    const visible = () => { if (document.visibilityState === 'visible' && Date.now() - lastAutomaticCheck >= 30000) { lastAutomaticCheck = Date.now(); void refresh(); } };
     void refresh();
-    const timer = window.setInterval(visible, 30000);
+    const timer = window.setInterval(visible,300000);
     window.addEventListener('focus', visible);
     document.addEventListener('visibilitychange', visible);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', visible);

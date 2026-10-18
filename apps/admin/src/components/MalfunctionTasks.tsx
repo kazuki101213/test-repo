@@ -246,7 +246,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     let active = true;alive.current=true;
     const load = () => { void refresh().catch(cause => { if (active) setError(messageOf(cause)); }); };
     load();
-    const timer = window.setInterval(() => { if(document.visibilityState==='visible') load(); }, 30000);
+    const timer = window.setInterval(() => { if(document.visibilityState==='visible') load(); }, 300000);
     return () => { active = false; alive.current=false; window.clearInterval(timer); };
   }, [staff.id, staff.role]);
 

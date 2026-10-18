@@ -37,9 +37,10 @@ export default function Spares({ staff }: { staff: Staff }) {
       } catch (cause) { if (active) setError(cause instanceof Error ? cause.message : String(cause)); }
       finally { fetching = false; if (active) setLoading(false); }
     };
-    const visible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    let lastAutomaticCheck = 0;
+    const visible = () => { if (document.visibilityState === 'visible' && Date.now() - lastAutomaticCheck >= 30000) { lastAutomaticCheck = Date.now(); void refresh(); } };
     void refresh();
-    const timer = window.setInterval(visible, 30000);
+    const timer = window.setInterval(visible, 300000);
     window.addEventListener('focus', visible); document.addEventListener('visibilitychange', visible);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
   }, [staff.id, staff.role]);

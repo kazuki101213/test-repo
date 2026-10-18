@@ -74,7 +74,7 @@ export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;sta
  useEffect(()=>{
   let active=true;let fetching=false;
   const refresh=async()=>{if(fetching)return;fetching=true;try{const data=await fetchTasks();if(active){setRows(data);setError('');}}catch(e){if(active)setError(messageOf(e));}finally{fetching=false;if(active)setLoading(false);}};
-  void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},30000);
+  void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},300000);
   return()=>{active=false;window.clearInterval(timer);};
  },[revision]);
  const pending=rows.filter(row=>!approval(row.invoice)).length;
