@@ -77,7 +77,7 @@ export default function SpareShippingTasks({staff,management=false,onChanged}:{
     let lastAutomaticCheck=0;
     const visible=()=>{if(document.visibilityState==='visible'&&Date.now()-lastAutomaticCheck>=30000){lastAutomaticCheck=Date.now();void refresh();}};
     void refresh();
-    const timer=window.setInterval(visible,300000);
+    const timer=window.setInterval(visible,24*60*60*1000);
     window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',visible);
       document.removeEventListener('visibilitychange',visible);};
