@@ -188,3 +188,9 @@
 @media screen and (min-width:1024px) {
  .malfunction-report-row .malfunction-management-actions .workflow-buttons > [data-action=yahoo_instruction] { display:none; }
 }
+
+@media screen and (min-width:1024px) {
+ .invoice-task-rows > li:not(.error):not(.muted) { padding:14px; margin:10px 0; border:1px solid var(--border); border-radius:12px; background:var(--surface); box-shadow:0 2px 8px rgba(40,32,20,.06); }
+ .invoice-task-rows > li > button:not(.btn) { border-bottom:0; }
+ .malfunction-conversation-body { font-size:13.333px; line-height:1.5; }
+}
