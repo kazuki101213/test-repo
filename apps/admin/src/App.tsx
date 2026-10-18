@@ -74,7 +74,7 @@ export default function App() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <h1>物販管理</h1>
+        <h1>管理アプリ</h1>
         <p className="who">{staffDisplayName(session.staff)}<span className="management-role">（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</span></p>
         <div className="management-header-actions"><button type="button" className="btn ghost" onClick={() => switchApplication('delivery')}>納品アプリへ</button><button type="button" className="btn ghost" onClick={() => void logout()}>ログアウト</button></div>
         <nav className="management-navigation" aria-label="管理アプリのメニュー">
@@ -84,12 +84,9 @@ export default function App() {
           </button>
         ))}
         </nav>
-        <span style={{ flex: 1 }} />
-        <div className="management-desktop-logout"><button className="nav" onClick={() => void logout()}>ログアウト</button></div>
       </aside>
 
       <main>
-        <div className="management-switch-actions"><button type="button" className="btn ghost" onClick={() => switchApplication('delivery')}>納品アプリへ</button></div>
         {error && <p className="error" role="alert">{error}</p>}
         {visiblePage === 'dashboard' && <Dashboard staff={session.staff} userId={session.user.id} />}
         {visiblePage === 'inventory' && <Inventory me={session.staff} />}

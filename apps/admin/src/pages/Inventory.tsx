@@ -142,7 +142,7 @@ export default function Inventory({ me }: { me: Staff }) {
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
       <section className="inventory-list" aria-label="在庫">
-      <h2>在庫</h2>
+
 
 
 

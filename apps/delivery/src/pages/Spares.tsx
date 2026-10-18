@@ -48,7 +48,7 @@ export default function Spares({ staff }: { staff: Staff }) {
   const selectedOwner = spareOwners.find(owner => owner.id === delivererId);
   const shown = rows.filter(row => !row.used_for_item_id && matchesSpareSearch(row, queryField, query, delivererId, selectedOwner?.name));
   return <section className="card">
-    <h2>予備</h2>
+
     {!canSearchOwner && <p className="muted staff-scope">担当者：{staffDisplayName(staff)}</p>}
     <div className="spare-search" role="group" aria-label="予備検索">
       <select aria-label="予備の検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as SpareSearchField); setQuery(''); setDelivererId(''); }}>

@@ -32,7 +32,7 @@ export default function Ledger() {
 
   return (
     <>
-      <h2>古物台帳</h2>
+
       <p className="sub">
         古物営業法施行規則 第16条の記載事項に対応した帳簿です。最終取引日から3年間は保存してください。
       </p>
