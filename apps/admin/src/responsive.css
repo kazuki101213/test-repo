@@ -201,3 +201,13 @@
  .layout .invoice-tasks > .toolbar > span { white-space:nowrap; }
  .layout .invoice-tasks > .toolbar > select { width:auto; font-size:12px; padding-inline:6px; }
 }
+
+@media screen and (max-width:1023px) {
+ .invoice-task-rows .malfunction-task-row:has(> .supplier-task-details) { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:8px; row-gap:0; align-items:start; }
+ .invoice-task-rows .supplier-task-details { display:contents; }
+ .invoice-task-rows .supplier-task-details > strong { grid-column:1; grid-row:1; }
+ .invoice-task-rows .supplier-task-details > a:first-of-type { grid-column:1; grid-row:2; }
+ .invoice-task-rows .supplier-task-details > a:last-of-type { grid-column:1 / -1; grid-row:3; }
+ .invoice-task-rows .supplier-task-details > small { grid-column:1 / -1; grid-row:4; margin:0; font-size:inherit; line-height:1.5; }
+ .invoice-task-rows .malfunction-task-row:has(> .supplier-task-details) > button.btn { grid-column:2; grid-row:1 / span 2; justify-self:end; }
+}
