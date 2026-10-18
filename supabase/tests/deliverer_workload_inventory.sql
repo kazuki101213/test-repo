@@ -15,8 +15,10 @@ from unnest(array['出品中','取引中','販売済','返品処理']) status
 cross join unnest(array['自己発送','メルカリ','ヤフオク','FBA','ヤフフリ',null]) channel
 cross join unnest(array[null::date,current_date]) shipped_on cross join unnest(array[false,true]) is_accessory;
 insert into app.items(id,lot_seq,sku,purchaser_id,deliverer_id,title,cost_amount,marketplace,sales_channel,tracking_no,is_accessory)
-select id,996650+n,(996650+n)::text||case when is_accessory then 'c' else '' end||'-AAQW-20261019-100',(select id from app.staff where code='AA'),'99665000-0000-0000-0000-000000000001','workload metric fixture',100,'ヤフオク',channel,'tracking',is_accessory from workload_cases;
+select id,996650+n,(996650+n)::text||case when is_accessory then 'c' else '' end||'-AAQW-20261019-100',(select id from app.staff where code='AA'),'99665000-0000-0000-0000-000000000001','workload metric fixture',100,'ヤフオク',channel,case when status='受取前' then null else 'tracking' end,is_accessory from workload_cases;
 update app.items i set status=c.status,shipped_on=c.shipped_on from workload_cases c where i.id=c.id;
+do $begin if exists(select 1 from app.items i join workload_cases c using(id) where i.status<>c.status) then raise exception 'Fixture status changed by workflow validation';end if;end $;
+
 grant select on workload_cases to authenticated;
 set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
