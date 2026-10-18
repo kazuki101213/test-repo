@@ -124,13 +124,14 @@
 @media print { .receipt-summary-sheet,.receipt-photo-sheet { width:190mm; margin:0; break-after:page; } }
 
 .app:has(.invoices) { max-width:960px; }
+.invoice-toolbar-actions { display:contents; }
 .invoice-toolbar-scroll { overflow-x:auto; padding-bottom:2px; }
 .invoice-toolbar { display:flex; align-items:flex-end; gap:10px; min-width:max-content; }
 .invoice-toolbar > label:first-child { width:160px; }
 .invoice-toolbar > label { width:145px; flex:none; }
 .invoice-toolbar > label:has(input[form="invoice-submit-form"]) { width:160px; }
 .invoice-toolbar input:not([aria-hidden=true]),.invoice-toolbar select,.invoice-toolbar button { box-sizing:border-box; height:42px; min-height:42px; margin:0; }
-.invoice-toolbar > .btn { white-space:nowrap; flex:none; padding:9px 12px; }
+.invoice-toolbar > .btn,.invoice-toolbar-actions > .btn { white-space:nowrap; flex:none; padding:9px 12px; }
 .invoice-toolbar label > span > button { width:36px; display:inline-flex; align-items:center; justify-content:center; }
 .invoice-fields { align-items:start; }
 .invoice-fields input { box-sizing:border-box; height:42px; }
@@ -152,5 +153,5 @@
 .receipt-selected-file { margin:0; overflow-wrap:anywhere; font-size:13px; }
 @media print { .app:has(.invoices) { max-width:none; } }
 @media screen and (max-width:1023px) {
- .invoice-toolbar input[type="month"] { width:calc(100% - 36px); }
+ .invoice-toolbar input[type="month"] { width:100%; }
 }

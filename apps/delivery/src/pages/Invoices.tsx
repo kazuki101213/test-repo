@@ -183,8 +183,10 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
         <label>請求月<input aria-label="請求対象月" type="month" required value={month} disabled={busy || receiptBusy || pdfBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
         <label>請求日<DateInput form="invoice-submit-form" required value={issued} disabled={busy || receiptBusy || pdfBusy || loading || settings || !!invoice?.approved_at} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label>
         {profile && <button type="button" className="btn ghost invoice-settings-button" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
+        <div className="invoice-toolbar-actions">
         {snapshot && <button type="button" className="btn invoice-pdf-button" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>請求書PDF保存</button>}
         {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn invoice-send-button" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>請求書送信</button>}
+        </div>
       </div></div>
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に設定の登録を依頼してください。</p>}
       {pdfBusy && <p role="status">PDFを作成中…添付が多い場合は少し時間がかかります。</p>}
