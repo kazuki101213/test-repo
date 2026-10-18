@@ -169,12 +169,13 @@
  .malfunction-management-actions .task-reply-send { margin:0; }
 }
 @media screen and (min-width:1024px) {
- .layout .invoice-tasks { grid-column:1 / -1; }
+
  .invoice-task-rows .supplier-task-details, .invoice-task-rows .malfunction-report-row .malfunction-report-details { flex-direction:row; align-items:baseline; gap:4px; white-space:nowrap; }
- .invoice-task-rows .malfunction-report-row { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) max-content; align-items:start; gap:16px; }
+ .invoice-task-rows .malfunction-report-row { display:grid; grid-template-columns:minmax(0,1fr) max-content; align-items:start; gap:8px 12px; }
  .malfunction-report-row > .malfunction-conversation { display:contents; }
- .malfunction-report-row .malfunction-conversation-body { grid-column:2; }
- .malfunction-report-row .malfunction-management-actions { grid-column:3; }
+ .malfunction-report-row > .malfunction-task-content { grid-column:1; grid-row:1; }
+ .malfunction-report-row .malfunction-conversation-body { grid-column:1; grid-row:2; }
+ .malfunction-report-row .malfunction-management-actions { grid-column:2; grid-row:1 / span 2; }
  .malfunction-report-row .malfunction-management-actions .workflow-buttons > [data-action=supplier_check] { order:0; }
  .malfunction-report-row .malfunction-management-actions .workflow-buttons > [data-action=send_back] { order:1; }
  .malfunction-report-row .malfunction-management-actions .workflow-buttons > [data-action=yahoo_instruction] { order:2; }
