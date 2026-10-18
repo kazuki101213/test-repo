@@ -132,3 +132,13 @@
 @media screen and (max-width:359px) {
   .layout .management-navigation > .nav { font-size:12px; }
 }
+
+@media screen and (max-width:1023px) {
+  .layout .sidebar { min-width:0; }
+  .layout .management-navigation { width:100%; max-width:100%; }
+  .layout .management-navigation > .nav { padding-inline:0 !important; }
+  .invoice-task-rows .malfunction-task-row:has(> .malfunction-task-content) { flex-direction:column; }
+  .invoice-task-rows .malfunction-task-row > .malfunction-task-content { width:100%; }
+  .invoice-task-rows .malfunction-task-row > .workflow-buttons { display:grid; grid-template-columns:repeat(2,max-content); justify-content:end; gap:8px; width:100%; flex:none; }
+  .invoice-task-rows .workflow-buttons > .btn:last-child:nth-child(3) { grid-column:1/-1; justify-self:end; }
+}
