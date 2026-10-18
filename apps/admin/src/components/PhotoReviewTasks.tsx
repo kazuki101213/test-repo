@@ -1,3 +1,4 @@
+import { productSerial } from '../inventory';
 import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
 import { createPortal } from 'react-dom';
@@ -145,7 +146,7 @@ export default function PhotoReviewTasks() {
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
       {listingTasks.map(task => <li key={`listing-${task.id}`} className="malfunction-task-row">
-        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{task.lot_seq}】</a> <span>【{task.marketplace_item_id || '商品ID未登録'}】</span><small>{task.sku}</small></div>
+        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> <span>【{task.marketplace_item_id || '商品ID未登録'}】</span><small>{task.sku}</small></div>
         <button type="button" className="btn" disabled={busy} onClick={() => void completeListing(task)}>完了</button>
       </li>)}
       {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>
