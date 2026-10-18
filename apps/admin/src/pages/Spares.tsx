@@ -128,7 +128,7 @@ export default function Spares({ me }: { me: Staff }) {
   }
 
   return <section className="card">
-    <div className="toolbar"><h2 style={{ margin: 0 }}>予備</h2><span style={{ flex: 1 }} />
+    <div className="toolbar"><span style={{ flex: 1 }} />
       <button className="btn primary" aria-expanded={adding} onClick={() => { setAdding(open => !open); setError(''); }}>予備を追加</button>
     </div>
     {adding && <form className="card" onSubmit={event => void add(event)}>

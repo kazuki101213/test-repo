@@ -52,8 +52,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
   return (
     <div className="dashboard-workspace">
       <section className="dashboard-content" aria-label="ダッシュボード">
-      <div className="toolbar"><h2>ダッシュボード</h2><span style={{ flex: 1 }} />
-      </div>
+
       {error && <div className="error">{error}</div>}
 
       <div className="grid kpi">

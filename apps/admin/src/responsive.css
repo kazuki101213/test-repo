@@ -142,3 +142,17 @@
   .invoice-task-rows .malfunction-task-row > .workflow-buttons { display:grid; grid-template-columns:repeat(2,max-content); justify-content:end; gap:8px; width:100%; flex:none; }
   .invoice-task-rows .workflow-buttons > .btn:last-child:nth-child(3) { grid-column:1/-1; justify-self:end; }
 }
+
+/* Match the delivery app top header and tabs on desktop. */
+@media screen and (min-width:1024px) {
+ .layout { display:block; }
+ .layout .sidebar { position:static; height:auto; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 16px; padding:20px 24px 0; background:transparent; border:0; }
+ .layout .sidebar h1 { grid-column:1; margin:0; font-size:17px; }
+ .layout .sidebar .who { grid-column:1; margin:0; font-size:13px; }
+ .layout .management-header-actions { grid-column:2; grid-row:1 / 3; display:flex; align-items:center; gap:8px; }
+ .layout .management-header-actions .btn { background:transparent; }
+ .layout .management-navigation { grid-column:1 / -1; display:flex; gap:24px; margin:12px 0 0; padding:8px 0; }
+ .layout .management-navigation > .nav { padding:8px 0 !important; min-height:44px; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; font-size:15px; font-weight:400; color:var(--text); }
+ .layout .management-navigation > .nav[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
+ .layout > main { padding-top:0; }
+}
