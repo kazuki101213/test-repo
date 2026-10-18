@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {deliveryWorkflowButtons} from '@bussan/shared';
+import {deliveryWorkflowButtons,workflowButtonDirection} from '@bussan/shared';
 import type {DeliveryTask,InventoryAction,ProductPanel,WorkflowButton} from '@bussan/shared';
 import {performInventoryAction} from '../api';
 
@@ -23,9 +23,13 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
   '動作不良':['comments','report_cancel'],
   '出品中':['packingPhotos','listing_cancel'],
   '商品登録前':['photos','listing','listing_complete','inspection_cancel','yahoo_instruction_cancel'],
+  '取引中':['shipping','messages','trade_cancel','resell'],
+  '返品処理':['supplier_return_cancel'],
  };
  const besidePhoto=photoActions[task.status]??[];
- const renderButton=(button:WorkflowButton)=><button key={button.key} type="button" className="btn" data-action={button.key} data-wide={button.label.length > 7} disabled={busy||(['listing','listing_complete'].includes(button.key)&&task.photo_review_approved!==true)} title={['listing','listing_complete'].includes(button.key)&&task.photo_review_approved!==true?'管理アプリで商品写真の承認が必要です':undefined} onClick={()=>choose(button)}>{button.label}</button>;
+ const renderButton=(button:WorkflowButton)=><button key={button.key} type="button" className="btn" data-action={button.key} data-direction={workflowButtonDirection(button.key)} data-wide={button.label.length > 7} disabled={busy||(['listing','listing_complete'].includes(button.key)&&task.photo_review_approved!==true)} title={['listing','listing_complete'].includes(button.key)&&task.photo_review_approved!==true?'管理アプリで商品写真の承認が必要です':undefined} onClick={()=>choose(button)}>{button.label}</button>;
+ const photoButtons=buttons.filter(button=>besidePhoto.includes(button.key));
+ const photoButtonContent=task.status==='取引中'?<>{photoButtons.some(button=>panels.has(button.key))&&<div className="workflow-photo-row workflow-photo-row-top">{photoButtons.filter(button=>panels.has(button.key)).map(renderButton)}</div>}<div className="workflow-photo-row workflow-photo-row-back">{photoButtons.filter(button=>!panels.has(button.key)).map(renderButton)}</div></>:photoButtons.map(renderButton);
  async function run(button:WorkflowButton,confirmed=false){
   if(lock.current)return;
   if(!confirmed&&button.confirmation&&!window.confirm(button.confirmation))return;
@@ -42,7 +46,7 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
   if(button.note){setForm(button);setNote('');}else void run(button);
  }
  return <div className="workflow-controls" aria-label={`${task.sku}の操作`}>
-  <div className="workflow-buttons">{buttons.some(button=>besidePhoto.includes(button.key))?<><div className="workflow-photo-buttons">{buttons.filter(button=>besidePhoto.includes(button.key)).map(renderButton)}</div>{buttons.filter(button=>!besidePhoto.includes(button.key)).map(renderButton)}</>:buttons.map(renderButton)}</div>
+  <div className="workflow-buttons">{photoButtons.length>0?<><div className="workflow-photo-buttons">{photoButtonContent}</div>{buttons.filter(button=>!besidePhoto.includes(button.key)).map(renderButton)}</>:buttons.map(renderButton)}</div>
   {form&&buttons.some(button=>button.key===form.key)&&<div className="workflow-action-form">
    <label>{form.key==='report'?form.label+'の内容':'理由'}<textarea value={note} maxLength={2000} disabled={busy} onChange={event=>setNote(event.target.value)} /></label>
    <button type="button" className="btn primary" disabled={busy||!note.trim()} onClick={()=>void run(form)}>{busy?'更新中…':form.key==='report'?'仕入担当者に報告':'確定'}</button>

@@ -1,4 +1,5 @@
 .workflow-photo-buttons { display:contents; }
+.workflow-photo-row { display:contents; }
 /* Approved inventory sample: shared state cells on desktop, one common mobile grid. */
 @media screen {
   .app .delivery-navigation { display:flex; flex-wrap:nowrap; gap:24px; justify-content:flex-start; border:0; background:transparent; padding:8px 0; margin:0 0 12px; }
@@ -198,6 +199,10 @@
  .task-card:has(.workflow-photo-buttons) .workflow-buttons > .btn { grid-column:1 / -1; }
  .app .task-card .workflow-photo-buttons { display:grid; grid-column:2; grid-row:1; grid-template-columns:max-content; gap:6px; justify-self:end; align-self:start; }
  .app .task-card .workflow-photo-buttons > .btn { width:100% !important; justify-self:stretch; grid-column:1; margin:0; }
+ .app .task-card[data-item-status="取引中"] .workflow-photo-buttons { width:max-content; grid-template-columns:minmax(0,1fr); }
+ .workflow-photo-row-top { display:flex; gap:6px; }
+ .workflow-photo-row-back { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+ .app .task-card .workflow-photo-row-back > .btn { width:100% !important; justify-self:stretch; }
  .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons { grid-template-columns:max-content max-content; }
  .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > [data-action="photos"] { grid-column:1; grid-row:1; }
  .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
@@ -206,7 +211,12 @@
 /* Keep selection fixed and place the thumbnail below it on the same left edge. */
 @media screen and (max-width:1279px) {
  .task-product-summary .task-photo-action { position:relative; left:-34px; padding-top:30px; }
+ .task-card[data-item-status="取引中"] .task-photo-action { width:min(120px,calc(100% + 34px)); }
 }
 @media screen and (max-width:1023px) {
  .task-product-summary .task-photo-action { left:-30px; }
+ .task-card[data-item-status="取引中"] .task-photo-action { width:min(120px,calc(100% + 30px)); }
+}
+@media screen and (max-width:374px) {
+ .app .task-card[data-item-status="取引中"] .workflow-photo-row > .btn { font-size:12px; }
 }

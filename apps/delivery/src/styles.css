@@ -8,6 +8,7 @@
   --text: #342f28;
   --muted: #786f61;
   --accent: #71836a;
+  --workflow-back: #786f61;
   --ok: #58734f;
   --warn: #a66f2d;
   --danger: #a34f43;
@@ -113,6 +114,8 @@ textarea { min-height: 80px; resize: vertical; }
   background: var(--surface-2); color: var(--text); cursor: pointer;
 }
 .btn.primary { background: var(--accent); color: #fffdf7; border-color: var(--accent); font-weight: 600; }
+.btn[data-direction="forward"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn[data-direction="back"] { background:var(--workflow-back); border-color:var(--workflow-back); color:#fff; }
 .btn.ghost { background: transparent; }
 .invoice-tabs .btn { width: auto; min-width: 0; flex: none; white-space: nowrap; padding: 8px; }
 .invoice-notification-actions { display: flex; gap: 8px; align-items: center; }

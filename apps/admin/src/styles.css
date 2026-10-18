@@ -8,6 +8,7 @@
   --text: #342f28;
   --muted: #786f61;
   --accent: #71836a;
+  --workflow-back: #786f61;
   --ok: #58734f;
   --warn: #a66f2d;
   --danger: #a34f43;
@@ -414,3 +415,6 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 
 
 .management-switch-actions { display:flex; justify-content:flex-end; margin-bottom:14px; }
+
+.btn[data-direction=forward] { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn[data-direction=back] { background:var(--workflow-back); border-color:var(--workflow-back); color:#fff; }
