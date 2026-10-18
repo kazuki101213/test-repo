@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { completeSpareShipping, fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
+import { fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
 import type { SpareShippingTask, Staff } from '@bussan/shared';
 
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message
@@ -26,14 +26,12 @@ function ShippingRow({task,staff,management,onChanged}:{
   const recipient=staffDisplayName({code:task.recipient_code,name:task.recipient_name});
   const canShip=!task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
   const overview=management || canViewDeliveryAssignee(staff);
-  const canComplete=management && staff.role==='admin' && !!task.sent_at;
   const supplierUrl=supplierItemUrl(task);
-  async function act(send:boolean) {
-    if(busy || (send && (!canShip || !tracking.trim() || !serialMarked))) return;
+  async function act() {
+    if(busy || !canShip || !tracking.trim() || !serialMarked) return;
     setBusy(true);setError('');
     try {
-      if(send) await sendSpareShipping(task.id,tracking.trim());
-      else await completeSpareShipping(task.id);
+      await sendSpareShipping(task.id,tracking.trim());
       setEditing(false);onChanged();
     } catch(cause) {setError(messageOf(cause));}
     finally {setBusy(false);}
@@ -43,7 +41,6 @@ function ShippingRow({task,staff,management,onChanged}:{
       <span>{overview
         ? `${owner}→${recipient}の${task.sent_at ? '発送済み' : '発送準備中'}`
         : `${recipient}へ発送お願いします。`}</span>
-      {canComplete && <button className="btn" disabled={busy} onClick={()=>void act(false)}>完了</button>}
       {canShip && !editing && <button className="btn" onClick={()=>{setSerialMarked(false);setEditing(true);}}>発送</button>}
     </div>
     <div className="spare-shipping-details">
@@ -57,7 +54,7 @@ function ShippingRow({task,staff,management,onChanged}:{
         <span>利用記録：{task.usage_note || '—'}</span>
       </>}
     </div>
-    {editing && canShip && <form className="spare-shipping-form" onSubmit={event=>{event.preventDefault();void act(true);}}>
+    {editing && canShip && <form className="spare-shipping-form" onSubmit={event=>{event.preventDefault();void act();}}>
       <div className="spare-shipping-reference">通番号/利用記録：{task.lot_seq} / {task.usage_note || '—'}</div>
       <label className="spare-shipping-confirmation"><input type="checkbox" required checked={serialMarked}
         disabled={busy} onChange={event=>setSerialMarked(event.target.checked)} />
@@ -98,7 +95,7 @@ export default function SpareShippingTasks({staff,management=false,onChanged}:{
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',visible);
       document.removeEventListener('visibilitychange',visible);};
   },[revision,staff.id]);
-  const visible=rows.filter(task=>!dismissed.current.has(task.id) && !task.completed_at && (management
+  const visible=rows.filter(task=>!task.sent_at && !dismissed.current.has(task.id) && !task.completed_at && (management
     ? staff.role==='admin' || (task.owner_staff_id===staff.id && !task.sent_at)
     : !task.sent_at && (canViewDeliveryAssignee(staff) || task.owner_staff_id===staff.id)));
   if(error) return <li className="spare-shipping-row"><p className="error" role="alert">{error}</p>

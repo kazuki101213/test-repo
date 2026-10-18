@@ -3,6 +3,7 @@ import { adminTaskNotice } from '../taskNotice';
 import { createPortal } from 'react-dom';
 import { getSupabase, PHOTO_BUCKET, readResourceSnapshot } from '@bussan/shared';
 import { preparePhotoFiles, savePhotoFiles } from '../photoSave';
+import { deliveryAppUrl } from '../appUrls';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
 interface Item { id: string; sku: string; title: string; lot_seq: number }
@@ -131,7 +132,7 @@ export default function PhotoReviewTasks() {
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
       {listingTasks.map(task => <li key={`listing-${task.id}`} className="malfunction-task-row">
-        <div className="task-action-details"><strong>出品する</strong><small>{task.sku} ／ {task.sales_channel}</small></div>
+        <div className="task-action-details"><strong>出品する</strong> <a className="btn ghost" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">在庫を開く ↗</a><small>{task.sku} ／ {task.sales_channel}</small></div>
         <button type="button" className="btn" disabled={busy} onClick={() => void completeListing(task)}>完了</button>
       </li>)}
       {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>
