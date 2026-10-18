@@ -7,7 +7,19 @@ import { deliveryAppUrl } from '../appUrls';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
 interface Item { id: string; sku: string; title: string; lot_seq: number }
-interface ListingTask { id: string; sku: string; lot_seq: number; sales_channel: string }
+interface ListingTask { id: string; sku: string; lot_seq: number; sales_channel: string; marketplace_item_id?: string | null }
+
+async function listingProductIds(tasks: ListingTask[]): Promise<ListingTask[]> {
+  const ids = new Map<string, string | null>();
+  // Only fetch the IDs for visible listing tasks; keep each response below row limits.
+  for (let offset = 0; offset < tasks.length; offset += 200) {
+    const { data, error } = await getSupabase().from('items').select('id,marketplace_item_id')
+      .in('id', tasks.slice(offset, offset + 200).map(task => task.id));
+    if (error) throw error;
+    for (const row of data ?? []) ids.set(row.id, row.marketplace_item_id);
+  }
+  return tasks.map(task => ({ ...task, marketplace_item_id: ids.get(task.id) ?? null }));
+}
 
 export default function PhotoReviewTasks() {
   const notice = adminTaskNotice();
@@ -35,10 +47,11 @@ export default function PhotoReviewTasks() {
         readResourceSnapshot<Review & {id:string;item:Item}>('photo_reviews'),
         readResourceSnapshot<ListingTask>('listing_tasks'),
       ]);
+      const detailedListingTasks = await listingProductIds(nextListingTasks);
       const byId:Record<string,Item>=Object.fromEntries(rows.map(row=>[row.item_id,row.item]));
 
       if (active) {
-        setReviews([...rows].sort((a,b)=>b.submitted_at.localeCompare(a.submitted_at))); setListingTasks(nextListingTasks); setItems(byId); setError('');
+        setReviews([...rows].sort((a,b)=>b.submitted_at.localeCompare(a.submitted_at))); setListingTasks(detailedListingTasks); setItems(byId); setError('');
         if (!noticeHandled.current && notice?.kind === 'photo_review') {
           noticeHandled.current = true;
           const target = rows.find(row => row.item_id === notice.itemId);
@@ -132,7 +145,7 @@ export default function PhotoReviewTasks() {
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
       {listingTasks.map(task => <li key={`listing-${task.id}`} className="malfunction-task-row">
-        <div className="task-action-details"><strong>出品する</strong> <a className="btn ghost" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">在庫を開く ↗</a><small>{task.sku} ／ {task.sales_channel}</small></div>
+        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{task.lot_seq}】</a> <span>【{task.marketplace_item_id || '商品ID未登録'}】</span><small>{task.sku}</small></div>
         <button type="button" className="btn" disabled={busy} onClick={() => void completeListing(task)}>完了</button>
       </li>)}
       {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>

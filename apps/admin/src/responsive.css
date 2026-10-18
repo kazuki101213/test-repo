@@ -117,3 +117,21 @@
 @media screen {
   .layout .btn, .layout button.nav { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:44px; padding-inline:12px !important; white-space:nowrap; }
 }
+
+@media screen and (max-width:1023px) {
+  .layout .sidebar { display:flex; flex-direction:column; align-items:stretch; gap:8px; padding:12px; border:0; background:transparent; }
+  .layout .sidebar h1, .layout .management-role, .layout .management-desktop-logout, .layout .management-switch-actions { display:none; }
+  .layout .sidebar .who { margin:0; font-size:13px; }
+  .layout .management-header-actions { display:flex; justify-content:flex-end; gap:8px; }
+  .layout .management-header-actions .btn { min-height:44px; padding:8px 12px; background:transparent; font-size:15px; }
+  .layout .management-navigation { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:stretch; justify-content:space-between; gap:4px; padding:8px 0; margin:12px 0 0; min-width:0; }
+  .layout .management-navigation > .nav { width:auto; flex:none; min-width:0; padding:8px 0; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--text); font-size:13px; font-weight:400; }
+  .layout .management-navigation > .nav[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
+  .layout > main { padding-top:0; }
+  .invoice-task-rows .task-action-details.listing-task-details { display:flex; flex-direction:column; gap:0; font-size:13.333px; line-height:1.5; }
+  .invoice-task-rows .listing-task-details > * { margin:0; padding:0; line-height:1.5; }
+  .invoice-task-rows .listing-task-details > small { font-size:inherit; }
+}
+@media screen and (max-width:359px) {
+  .layout .management-navigation > .nav { font-size:12px; }
+}

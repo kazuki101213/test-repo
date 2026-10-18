@@ -75,14 +75,17 @@ export default function App() {
     <div className="layout">
       <aside className="sidebar">
         <h1>物販管理</h1>
-        <p className="who">{staffDisplayName(session.staff)}（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</p>
+        <p className="who">{staffDisplayName(session.staff)}<span className="management-role">（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</span></p>
+        <div className="management-header-actions"><button type="button" className="btn ghost" onClick={() => switchApplication('delivery')}>納品アプリへ</button><button type="button" className="btn ghost" onClick={() => void logout()}>ログアウト</button></div>
+        <nav className="management-navigation" aria-label="管理アプリのメニュー">
         {NAV.filter(n => canOpenManagementPage(session.staff, n.key)).map((n) => (
-          <button key={n.key} className="nav" data-active={visiblePage === n.key} onClick={() => setPage(n.key)}>
+          <button key={n.key} className="nav" aria-current={visiblePage === n.key ? 'page' : undefined} data-active={visiblePage === n.key} onClick={() => setPage(n.key)}>
             {n.label}
           </button>
         ))}
+        </nav>
         <span style={{ flex: 1 }} />
-        <button className="nav" onClick={() => void logout()}>ログアウト</button>
+        <div className="management-desktop-logout"><button className="nav" onClick={() => void logout()}>ログアウト</button></div>
       </aside>
 
       <main>

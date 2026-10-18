@@ -225,7 +225,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     setRows([...tasks].sort((a,b)=>b.malfunction_reported_at.localeCompare(a.malfunction_reported_at)));
     setMakersByAsin(new Map(tasks.flatMap(row=>row.asin&&row.maker?[[row.asin.trim(),row.maker] as [string,string]]:[])));
     setNames(new Map(tasks.flatMap(row=>row.people.flatMap(person=>person.id?[[person.id,staffDisplayName(person.name)] as [string,string]]:[]))));
-    setActionTasks([...actions].sort((a,b)=>b.created_at.localeCompare(a.created_at)));
+    setActionTasks(actions.filter(task=>!task.task_kind.includes('ヤフオク')).sort((a,b)=>b.created_at.localeCompare(a.created_at)));
     setError(references.error ? '仕入先リンクを取得できませんでした。次回更新時に再取得します。' : '');
     setLoaded(true);
     };
