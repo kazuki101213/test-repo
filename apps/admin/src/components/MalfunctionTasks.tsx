@@ -1,5 +1,5 @@
 import { readResourceSnapshot } from '@bussan/shared';
-import { managementWorkflowButtons, staffDisplayName } from '@bussan/shared';
+import { managementWorkflowButtons, staffDisplayName, workflowButtonDirection } from '@bussan/shared';
 import { deliveryAppUrl } from '../appUrls';
 import { purchaseItemUrl } from '../purchaseUrl';
 import { useEffect, useRef, useState } from 'react';
@@ -297,7 +297,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
         {row.status === '動作不良' && <MalfunctionConversation item={row} staff={staff} onReplied={refresh} />}
       </div>
-      {(staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).map(button=><button key={button.key} className="btn" disabled={busy !== null} onClick={()=>void resolve(row,button.key as InventoryAction)}>{button.label}</button>)}</div>}
+      {(staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).map(button=><button key={button.key} className="btn" data-direction={workflowButtonDirection(button.key)} disabled={busy !== null} onClick={()=>void resolve(row,button.key as InventoryAction)}>{button.label}</button>)}</div>}
     </li>;})}
   </>;
 }
