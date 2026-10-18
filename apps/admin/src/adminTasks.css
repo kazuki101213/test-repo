@@ -1,0 +1,49 @@
+/* Approved management task cards. Screen styles only; document previews stay unchanged. */
+.invoice-task-rows > .admin-task-card { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:0 12px; padding:10px 12px; margin:0 0 8px; border:1px solid var(--border); border-radius:12px; background:var(--surface); min-width:0; font-size:13.333px; line-height:20px; }
+.invoice-task-rows > .admin-task-card .task-action-details { display:flex; flex-flow:row wrap; align-items:baseline; gap:0 4px; min-width:0; white-space:normal; font-size:inherit; line-height:20px; }
+.invoice-task-rows > .admin-task-card .task-action-details > strong { flex-basis:100%; margin:0; line-height:20px; }
+.invoice-task-rows > .admin-task-card .task-action-details > small { display:inline; margin:0; font:inherit; overflow-wrap:anywhere; }
+.invoice-task-rows > .admin-task-card .task-action-details > a,.invoice-task-rows > .admin-task-card .task-action-details > span { margin:0; min-width:0; overflow-wrap:anywhere; }
+.invoice-task-rows > .admin-task-card .btn { display:inline-flex; justify-content:center; align-items:center; width:auto; min-height:44px; margin:0; padding:8px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); white-space:nowrap; font-size:13px; }
+.invoice-task-rows > .admin-simple-task > .btn { grid-column:2; grid-row:1 / span 2; align-self:start; }
+.invoice-task-rows > .admin-photo-task .admin-photo-count { grid-column:1; line-height:20px; }
+.invoice-task-rows > .admin-task-card .malfunction-task-content { grid-column:1; grid-row:1; min-width:0; }
+.invoice-task-rows > .admin-task-card .malfunction-report-message { margin:4px 0 0; overflow-wrap:anywhere; }
+.invoice-task-rows > .admin-fault-task { grid-template-columns:minmax(0,1fr) 94px; row-gap:6px; }
+.invoice-task-rows > .admin-fault-task .malfunction-conversation,.invoice-task-rows > .admin-fault-task .malfunction-conversation-body { display:contents; }
+.invoice-task-rows > .admin-fault-task .task-conversation-title { grid-column:1; grid-row:2; margin:0; }
+.invoice-task-rows > .admin-fault-task .task-conversation-history { grid-column:1; grid-row:3; min-width:0; }
+.invoice-task-rows > .admin-fault-task .task-conversation-history .comment { margin:0 0 6px; overflow-wrap:anywhere; }
+.invoice-task-rows > .admin-fault-task .task-template-row { grid-column:1 / -1; grid-row:4; display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+.invoice-task-rows > .admin-fault-task .task-template-row select { width:168px; max-width:calc(100% - 102px); min-width:0; min-height:44px; }
+.invoice-task-rows > .admin-fault-task .task-reply-editor { grid-column:1; grid-row:5; min-width:0; }
+.invoice-task-rows > .admin-fault-task .task-reply-editor textarea { width:100%; min-height:80px; box-sizing:border-box; }
+.invoice-task-rows > .admin-fault-task .task-reply-editor .photo-upload { display:inline-flex; width:auto; margin-top:6px; }
+.invoice-task-rows > .admin-fault-task .malfunction-management-actions { grid-column:2; grid-row:1 / span 3; display:flex; align-items:flex-end; justify-content:flex-start; margin:0; padding:0; }
+.invoice-task-rows > .admin-fault-task .workflow-buttons { display:flex; flex-direction:column; gap:6px; margin:0; width:94px; }
+.invoice-task-rows > .admin-fault-task .workflow-buttons > .btn,.invoice-task-rows > .admin-fault-task .task-reply-send { width:94px; min-width:94px; max-width:94px; }
+.invoice-task-rows > .admin-damage-task > .workflow-buttons { grid-column:2; grid-row:1; display:flex; flex-direction:row; justify-content:flex-end; gap:6px; margin:0; }
+.invoice-task-rows > .admin-damage-task > .workflow-buttons > .btn { width:94px; }
+.invoice-task-rows > .admin-shipping-task { display:block; }
+.invoice-task-rows > .admin-shipping-task > strong { display:block; white-space:normal; overflow-wrap:anywhere; margin:0; line-height:20px; }
+.invoice-task-rows > .admin-shipping-task .admin-shipping-fields { display:flex; flex-wrap:wrap; gap:0 4px; line-height:20px; }
+.admin-task-confirmation { width:min(420px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; box-sizing:border-box; padding:20px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font:inherit; }
+.admin-task-confirmation::backdrop { background:rgba(40,32,20,.35); }
+.admin-task-confirmation h3 { margin:0; }
+.admin-task-confirmation-actions { display:flex; justify-content:flex-end; gap:8px; }
+@media screen and (max-width:1023px) {
+ .invoice-task-rows > .admin-task-card { column-gap:8px; padding:10px; }
+ .invoice-task-rows > .admin-simple-task { grid-template-columns:minmax(0,1fr) auto; grid-auto-rows:minmax(20px,auto); }
+ .invoice-task-rows > .admin-simple-task .task-action-details { display:contents; }
+ .invoice-task-rows > .admin-simple-task .task-action-details > strong { grid-column:1; grid-row:1; }
+ .invoice-task-rows > .admin-simple-task .task-action-details > :nth-child(2) { grid-column:1; grid-row:2; }
+ .invoice-task-rows > .admin-simple-task .task-action-details > :nth-child(3) { grid-column:1 / -1; grid-row:3; }
+ .invoice-task-rows > .admin-simple-task .task-action-details > small { grid-column:1 / -1; grid-row:4; }
+ .invoice-task-rows > .admin-photo-task .admin-photo-count { grid-column:1 / -1; grid-row:5; }
+ .invoice-task-rows > .admin-task-card.admin-fault-task,.invoice-task-rows > .admin-task-card.admin-damage-task { display:grid; grid-template-columns:minmax(0,1fr) 94px; align-items:start; }
+ .invoice-task-rows > .admin-task-card .malfunction-report-details { display:flex; flex-direction:column; align-items:flex-start; gap:0; }
+ .invoice-task-rows > .admin-fault-task .task-conversation-title,.invoice-task-rows > .admin-fault-task .task-conversation-history,.invoice-task-rows > .admin-fault-task .task-reply-editor { grid-column:1 / -1; }
+ .invoice-task-rows > .admin-fault-task .malfunction-management-actions { grid-column:2; grid-row:1; }
+ .invoice-task-rows > .admin-damage-task > .workflow-buttons { flex-direction:column; align-items:flex-end; width:94px; }
+ .invoice-task-rows > .admin-shipping-task .admin-shipping-fields { flex-direction:column; align-items:flex-start; }
+}

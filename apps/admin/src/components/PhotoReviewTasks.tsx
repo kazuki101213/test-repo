@@ -1,3 +1,5 @@
+import { useTaskConfirmation } from './TaskConfirmation';
+import { purchaseItemUrl } from '../purchaseUrl';
 import { productSerial } from '../inventory';
 import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
@@ -7,22 +9,24 @@ import { preparePhotoFiles, savePhotoFiles } from '../photoSave';
 import { deliveryAppUrl } from '../appUrls';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
-interface Item { id: string; sku: string; title: string; lot_seq: number }
-interface ListingTask { id: string; sku: string; lot_seq: number; sales_channel: string; marketplace_item_id?: string | null }
+interface PurchaseReference { marketplace_item_id?: string | null; marketplace?: string | null; marketplace_url?: string | null }
+interface Item extends PurchaseReference { id: string; sku: string; title: string; lot_seq: number }
+interface ListingTask extends PurchaseReference { id: string; sku: string; lot_seq: number; sales_channel: string; marketplace_item_id?: string | null }
 
 async function listingProductIds(tasks: ListingTask[]): Promise<ListingTask[]> {
-  const ids = new Map<string, string | null>();
-  // Only fetch the IDs for visible listing tasks; keep each response below row limits.
+  const ids = new Map<string, PurchaseReference>();
+  // Fetch purchase links only for current review/listing tasks; keep each response below row limits.
   for (let offset = 0; offset < tasks.length; offset += 200) {
-    const { data, error } = await getSupabase().from('items').select('id,marketplace_item_id')
+    const { data, error } = await getSupabase().from('items').select('id,marketplace_item_id,marketplace,marketplace_url')
       .in('id', tasks.slice(offset, offset + 200).map(task => task.id));
     if (error) throw error;
-    for (const row of data ?? []) ids.set(row.id, row.marketplace_item_id);
+    for (const row of data ?? []) ids.set(row.id, row);
   }
-  return tasks.map(task => ({ ...task, marketplace_item_id: ids.get(task.id) ?? null }));
+  return tasks.map(task => ({ ...task, ...ids.get(task.id) }));
 }
 
 export default function PhotoReviewTasks() {
+  const { ask, pending, confirmation } = useTaskConfirmation();
   const notice = adminTaskNotice();
   const noticeHandled = useRef(false);
   const [noticeMessage, setNoticeMessage] = useState('');
@@ -48,8 +52,10 @@ export default function PhotoReviewTasks() {
         readResourceSnapshot<Review & {id:string;item:Item}>('photo_reviews'),
         readResourceSnapshot<ListingTask>('listing_tasks'),
       ]);
-      const detailedListingTasks = await listingProductIds(nextListingTasks);
-      const byId:Record<string,Item>=Object.fromEntries(rows.map(row=>[row.item_id,row.item]));
+      const references = await listingProductIds([...nextListingTasks, ...rows.map(row => ({...row.item, id:row.item_id, sales_channel:''}))]);
+      const byReference = new Map(references.map(row => [row.id,row]));
+      const detailedListingTasks = nextListingTasks.map(row => ({...row,...byReference.get(row.id)}));
+      const byId:Record<string,Item>=Object.fromEntries(rows.map(row=>[row.item_id,{...row.item,...byReference.get(row.item_id)}]));
 
       if (active) {
         setReviews([...rows].sort((a,b)=>b.submitted_at.localeCompare(a.submitted_at))); setListingTasks(detailedListingTasks); setItems(byId); setError('');
@@ -145,14 +151,15 @@ export default function PhotoReviewTasks() {
 
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
-      {listingTasks.map(task => <li key={`listing-${task.id}`} className="malfunction-task-row">
-        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> <span>【{task.marketplace_item_id || '商品ID未登録'}】</span><small>{task.sku}</small></div>
-        <button type="button" className="btn" disabled={busy} onClick={() => void completeListing(task)}>完了</button>
-      </li>)}
-      {reviews.map(review => <li key={`photo-${review.item_id}`}><button onClick={() => setSelected(review)}>
-        <span>{items[review.item_id]?.sku || 'SKU確認中'}<small>{items[review.item_id]?.title || ''} ／ 写真 {review.exported_photo_count}枚</small></span>
-        <strong>写真確認</strong><span>確認 ›</span>
-      </button></li>)}
+      {listingTasks.map(task => { const sourceUrl=purchaseItemUrl(task.marketplace??null,task.marketplace_item_id??null,task.marketplace_url??null); return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task">
+        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> {sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a>:<span>【{task.marketplace_item_id || '商品ID未登録'}】</span>}<small>{task.sku}</small></div>
+        <button type="button" className="btn" disabled={busy || pending} onClick={() => ask(task.sales_channel+'出品：完了', () => completeListing(task))}>完了</button>
+      </li>;})}
+      {reviews.map(review => { const item=items[review.item_id]; const sourceUrl=purchaseItemUrl(item?.marketplace??null,item?.marketplace_item_id??null,item?.marketplace_url??null); return <li key={review.item_id} className="admin-task-card admin-simple-task admin-photo-task">
+        <div className="task-action-details"><strong>写真確認</strong><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(review.item_id)} target="_blank" rel="noopener noreferrer">【{item?productSerial(item.sku,item.lot_seq):'通番号確認中'}】</a>{sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{item?.marketplace_item_id||'商品ID未登録'}】</a>:<span>【{item?.marketplace_item_id||'商品ID未登録'}】</span>}<small>{item?.sku||'SKU確認中'}</small></div>
+        <span className="admin-photo-count">写真 {review.exported_photo_count}枚</span><button type="button" className="btn" onClick={() => setSelected(review)}>確認</button>
+      </li>;})}
+    {confirmation}
     {error && <li className="error" role="alert">写真確認タスクを読み込めませんでした：{error}<button className="btn" onClick={() => setRevision(value => value + 1)}>再読み込み</button></li>}
     {selected && createPortal(<div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="写真確認">
       <div className="card inventory-comment-panel photo-review-panel">

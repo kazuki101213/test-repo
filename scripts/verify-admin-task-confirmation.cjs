@@ -1,0 +1,34 @@
+const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
+const compile=(file,extra='')=>ts.transpileModule(fs.readFileSync(file,'utf8')+extra,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const jsx=(type,props)=>({type,props});
+const all=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(n.props?.children)];
+function runtime(){let cursor=0,hooks=[];const react={useState(initial){const n=cursor++;hooks[n]??={value:initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;}];},useRef(v){return hooks[cursor++]??={current:v};},useEffect(){}};return{react,reset(){cursor=0;}};}
+const rt=runtime(),context={exports:{},require:id=>id==='react'?rt.react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};
+vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx'),context);
+const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
+(async()=>{
+ let writes=0,release;let hook=render();hook.ask('完了',async()=>{writes++;});hook.ask('second',async()=>{writes+=10;});hook=render();assert.equal(hook.confirmation.props.request.label,'完了','Repeated asks cannot replace an open request');
+ hook.confirmation.props.onClose();assert.equal(writes,0);assert.equal(render().confirmation,null);
+ hook=render();hook.ask('送信',async()=>{writes++;await new Promise(r=>release=r);});hook=render();
+ const props=hook.confirmation.props;
+ const modalRuntime=runtime();const modalContext={exports:{},require:id=>id==='react'?modalRuntime.react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};
+ vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx','\nexport { Confirmation };'),modalContext);
+ let closed=0;const request={label:'送信',action:props.request.action};
+ const modal=()=>{modalRuntime.reset();return modalContext.exports.Confirmation({request,onClose:()=>closed++});};
+ let tree=modal();assert(all(tree).some(n=>n.props?.children==='実行しますか'));
+ let prevented=false;tree.props.onCancel({preventDefault(){prevented=true;}});assert(prevented);assert.equal(closed,1);assert.equal(writes,0);
+ tree=modal();all(tree).find(n=>n.props?.children==='キャンセル').props.onClick();assert.equal(closed,2);assert.equal(writes,0);
+ const yes=all(tree).find(n=>n.props?.children==='はい').props.onClick;yes();yes();assert.equal(writes,1);
+ tree=modal();tree.props.onCancel({preventDefault(){}});assert.equal(closed,2,'Escape cannot dismiss an executing operation');assert(all(tree).filter(n=>n.type==='button').every(n=>n.props.disabled));
+ release();for(let n=0;n<12;n++)await Promise.resolve();assert.equal(closed,3);
+ request.action=async()=>{throw Error('failed');};tree=modal();all(tree).find(n=>n.props?.children==='はい').props.onClick();for(let n=0;n<12;n++)await Promise.resolve();tree=modal();assert(all(tree).some(n=>n.props?.role==='alert'));assert.equal(closed,3,'Failed operation remains available for retry');
+ const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
+ const template={exports:{},require:id=>id==='../inventory'?inventory.exports:{}};vm.runInNewContext(compile('apps/admin/src/components/MalfunctionTasks.tsx','\nexport { templateBody };'),template);
+ const item={lot_seq:1856,sku:'1856b-EEMM-20261019-1000',marketplace_item_id:'m1234567891',products:[{model_no:'BDZ-ZW550'}]};
+ const prefix='【1856b】【m1234567891】【BDZ-ZW550】\n';
+ assert.equal(template.exports.templateBody('仕入先確認',item),prefix+'取引メッセージより仕入先へ連絡お願いします。');
+ const makers=['Panasonic◯','Panasonic×','SONY◯','SONY×','SHARP◯','SHARP×','TOSHIBA◯','TOSHIBA×'];
+ const bodies=makers.map(m=>template.exports.templateBody(m+'ヤフオク',item));assert(bodies.every(b=>b===bodies[0]&&b.startsWith(prefix)));assert(bodies[0].includes('リモコンやB-CASカードや電源ケーブルは予備としてください。'));
+ const other=template.exports.templateBody('ヤフオク その他',item);assert(other.startsWith(prefix));assert(other.includes('付属品はすべてつけてください。'));assert(!other.includes('予備としてください'));
+ console.log('PASS: cancel/Escape write nothing, confirmation executes once, busy/error handling; all 10 templates use the actual suffixed serial, item ID and model');
+})().catch(e=>{console.error(e);process.exitCode=1;});

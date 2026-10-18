@@ -1,3 +1,4 @@
+import { useTaskConfirmation } from './TaskConfirmation';
 import { productSerial } from '../inventory';
 import { readResourceSnapshot } from '@bussan/shared';
 import { managementWorkflowButtons, staffDisplayName, workflowButtonDirection } from '@bussan/shared';
@@ -37,8 +38,9 @@ const PHOTO_BUCKET = 'item-photos';
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 
 function templateBody(kind: TaskKind, row: MalfunctionTask): string {
-  const header = '【' + row.lot_seq + '】';
-  if (kind === '仕入先確認') return header + '\n仕入先へ確認します。\nお待ちください。';
+  const model = row.products?.find(product => product.model_no)?.model_no || '型番未登録';
+  const header = '【' + productSerial(row.sku, row.lot_seq) + '】【' + (row.marketplace_item_id || '商品ID未登録') + '】【' + model + '】';
+  if (kind === '仕入先確認') return header + '\n取引メッセージより仕入先へ連絡お願いします。';
   if (kind === 'ヤフオク その他') return header + '\nヤフオク販売お願いします。\n【写真に関して】\n付属品はすべてつけてください。\n撮影ボックスではなくて、床やテーブル等で撮ってください。\n電源が確認できるものであれば、確認できるような写真お願いします。';
   return header + '\nヤフオク販売お願いします。\nリモコンやB-CASカードや電源ケーブルは予備としてください。\n【写真に関して】\n付属品が写っていれば付属させてください。\n撮影ボックスで撮っていますが、床やテーブル等で撮ってください。\nランプや表示は写真の通りお願いします。\nトレイは開かない場合は開かなくて大丈夫です。\n写真は以下の通りです。';
 }
@@ -81,6 +83,7 @@ async function fetchCommentRows(itemId: string): Promise<TaskComment[]> {
 }
 
 function MalfunctionConversation({ item, staff, onReplied, actions }: { item: MalfunctionTask; staff: Staff; onReplied: () => Promise<void>; actions: ReactNode }) {
+  const { ask, pending, confirmation } = useTaskConfirmation();
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [authors, setAuthors] = useState<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
@@ -155,6 +158,7 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
       if (insertError) throw insertError;
       saved = true;
       setDraft(''); setKind(''); setPhotos([]);
+      await refreshComments();
       await onReplied();
     } catch (cause) {
       // An uncertain response may have committed. Never remove a successfully saved reply's photos.
@@ -175,7 +179,8 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
 
   return <div className="malfunction-conversation">
     <div className="malfunction-conversation-body">
-    <strong>納品担当者とのメッセージ</strong>
+    <strong className="task-conversation-title">納品担当者とのメッセージ</strong>
+    <div className="task-conversation-history">
     {comments.length === 0 && <p className="muted malfunction-empty-message">まだメッセージありません。</p>}
     {comments.map(comment => <div className={'comment ' + (comment.author_id === staff.id ? 'mine' : '')} key={comment.id}>
       <div className="meta">{staffDisplayName(authors.get(comment.author_id)) || '担当者'} · {new Date(comment.created_at).toLocaleString('ja-JP')}</div>
@@ -183,26 +188,25 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
       {comment.photos?.length ? <div className="malfunction-comment-photos">{comment.photos.map((photo, index) =>
         <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={'返信写真 ' + (index + 1)} loading="lazy" /></a>)}</div> : null}
     </div>)}
-    <label className="field"><span>定型文</span><select aria-label="返信の定型文" value={kind} disabled={busy || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value)}>
-      <option value="">定型文を選択（任意）</option>{TASK_TEMPLATES.map(value => <option key={value} value={value}>{value}</option>)}
-    </select></label>
-    <textarea aria-label="納品担当者への返信" value={draft} onChange={event => setDraft(event.target.value)}
+    </div>
+    <div className="task-template-row"><select aria-label="返信の定型文" value={kind} disabled={busy || pending || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value)}>
+      <option value="">定型文選択</option>{TASK_TEMPLATES.map(value => <option key={value} value={value}>{value}</option>)}
+    </select><button type="button" className="btn task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy || pending || loadingTemplatePhotos}
+      onClick={() => ask('納品担当者とのメッセージ：送信', sendReply)}>{busy ? '送信中…' : '送信'}</button></div>
+    <div className="task-reply-editor"><textarea aria-label="納品担当者への返信" value={draft} disabled={busy || pending} onChange={event => setDraft(event.target.value)}
       maxLength={2000} placeholder="納品担当者への返信を入力" />
     <label className="btn photo-upload">{loadingTemplatePhotos ? '定型写真を読み込み中…' : ('写真追加（' + photos.length + '枚）')}
-      <input type="file" aria-label="返信写真を追加" accept="image/*" multiple disabled={busy} onChange={event => { choosePhotos(event.target.files); event.target.value = ''; }} />
+      <input type="file" aria-label="返信写真を追加" accept="image/*" multiple disabled={busy || pending || loadingTemplatePhotos} onChange={event => { choosePhotos(event.target.files); event.target.value = ''; }} />
     </label>
     {error && <p className="error" role="alert">メッセージ：{error}</p>}
-    </div>
-    <div className="malfunction-management-actions">
-    <button className="btn primary task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy} onClick={() => void sendReply()}>
-      {busy ? '送信中…' : '送信'}
-    </button>
-    {actions}
-    </div>
+    </div></div>
+    <div className="malfunction-management-actions">{actions}</div>
+    {confirmation}
   </div>;
 }
 
 export default function MalfunctionTasks({ staff }: { staff: Staff }) {
+  const { ask, pending, confirmation } = useTaskConfirmation();
   const notice = adminTaskNotice();
   const noticeHandled = useRef(false);
   const [loaded, setLoaded] = useState(false);
@@ -277,26 +281,27 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {noticeMessage && <li role="status">{noticeMessage}</li>}
     {error && <li className="error" role="alert">動作不良タスク：{error}</li>}
     {!error && rows.length === 0 && actionTasks.length === 0 && <li className="muted">動作不良の報告はありません。</li>}
-    {actionTasks.map(task => <li id={`admin-action-${task.id}`} key={'action-' + task.id} className="malfunction-task-row">
+    {actionTasks.map(task => <li id={`admin-action-${task.id}`} key={'action-' + task.id} className="malfunction-task-row admin-task-card admin-simple-task">
       <div className="task-action-details supplier-task-details"><strong>{task.task_kind}</strong><a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.item_id)} target="_blank" rel="noopener noreferrer" aria-label="仕入先確認商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.item_id)+'&openMessages=1'} target="_blank" rel="noopener noreferrer" aria-label="仕入先確認のメッセージを開く">【{task.marketplace_item_id || '商品ID未登録'}】</a><small>{task.sku}</small></div>
-      <button type="button" className="btn" disabled={busy !== null} onClick={() => void completeTask(task.id)}>{busy === task.id ? '更新中…' : '完了'}</button>
+      <button type="button" className="btn" disabled={busy !== null || pending} onClick={() => ask('仕入先確認：完了', () => completeTask(task.id))}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
     {rows.map(row => {
       const source = purchaseSources.get(row.id);
       const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, source?.marketplace_item_id ?? row.marketplace_item_id, source?.marketplace_url ?? null);
-      const controls = (staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).map(button=><button key={button.key} className="btn" data-action={button.key} data-direction={workflowButtonDirection(button.key)} disabled={busy !== null} onClick={()=>void resolve(row,button.key as InventoryAction)}>{button.label}</button>)}</div>;
-      return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className={`malfunction-task-row${row.status === '動作不良' ? ' malfunction-report-row' : ''}`}>
+      const controls = (staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).filter(button=>button.key!=='yahoo_instruction').sort((a,b)=>['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(a.key)-['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(b.key)).map(button=><button key={button.key} className="btn" data-action={button.key} data-direction={workflowButtonDirection(button.key)} disabled={busy !== null || pending} onClick={()=>ask((row.status === '動作不良' ? '動作不良' : '破損報告')+'：'+button.label,()=>resolve(row,button.key as InventoryAction))}>{button.label}</button>)}</div>;
+      return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className={`malfunction-task-row admin-task-card ${row.status === '動作不良' ? 'malfunction-report-row admin-fault-task' : 'admin-damage-task'}`}>
       <div className="malfunction-task-content">
         <div className="task-action-details malfunction-report-details">
           <strong>{row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
           <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.id)} target="_blank" rel="noopener noreferrer" aria-label="報告商品の在庫を開く">【{productSerial(row.sku,row.lot_seq)}】</a>
-          <span>【{(source?.marketplace_item_id ?? row.marketplace_item_id) || '商品ID未登録'}】{sourceUrl && <a className="malfunction-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先の商品ページを開く"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11" /><path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg></a>}</span>
+          {sourceUrl ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く">【{(source?.marketplace_item_id ?? row.marketplace_item_id) || '商品ID未登録'}】</a> : <span>【{(source?.marketplace_item_id ?? row.marketplace_item_id) || '商品ID未登録'}】</span>}
           <small>{row.sku}</small>
         </div>
 
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
       </div>
-      {row.status === '動作不良' ? <MalfunctionConversation item={row} staff={staff} onReplied={refresh} actions={controls} /> : controls}
+      {row.status === '動作不良' ? <MalfunctionConversation item={{...row, marketplace_item_id: source?.marketplace_item_id ?? row.marketplace_item_id}} staff={staff} onReplied={refresh} actions={controls} /> : controls}
     </li>;})}
+    {confirmation}
   </>;
 }
