@@ -14,8 +14,8 @@ not is_accessory and coalesce(channel in ('自己発送','メルカリ','ヤフ�
 from unnest(array['出品中','取引中','販売済','返品処理']) status
 cross join unnest(array['自己発送','メルカリ','ヤフオク','FBA','ヤフフリ',null]) channel
 cross join unnest(array[null::date,current_date]) shipped_on cross join unnest(array[false,true]) is_accessory;
-insert into app.items(id,lot_seq,purchaser_id,deliverer_id,title,cost_amount,marketplace,sales_channel,tracking_no,is_accessory)
-select id,996650+n,(select id from app.staff where code='AA'),'99665000-0000-0000-0000-000000000001','workload metric fixture',100,'ヤフオク',channel,'tracking',is_accessory from workload_cases;
+insert into app.items(id,lot_seq,sku,purchaser_id,deliverer_id,title,cost_amount,marketplace,sales_channel,tracking_no,is_accessory)
+select id,996650+n,(996650+n)::text||case when is_accessory then 'c' else '' end||'-AAQW-20261019-100',(select id from app.staff where code='AA'),'99665000-0000-0000-0000-000000000001','workload metric fixture',100,'ヤフオク',channel,'tracking',is_accessory from workload_cases;
 update app.items i set status=c.status,shipped_on=c.shipped_on from workload_cases c where i.id=c.id;
 grant select on workload_cases to authenticated;
 set local role authenticated;
