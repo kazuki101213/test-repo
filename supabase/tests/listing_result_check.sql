@@ -7,7 +7,7 @@ create temporary table reconciliation_probe as select o.id,o.item_id,i.lot_seq,j
 grant select on reconciliation_probe to authenticated;
 create function pg_temp.reject_check(op uuid,proof jsonb) returns void language plpgsql as $$begin
  begin perform app.extension_finish_listing_result_check(op,proof);exception when others then return;end;
- raise exception 'Invalid reconciliation accepted';
+ raise exception 'Invalid reconciliation accepted: %',op;
 end $$;
 set local role authenticated;
 set local request.jwt.claim.sub='33333333-3333-3333-3333-333333333333';
@@ -43,7 +43,8 @@ do $$declare p reconciliation_probe;begin
  end loop;
 end $$;
 set local role postgres;
-update app.items set title='changed after request' where lot_seq=993203;
+-- Item revisions use now(); emulate an earlier request across transaction boundaries.
+update app.seller_operations set expected_updated_at=expected_updated_at-interval '1 second' where item_id=(select item_id from reconciliation_probe where lot_seq=993203);
 update app.items set sold_on=current_date where lot_seq=993204;
 update app.items set status='動作不良' where lot_seq=993205;
 insert into app.seller_listings(item_id,channel,account_id,external_id,url) select item_id,'メルカリ','mercari-1','mold','https://jp.mercari.com/item/mold' from reconciliation_probe where lot_seq=993206;

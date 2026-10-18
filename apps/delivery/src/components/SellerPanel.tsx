@@ -33,12 +33,12 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const watching=context?.operations.find(op=>op.status==='queued'||op.status==='running'||checking(op));
  useEffect(()=>{if(!watching)return;let active=true,inFlight=false;
   async function refresh(){if(!active||inFlight||document.visibilityState!=='visible')return;if(Date.now()-Date.parse(checking(watching!)?String(watching!.result.read_check_requested_at):watching!.created_at)>600000){setError('実行結果の確認が必要です。自動再実行はしません。');return;}inFlight=true;
-   try{const state=await fetchSellerOperation(watching!.id);if(!active)return;
+   try{const state=checking(watching!)?{status:'uncertain'}:await fetchSellerOperation(watching!.id);if(!active)return;
     if(checking(watching!)||!['queued','running'].includes(state.status)){const info=await fetchSellerContext(task.id);if(!active)return;setContext(info);const finished=info.operations.find(op=>op.id===watching!.id&&op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){lastFinished.current=finished.id;const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(active&&full)onChanged(full);}}
    }catch(cause){if(active)setError(cause instanceof Error?cause.message:String(cause));}finally{inFlight=false;}
   }
   const timer=window.setInterval(()=>void refresh(),15000);return()=>{active=false;window.clearInterval(timer);};
- },[watching?.id,watching?.result.read_check_state,task.id,staff.role,staff.code,onChanged]);
+ },[watching?.id,watching?.result.read_check_state,watching?.result.read_check_requested_at,task.id,staff.role,staff.code,onChanged]);
  useEffect(()=>{setCode('');setPosted(false);setCamera(false);setMessage('');},[context?.listing?.trade_key]);
  const operations=context?.operations??[],latestCode=operations.find(op=>op.kind==='shipping_code'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key),proof=operations.find(op=>op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key&&(op.kind==='register_package'||op.kind==='verify_shipping'&&op.result.accepted===true));
  useEffect(()=>{let active=true;const value=latestCode?.result.qr_code;if(typeof value!=='string'){setQr('');return;}if(value.startsWith('data:image/png;base64,')){setQr(value);return;}void import('qrcode').then(module=>module.toDataURL(value,{width:260,margin:2})).then(url=>{if(active)setQr(url);}).catch(()=>{if(active)setError('配送コードを表示できません');});return()=>{active=false;};},[latestCode?.id]);
