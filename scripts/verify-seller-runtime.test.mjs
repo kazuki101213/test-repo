@@ -33,3 +33,9 @@ for(const scenario of ['match','duplicate','suffix','account','claim'])test('不
  await sellerQueuedOperations({settings,rpc:async(name,args)=>{calls.push(name);if(name==='extension_seller_queue')return[job];if(name==='extension_claim_listing_result_check')return scenario!=='claim';if(name==='extension_finish_listing_result_check'){finished=args.p_result;return;}throw Error('Write RPC forbidden: '+name);},openSession:async()=>({links:async()=>[{text:'出品中',url:'https://jp.mercari.com/mypage/listings'}],go:async()=>{},read:async()=>({rows,navigation:[],active:'出品中'}),operation:async(job,phase)=>{phases.push(phase);return {external_id:'m1',verified_serial:'1856b'};},close:async()=>{}}),log:async()=>{}});
  assert(!calls.includes('extension_claim_seller_operation'));assert(!phases.some(p=>p!=='listing_result'));if(scenario==='match')assert.equal(finished.external_id,'m1');else if(['duplicate','suffix'].includes(scenario)){assert(finished.note);assert.equal(phases.length,0);}else assert.equal(finished,undefined);
 });
+
+test('結果確認専用RPCを実API経路で送り、任意のRPCは拒否する',async()=>{
+ const {rpc}=await import('../tools/fleamarket-extension/api.js');const original=globalThis.fetch,requests=[];
+ globalThis.fetch=async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {ok:true,json:async()=>true};};
+ try{for(const name of ['extension_claim_listing_result_check','extension_finish_listing_result_check'])assert.equal(await rpc(name,{p_id:'fixture'},'test-only-token'),true);await assert.rejects(rpc('delete_everything',{},'test-only-token'),/許可されていない/);assert.equal(requests.length,2);assert(requests.every(r=>r.url.endsWith('listing_result_check')&&r.body.p_id==='fixture'));}finally{globalThis.fetch=original;}
+});
