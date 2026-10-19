@@ -111,7 +111,7 @@ test('purchaser retains read permission but cannot save unassigned item',async()
   assert.equal((await call('save')).status,403);
 });
 
-test('working Amazon return defaults to Mercari while ordinary defaults are retained',()=>{
+test('explicit sales channel wins over old description and working return fallback',()=>{
   const path=__dirname+'/../../../apps/delivery/src/components/DescriptionEditor.tsx';
   const source=fs.readFileSync(path,'utf8');
   const ast=ts.createSourceFile(path,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
@@ -120,8 +120,10 @@ test('working Amazon return defaults to Mercari while ordinary defaults are reta
   const code=ts.transpileModule(fn.getText(ast),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
   const initialTarget=new Function(code+'; return initialTarget;')();
   assert.equal(initialTarget({marketplace:'動作品Amazon返品',sales_channel:'FBA'}),'mercari');
-  assert.equal(initialTarget({marketplace:'動作品Amazon返品',sales_channel:'ヤフオク'}),'mercari');
+  assert.equal(initialTarget({marketplace:'動作品Amazon返品',sales_channel:'ヤフオク'}),'yahoo-auction');
   assert.equal(initialTarget({marketplace:'Amazon返品',sales_channel:'FBA'}),'amazon');
+  assert.equal(initialTarget({sales_channel:'ヤフオク',description:'商品名（メルカリ）'}),'yahoo-auction');
+  assert.equal(initialTarget({sales_channel:'メルカリ',description:'商品名（ヤフオク）'}),'mercari');
   assert.equal(initialTarget({marketplace:'ヤフオク',sales_channel:'ヤフオク'}),'yahoo-auction');
 });
 
