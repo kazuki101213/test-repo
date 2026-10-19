@@ -79,16 +79,12 @@ export default function Products() {
 
       <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
-      <div className="toolbar">
-        <input
-          type="search" placeholder="品番 / ASIN / 型番 / メーカー / ジャンル" value={query}
-          onChange={(e) => setQuery(e.target.value)} style={{ minWidth: 260 }}
-        />
-        <span className="sub" style={{ margin: 0 }}>{rows.length} 件</span>
-        <span style={{ flex: 1 }} />
+      <div className="toolbar product-search-toolbar">
         <button className="btn primary" aria-expanded={adding} onClick={() => setAdding(open => !open)}>{adding ? '商品登録を閉じる' : '商品登録'}</button>
+        <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} onChange={event => setQuery(event.target.value)} />
         <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
       </div>
+      <p className="sub">{rows.length} 件</p>
 
       {adding && <div className="card product-entry"><h3>商品登録</h3><div className="grid cols2">
         {(['asin', 'model_no', 'maker', 'product_no'] as const).map(field => <label className="field" key={field}><span>{{ asin: 'ASIN', model_no: '型番', maker: 'メーカー', product_no: '品番' }[field]}</span><input value={newProduct[field]} onChange={e => setNewProduct(current => ({ ...current, [field]: e.target.value }))} /></label>)}

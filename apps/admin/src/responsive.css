@@ -243,3 +243,18 @@
  .layout .management-kpis > .purchase-summary-card { grid-column:3; grid-row:1; }
  .layout .management-kpis > .stock-summary-card { grid-column:3; grid-row:2; }
 }
+
+@media screen {
+ .layout .spare-search.spare-toolbar { display:grid; grid-template-columns:max-content 132px minmax(0,260px); align-items:center; gap:8px; }
+ .layout .spare-search.spare-toolbar > :is(input,select) { width:100%; min-width:0; }
+ .layout .toolbar.expense-search-toolbar { grid-template-columns:max-content minmax(0,260px); align-items:center; }
+ .layout .toolbar.product-search-toolbar { grid-template-columns:max-content minmax(0,260px) max-content; align-items:center; }
+}
+@media screen and (max-width:1023px) {
+ .layout .spare-search.spare-toolbar { grid-template-columns:max-content 108px minmax(0,1fr); gap:6px; }
+ .layout .spare-search.spare-toolbar > select:first-of-type { font-size:14px; padding-inline:6px; }
+ .layout .spare-search.spare-toolbar > .btn { font-size:14px; padding-inline:8px; }
+ .layout .toolbar.expense-search-toolbar { grid-template-columns:max-content minmax(0,1fr); gap:6px; }
+ .layout .toolbar.product-search-toolbar { grid-template-columns:max-content minmax(0,1fr) max-content; gap:6px; }
+ .layout .toolbar.product-search-toolbar > .btn { font-size:14px; padding-inline:8px; }
+}

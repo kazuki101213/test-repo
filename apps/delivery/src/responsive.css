@@ -240,3 +240,11 @@
 @media screen {
   .app .invoice-toolbar input:not([aria-hidden=true]), .app .invoice-toolbar select, .app .invoice-toolbar button, .app .invoice-toolbar .invoice-month-value { box-sizing:border-box; height:44px; min-height:44px; }
 }
+
+@media screen {
+ .app .spare-search { grid-template-columns:132px minmax(0,260px); }
+}
+@media screen and (max-width:1279px) {
+ .app .spare-search { grid-template-columns:108px minmax(0,1fr); }
+ .app .spare-search > select:first-child { font-size:14px; padding-inline:6px; }
+}

@@ -1,6 +1,6 @@
 import {getSupabase} from './supabase';
 import {staffDisplayName} from './staffNames';
-export type InventoryScope='delivery'|'management';
+export type InventoryScope='delivery'|'delivery-all'|'management';
 export interface InventorySnapshot<T>{rows:T[];ids:string[];fingerprints:Record<string,string>;total:number;unchanged?:boolean;revision?:string}
 export interface InventoryPage<T>{rows:T[];fingerprints:Record<string,string>;total:number;limit:number;checkedAt:number}
 export function mergeInventoryPage<T extends {id:string}>(previous:T[],snapshot:InventorySnapshot<T>):T[]{
@@ -18,11 +18,11 @@ export function rememberInventoryPage<T extends {id:string}>(key:string,page:Inv
 }
 export async function fetchInventoryPage<T extends {id:string}>(scope:InventoryScope,filters:Record<string,unknown>,limit:number,known:Record<string,string>={},signal?:AbortSignal):Promise<InventorySnapshot<T>>{
  if(filters.from&&filters.to&&String(filters.from)>String(filters.to))throw new Error('仕入日の終了日は、開始日以降の日付を選んでください。');
- let request=getSupabase().rpc('read_inventory_page',{p_scope:scope,p_filters:filters,p_limit:limit,p_known:known});
+ let request=scope==='delivery-all' ? getSupabase().rpc('read_delivery_catalog_page',{p_filters:filters,p_limit:limit,p_known:known}) : getSupabase().rpc('read_inventory_page',{p_scope:scope,p_filters:filters,p_limit:limit,p_known:known});
  if(signal)request=request.abortSignal(signal);
  const {data,error}=await request;if(error)throw error;
  const snapshot=data as InventorySnapshot<T>;
- if(scope==='delivery')snapshot.rows=snapshot.rows.map(row=>{const task=row as T & {deliverer_name?:string|null};return {...row,deliverer_name:staffDisplayName(task.deliverer_name)};});
+ if(scope==='delivery'||scope==='delivery-all')snapshot.rows=snapshot.rows.map(row=>{const task=row as T & {deliverer_name?:string|null};return {...row,deliverer_name:staffDisplayName(task.deliverer_name)};});
  return snapshot;
 }
 export async function fetchCompleteInventory<T extends {id:string}>(scope:InventoryScope,filters:Record<string,unknown>):Promise<T[]>{

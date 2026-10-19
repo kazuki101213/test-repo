@@ -230,3 +230,10 @@
 @media screen and (max-width:1023px) {
  .app .task-card[data-item-status="取引中"] .task-photo-action { width:min(80px,calc(100% + 30px)); }
 }
+
+/* The catalog switch stays at the lower right of the workflow selector. */
+@media (min-width:1280px) { .inventory-workflow-footer > .inventory-all-products { margin-left:auto; } }
+@media (max-width:1279px) {
+ .inventory-workflow-footer > [data-status="all"] { grid-column:1; }
+ .inventory-workflow-footer > .inventory-all-products { order:12; grid-column:2; }
+}
