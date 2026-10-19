@@ -86,6 +86,8 @@ end $$;
 set local role postgres;
 update app.photo_reviews set approved_at=clock_timestamp()-interval '25 hours' where item_id=(select id from app.items where lot_seq=996811);
 update app.item_comments set created_at=clock_timestamp()-interval '25 hours' where item_id=(select id from app.items where lot_seq=996811);
+-- Keep the aged reply after its report; otherwise it is correctly excluded as unrelated history.
+update app.items set malfunction_reported_at=clock_timestamp()-interval '26 hours' where lot_seq=996811;
 set local role authenticated;
 do $$begin if (select count(*) from app.v_delivery_notice_tasks where item_id=(select id from app.items where lot_seq=996811))<>2 then raise exception 'Approval/reply cards expired before confirmation';end if;end $$;
 set local role postgres;
