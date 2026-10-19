@@ -41,7 +41,7 @@ jobs:
         run: node --test supabase/functions/delivery-photo-drive/index_test.cjs && node scripts/verify-workload-arrival-removal.cjs && node scripts/verify-listing-photo-integration.cjs && node scripts/verify-delivery-load-error.cjs && node scripts/verify-spare-shipping-ui.cjs && node scripts/verify-admin-task-confirmation.cjs && node scripts/verify-admin-task-links.cjs && node scripts/verify-usage-maker.cjs && node scripts/verify-spare-body-reference.cjs && node scripts/verify-inventory-column-filters.cjs && node scripts/verify-inventory-multi-filter.cjs && node scripts/verify-delivery-purchaser-comment.cjs && node scripts/verify-return-purchase-reference.cjs && node scripts/verify-delivery-search.cjs && node scripts/verify-delivery-all-products.cjs && node scripts/verify-delivery-overview-spare-order.cjs
 
       - name: 動作不良報告の写真添付
-        run: node supabase/functions/malfunction-report-photos/index_test.cjs && node scripts/verify-malfunction-report-photos.cjs && node scripts/verify-admin-review-photos.cjs
+        run: node supabase/functions/malfunction-report-photos/index_test.cjs && node scripts/verify-malfunction-report-photos.cjs && node scripts/verify-admin-review-photos.cjs && node scripts/verify-return-tasks.cjs
 
       - name: 移行スクリプトの文法チェック
         run: node --check scripts/import-sheets.mjs

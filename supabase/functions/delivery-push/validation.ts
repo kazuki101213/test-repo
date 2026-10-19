@@ -31,6 +31,8 @@ export function notificationPayload(row: { app_kind: string; kind: string; lot_s
 }
 
 export function notificationBody(kind: string, lot: number): string {
+  if (kind === 'photo_return') return `【${lot}】写真が差し戻されました。やることで理由を確認してください。`;
+  if (kind === 'malfunction_return') return `【${lot}】報告が差し戻されました。やることで理由を確認してください。`;
   if (kind === 'reply') return `【${lot}】メッセージが届きました`;
   if (kind === 'photo') return `【${lot}】写真が承認されました。`;
   return `【${lot}】新しい担当商品が追加されました。`;

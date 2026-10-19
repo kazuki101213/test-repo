@@ -1,3 +1,4 @@
+import ReturnTasks from '../components/ReturnTasks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
 import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters, STATUSES } from '@bussan/shared';
@@ -164,6 +165,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">やること</h3>
       <section ref={sectionRef} className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading" tabIndex={0} style={{ maxHeight: viewportHeight }}>
+        <ul className="invoice-task-rows" aria-label="差し戻し"><ReturnTasks staffId={staff.id}/></ul>
         <ul ref={shippingRef} className="invoice-task-rows" aria-label="発送関連"><SpareShippingTasks staff={staff} /></ul>
       </section>
       </div>

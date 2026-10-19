@@ -310,6 +310,8 @@ export async function deletePhoto(photoId: string): Promise<void> {
 }
 
 export interface PhotoReviewState {
+  rejected_at?: string | null;
+  rejection_reason?: string | null;
   submitted_at: string;
   approved_at: string | null;
   exported_photo_count: number;
@@ -317,7 +319,7 @@ export interface PhotoReviewState {
 
 export async function fetchPhotoReview(itemId: string): Promise<PhotoReviewState | null> {
   const { data, error } = await getSupabase().from('photo_reviews')
-    .select('submitted_at,approved_at,exported_photo_count').eq('item_id', itemId).maybeSingle();
+    .select('submitted_at,approved_at,exported_photo_count,rejected_at,rejection_reason').eq('item_id', itemId).maybeSingle();
   if (error) throw error;
   return data as PhotoReviewState | null;
 }
@@ -328,6 +330,8 @@ export async function fetchPhotoReviewPolicy(): Promise<boolean> {
   return data === true;
 }
 
+function announceReturnTaskChange(){if(typeof window!=='undefined'&&typeof window.dispatchEvent==='function')window.dispatchEvent(new Event('delivery-return-tasks-changed'));}
+
 export async function addPhotosToDrive(itemId: string, purpose: 'product'|'packing' = 'product'): Promise<{ added: number; total: number }> {
   const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, purpose } });
   if (error) {
@@ -335,6 +339,7 @@ export async function addPhotosToDrive(itemId: string, purpose: 'product'|'packi
     throw new Error(message || error.message);
   }
   if (!data || typeof data.total !== 'number') throw new Error('Googleドライブの保存結果を確認できません。');
+  announceReturnTaskChange();
   return data;
 }
 
@@ -359,6 +364,7 @@ export async function setInventoryWorkflow(itemId:string,status:ItemStatus):Prom
 export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status'>,action:import('@bussan/shared').InventoryAction,note?:string,requestId=crypto.randomUUID()):Promise<void>{
  const {error}=await getSupabase().rpc('perform_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_note:note??null,p_request_id:requestId});
  if(error)throw error;
+ announceReturnTaskChange();
 }
 export type ReportAttachment={id:string;file:File};
 export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'status'>,note:string,requestId:string,photos:ReportAttachment[]):Promise<void>{
@@ -374,6 +380,7 @@ export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'statu
  }
  const {error}=await sb.rpc('submit_malfunction_report',{p_item_id:task.id,p_expected_status:task.status,p_note:note,p_request_id:requestId,p_photo_ids:photos.map(photo=>photo.id)});
  if(error)throw error;
+ announceReturnTaskChange();
 }
 export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}
 export interface SellerContext {photo_review_approved?:boolean;revision:string;assignee?:string|null;shipping_defaults?:Partial<Pick<import('@bussan/shared').SellerDraft,'shippingMethod'|'size'|'weightKg'|'dropoff'|'category'>>|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}

@@ -276,7 +276,7 @@ export default function TaskDetail({
         </div>)}</div>}
       </div>
       {!packing && !isWorkingAmazonReturn && photoReview && <p className={photoReview.approved_at ? 'ok' : 'muted'}>
-        写真確認：{photoReview.approved_at ? '完了' : '確認待ち'}
+        写真確認：{photoReview.rejected_at?'差し戻し':photoReview.approved_at ? '完了' : '確認待ち'}{photoReview.rejected_at&&<span className="delivery-return-reason">　差し戻し理由：{photoReview.rejection_reason}</span>}
       </p>}
 
       </>}

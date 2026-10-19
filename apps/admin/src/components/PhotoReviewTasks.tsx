@@ -1,3 +1,4 @@
+import ReturnReasonDialog from './ReturnReasonDialog';
 import { useTaskConfirmation } from './TaskConfirmation';
 import { purchaseItemUrl } from '../purchaseUrl';
 import { productSerial } from '../inventory';
@@ -39,6 +40,8 @@ export default function PhotoReviewTasks() {
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [photoError,setPhotoError]=useState('');
   const [busy, setBusy] = useState(false);
+  const [rejecting,setRejecting]=useState(false);
+  const returnRequest=useRef('');
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [saveFiles, setSaveFiles] = useState<File[]>([]);
@@ -121,6 +124,13 @@ export default function PhotoReviewTasks() {
     finally { setBusy(false); }
   }
 
+  async function reject(reason:string){
+    if(!selected)return;
+    const {error:rejectError}=await getSupabase().rpc('reject_photo_review',{p_item_id:selected.item_id,p_submitted_at:selected.submitted_at,p_reason:reason,p_request_id:returnRequest.current});
+    if(rejectError)throw rejectError;
+    setRejecting(false);setSelected(null);setRevision(value=>value+1);
+  }
+
   async function completeListing(task: ListingTask) {
     if (busy) return;
     setBusy(true); setError('');
@@ -144,6 +154,7 @@ export default function PhotoReviewTasks() {
         <div className="task-action-details"><strong>写真確認</strong><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(review.item_id)} target="_blank" rel="noopener noreferrer">【{item?productSerial(item.sku,item.lot_seq):'通番号確認中'}】</a>{sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{item?.marketplace_item_id||'商品ID未登録'}】</a>:<span>【{item?.marketplace_item_id||'商品ID未登録'}】</span>}<small>{item?.sku||'SKU確認中'}</small></div>
         <span className="admin-photo-count">写真 {review.exported_photo_count}枚</span><button type="button" className="btn" onClick={() => setSelected(review)}>確認</button>
       </li>;})}
+    {rejecting&&selected&&<ReturnReasonDialog label="写真確認：NG（差し戻し）" onSubmit={reject} onCancel={()=>setRejecting(false)}/> }
     {confirmation}
     {error && <li className="error" role="alert">写真確認タスクを読み込めませんでした：{error}<button className="btn" onClick={() => setRevision(value => value + 1)}>再読み込み</button></li>}
     {selected && createPortal(<div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="写真確認">
@@ -156,7 +167,8 @@ export default function PhotoReviewTasks() {
         {!loadingPhotos && !photoError && <p className="sub">アプリ保存 {photos.length}枚 ／ Google Drive送信済み {selected.exported_photo_count}枚</p>}
         {!loadingPhotos && !photoError && photos.length !== selected.exported_photo_count && <div className="error" role="status">写真枚数が一致しないため完了できません。納品アプリで「Googleドライブ追加」を再実行して、追加分も送信してください。</div>}
         <div className="photo-review-actions">
-          <button type="button" className="btn primary photo-review-icon" aria-label="写真確認を完了" title="写真確認を完了" disabled={busy || saving || loadingPhotos || !!photoError || photos.length===0 || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '…' : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 10v11H3V10h4Zm0 0 5-7a3 3 0 0 1 2 3l-1 4h6a2 2 0 0 1 2 2l-1 7a2 2 0 0 1-2 2H7" /></svg>}</button>
+          <button type="button" className="btn primary photo-review-icon" aria-label="写真確認を完了" title="写真確認を完了" disabled={busy || saving || loadingPhotos || !!photoError || photos.length===0 || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '処理中…' : 'OK'}</button>
+          <button type="button" className="btn photo-review-icon" aria-label="写真確認を差し戻す" disabled={busy||saving||loadingPhotos} onClick={()=>{returnRequest.current=crypto.randomUUID();setRejecting(true);}}>NG</button>
           <button type="button" className="btn photo-review-icon" aria-label="通番号の写真をすべて保存" title={preparingSave ? '写真を準備中' : '通番号の写真をすべて保存'} disabled={busy || saving || preparingSave} onClick={() => void savePhotos()}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5" /></svg>
           </button>

@@ -166,7 +166,7 @@ export async function handler(req: Request): Promise<Response> {
 
     const driveToken = await googleToken();
     const root = Deno.env.get('GOOGLE_DRIVE_ROOT_FOLDER_ID') || await ensureFolder(driveToken, 'root', '納品アプリ写真');
-    const { data: review, error: reviewError } = await service.from('photo_reviews').select('drive_folder_id,approved_at').eq('item_id', itemId).maybeSingle();
+    const { data: review, error: reviewError } = await service.from('photo_reviews').select('drive_folder_id,approved_at,rejected_at').eq('item_id', itemId).maybeSingle();
     if (reviewError) throw reviewError;
     const { data: existing, error: folderError } = await service.from('lot_photo_folders').select('drive_folder_id').eq('lot_seq', item.lot_seq).maybeSingle();
     if (folderError) throw folderError;
@@ -201,7 +201,7 @@ export async function handler(req: Request): Promise<Response> {
       const { error } = await service.from('photo_reviews').update({ drive_folder_id: folderId }).in('item_id', memberIds.slice(start, start + 100));
       if (error) throw error;
     }
-    if (purpose==='product' && (added > 0 || !review)) {
+    if (purpose==='product' && (added > 0 || !review || review.rejected_at)) {
       const { error: taskError } = await service.from('photo_reviews').upsert({
         item_id: itemId, drive_folder_id: folderId, exported_photo_count: photos.filter(photo => photo.item_id === itemId).length,
         submitted_at: new Date().toISOString(), approved_at: null, approved_by: null, updated_at: new Date().toISOString(),

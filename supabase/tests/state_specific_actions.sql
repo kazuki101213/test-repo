@@ -59,7 +59,7 @@ do $$declare v_item uuid:=(select id from app.items where lot_seq=992002);begin
  begin perform app.perform_inventory_action(v_item,'compensation_complete','Amazon補填申請中');raise exception 'Delivery compensation accepted';exception when insufficient_privilege then null;end;
 end $$;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
-select app.perform_inventory_action(id,'send_back',status) from app.items where lot_seq=992002;
+select app.perform_inventory_action(id,'send_back',status,'再確認してください。') from app.items where lot_seq=992002;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 select app.perform_inventory_action(id,'report',status,'damage report again') from app.items where lot_seq=992002;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
