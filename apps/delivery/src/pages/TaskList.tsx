@@ -122,6 +122,9 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const shownRows = shown.rows;
   const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
   const selectableRows = allProducts ? [] : shownRows.filter(({members}) => members.every(canOperate));
+  function selectState(next: Filter) {
+    setAllProducts(false);setFilter(next);setExpandedId(null);setSelected(new Set());
+  }
   function toggleAllProducts() {
     setAllProducts(current => !current);setFilter('all');setInventoryFilters({});setAssigneeFilterId('');setDelivererId('');setQuery('');setQueryField('serial');setExpandedId(null);setSelected(new Set());
   }
@@ -175,12 +178,12 @@ export default function TaskList({ staff }: { staff: Staff }) {
         {FILTERS.map((f) => (
           <button
             key={f.key} type="button" className="btn" data-status={f.key} data-active={filter === f.key} aria-pressed={filter === f.key}
-            onClick={() => setFilter(f.key)}
+            onClick={() => selectState(f.key)}
           >
             {f.label}
           </button>
         ))}
-        <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={filter === f.key} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
+        <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={filter === f.key} aria-pressed={filter === f.key} onClick={() => selectState(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
       </div>
       </div>
       <div className="export-actions">
