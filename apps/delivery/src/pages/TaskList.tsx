@@ -177,13 +177,13 @@ export default function TaskList({ staff }: { staff: Staff }) {
         {['FBA','自己発送','メルカリ','ヤフオク','Amazon返品'].map((channel,index) => <span key={channel} className="inventory-workflow-lane" data-lane={index}>{channel}</span>)}
         {FILTERS.map((f) => (
           <button
-            key={f.key} type="button" className="btn" data-status={f.key} data-active={filter === f.key} aria-pressed={filter === f.key}
+            key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key}
             onClick={() => selectState(f.key)}
           >
             {f.label}
           </button>
         ))}
-        <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={filter === f.key} aria-pressed={filter === f.key} onClick={() => selectState(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
+        <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key} onClick={() => selectState(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
       </div>
       </div>
       <div className="export-actions">
