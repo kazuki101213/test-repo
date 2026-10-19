@@ -230,7 +230,7 @@
 @media (min-width:1280px) { .inventory-workflow-footer > .inventory-all-products { margin-left:auto; } }
 @media (max-width:1279px) {
  .inventory-workflow-footer > [data-status="all"] { grid-column:auto; }
- .inventory-workflow-footer > .inventory-all-products { order:9; grid-column:1 / -1; }
+ .inventory-workflow-footer > .inventory-all-products { order:9; grid-column:1; }
 }
 
 @media screen and (max-width:359px) {
