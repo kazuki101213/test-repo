@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.123';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.123';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.129';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.129';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.127';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.129';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -115,7 +115,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
    let registeredRun=0,salesStopped=false,salesSeen=false,batches=0;const auctionSaleIds=new Set();
    const salePhase=phase=>phase==='売却済み'||phase==='売上金管理';
    const enqueue=links=>{for(const link of links){let phase=link.text;if(phase==='出品した商品'||phase==='出品一覧')phase=null;if(![null,'出品中','取引中','売却済み','出品終了分','売上金管理'].includes(phase))continue;if(salesStopped&&salePhase(phase))continue;const url=sellerUrl(account,link.url);if(!seen.has(url)&&!queue.some(v=>v.url===url))queue.push({url,phase});}queue.sort((a,b)=>(salePhase(a.phase)?1:0)-(salePhase(b.phase)?1:0));};
-   enqueue(await session.links());if(!queue.length){await session.go(account.site==='mercari'?'https://jp.mercari.com/mypage':'https://auctions.yahoo.co.jp/my');enqueue(await session.links());}
+   const menu=await session.links();enqueue(menu);if(!queue.length){await session.go(account.site==='mercari'?'https://jp.mercari.com/mypage':'https://auctions.yahoo.co.jp/my');enqueue(await session.links());}
    if(!queue.length)throw Error('出品一覧へのリンクを確認できません');
    while(queue.length){
     const page=queue.shift();if(seen.has(page.url)||salesStopped&&salePhase(page.phase))continue;
@@ -205,7 +205,7 @@ export async function checkExistingListing(session,job,account){
  if(target&&!targetId)throw Error('出品先の商品URLを確認してください');if(!targetId&&!/^[0-9]+[a-z]*$/.test(serial))throw Error('出品済み商品のURLを入力してください');
  const queue=[],seen=new Set(),matches=new Map();
  const enqueue=links=>{for(const link of links)if(['出品した商品','出品一覧','出品中','次へ','次のページ','次'].includes(link.text)){const url=sellerUrl(account,link.url);if(!seen.has(url)&&!queue.includes(url))queue.push(url);}};
- enqueue(await session.links());if(!queue.length)throw Error('出品一覧へのリンクを確認できません');
+ const menu=await session.links();enqueue(menu);if(!queue.length)throw Error('出品一覧へのリンクを確認できません');
  let pages=0;
  while(queue.length){if(++pages>5)throw Error('出品結果の確認上限に達しました');const url=queue.shift();seen.add(url);await session.go(url);
   for(let batch=0;;batch++){
@@ -215,6 +215,12 @@ export async function checkExistingListing(session,job,account){
    enqueue(data.navigation.filter(link=>['出品中','次へ','次のページ','次'].includes(link.text)));
    if(!session.advanceList||!await session.advanceList())break;
   }
+ }
+ if(matches.size===0&&targetId&&account.site==='auctions'){
+  const closed=[],visited=new Set();const add=links=>{for(const link of links){const url=new URL(sellerUrl(account,link.url));if(url.hostname==='auctions.yahoo.co.jp'&&url.pathname==='/my/closed'&&['出品終了分','落札者なし','次へ','次のページ','次'].includes(link.text)&&!visited.has(url.href)&&!closed.includes(url.href))closed.push(url.href);}};
+  add(menu);add(await session.links());let owned=false;
+  for(let n=0;closed.length&&n<5;n++){const url=closed.shift();visited.add(url);await session.go(url);const data=await session.read('出品終了分');if(data.itemIds?.includes(targetId)){owned=true;break;}add(data.navigation);add(await session.links());}
+  if(owned){await session.go(target);const proof=await session.operation({...job,external_id:targetId},'listing_ended');return {...proof,account_id:account.id,ownership_source:'seller_closed_list'};}
  }
  if(matches.size!==1)throw Error('出品済み商品を1件に確認できません。商品URLを入力して確認してください');
  const row=[...matches.values()][0];await session.go(sellerUrl(account,row.url));
@@ -336,7 +342,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   inspectionShippingTarget:target=>execute(readShippingInspectionTarget,target),
   prepareShipping:async job=>{if(account.site!=='mercari'||!await finishChoice(await execute(clickSellerChoice,'shipping-details'),'shipping-details'))throw Error('配送サイズの選択画面を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
-  links:async()=> (await raw()).links.map(link=>{const u=new URL(link.url);return u.hostname==='salesmanagement.yahoo.co.jp'&&u.pathname==='/list'&&/^売上金管理(?:\s+Yahoo!かんたん決済)?$/.test(link.text)?{...link,text:'売上金管理'}:link;}).filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|出品|出品する|出品フォーム)$/.test(link.text)),
+  links:async()=> (await raw()).links.map(link=>{const u=new URL(link.url);return u.hostname==='salesmanagement.yahoo.co.jp'&&u.pathname==='/list'&&/^売上金管理(?:\s+Yahoo!かんたん決済)?$/.test(link.text)?{...link,text:'売上金管理'}:link;}).filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|落札者なし|出品|出品する|出品フォーム)$/.test(link.text)),
   read:phase=>execute(readSellerPage,{site:account.site,phase,reportErrors:true}),
   selectTab:label=>execute(async function(label){const candidates=[...document.querySelectorAll('button,[role="tab"]')].filter(e=>e.getClientRects().length&&e.innerText.trim()===label);if(candidates.length!==1)return false;const before=document.body.innerText;const button=candidates[0];button.click();for(let n=0;n<20;n++){await new Promise(resolve=>setTimeout(resolve,200));if(button.getAttribute('aria-selected')==='true'||document.body.innerText!==before)return true;}throw Error('一覧タブの切り替え結果を確認できません');},label),
   auctionDetail:async id=>{if(account.site!=='auctions'||!/^[a-z][0-9]+$/i.test(id))throw Error('対象の商品IDを確認できません');await go('https://page.auctions.yahoo.co.jp/jp/auction/'+id);let page=await raw();if(!/(?:終了日時|落札日時|終了日)\s*[:：]?\s*20[0-9]{2}/.test(page.text)){const links=page.links.filter(link=>{try{const u=new URL(link.url);return u.protocol==='https:'&&!u.username&&!u.password&&u.hostname==='contact.auctions.yahoo.co.jp'&&u.pathname==='/seller/top'&&[...u.searchParams.values()].includes(id)&&/取引ナビ/.test(link.text);}catch{return false;}});if(links.length===1){await go(links[0].url);page=await raw();}}return page;},

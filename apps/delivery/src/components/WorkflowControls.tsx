@@ -35,7 +35,7 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
    else await performInventoryAction(task,button.key as InventoryAction,confirmed&&isReversal(button)&&button.note?(button.confirmation??`${button.label}を確認しました`):note,request.current);
    request.current=crypto.randomUUID();setForm(null);setNote('');setPhotos([]);await onChanged();
   }
-  catch(cause){onError(cause instanceof Error?cause.message:String(cause));}
+  catch(cause){onError(cause instanceof Error?cause.message:typeof cause==='object'&&cause&&'message' in cause&&typeof cause.message==='string'?cause.message:'状態を変更できませんでした。画面を再読み込みして確認してください。');}
   finally{lock.current=false;setBusy(false);setConfirming(null);}
  }
  function choose(button:WorkflowButton){
