@@ -14,7 +14,7 @@ export default function PackedSummary({ staffId }: { staffId: string }) {
     void (async () => {
       const { data, error } = await getSupabase().rpc('packed_product_summary', { p_staff: staffId, p_month: null });
       if (error) throw error;
-      if (active) setRows(data as Packed[]);
+      if (active) setRows([...(data as Packed[])].sort((a, b) => (b.packed_on ?? '').localeCompare(a.packed_on ?? '')));
     })()
       .catch(e => { if (active) setError(e.message ?? String(e)); })
       .finally(() => { if (active) setLoading(false); });
