@@ -77,7 +77,7 @@ select app.perform_inventory_action(id,'inspection_complete','検品中') from a
 do $$begin if exists(select 1 from app.v_delivery_return_tasks where item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Reinspection retained return task';end if;end $$;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 select app.approve_photo_review((select id from app.items where lot_seq=996811));
-insert into app.item_comments(item_id,author_id,body) select id,app.current_staff_id(),'再確認への返信です。' from app.items where lot_seq=996811;
+insert into app.item_comments(item_id,author_id,body,created_at) select id,app.current_staff_id(),'再確認への返信です。',clock_timestamp() from app.items where lot_seq=996811;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$begin
  if not exists(select 1 from app.v_delivery_notice_tasks where kind='photo_approved' and item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Approval card missing';end if;
