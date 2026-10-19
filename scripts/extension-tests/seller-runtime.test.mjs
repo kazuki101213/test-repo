@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {sellerScheduleReady,sellerAccounts,sellerTarget,parseSellerSaleDetail,sellerUrl} from '../../tools/fleamarket-extension/seller-sync.js';
-import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair} from '../../tools/fleamarket-extension/seller-runtime.js';
+import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair,readMercariTransactionPage} from '../../tools/fleamarket-extension/seller-runtime.js';
 const day='2026-10-16',settings={mode:'tracking',purchaseImportEnabled:true,accounts:[{id:'mercari-2',site:'mercari',label:'メルカリ2',enabled:true},{id:'mercari-1',site:'mercari',enabled:true},{id:'auctions-1',site:'auctions',label:'ヤフオク1',enabled:true}]};
 const records=()=>({scheduledRuns:{tracking:{day},purchases:{day}},lastRun:{tracking:{day},purchases:{day}}});
 test('QRの発行応答後は遷移完了を待って画像だけ読み取り、発行を再送しない',async()=>{const actions=[],job={id:'qr-navigation',account_id:'mercari-2',kind:'shipping_code',url:'https://jp.mercari.com/transaction/m123'};let finished;const session={go:async()=>{},loaded:async()=>actions.push('loaded'),operation:async(j,phase)=>{actions.push(phase);return phase==='shipping_code'?{code_requested:true}:{qr_code:'data:image/png;base64,existing'};},close:async()=>{}};await sellerQueuedOperations({settings:{...settings,accounts:[settings.accounts[0]]},rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:finished=args,openSession:async()=>session,log:async()=>{}});assert.deepEqual(actions,['shipping_code','loaded','read_shipping_code']);assert.equal(finished.p_status,'succeeded');assert.equal(finished.p_result.qr_code,'data:image/png;base64,existing');});
@@ -89,4 +89,16 @@ test('取引ナビの年省略は年末年始をまたいでも現在年を決�
  const text='商品ID p1 決済金額 1000 受取金額 800',source='https://aucpay.yahoo.co.jp/detail-front/ReceiveDetailItem',page={url:'https://contact.auctions.yahoo.co.jp/trade/top?aid=p1',text:'終了日時 12月31日 23時59分'};
  assert.equal(parseSellerSaleDetail('ヤフオク',text,'p1',source,page,Date.parse('2027-01-01T01:00:00+09:00')).sold_on,'2026-12-31');
  assert.throws(()=>parseSellerSaleDetail('ヤフオク',text,'p1',source,page,Date.parse('2027-05-01T01:00:00+09:00')));
+});
+
+test('メルカリの一覧が商品ページを指していても同じ商品IDの取引画面を直接読み、余分な商品ページを開かない',async()=>{
+ let tab={id:5,url:'https://jp.mercari.com/mypage/purchases',status:'complete'},visits=[];const tabs={query:async()=>[tab],get:async()=>tab,update:async(id,v)=>{if(v.url)visits.push(v.url);return tab={...tab,...v};}};
+ const session=await openSellerSession({site:'mercari',identity:{pageUrl:tab.url}},{tabs,scripting:{executeScript:async()=>[{result:{text:'取引画面 商品ID m19818043382',url:tab.url,links:[]}}]},identity:async()=>({confirmed:true})});
+ const page=await session.detail('https://jp.mercari.com/item/m19818043382','m19818043382');assert.equal(page.url,'https://jp.mercari.com/transaction/m19818043382');assert.ok(!visits.includes('https://jp.mercari.com/item/m19818043382'));await session.close();
+});
+
+test('取引画面は遅延表示を同じDOMで待ち、ページ再取得せずに対象商品IDを確認する',async()=>{
+ const saved={document:globalThis.document,location:globalThis.location};let reads=0;
+ globalThis.location={hostname:'jp.mercari.com',pathname:'/transaction/m123',href:'https://jp.mercari.com/transaction/m123'};globalThis.document={body:{get innerText(){return ++reads===1?'取引画面 読み込み中':'取引情報 商品ID m123 商品代金 1000';}},querySelector:()=>null,querySelectorAll:()=>[]};
+ try{const result=await readMercariTransactionPage({id:'m123',timeoutMs:1000});assert.equal(result.url,location.href);assert.ok(reads>=2);assert.equal(result.__error,undefined);document.body={innerText:'お探しのページは見つかりません'};assert.match((await readMercariTransactionPage({id:'m123'})).__error,/表示できません/);document.body={innerText:'ログインしてください'};assert.match((await readMercariTransactionPage({id:'m123'})).__error,/追加認証/);document.body={innerText:'取引画面'};assert.match((await readMercariTransactionPage({id:'m123',timeoutMs:0})).__error,/時間切れ/);}finally{Object.assign(globalThis,saved);}
 });
