@@ -30,6 +30,7 @@ export default function TaskDetail({
   const [driveMessage, setDriveMessage] = useState('');
   const [draft, setDraft] = useState('');
   const [uploading, setUploading] = useState(false);
+  const photoOperation = useRef(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
   const [photoSaveMessage, setPhotoSaveMessage] = useState('');
@@ -105,19 +106,28 @@ export default function TaskDetail({
     return () => window.clearTimeout(timer);
   }, [task, itemId, staff.id, staff.name, staff.role]);
   async function onPhotoPick(files: FileList | null) {
-    if (!files || !task) return;
+    if (!files?.length || !task || photoOperation.current) return;
+    photoOperation.current = true;
     setUploading(true);
     setError(null);
     let uploadedCount = 0;
+    let submitting = false;
     try {
       for (const file of Array.from(files)) {
         await uploadPhoto(task.sku, task.id, staff.id, file,purpose);
         uploadedCount++;
       }
-      setDriveMessage('新しい写真があります。Googleドライブ追加してください。');
+      if (packing) setDriveMessage('新しい梱包写真があります。Googleドライブ追加してください。');
+      else {
+        submitting = true;
+        setDriveMessage('写真をGoogleドライブへ保存し、写真確認へ提出しています…');
+        const result = await addPhotosToDrive(task.id, purpose);
+        setDriveMessage(result.total + '枚をGoogleドライブへ保存し、写真確認に提出しました。');
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      setError(/Failed to fetch|NetworkError|Load failed/i.test(message)
+      setDriveMessage('');
+      setError(submitting ? '写真はアプリに保存済みですが、Googleドライブ保存・写真確認への提出が完了していません。「Googleドライブ追加」で再試行してください。' + message : /Failed to fetch|NetworkError|Load failed/i.test(message)
         ? '写真をSupabaseへ送信できませんでした。通信状態を確認し、安定したWi‑Fiまたはモバイル通信で再度お試しください。'
         : message);
     } finally {
@@ -128,17 +138,19 @@ export default function TaskDetail({
         await reload();
       }
       setUploading(false);
+      photoOperation.current = false;
     }
   }
   async function addToDrive() {
-    if (!task) return;
+    if (!task || photoOperation.current) return;
+    photoOperation.current = true;
     setDriveBusy(true); setError(null); setDriveMessage('');
     try {
       const result = await addPhotosToDrive(task.id,purpose);
       setDriveMessage(packing?`梱包写真${result.total}枚を商品写真と同じ保存先に追加しました。`:`${result.total}枚を通番号${task.lot_seq}の共通フォルダに保存しました。管理アプリで写真確認を待っています。`);
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setDriveBusy(false); }
+    finally { setDriveBusy(false); photoOperation.current = false; }
   }
 
   async function saveAllPhotosToAlbum() {
@@ -242,9 +254,9 @@ export default function TaskDetail({
       <div className="card photo-control-row">
         <span className="muted">{packing?'梱包写真':'写真'} {photos.length}枚</span>
         {canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : packing?'梱包写真追加':'写真追加'}
-          <input type="file" aria-label={packing?'梱包写真追加':'商品写真追加'} accept="image/*" multiple disabled={uploading || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+          <input type="file" aria-label={packing?'梱包写真追加':'商品写真追加'} accept="image/*" multiple disabled={uploading || driveBusy || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>}
-        {canEditPhotos&&<button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
+        {(canEditPhotos || (!packing && photos.length > 0 && !photoReview?.approved_at))&&<button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
           onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブ追加中…' : 'Googleドライブ追加'}</button>}
         <button type="button" className="btn photo-save-all" aria-label="商品写真をすべて端末に保存" title="すべての写真を端末に保存" disabled={savingPhotoId !== null || photos.length === 0 || driveBusy || uploading} onClick={() => void saveAllPhotosToAlbum()}>
           {savingPhotoId === 'all' ? '…' : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>}
