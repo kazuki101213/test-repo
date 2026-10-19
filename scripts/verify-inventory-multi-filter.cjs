@@ -27,6 +27,12 @@ for(const app of ['admin','delivery']){
   assignee={value:'',options:[{id:'II',name:'II 久保田 真由'}],onChange:id=>{assignee.value=id;}};render();
   const personSelect=all(tree).find(n=>n.props?.['aria-label']==='納品担当者で絞り込み');assert(personSelect);personSelect.props.onChange({target:{value:'II'}});render();
   assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（1）');assert.equal(assignee.value,'II');
+  toggle('仕入先','ヤフオク',true);ref.current.open=true;focused=false;
+  const filterActions=all(tree).find(n=>n.props?.className==='inventory-multi-filter-actions');
+  assert.deepEqual(all(filterActions).filter(n=>n.type==='button').map(text),['閉じる','すべて解除']);
+  all(filterActions).find(n=>n.type==='button'&&text(n)==='閉じる').props.onClick();render();
+  assert(!ref.current.open);assert(focused);assert.equal(assignee.value,'II');assert.equal(value.marketplace.join(','),'ヤフオク','Closing preserves the selected filters');
+  ref.current.open=true;assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（2）','Reopening keeps the selected filters');
   all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除').props.onClick();render();assert.equal(assignee.value,'');assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
  }
  cleanup();assert.equal(Object.keys(listeners).length,0);
