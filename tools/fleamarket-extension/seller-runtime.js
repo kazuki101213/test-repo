@@ -107,7 +107,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
  }
  if(!ready||!accounts.length)return;
  await storage.set({[attemptKey]:{...metadata,day,status:'running',at:new Date().toISOString()}});
- const baselines={...(records.sellerSaleBackfills||{})};let updated=0,errors=0,unmatched=0,conflicts=0;const failures=[];const failures=[];
+ const baselines={...(records.sellerSaleBackfills||{})};let updated=0,errors=0,unmatched=0,conflicts=0;const failures=[];
  for(const account of accounts){let session;
   try{
    session=await openSession(account);
