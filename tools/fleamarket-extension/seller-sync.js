@@ -14,19 +14,31 @@ export function sellerTarget(rows,context){
  return rows.filter(row=>ids.has(row.external_id)||row.serial&&serialCounts.get(row.serial)===1);
 }
 /** Money/date labels refer to the actual transaction detail, never the settlement list date. */
-export function parseSellerSaleDetail(channel,text,externalId){
+export function parseSellerSaleDetail(channel,text,externalId,sourceUrl,auctionDetail){
  const s=text.replace(/\s+/g,' ').trim();
- const ids=[...s.matchAll(/商品ID\s*[:：]?\s*([a-z][0-9]+)/gi)].map(value=>value[1].toLowerCase());if(ids.length!==1||ids[0]!==externalId)throw Error('販売明細の商品IDが一致しません');
+ const ids=[...s.matchAll(/商品ID\s*[:：]?\s*([a-z][0-9]+)/gi)].map(value=>value[1].toLowerCase());
+ let transactionMatched=false;
+ if(sourceUrl){const u=new URL(sourceUrl);if(u.protocol!=='https:'||u.username||u.password)throw Error('販売明細のURLを確認できません');
+  if(channel==='メルカリ'){const id=u.hostname==='jp.mercari.com'&&u.pathname.match(/^\/transaction\/(m[0-9]+)\/?$/)?.[1];if(id!==externalId)throw Error('取引URLの商品IDが一致しません');transactionMatched=true;}
+  else if(!['aucpay.yahoo.co.jp','salesmanagement.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','auctions.yahoo.co.jp','page.auctions.yahoo.co.jp'].includes(u.hostname))throw Error('販売明細のURLを確認できません');
+ }
+ if(transactionMatched?ids[0]!==externalId:new Set(ids).size!==1||ids[0]!==externalId)throw Error('販売明細の商品IDが一致しません');
  const amount=label=>{const match=s.match(new RegExp(label+'\\s*[:：]?\\s*[¥￥]?\\s*([0-9][0-9,]*)\\s*(?:円)?'));if(!match)throw Error(label+'を確認できません');return Number(match[1].replaceAll(',',''));};
- const label=channel==='メルカリ'?'購入日時':'取引日';
- const m=s.match(new RegExp(label+'\\s*[:：]?\\s*(20[0-9]{2})[年/.-]\\s*([0-9]{1,2})[月/.-]\\s*([0-9]{1,2})(?:日)?(?:\\s+([0-9]{1,2})[:：]([0-9]{2}))?'));
+ const label=channel==='メルカリ'?'購入日時':'(?:取引日時|取引日)';
+ const datePattern=label=>new RegExp(label+'\\s*[:：]?\\s*(20[0-9]{2})[年/.-]\\s*([0-9]{1,2})[月/.-]\\s*([0-9]{1,2})(?:日)?(?:\\s+([0-9]{1,2})[:：]([0-9]{2}))?');
+ let m=s.match(datePattern(label));
+ if(!m&&channel==='ヤフオク'&&auctionDetail){const u=new URL(auctionDetail.url),id=['page.auctions.yahoo.co.jp','auctions.yahoo.co.jp'].includes(u.hostname)&&u.pathname.match(/^\/(?:jp\/)?auction\/([a-z][0-9]+)\/?$/i)?.[1]?.toLowerCase();
+  const sameTrade=u.hostname==='contact.auctions.yahoo.co.jp'&&u.pathname==='/seller/top'&&[...u.searchParams.values()].includes(externalId);if(u.protocol!=='https:'||u.username||u.password||id!==externalId&&!sameTrade)throw Error('販売日を補完する商品IDが一致しません');
+  m=auctionDetail.text.replace(/\s+/g,' ').match(datePattern('(?:終了日時|落札日時|終了日|落札日)'));
+ }
  if(!m)throw Error('実際の販売日を確認できません');
  const sold_on=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
  if(new Date(sold_on+'T00:00:00Z').toISOString().slice(0,10)!==sold_on)throw Error('販売日が不正です');
  return {sold_on,sold_price:amount(channel==='メルカリ'?'商品代金':'決済金額'),payout_amount:amount(channel==='メルカリ'?'販売利益':'受取金額'),trade_key:externalId+':'+sold_on+(m[4]?`T${m[4].padStart(2,'0')}:${m[5]}`:'')};
 }
 /** Runs inside a merchant tab; every field returned is derived from visible seller-page DOM. */
-export async function readSellerPage({site,phase=null}={}){
+export async function readSellerPage({site,phase=null,reportErrors=false}={}){
+ try{
  const norm=value=>(value||'').replace(/\s+/g,' ').trim(),visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
  let root=document.querySelector('main')||document.body,text=norm(root.innerText);
  if(/\/(?:purchases|purchase|won)(\/|$)/.test(location.pathname))throw Error('購入一覧ではなく出品一覧を開いてください');
@@ -59,4 +71,5 @@ export async function readSellerPage({site,phase=null}={}){
   const previous=rows.get(external_id);if(previous&&previous.status!==status)throw Error('同じ商品IDに異なる状態があります');rows.set(external_id,row);
  }
  return {itemCount,itemIds:[...itemIds],rows:[...rows.values()],navigation,active:active||null,text,empty:/終了した商品はありません|お取り扱いはありません|出品中の商品(?:は|が)(?:ありません|ございません)|出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
+ }catch(error){if(reportErrors)return {__error:error.message};throw error;}
 }

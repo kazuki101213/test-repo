@@ -36,3 +36,12 @@ test('売上診断は最初の販売済1商品の金融ラベルだけを読み�
  assert.deepEqual(details,['m12345678901']);const e=state.sellerInspectionEvidence.saleEvidence;assert.equal(e.parsed.sold_price,12000);assert.equal(e.parsed.sold_on,'2026-10-19');assert.deepEqual(e.amounts['販売利益'],[10000]);assert(!JSON.stringify(e).includes('NEVER_EXPORT'));assert(!JSON.stringify(e).includes('名前'));
 });
 test('販売明細のID不一致は証拠だけを残し、確認済みの売上を作らない',()=>{const e=saleDetailEvidence('mercari',{external_id:'m12345678901'},{url:'https://jp.mercari.com/transaction/m12345678901',text:'商品ID m99999999999 商品代金 12000 販売利益 10000 購入日時 2026/10/19'});assert.equal(e.parsed,undefined);assert(e.parseError);assert.deepEqual(e.productIds,['m99999999999']);});
+
+test('複数明細診断は40件以内で最初の不一致まで、書込や再試行はしない',async()=>{
+ const profile='51502a66-28a6-4af0-81ea-660e63d8b66c',q={...request,profiles:[profile],accountId:'mercari-2',sellerListsOnly:true,saleEvidence:true,saleEvidenceLimit:3};
+ for(const n of [0,41,1.5])assert.equal(sellerInspectionApplies({...q,saleEvidenceLimit:n},profile,null,now),false);
+ const state={},details=[],rows=[1,2,3].map(n=>({external_id:'m1234567890'+n,serial:String(n),status:'販売済',detail_url:'https://jp.mercari.com/transaction/m1234567890'+n}));
+ await runSellerReadOnlyInspection({settings:{accounts:[{id:'mercari-2',site:'mercari',enabled:true}]},profileId:profile,storage:{get:async()=>state,set:async value=>Object.assign(state,value)},fetchRequest:async()=>q,log:async()=>{},rpc:async name=>{assert.equal(name,'seller_observation_plan');return[];},openSession:async()=>({structure:async()=>({}),go:async()=>{},links:async()=>[{text:'売却済み',url:'https://jp.mercari.com/mypage/listings/completed'}],read:async()=>({rows,text:'売却済み',navigation:[]}),detail:async(url,id)=>{details.push(id);return{url,text:'商品ID '+(details.length===2?'m99999999999':id)+' 商品代金 12000 販売利益 10000 購入日時 2026/10/19'};},operation:async()=>{throw Error('NO WRITE');},close:async()=>{}})});
+ assert.deepEqual(details,rows.slice(0,2).map(r=>r.external_id));assert.equal(state.sellerInspectionEvidence.saleEvidenceRows.length,2);assert(state.sellerInspectionEvidence.saleEvidenceRows[1].parseError);
+});
+test('販売日の診断は日付と既知の項目名だけで、ページ本文を保存しない',()=>{const e=saleDetailEvidence('auctions',{external_id:'p1234567890'},{url:'https://aucpay.yahoo.co.jp/detail-front/ReceiveDetailItem?token=SECRET',text:'商品ID p1234567890 決済金額 15000 受取金額 12650 落札日時 2026年 10月 15日 23:10 名前住所SECRET',links:[]});assert(e.dateFields.some(f=>f.label==='落札日時'&&f.date==='2026-10-15'));assert(!JSON.stringify(e).includes('SECRET'));});

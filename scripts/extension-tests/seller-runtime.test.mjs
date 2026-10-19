@@ -26,3 +26,37 @@ test('ヤフオク出品中が空でも出品終了分と売上金管理まで�
 });
 
 test('登録済みタブの実リンクを正規化し、売上金管理の後置説明を取得漏れにしない',async()=>{let tab={id:8,url:'https://auctions.yahoo.co.jp/my/won',status:'complete'};const tabs={query:async()=>[tab],get:async()=>tab,update:async(id,v)=>(tab={...tab,...v}),create:async()=>{throw Error('新規タブ禁止');}},links=[{text:'売上金管理 Yahoo!かんたん決済',url:'https://salesmanagement.yahoo.co.jp/list'},{text:'受取口座の管理 Yahoo!ウォレット',url:'https://aucpay.yahoo.co.jp/detail-front/BankAccountConfirm'}];const session=await openSellerSession({id:'auctions-1',site:'auctions',identity:{pageUrl:tab.url}},{tabs,scripting:{executeScript:async()=>[{result:{links}}]},identity:async()=>({confirmed:true})});assert.deepEqual(await session.links(),[{text:'売上金管理',url:links[0].url}]);await session.close();});
+
+test('一覧読取の例外はChromeの空結果にせず原因を返すが、通常の関数呼出は例外を維持する',async()=>{
+ const {readSellerPage}=await import('../../tools/fleamarket-extension/seller-sync.js');const previous=globalThis.document,where=globalThis.location;
+ globalThis.document={querySelector:()=>null,body:{innerText:'出品した商品'}};globalThis.location={pathname:'/mypage/purchases'};
+ try{const e=await readSellerPage({site:'mercari',reportErrors:true});assert.match(e.__error,/購入一覧/);await assert.rejects(readSellerPage({site:'mercari'}),/購入一覧/);}finally{globalThis.document=previous;globalThis.location=where;}
+});
+
+test('実例2291の別商品IDを含む本文は対象の取引URLで照合し、別取引URLでは拒否する',()=>{
+ const text='商品ID m41864221245 商品代金 17280 販売利益 14502 購入日時 2026/10/09 12:00 商品ID m58355294136';
+ const parsed=parseSellerSaleDetail('メルカリ',text,'m41864221245','https://jp.mercari.com/transaction/m41864221245');assert.equal(parsed.sold_price,17280);assert.equal(parsed.payout_amount,14502);assert.equal(parsed.sold_on,'2026-10-09');
+ for(const url of ['https://jp.mercari.com/transaction/m58355294136','https://jp.mercari.com/item/m41864221245','https://evil.example/transaction/m41864221245','https://user:password@jp.mercari.com/transaction/m41864221245'])assert.throws(()=>parseSellerSaleDetail('メルカリ',text,'m41864221245',url));
+ assert.throws(()=>parseSellerSaleDetail('メルカリ',text,'m41864221245'));
+ assert.throws(()=>parseSellerSaleDetail('メルカリ',text.replace('商品ID m41864221245','商品ID m99999999999'),'m41864221245','https://jp.mercari.com/transaction/m41864221245'));
+});
+test('ヤフオクの取扱日は使わず、同じ商品URLの終了日時だけで販売日を補完する',()=>{
+ const text='商品ID p1247578117 決済金額 15000 受取金額 12650 取扱日 2026年10月12日',receipt='https://aucpay.yahoo.co.jp/detail-front/ReceiveDetailItem';
+ assert.throws(()=>parseSellerSaleDetail('ヤフオク',text,'p1247578117',receipt),/販売日/);
+ const auction={url:'https://page.auctions.yahoo.co.jp/jp/auction/p1247578117',text:'終了日時 2026年 10月 09日 23:00 開始価格 1円'};
+ const result=parseSellerSaleDetail('ヤフオク',text,'p1247578117',receipt,auction);assert.equal(result.sold_on,'2026-10-09');assert.equal(result.sold_price,15000);assert.equal(result.payout_amount,12650);
+ for(const url of ['https://page.auctions.yahoo.co.jp/jp/auction/p9999999999','https://evil.example/jp/auction/p1247578117'])assert.throws(()=>parseSellerSaleDetail('ヤフオク',text,'p1247578117',receipt,{...auction,url}));
+ assert.throws(()=>parseSellerSaleDetail('ヤフオク',text,'p1247578117',receipt,{...auction,text:'取扱日 2026年10月12日'}));
+});
+test('販売明細に同じIDが繰り返されても1商品とし、異なるIDの本文だけでは確定しない',()=>{
+ assert.equal(parseSellerSaleDetail('メルカリ','商品ID m123 商品ID m123 商品代金 1000 販売利益 800 購入日時 2026年 10月 9日','m123').sold_on,'2026-10-09');
+ assert.throws(()=>parseSellerSaleDetail('メルカリ','商品ID m123 商品ID m456 商品代金 1000 販売利益 800 購入日時 2026/10/9','m123'));
+});
+
+test('ヤフオク販売日の補完は同じ商品IDの販売者用取引ナビだけ許可する',()=>{
+ const receipt='商品ID p1247578117 決済金額 15000 受取金額 12650 取扱日 2026年10月12日',source='https://aucpay.yahoo.co.jp/detail-front/ReceiveDetailItem';
+ const page={url:'https://contact.auctions.yahoo.co.jp/seller/top?aID=p1247578117',text:'落札日時 2026年10月9日 22:00'};
+ assert.equal(parseSellerSaleDetail('ヤフオク',receipt,'p1247578117',source,page).sold_on,'2026-10-09');
+ for(const url of ['https://contact.auctions.yahoo.co.jp/seller/top?aID=p9999999999','https://contact.auctions.yahoo.co.jp/trade/buyers?aID=p1247578117','https://evil.example/seller/top?aID=p1247578117'])assert.throws(()=>parseSellerSaleDetail('ヤフオク',receipt,'p1247578117',source,{...page,url}));
+ assert.throws(()=>parseSellerSaleDetail('ヤフオク',receipt,'p1247578117',source,{...page,text:'取扱日 2026年10月12日'}));
+});
