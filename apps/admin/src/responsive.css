@@ -232,3 +232,14 @@
  .layout .inventory-toolbar > .inventory-clear-filters { grid-column:4; grid-row:1; }
  .layout .inventory-toolbar > .sub { grid-column:1 / -1; }
 }
+
+@media screen {
+ .layout .inventory-multi-filter > summary { min-height:44px; line-height:22px; }
+}
+@media screen and (min-width:1024px) {
+ .layout .management-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:auto auto; align-items:stretch; }
+ .layout .management-kpis > .invoice-tasks { grid-column:1; grid-row:1 / span 2; }
+ .layout .management-kpis > .sales-summary-card { grid-column:2; grid-row:1 / span 2; }
+ .layout .management-kpis > .purchase-summary-card { grid-column:3; grid-row:1; }
+ .layout .management-kpis > .stock-summary-card { grid-column:3; grid-row:2; }
+}
