@@ -289,8 +289,9 @@
 @media screen and (min-width:1280px) {
   .delivery-inventory-workspace { padding-right:128px; }
   .app .inventory-workflow-menu { grid-template-columns:106px 140px 94px 100px 100px max-content; }
+  .app .delivery-inventory-workspace > .inventory-workflow-menu { align-self:start; grid-template-rows:repeat(4,30px) 44px; }
   .inventory-workflow-footer {
-    grid-column:6; grid-row:1 / 8; display:grid;
+    grid-column:6; grid-row:1 / 6; display:grid;
     grid-template-columns:156px 72px; grid-template-rows:repeat(3,44px);
     gap:6px; align-content:start; margin-left:12px;
   }
