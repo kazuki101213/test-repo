@@ -124,8 +124,7 @@
 @media print { .receipt-summary-sheet,.receipt-photo-sheet { width:190mm; margin:0; break-after:page; } }
 
 .app:has(.invoices) { max-width:960px; }
-.invoice-toolbar-actions,.invoice-month-control { display:contents; }
-.invoice-month-value { display:none; }
+.invoice-toolbar-actions { display:contents; }
 .invoice-toolbar-scroll { overflow-x:auto; padding-bottom:2px; }
 .invoice-toolbar { display:flex; align-items:flex-end; gap:10px; min-width:max-content; }
 .invoice-toolbar > label:first-child { width:160px; }
