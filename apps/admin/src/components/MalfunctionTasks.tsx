@@ -234,7 +234,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     if(!alive.current)return;
     setPurchaseSources(new Map((references.data ?? []).map(row => [row.id, row as PurchaseSource])));
     setRows([...tasks].sort((a,b)=>b.malfunction_reported_at.localeCompare(a.malfunction_reported_at)));
-    setActionTasks(actions.filter(task=>!task.task_kind.includes('ヤフオク')).sort((a,b)=>b.created_at.localeCompare(a.created_at)));
+    setActionTasks(actions.filter(task=>task.task_kind!=='仕入先確認'&&!task.task_kind.includes('ヤフオク')).sort((a,b)=>b.created_at.localeCompare(a.created_at)));
     setError(references.error ? '仕入先リンクを取得できませんでした。次回更新時に再取得します。' : '');
     setLoaded(true);
     };
