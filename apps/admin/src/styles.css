@@ -241,6 +241,7 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .expense-entries { list-style: none; padding: 0 14px 0 0; margin: 0; }
 .expense-edit { display: block; width: 100%; text-align: left; color: inherit; background: transparent; border: 0; padding: 4px 0; font: inherit; cursor: pointer; }
 .spare-row-delete { white-space: nowrap; }
+.malfunction-report-photo-links { display:flex; flex-wrap:wrap; gap:8px 12px; margin:8px 0; }
 .expense-edit:hover { background: var(--surface-2); }
 .expense-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .expense-edit:disabled { opacity: .6; cursor: progress; }
