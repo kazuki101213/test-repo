@@ -82,3 +82,22 @@ function testExtraRows(){
  assert(merged.catalog.has(require('../packages/shared/node_modules/pdf-lib').PDFName.of('Names')),'Original PDF should also be embedded');
  console.log('Invoice add/delete draft behavior, receipt save/include, tax-inclusive total, body quantity, 4-photo pages and original PDFs passed');
 })().catch(e=>{console.error(e);process.exitCode=1});
+// Month selection must retain its native YYYY-MM value and disabled/required behavior.
+{
+ const monthRef={current:null}; let selected,opened=0;
+ const ctx={exports:{},require:name=>name==='react'?{useRef:()=>monthRef}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:{}};
+ vm.runInNewContext(compile('apps/delivery/src/components/MonthInput.tsx'),ctx);
+ const props={'aria-label':'請求対象月',value:'2026-10',required:true,disabled:false,onChange:e=>selected=e.target.value};
+ const monthTree=ctx.exports.default(props);
+ const input=all(monthTree).find(n=>n.type==='input');
+ assert.equal(input.props.type,'month');assert.equal(input.props.value,'2026-10');assert.equal(input.props.required,true);
+ assert.equal(input.props['aria-label'],'請求対象月');assert(text(monthTree).includes('2026年10月'));
+ input.props.onChange({target:{value:'2026-11'}});assert.equal(selected,'2026-11');
+ monthRef.current={showPicker:()=>opened++};
+ all(monthTree).find(n=>n.type==='button').props.onClick();assert.equal(opened,1);
+ const locked=ctx.exports.default({...props,disabled:true});
+ assert.equal(all(locked).find(n=>n.type==='input').props.disabled,true);
+ const button=all(locked).find(n=>n.type==='button');assert.equal(button.props.disabled,true);button.props.onClick();assert.equal(opened,1);
+ monthRef.current={focus:()=>opened++};
+ all(ctx.exports.default(props)).find(n=>n.type==='button').props.onClick();assert.equal(opened,2);
+}

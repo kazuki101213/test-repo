@@ -60,7 +60,7 @@ export default function InvoiceReceipts({ staffId, month, approved, tableTarget,
             <label>内容<input required maxLength={200} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} /></label>
             <label>金額<input required type="number" min="0" max="10000000" step="1" value={draft.amount ?? ''} onChange={e => setDraft({ ...draft, amount: Number.isNaN(e.target.valueAsNumber) ? null : e.target.valueAsNumber })} /></label>
             <div className="receipt-attachment"><span>写真・PDF</span><button type="button" className="btn ghost receipt-camera-btn" aria-label="写真を撮影・写真やPDFを添付" aria-expanded={attachmentMenu} disabled={!!editing} onClick={() => setAttachmentMenu(open => !open)}><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" /><circle cx="12" cy="13" r="4" /></svg></button></div>
-            <button className="btn">保存</button>
+            <button className="btn primary">保存</button>
           </div></div>
           {attachmentMenu && <div className="receipt-attachment-options"><button type="button" className="btn ghost" onClick={() => { setAttachmentMenu(false); cameraInput.current?.click(); }}>写真を撮る</button><button type="button" className="btn ghost" onClick={() => { setAttachmentMenu(false); input.current?.click(); }}>写真・PDFを添付</button></div>}
           <input ref={input} hidden type="file" aria-label="写真・PDFを添付" accept="image/*,application/pdf,.pdf" onChange={e => setFile(e.target.files?.[0] ?? null)} />

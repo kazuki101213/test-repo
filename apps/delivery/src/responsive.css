@@ -156,14 +156,6 @@
   .invoice-toolbar label > span { width:100%; }
   .invoice-toolbar label > span:not(.invoice-month-control) > input:not([aria-hidden=true]) { flex:1 1 0; width:0; }
   .invoice-toolbar label > span > button { width:28px; }
-  /* Keep iOS native month metrics out of the grid; the real input still opens its picker. */
-  @supports (-webkit-touch-callout:none) {
-    .invoice-toolbar .invoice-month-control { position:relative; display:flex; align-items:center; min-width:0; height:44px; overflow:hidden; box-sizing:border-box; padding:0 4px; border:1px solid var(--border); border-radius:6px; background:var(--bg); }
-    .invoice-toolbar .invoice-month-value { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:16px; }
-    .invoice-toolbar .invoice-month-control > input[type="month"] { position:absolute; inset:0; width:100%; max-width:100%; height:44px; max-height:44px; margin:0; padding:0; border:0; opacity:0; }
-    .invoice-toolbar .invoice-month-control:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
-    .invoice-toolbar .invoice-month-control:has(input:disabled) { opacity:0.6; }
-  }
   .invoice-toolbar input, .invoice-toolbar select { padding:8px 4px; font-size:16px; }
   .invoice-toolbar > .btn, .invoice-toolbar-actions > .btn { font-size:14px; padding:8px 4px; }
   .invoice-extra { grid-template-columns:56px 96px minmax(0,1fr); gap:8px; }
@@ -222,4 +214,16 @@
 .workflow-confirmation-buttons { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
 @media screen and (min-width:1024px) and (max-width:1279px) {
   .seller-photos { grid-template-columns:repeat(8,minmax(0,1fr)); }
+}
+
+/* Native month selection with the same visible calendar control as the issue date. */
+@media screen {
+  .app .invoice-toolbar .invoice-month-control { position:relative; display:inline-flex; align-items:center; gap:4px; min-width:0; width:100%; }
+  .app .invoice-toolbar .invoice-month-value { display:flex; align-items:center; flex:1 1 0; min-width:0; height:42px; box-sizing:border-box; padding:8px 6px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); color:var(--text); font:inherit; white-space:nowrap; overflow:hidden; }
+  .app .invoice-toolbar .invoice-month-control > input[type="month"] { position:absolute; inset:0; width:100%; height:100%; min-height:0; padding:0; margin:0; opacity:0; cursor:pointer; }
+  .invoice-month-control:focus-within .invoice-month-value { outline:2px solid var(--accent); outline-offset:2px; }
+  .invoice-month-control:has(input:disabled) .invoice-month-value { opacity:0.6; }
+}
+@media screen and (max-width:1023px) {
+  .app .invoice-toolbar .invoice-month-value { height:44px; padding-inline:4px; }
 }
