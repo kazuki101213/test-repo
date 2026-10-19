@@ -32,3 +32,18 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
  const other=template.exports.templateBody('ヤフオク その他',item);assert(other.startsWith(prefix));assert(other.includes('付属品はすべてつけてください。'));assert(!other.includes('予備としてください'));
  console.log('PASS: cancel/Escape write nothing, confirmation executes once, busy/error handling; all 10 templates use the actual suffixed serial, item ID and model');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+async function spareDeleteConfirmation() {
+ let hooks=[],cursor=0,effects=[],dirty=true,tree,deletes=0,release;
+ const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useRef:v=>hooks[cursor++]??={current:v},useCallback(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i]))hooks[n]={deps,fn};return hooks[n].fn;},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};effects.push(fn);}}};
+ const confirm={exports:{},require:id=>id==='react'?react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx'),confirm);
+ const shared={staffDisplayName:()=>'',deliveryStaffOptions:x=>x,MARKETPLACES:[],spareSearchFields:[],matchesSpareSearch:()=>true,yen:v=>String(v),fetchSpareAccessories:async()=>[{id:'spare-1',title:'確認用リモコン',source_sku:'2508-test'}],deleteSpareAccessory:async id=>{assert.equal(id,'spare-1');deletes++;await new Promise(r=>release=r);}};
+ const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../components/TaskConfirmation'?confirm.exports:id==='../api'?{fetchStaff:async()=>[]}: {default:'input'},window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
+ vm.runInNewContext(compile('apps/admin/src/pages/Spares.tsx'),ctx);
+ async function settle(){for(let n=0;n<20;n++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me:{id:'AA',role:'admin'}});effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
+ const modal=()=>all(tree).find(n=>n.props?.request?.label?.startsWith('予備の削除'));
+ await settle();const remove=()=>all(tree).find(n=>n.props?.className==='btn danger spare-row-delete');remove().props.onClick();await settle();assert(modal());assert.equal(deletes,0);assert(modal().props.request.label.includes('2508-test'));assert(modal().props.request.notice.includes('取り消せません'));
+ modal().props.onClose();await settle();assert(!modal());assert.equal(deletes,0);remove().props.onClick();await settle();assert(remove().props.disabled);const action=modal().props.request.action;const pending=action();assert.equal(deletes,1);release();await pending;await settle();assert(!remove(),'Only the selected spare disappears after successful deletion');
+ console.log('PASS: spare deletion opens confirmation, cancel does not delete, approved action targets its own row');
+}
+spareDeleteConfirmation().catch(e=>{console.error(e);process.exitCode=1;});

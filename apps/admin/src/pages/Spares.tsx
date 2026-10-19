@@ -3,6 +3,7 @@ import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredLabel from '../components/ColoredLabel';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
+import {useTaskConfirmation} from '../components/TaskConfirmation';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { MARKETPLACES, deleteSpareAccessory, fetchSpareAccessories, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
@@ -16,6 +17,7 @@ const emptyForm = (owner: Staff | null): SpareAccessoryInput => ({
 });
 
 export default function Spares({ me }: { me: Staff }) {
+  const confirmation = useTaskConfirmation();
   const [rows, setRows] = useState<SpareAccessory[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [query, setQuery] = useState('');
@@ -118,7 +120,6 @@ export default function Spares({ me }: { me: Staff }) {
   }
 
   async function remove(row: SpareAccessory) {
-    if (!window.confirm(`「${row.title}」${row.source_sku ? `（${row.source_sku}）` : ''}を予備から削除します。この操作は取り消せません。削除しますか？`)) return;
     setDeletingId(row.id); setError('');
     try {
       await deleteSpareAccessory(row.id);
@@ -128,6 +129,7 @@ export default function Spares({ me }: { me: Staff }) {
   }
 
   return <section className="card">
+    {confirmation.confirmation}
     <div className="toolbar"><span style={{ flex: 1 }} />
       <button className="btn primary" aria-expanded={adding} onClick={() => { setAdding(open => !open); setError(''); }}>予備追加</button>
     </div>
@@ -179,7 +181,7 @@ export default function Spares({ me }: { me: Staff }) {
       <td><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || (row.used_for_item_id ? '商品へ割当済み' : '—')}</EditableSpare></td>
-      {me.role === 'admin' && <td><button type="button" className="btn danger spare-row-delete" disabled={deletingId !== null} onClick={() => void remove(row)}>{deletingId === row.id ? '削除中…' : '削除'}</button></td>}
+      {me.role === 'admin' && <td><button type="button" className="btn danger spare-row-delete" disabled={deletingId !== null || confirmation.pending} onClick={() => confirmation.ask(`予備の削除：${row.title}${row.source_sku ? `（${row.source_sku}）` : ''}`, () => remove(row), 'この操作は取り消せません。')}>{deletingId === row.id ? '削除中…' : '削除'}</button></td>}
     </tr>)}</tbody></table></div>}
     {editFor && <SpareFieldDialog row={editFor.row} field={editFor.field} onClose={() => setEditFor(null)} onSaved={async () => { setEditFor(null); await reload(); }} />}
   </section>;
