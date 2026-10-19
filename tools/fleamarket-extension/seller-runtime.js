@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.119';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.119';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.121';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.121';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.119';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.121';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -96,15 +96,18 @@ export function advanceMercariShippingPlace({itemId,dropoff}){
  const buttons=[...document.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled&&e.innerText.trim()==='選択して完了する');if(radios.length!==1||buttons.length!==1)throw Error('発送場所の選択肢を1件に確認できません');
  const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('発送場所の選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
 }
-export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log}){
- if(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day))return;
- const accounts=sellerAccounts(settings);if(!accounts.length&&records.sellerBarrierDay===day)return;
- let ready;
+export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log,repair=null}){
+ if(!repair&&(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day)))return;
+ const accounts=sellerAccounts(settings).filter(account=>!repair||account.id===repair.accountId);if(!accounts.length&&records.sellerBarrierDay===day)return;
+ const attemptKey=repair?'sellerRepairAttempt':'sellerDailyAttempt',metadata=repair?{requestId:repair.id,accountId:repair.accountId}:{};
+ let ready=true;
+ if(!repair){
  try{ready=await rpc('extension_seller_daily_barrier',{p_day:day,p_profile_id:profileId,p_account_ids:settings.accounts.filter(a=>a.enabled).map(a=>a.id)});await storage.set({sellerBarrierDay:day});}
  catch(error){await storage.set({sellerBarrierError:day});await log('error','販売確認の開始条件を確認できません。再試行せず停止しました');return;}
+ }
  if(!ready||!accounts.length)return;
- await storage.set({sellerDailyAttempt:{day,status:'running',at:new Date().toISOString()}});
- const baselines={...(records.sellerSaleBackfills||{})};let updated=0,errors=0,unmatched=0,conflicts=0;
+ await storage.set({[attemptKey]:{...metadata,day,status:'running',at:new Date().toISOString()}});
+ const baselines={...(records.sellerSaleBackfills||{})};let updated=0,errors=0,unmatched=0,conflicts=0;const failures=[];
  for(const account of accounts){let session;
   try{
    session=await openSession(account);
@@ -174,11 +177,26 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
     }catch(error){throw Error('商品ID '+row.external_id+'：'+error.message);}
    }
    if(fullScan&&salesSeen){baselines[account.id]='serial-case-v2';await storage.set({sellerSaleBackfills:{...baselines}});}
-  }catch(error){errors++;await log('error',account.label+'の販売確認を停止しました。自動再試行はしません：'+error.message);}
+  }catch(error){errors++;failures.push({accountId:account.id,error:error.message});await log('error',account.label+'の販売確認を停止しました。自動再試行はしません：'+error.message);}
   finally{await session?.close();}
  }
  if(unmatched||conflicts)await log('warning','販売情報の要確認：商品未一致 '+unmatched+'件、販売実績の不一致 '+conflicts+'件。自動上書きしていません');
- await storage.set({sellerDailyAttempt:{day,status:errors?'failed':'completed',updated,errors,unmatched,conflicts,at:new Date().toISOString()}});
+ await storage.set({[attemptKey]:{...metadata,day,status:errors?'failed':'completed',updated,errors,unmatched,conflicts,...(repair?{failures}:{}),at:new Date().toISOString()}});
+}
+/** Explicit repair is consumed once; it never clears or rewrites the normal daily attempt. */
+export async function runSellerSaleRepair(dependencies){
+ const {settings,records,day,profileId,storage,fetchRequest}=dependencies;
+ const request=await fetchRequest(),map={'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':['auctions-1'],'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':['mercari-1','auctions-2'],'51502a66-28a6-4af0-81ea-660e63d8b66c':['mercari-2']};
+ if(!request||request.kind!=='seller-sale-repair'||!/^[-0-9a-f]{36}$/i.test(request.id||'')||!map[profileId]?.includes(request.accountId)||request.profileId!==profileId)return false;
+ const now=Date.now(),issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
+ if(!Number.isFinite(issued)||!Number.isFinite(expires)||issued>now||expires<=now||expires-issued>15*60000)return false;
+ if(settings.mode==='diagnostic'||records.job||records.authProblem||!records.session?.access_token||!settings.accounts.some(a=>a.enabled&&a.id===request.accountId))return false;
+ if(!['tracking',...(settings.purchaseImportEnabled?['purchases']:[])].every(kind=>records.scheduledRuns?.[kind]?.day===day&&records.lastRun?.[kind]?.day===day))return false;
+ const consumed=(await storage.get('sellerRepairConsumed')).sellerRepairConsumed||[];
+ if(consumed.includes(request.id))return false;
+ await storage.set({sellerRepairConsumed:[...consumed,request.id].slice(-32)});
+ await sellerDaily({...dependencies,repair:{id:request.id,accountId:request.accountId}});
+ return true;
 }
 /** Read an existing listing without opening or submitting a listing form. */
 export async function checkExistingListing(session,job,account){

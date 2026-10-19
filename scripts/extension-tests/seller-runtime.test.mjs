@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {sellerScheduleReady,sellerAccounts,sellerTarget,parseSellerSaleDetail,sellerUrl} from '../../tools/fleamarket-extension/seller-sync.js';
-import {sellerDaily,sellerQueuedOperations,openSellerSession} from '../../tools/fleamarket-extension/seller-runtime.js';
+import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair} from '../../tools/fleamarket-extension/seller-runtime.js';
 const day='2026-10-16',settings={mode:'tracking',purchaseImportEnabled:true,accounts:[{id:'mercari-2',site:'mercari',label:'メルカリ2',enabled:true},{id:'mercari-1',site:'mercari',enabled:true},{id:'auctions-1',site:'auctions',label:'ヤフオク1',enabled:true}]};
 const records=()=>({scheduledRuns:{tracking:{day},purchases:{day}},lastRun:{tracking:{day},purchases:{day}}});
 test('QRの発行応答後は遷移完了を待って画像だけ読み取り、発行を再送しない',async()=>{const actions=[],job={id:'qr-navigation',account_id:'mercari-2',kind:'shipping_code',url:'https://jp.mercari.com/transaction/m123'};let finished;const session={go:async()=>{},loaded:async()=>actions.push('loaded'),operation:async(j,phase)=>{actions.push(phase);return phase==='shipping_code'?{code_requested:true}:{qr_code:'data:image/png;base64,existing'};},close:async()=>{}};await sellerQueuedOperations({settings:{...settings,accounts:[settings.accounts[0]]},rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:finished=args,openSession:async()=>session,log:async()=>{}});assert.deepEqual(actions,['shipping_code','loaded','read_shipping_code']);assert.equal(finished.p_status,'succeeded');assert.equal(finished.p_result.qr_code,'data:image/png;base64,existing');});
@@ -59,4 +59,34 @@ test('ヤフオク販売日の補完は同じ商品IDの販売者用取引ナビ
  assert.equal(parseSellerSaleDetail('ヤフオク',receipt,'p1247578117',source,page).sold_on,'2026-10-09');
  for(const url of ['https://contact.auctions.yahoo.co.jp/seller/top?aID=p9999999999','https://contact.auctions.yahoo.co.jp/trade/buyers?aID=p1247578117','https://evil.example/seller/top?aID=p1247578117'])assert.throws(()=>parseSellerSaleDetail('ヤフオク',receipt,'p1247578117',source,{...page,url}));
  assert.throws(()=>parseSellerSaleDetail('ヤフオク',receipt,'p1247578117',source,{...page,text:'取扱日 2026年10月12日'}));
+});
+
+test('明示の復旧要求は指定アカウントだけ1回処理し、日次失敗記録を消さず未反映売上だけ登録する',async()=>{
+ const profileId='51502a66-28a6-4af0-81ea-660e63d8b66c',now=Date.now(),id='12727baa-7975-4161-ac8f-409f6c2d30cd';
+ const request={id,kind:'seller-sale-repair',accountId:'mercari-2',profileId,issuedAt:new Date(now-1000).toISOString(),expiresAt:new Date(now+60000).toISOString()};
+ const state={},saved=[],calls=[],normal={day,status:'failed'},rows=[{external_id:'m1',serial:'1',status:'販売済',detail_url:'https://jp.mercari.com/transaction/m1'},{external_id:'m2',serial:'2',status:'販売済',detail_url:'https://jp.mercari.com/transaction/m2'}];
+ const deps={settings,records:{...records(),session:{access_token:'test-local-only'},sellerDailyAttempt:normal,sellerBarrierError:day,sellerSaleBackfills:{'mercari-2':'serial-case-v2'}},day,profileId,fetchRequest:async()=>request,storage:{get:async()=>state,set:async value=>{saved.push(value);Object.assign(state,value);}},log:async()=>{},rpc:async(name,args)=>{calls.push(name);if(name==='seller_observation_plan')return rows.map((r,index)=>({external_id:r.external_id,action:index?'detail':'registered'}));if(name==='sync_seller_observation'){assert.equal(args.p_account_id,'mercari-2');assert.equal(args.p_observation.external_id,'m2');assert.equal(args.p_observation.sold_price,17280);return 'registered';}throw Error(name);},openSession:async account=>{assert.equal(account.id,'mercari-2');return{links:async()=>[{text:'売却済み',url:'https://jp.mercari.com/mypage/listings/completed'}],go:async()=>{},read:async()=>({rows,navigation:[]}),detail:async()=>({url:rows[1].detail_url,text:'商品ID m2 商品代金 17280 販売利益 14502 購入日時 2026/10/09 商品ID m3'}),close:async()=>{}};}};
+ assert.equal(await runSellerSaleRepair(deps),true);assert.equal(state.sellerRepairAttempt.status,'completed');assert.equal(state.sellerRepairAttempt.updated,1);assert.equal(state.sellerRepairAttempt.requestId,id);assert.deepEqual(deps.records.sellerDailyAttempt,normal);assert.ok(saved.every(v=>!('sellerDailyAttempt'in v)&&!('sellerBarrierDay'in v)));assert.equal(calls.filter(n=>n==='sync_seller_observation').length,1);assert.equal(await runSellerSaleRepair(deps),false);
+});
+test('復旧要求は別プロファイル・別アカウント・期限切れ・未認証・先行処理未完了では実行しない',async()=>{
+ const profileId='51502a66-28a6-4af0-81ea-660e63d8b66c',now=Date.now(),request={id:'12727baa-7975-4161-ac8f-409f6c2d30cd',kind:'seller-sale-repair',accountId:'mercari-2',profileId,issuedAt:new Date(now-1000).toISOString(),expiresAt:new Date(now+60000).toISOString()},base={...records(),session:{access_token:'test-local-only'}};
+ for(const changes of [{request:{...request,accountId:'mercari-1'}},{request:{...request,profileId:'other'}},{request:{...request,expiresAt:new Date(now-1).toISOString()}},{records:{...base,session:null}},{records:{...base,lastRun:{}}},{records:{...base,job:{}}},{settings:{...settings,mode:'diagnostic'}}]){assert.equal(await runSellerSaleRepair({settings,records:base,day,profileId,fetchRequest:async()=>request,storage:{get:async()=>{throw Error('must not read');}},...changes,fetchRequest:async()=>changes.request||request}),false);}
+});
+test('復旧が途中で失敗しても同じ要求は再実行せず、既存日次設定を維持する',async()=>{
+ const profileId='51502a66-28a6-4af0-81ea-660e63d8b66c',now=Date.now(),request={id:'12727baa-7975-4161-ac8f-409f6c2d30cd',kind:'seller-sale-repair',accountId:'mercari-2',profileId,issuedAt:new Date(now-1000).toISOString(),expiresAt:new Date(now+60000).toISOString()},state={};let opened=0;
+ const deps={settings,records:{...records(),session:{access_token:'test-local-only'},sellerDailyAttempt:{day,status:'failed'}},day,profileId,fetchRequest:async()=>request,storage:{get:async()=>state,set:async value=>Object.assign(state,value)},log:async()=>{},openSession:async()=>{opened++;throw Error('page unavailable');}};
+ assert.equal(await runSellerSaleRepair(deps),true);assert.equal(state.sellerRepairAttempt.status,'failed');assert.equal(await runSellerSaleRepair(deps),false);assert.equal(opened,1);assert.equal(state.sellerDailyAttempt,undefined);
+});
+
+test('実ヤフオク表記は同じaidの取引ナビで120日以内の年だけ一意に補完する',()=>{
+ const text='商品ID p1247578117 決済金額 15000 受取金額 12650 取扱日 2026/10/12',source='https://aucpay.yahoo.co.jp/detail-front/ReceiveDetailItem',page={url:'https://contact.auctions.yahoo.co.jp/trade/top?aid=p1247578117&oid=opaque',text:'終了日時 10月11日 23時43分'},now=Date.parse('2026-10-19T10:00:00+09:00');
+ const r=parseSellerSaleDetail('ヤフオク',text,'p1247578117',source,page,now);assert.equal(r.sold_on,'2026-10-11');assert.equal(r.trade_key,'p1247578117:2026-10-11T23:43');assert.equal(r.sold_price,15000);assert.equal(r.payout_amount,12650);
+ for(const url of ['https://contact.auctions.yahoo.co.jp/trade/top?aid=p9999999999','https://contact.auctions.yahoo.co.jp/trade/top?other=p1247578117','https://page.auctions.yahoo.co.jp/jp/auction/p1247578117'])assert.throws(()=>parseSellerSaleDetail('ヤフオク',text,'p1247578117',source,{...page,url},now));
+ for(const date of ['6月1日','10月20日','2月30日'])assert.throws(()=>parseSellerSaleDetail('ヤフオク',text,'p1247578117',source,{...page,text:'終了日時 '+date},now));
+ assert.throws(()=>parseSellerSaleDetail('ヤフオク',text,'p1247578117',source,{...page,text:'取扱日 10月11日'},now));
+});
+test('取引ナビの年省略は年末年始をまたいでも現在年を決め打ちせず、120日を超えれば拒否する',()=>{
+ const text='商品ID p1 決済金額 1000 受取金額 800',source='https://aucpay.yahoo.co.jp/detail-front/ReceiveDetailItem',page={url:'https://contact.auctions.yahoo.co.jp/trade/top?aid=p1',text:'終了日時 12月31日 23時59分'};
+ assert.equal(parseSellerSaleDetail('ヤフオク',text,'p1',source,page,Date.parse('2027-01-01T01:00:00+09:00')).sold_on,'2026-12-31');
+ assert.throws(()=>parseSellerSaleDetail('ヤフオク',text,'p1',source,page,Date.parse('2027-05-01T01:00:00+09:00')));
 });

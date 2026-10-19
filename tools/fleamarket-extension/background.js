@@ -1,6 +1,6 @@
-import {runSellerReadOnlyInspection} from './seller-inspection.js?v=0.1.119';
+import {runSellerReadOnlyInspection} from './seller-inspection.js?v=0.1.121';
 import {supplierQueuedOperations} from './supplier-runtime.js';
-import {sellerDaily,sellerQueuedOperations,openSellerSession} from './seller-runtime.js?v=0.1.119';
+import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair} from './seller-runtime.js?v=0.1.121';
 import {readSellerInventory} from './sales-status.js';
 import {openLauncherSites,missingTabRecovery,desktopRequestApplies} from './launcher.js';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
@@ -388,6 +388,7 @@ async function runSellerWork(){
  sellerBusy=true;try{
   const dependencies={settings,storage:STORE,rpc,log,openSession:account=>openSellerSession(prepareAccount(account),{tabs:chrome.tabs,scripting:chrome.scripting,windows:chrome.windows,identity:(tabId,account)=>content(tabId,'identity',{account})})};
   if(await runSellerReadOnlyInspection({...dependencies,profileId:records.diagnosticInstance,fetchRequest:async()=>{try{const response=await fetch(chrome.runtime.getURL('seller-inspection-request.json'),{cache:'no-store'});return response.ok?await response.json():null;}catch{return null;}}}))return;
+  if(await runSellerSaleRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest:async()=>{try{const response=await fetch(chrome.runtime.getURL('seller-inspection-request.json'),{cache:'no-store'});return response.ok?await response.json():null;}catch{return null;}}}))return;
   if(records.sellerQueueErrorDay!==jstDay())try{await supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log});await sellerQueuedOperations(dependencies);}catch(error){await STORE.set({sellerQueueErrorDay:jstDay()});await log('error','販売操作の取得を停止しました。自動再試行はしません：'+error.message);}
   await sellerDaily({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance});
  }finally{sellerBusy=false;}

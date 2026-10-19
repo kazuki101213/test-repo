@@ -14,7 +14,7 @@ export function sellerTarget(rows,context){
  return rows.filter(row=>ids.has(row.external_id)||row.serial&&serialCounts.get(row.serial)===1);
 }
 /** Money/date labels refer to the actual transaction detail, never the settlement list date. */
-export function parseSellerSaleDetail(channel,text,externalId,sourceUrl,auctionDetail){
+export function parseSellerSaleDetail(channel,text,externalId,sourceUrl,auctionDetail,now=Date.now()){
  const s=text.replace(/\s+/g,' ').trim();
  const ids=[...s.matchAll(/商品ID\s*[:：]?\s*([a-z][0-9]+)/gi)].map(value=>value[1].toLowerCase());
  let transactionMatched=false;
@@ -28,8 +28,17 @@ export function parseSellerSaleDetail(channel,text,externalId,sourceUrl,auctionD
  const datePattern=label=>new RegExp(label+'\\s*[:：]?\\s*(20[0-9]{2})[年/.-]\\s*([0-9]{1,2})[月/.-]\\s*([0-9]{1,2})(?:日)?(?:\\s+([0-9]{1,2})[:：]([0-9]{2}))?');
  let m=s.match(datePattern(label));
  if(!m&&channel==='ヤフオク'&&auctionDetail){const u=new URL(auctionDetail.url),id=['page.auctions.yahoo.co.jp','auctions.yahoo.co.jp'].includes(u.hostname)&&u.pathname.match(/^\/(?:jp\/)?auction\/([a-z][0-9]+)\/?$/i)?.[1]?.toLowerCase();
-  const sameTrade=u.hostname==='contact.auctions.yahoo.co.jp'&&u.pathname==='/seller/top'&&[...u.searchParams.values()].includes(externalId);if(u.protocol!=='https:'||u.username||u.password||id!==externalId&&!sameTrade)throw Error('販売日を補完する商品IDが一致しません');
+  const sameTrade=u.hostname==='contact.auctions.yahoo.co.jp'&&['/seller/top','/trade/top'].includes(u.pathname)&&(u.searchParams.get('aid')||u.searchParams.get('aID'))===externalId;if(u.protocol!=='https:'||u.username||u.password||id!==externalId&&!sameTrade)throw Error('販売日を補完する商品IDが一致しません');
   m=auctionDetail.text.replace(/\s+/g,' ').match(datePattern('(?:終了日時|落札日時|終了日|落札日)'));
+  // Yahoo's transaction navigator is viewable for 120 days after the auction ends:
+  // https://support.yahoo-net.jp/SccAuctions/s/article/H000008919
+  // Only that same-item navigator permits a uniquely determined year; public pages may live for years.
+  if(!m&&sameTrade){const short=auctionDetail.text.replace(/\s+/g,' ').match(/(?:終了日時|落札日時|終了日|落札日)\s*[:：]?\s*([0-9]{1,2})月\s*([0-9]{1,2})日(?:\s*[^0-9]{0,5}([0-9]{1,2})時\s*([0-9]{1,2})分)?/);
+   if(short){const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now)),end=Date.parse(today+'T00:00:00Z'),year=Number(today.slice(0,4)),candidates=[];
+    for(const y of [year-1,year]){const day=y+'-'+short[1].padStart(2,'0')+'-'+short[2].padStart(2,'0'),t=Date.parse(day+'T00:00:00Z');if(Number.isFinite(t)&&new Date(t).toISOString().slice(0,10)===day&&t<=end&&end-t<=120*86400000)candidates.push(y);}
+    if(candidates.length===1)m=[short[0],String(candidates[0]),short[1],short[2],short[3],short[4]];
+   }
+  }
  }
  if(!m)throw Error('実際の販売日を確認できません');
  const sold_on=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;

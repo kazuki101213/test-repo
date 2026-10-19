@@ -1,4 +1,4 @@
-import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.119';
+import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.121';
 const PROFILE_ACCOUNTS={
  'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':'auctions-1',
  'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1',
@@ -24,7 +24,7 @@ export function saleDetailEvidence(site,row,page){
  for(const label of ['商品代金','販売利益','決済金額','受取金額'])result.amounts[label]=[...text.matchAll(new RegExp(label+'\\s*[:：]?\\s*[¥￥]?\\s*([0-9][0-9,]*)\\s*(?:円)?','g'))].map(m=>Number(m[1].replaceAll(',',''))).slice(0,4);
  result.dates=[...text.matchAll(/(?:購入日時|取引日)\s*[:：]?\s*(20[0-9]{2})[年/.-]\s*([0-9]{1,2})[月/.-]\s*([0-9]{1,2})/g)].map(m=>m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')).slice(0,4);
  try{result.parsed=parseSellerSaleDetail(site==='mercari'?'メルカリ':'ヤフオク',text,row.external_id,page.url);}catch(error){result.parseError=error.message;}
- result.dateTokens=[...text.matchAll(/20[0-9]{2}\s*[年/.\-]\s*[0-9]{1,2}\s*[月/.\-]\s*[0-9]{1,2}/g)].map(m=>m[0]).slice(0,8);result.dateLabels=['開始日時','終了日時','落札日時','終了日','落札日','取引日'].filter(label=>text.includes(label));result.dateFields=[];
+ result.sourceItemMatches=[...url.searchParams.values()].includes(row.external_id);result.sourceQueryKeys=[...url.searchParams.keys()];result.dateFragments=[...text.matchAll(/(開始日時|終了日時|落札日時|落札日|終了日|取引日)\s*[:：]?\s*([0-9０-９年月日時分秒月火水木金土日（日）()：:/.\s-]{1,65})/g)].map(m=>({label:m[1],value:m[2].trim()})).slice(0,8);result.dateTokens=[...text.matchAll(/20[0-9]{2}\s*[年/.\-]\s*[0-9]{1,2}\s*[月/.\-]\s*[0-9]{1,2}/g)].map(m=>m[0]).slice(0,8);result.dateLabels=['開始日時','終了日時','落札日時','終了日','落札日','取引日'].filter(label=>text.includes(label));result.dateFields=[];
  for(const label of ['購入日時','取引日','取引日時','落札日時','終了日時','落札日','終了日','支払日','取扱日','決済日','入金日']){const found=[...text.matchAll(new RegExp(label+'\\s*[:：]?\\s*(20[0-9]{2})[年/.-]\\s*([0-9]{1,2})[月/.-]\\s*([0-9]{1,2})(?:日)?(?:\\s+([0-9]{1,2})[:：]([0-9]{2}))?','g'))];for(const m of found.slice(0,4))result.dateFields.push({label,date:m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')});}
  result.detailLinks=(page.links||[]).filter(l=>/取引画面|取引ナビ|取引情報|商品ページ/.test(l.text)).map(l=>{const u=new URL(l.url);return{label:l.text.slice(0,20),host:u.hostname,path:u.pathname,itemMatches:l.url.includes(row.external_id)};}).slice(0,8);
  return result;
