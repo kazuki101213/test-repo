@@ -7,7 +7,7 @@ set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare p jsonb;q jsonb;target uuid;n integer;begin
  p:=app.read_delivery_catalog_page('{"queryField":"serial","query":"990302"}',50,'{}');
  if (p->>'total')::integer<>1 or jsonb_array_length(p->'rows')<>1 then raise exception 'Another deliverer not visible in catalog';end if;
- if not ((p->'rows'->0) ? 'deliverer_name') or (p->'rows'->0) ? 'cost_amount' then raise exception 'Catalog card fields or cost visibility wrong';end if;
+ if not ((p->'rows'->0) ? 'deliverer_name') or exists(select 1 from jsonb_each(p->'rows'->0) e where e.key in ('cost_amount','sold_price','payout_amount','description','memo','malfunction_comment') and e.value<>'null'::jsonb) then raise exception 'Catalog card fields or cost visibility wrong';end if;
  target:=(p->'rows'->0->>'id')::uuid;
  q:=app.read_delivery_catalog_page('{"queryField":"serial","query":"990302"}',50,(p->'fingerprints')||jsonb_build_object('__revision',p->>'revision'));
  if not (q->>'unchanged')::boolean or octet_length(q::text)>250 then raise exception 'Catalog repeatedly transfers unchanged inventory';end if;

@@ -120,7 +120,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   }, [tasks, filter, query, queryField, staff.role, staff.code, effectiveDelivererId, inventoryFilters]);
   const shownRows = shown.rows;
   const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
-  const selectableRows = shownRows.filter(({members}) => members.every(canOperate));
+  const selectableRows = allProducts ? [] : shownRows.filter(({members}) => members.every(canOperate));
   function toggleAllProducts() {
     setAllProducts(current => !current);setFilter('all');setInventoryFilters({});setAssigneeFilterId('');setDelivererId('');setQuery('');setQueryField('serial');setExpandedId(null);setSelected(new Set());
   }
@@ -193,7 +193,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={!members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;
