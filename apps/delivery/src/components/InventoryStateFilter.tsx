@@ -17,7 +17,6 @@ export default function InventoryStateFilter({ value, onChange, assignee }: { va
     <summary>フィルター{count > 0 ? `（${count}）` : ''}</summary>
     <div className="inventory-multi-filter-panel">
       <div className="inventory-multi-filter-actions">
-      <button type="button" className="btn" onClick={() => { if (container.current) { container.current.open = false; container.current.querySelector('summary')?.focus(); } }}>閉じる</button>
       <button type="button" className="btn" onClick={() => { onChange({}); assignee?.onChange(''); }}>すべて解除</button>
       </div>
       {assignee && <fieldset className="inventory-assignee-filter"><legend>納品担当者</legend>
