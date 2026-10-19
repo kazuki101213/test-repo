@@ -50,9 +50,9 @@ do $$begin
 if exists(select 1 from app.items where lot_seq=990091 and status<>'動作不良') then raise exception 'Malfunction/accessory synchronization failed';end if;
 end $$;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
-do $begin
+do $$begin
  begin perform app.resolve_item_malfunction((select id from app.items where lot_seq=990091 and not is_accessory));raise exception 'Legacy return without reason accepted';exception when invalid_parameter_value then null;end;
-end $;
+end $$;
 select app.perform_inventory_action(id,'send_back',status,'動作を再確認してください。') from app.items where lot_seq=990091 and not is_accessory;
 do $$begin
 if exists(select 1 from app.items where lot_seq=990091 and status<>'検品中') then raise exception 'Mistaken report return failed';end if;
