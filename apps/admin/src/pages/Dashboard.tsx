@@ -15,9 +15,9 @@ import PushSettings from '../components/PushSettings';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
 
-function Kpi({ label, value, tone, detail, count }: { label: string; value: string; tone?: 'pos' | 'neg'; detail?: string; count?: number }) {
+function Kpi({ label, value, tone, detail, count, className }: { label: string; value: string; tone?: 'pos' | 'neg'; detail?: string; count?: number; className?: string }) {
   return (
-    <div className="card">
+    <div className={`card ${className ?? ''}`}>
       <div className="kpi-label">{label}</div>
       <div className={`kpi-value ${tone ?? ''}`}>{value}</div>
       {count !== undefined && <div className="kpi-value">{count} 点</div>}
@@ -55,11 +55,11 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
 
       {error && <div className="error">{error}</div>}
 
-      <div className="grid kpi">
+      <div className={`grid kpi dashboard-kpis${isAdmin ? ' management-kpis' : ''}`}>
         {isAdmin && <InvoiceTasks staff={staff} onApproved={() => setExpenseRevision(n => n + 1)} />}
         <div className="card sales-summary-card">
-          <div className="kpi-label">今月の販売</div>
-          <div className="sales-kpi-line"><span>今月の売上</span><strong>{yen(current?.売上)} / {current?.販売数 ?? 0} 点</strong></div>
+          <div className="kpi-label">今月販売</div>
+          <div className="sales-kpi-line"><span>売上</span><strong>{yen(current?.売上)} / {current?.販売数 ?? 0} 点</strong></div>
           <div className="kpi-label" style={{ marginTop: 12 }}>粗利益</div>
           <div className={`kpi-value ${(current?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(current?.粗利益)}</div>
           <div className="kpi-label" style={{ marginTop: 12 }}>純利益</div>
@@ -67,9 +67,9 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
           <div className="kpi-label" style={{ marginTop: 12 }}>保有在庫</div>
           <div className="kpi-value">{stock?.現在庫数 ?? 0} 点</div>
         </div>
-        <Kpi label="今月の仕入" value={yen(current?.仕入金額)} count={current?.仕入数 ?? 0} />
-        <div className="card">
-          <div className="kpi-label">在庫の見込み</div>
+        <Kpi className="purchase-summary-card" label="今月仕入" value={yen(current?.仕入金額)} count={current?.仕入数 ?? 0} />
+        <div className="card stock-summary-card">
+          <div className="kpi-label">在庫見込</div>
           <div style={{ marginTop: 10 }}>
             <div className="kpi-label">見込み売上</div>
             <div className="kpi-value">{yen(stock?.売上見込み合計)}</div>
