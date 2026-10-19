@@ -166,8 +166,8 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  }
  if(phase==='listing_result'){
   return await waitFor(()=>{
-   const direct=job.channel==='メルカリ'?location.href.match(/^https:\/\/jp[.]mercari[.]com\/item\/(m[0-9]+)/):location.href.match(/^https:\/\/page[.]auctions[.]yahoo[.]co[.]jp\/jp\/auction\/([a-z][0-9]+)/i);
-   let id=direct?.[1];if(!id&&/出品が完了|出品しました|出品完了/.test(text())){const links=[...(document.querySelector('main')||document.body).querySelectorAll('a[href]')].map(a=>a.href.match(job.channel==='メルカリ'?/^https:\/\/jp[.]mercari[.]com\/item\/(m[0-9]+)/:/^https:\/\/page[.]auctions[.]yahoo[.]co[.]jp\/jp\/auction\/([a-z][0-9]+)/i)).filter(Boolean);const ids=new Set(links.map(value=>value[1]));if(ids.size===1)id=[...ids][0];}
+   const direct=job.channel==='メルカリ'?location.href.match(/^https:\/\/jp[.]mercari[.]com\/item\/(m[0-9]+)/):location.href.match(/^https:\/\/(?:page[.])?auctions[.]yahoo[.]co[.]jp\/jp\/auction\/([a-z][0-9]+)/i);
+   let id=direct?.[1];if(!id&&/出品が完了|出品しました|出品完了/.test(text())){const links=[...(document.querySelector('main')||document.body).querySelectorAll('a[href]')].map(a=>a.href.match(job.channel==='メルカリ'?/^https:\/\/jp[.]mercari[.]com\/item\/(m[0-9]+)/:/^https:\/\/(?:page[.])?auctions[.]yahoo[.]co[.]jp\/jp\/auction\/([a-z][0-9]+)/i)).filter(Boolean);const ids=new Set(links.map(value=>value[1]));if(ids.size===1)id=[...ids][0];}
    if(!id)return null;
    return {observed_at:new Date().toISOString(),external_id:id,url:job.channel==='メルカリ'?'https://jp.mercari.com/item/'+id:'https://page.auctions.yahoo.co.jp/jp/auction/'+id};
   },'出品結果を確認できません。サイトで確認するまで再実行しません');

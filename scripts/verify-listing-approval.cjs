@@ -12,6 +12,8 @@ for(const channel of ['メルカリ','ヤフオク']){
  assert(!draft.description.startsWith('商品名（'));assert(draft.description.length>100);
  const saved='商品名（'+channel+'）\n手入力タイトル\n\n説明文\n手入力本文';
  const edited=listingDraft({...base,sales_channel:channel,description:saved},'東芝');assert.equal(edited.title,'手入力タイトル');assert.equal(edited.description,'手入力本文');
+ const foreign='商品名（'+(channel==='ヤフオク'?'メルカリ':'ヤフオク')+'）\n別の販売先のタイトル\n\n説明文\n別の販売先の本文';
+ const switched=listingDraft({...base,sales_channel:channel,description:foreign},'東芝',[base.sku,'2407b-AAMM-20261012-1001']);assert.equal(switched.description,draft.description);assert.equal(switched.title,draft.title);
  const legacy=listingDraft({...base,sales_channel:channel,description:'保存した文章'},'東芝');
  assert.equal(legacy.description,'保存した文章');assert(legacy.title.includes('【2407b】'));assert(legacy.title.includes('東芝'));
 }
