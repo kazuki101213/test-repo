@@ -4,8 +4,9 @@ import { productSerial } from '../inventory';
 import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
 import { createPortal } from 'react-dom';
-import { getSupabase, PHOTO_BUCKET, readResourceSnapshot } from '@bussan/shared';
+import { getSupabase, readResourceSnapshot } from '@bussan/shared';
 import { preparePhotoFiles, savePhotoFiles } from '../photoSave';
+import {readReviewPhotos} from '../reviewPhotos';
 import { deliveryAppUrl } from '../appUrls';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
@@ -36,6 +37,7 @@ export default function PhotoReviewTasks() {
   const [selected, setSelected] = useState<Review | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [photoError,setPhotoError]=useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -71,41 +73,24 @@ export default function PhotoReviewTasks() {
   }, [revision]);
 
   useEffect(() => {
-    if (!selected) { setPhotos([]); return; }
-    let active = true;
-    setLoadingPhotos(true);
-    (async () => {
-      const { data, error: readError } = await getSupabase().from('item_photos')
-        .select('storage_path').eq('item_id', selected.item_id).order('created_at');
-      if (readError) throw readError;
-      const paths = (data ?? []).map(row => row.storage_path);
-      const { data: signed, error: signError } = await getSupabase().storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600);
-      if (signError) throw signError;
-      if (active) setPhotos((signed ?? []).map(row => row.signedUrl).filter((url): url is string => !!url));
-    })().catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); })
-      .finally(() => { if (active) setLoadingPhotos(false); });
-    return () => { active = false; };
-  }, [selected]);
-
-  useEffect(() => {
-    setSaveFiles([]); setSaveMessage('');
+    setPhotos([]);setSaveFiles([]);setSaveMessage('');
     if (!selected) return;
     const controller = new AbortController();
     let active = true;
-    setPreparingSave(true);
+    setLoadingPhotos(true);setPreparingSave(true);setError('');setPhotoError('');
     (async () => {
-      const { data, error: listError } = await getSupabase().functions.invoke('delivery-photo-drive', {
-        body: { itemId: selected.item_id, action: 'list' },
-      });
-      if (listError) throw listError;
-      if (!Array.isArray(data?.photos) || typeof data?.lotSeq !== 'number') throw new Error('通番号の写真を取得できませんでした。');
-      const files = await preparePhotoFiles(data.photos, data.lotSeq, controller.signal);
-      if (active) {
-        setSaveFiles(files);
-        setSaveMessage(files.length ? `通番号${data.lotSeq}の写真${files.length}枚をまとめて保存できます。` : '保存できる写真がありません。');
-      }
-    })().catch(cause => { if (active) setSaveMessage(cause instanceof Error ? cause.message : String(cause)); })
-      .finally(() => { if (active) setPreparingSave(false); });
+      const result = await readReviewPhotos(selected.item_id);
+      if (!active) return;
+      setPhotos(result.photos);setLoadingPhotos(false);
+      try {
+        const files = await preparePhotoFiles(result.lotPhotos, result.lotSeq, controller.signal);
+        if (active) {
+          setSaveFiles(files);
+          setSaveMessage(files.length ? '通番号'+result.lotSeq+'の写真'+files.length+'枚をまとめて保存できます。' : '保存できる写真がありません。');
+        }
+      } catch(cause) {if(active)setSaveMessage(cause instanceof Error?cause.message:String(cause));}
+    })().catch(cause => { if (active) setPhotoError(cause instanceof Error ? cause.message : String(cause)); })
+      .finally(() => { if (active) {setLoadingPhotos(false);setPreparingSave(false);} });
     return () => { active = false; controller.abort(); };
   }, [selected, saveRevision]);
 
@@ -167,10 +152,11 @@ export default function PhotoReviewTasks() {
           <button className="btn" disabled={busy || saving} onClick={() => setSelected(null)}>閉じる</button></div>
         <p><a href={`https://drive.google.com/drive/folders/${encodeURIComponent(selected.drive_folder_id)}`} target="_blank" rel="noreferrer">Googleドライブの通番号フォルダを開く</a></p>
         {loadingPhotos ? <p>写真を読み込み中…</p> : <div className="photo-review-gallery">{photos.map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={index}><img src={url} alt={`商品写真 ${index + 1}`} /></a>)}</div>}
-        {!loadingPhotos && <p className="sub">アプリ保存 {photos.length}枚 ／ Google Drive送信済み {selected.exported_photo_count}枚</p>}
-        {!loadingPhotos && photos.length !== selected.exported_photo_count && <div className="error" role="status">写真枚数が一致しないため完了できません。納品アプリで「Googleドライブ追加」を再実行して、追加分も送信してください。</div>}
+        {photoError&&<p className="error" role="alert">{photoError}</p>}
+        {!loadingPhotos && !photoError && <p className="sub">アプリ保存 {photos.length}枚 ／ Google Drive送信済み {selected.exported_photo_count}枚</p>}
+        {!loadingPhotos && !photoError && photos.length !== selected.exported_photo_count && <div className="error" role="status">写真枚数が一致しないため完了できません。納品アプリで「Googleドライブ追加」を再実行して、追加分も送信してください。</div>}
         <div className="photo-review-actions">
-          <button type="button" className="btn primary photo-review-icon" aria-label="写真確認を完了" title="写真確認を完了" disabled={busy || saving || loadingPhotos || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '…' : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 10v11H3V10h4Zm0 0 5-7a3 3 0 0 1 2 3l-1 4h6a2 2 0 0 1 2 2l-1 7a2 2 0 0 1-2 2H7" /></svg>}</button>
+          <button type="button" className="btn primary photo-review-icon" aria-label="写真確認を完了" title="写真確認を完了" disabled={busy || saving || loadingPhotos || !!photoError || photos.length===0 || photos.length !== selected.exported_photo_count} onClick={() => void approve()}>{busy ? '…' : <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 10v11H3V10h4Zm0 0 5-7a3 3 0 0 1 2 3l-1 4h6a2 2 0 0 1 2 2l-1 7a2 2 0 0 1-2 2H7" /></svg>}</button>
           <button type="button" className="btn photo-review-icon" aria-label="通番号の写真をすべて保存" title={preparingSave ? '写真を準備中' : '通番号の写真をすべて保存'} disabled={busy || saving || preparingSave} onClick={() => void savePhotos()}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5" /></svg>
           </button>
