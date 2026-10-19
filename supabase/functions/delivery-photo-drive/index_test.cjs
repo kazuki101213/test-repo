@@ -48,6 +48,7 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     if(String(url).includes('/upload/drive/')) return new Response('{}',{headers:{Location:'https://www.googleapis.com/upload/session'}});
     if(String(url).includes('/upload/session')) return Response.json({id:'new-file'});
     if(String(url).includes('/files/shared?') && !init.method) return Response.json({id:'shared',name:'old-sku'});
+    if(String(url).includes('/files/new-file?') && !init.method) return Response.json({id:'new-file',parents:['shared']});
     if(String(url).includes('/files/old-file?') && !init.method) return Response.json({id:'old-file',parents:['old-folder']});
     if(String(url).includes('/files?') && !init.method) return Response.json({files:[]});
     if(init.method==='PATCH') return Response.json({id:'patched'});

@@ -22,3 +22,5 @@ export * from './resourceSync';
 
 export * from './workflow';
 export * from './seller';
+
+export * from './noticeUrl';

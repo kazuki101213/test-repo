@@ -12482,10 +12482,33 @@ create policy delivery_return_tasks_read on app.delivery_return_tasks for select
  and exists(select 1 from app.items i where i.id=item_id and (app.is_admin() or i.deliverer_id=app.current_staff_id()))
 );
 create view app.v_delivery_return_tasks with(security_invoker=true) as
- select t.id,t.item_id,t.kind,t.reason,t.created_at,i.sku,i.lot_seq,i.marketplace_item_id
+ select t.id,t.item_id,t.kind,t.reason,t.created_at,i.sku,i.lot_seq,i.marketplace_item_id,i.marketplace,i.marketplace_url
  from app.delivery_return_tasks t join app.items i on i.id=t.item_id where t.resolved_at is null;
 revoke all on app.v_delivery_return_tasks from public,anon;
 grant select on app.v_delivery_return_tasks to authenticated,service_role;
+
+-- Informational cards expire after 24 hours; unresolved work/history remains stored.
+create view app.v_delivery_notice_tasks with(security_invoker=true) as
+ with notices as (
+  select t.id::text id,t.item_id,case when t.kind='malfunction_return' then 'reply' else t.kind end kind,
+   t.created_at,i.sku,i.lot_seq,i.marketplace_item_id
+  from app.delivery_return_tasks t join app.items i on i.id=t.item_id where t.resolved_at is null
+  union all
+  select 'approved:'||i.id::text||':'||extract(epoch from r.approved_at)::text,i.id,'photo_approved',
+   r.approved_at,i.sku,i.lot_seq,i.marketplace_item_id,i.marketplace,i.marketplace_url
+  from app.photo_reviews r join app.items i on i.id=r.item_id where r.approved_at is not null
+  union all
+  select 'reply:'||c.id::text,i.id,'reply',c.created_at,i.sku,i.lot_seq,i.marketplace_item_id,i.marketplace,i.marketplace_url
+  from app.item_comments c join app.items i on i.id=c.item_id join app.staff s on s.id=c.author_id
+  where s.role in ('admin','purchaser') and c.created_at>i.malfunction_reported_at
+   and not exists(select 1 from app.delivery_return_tasks t where t.id=c.id)
+ )
+ select distinct on(item_id,kind) *,created_at+interval '24 hours' expires_at from notices
+ where created_at>clock_timestamp()-interval '24 hours'
+  and exists(select 1 from app.staff where id=app.current_staff_id() and is_active)
+ order by item_id,kind,created_at desc,id;
+revoke all on app.v_delivery_notice_tasks from public,anon;
+grant select on app.v_delivery_notice_tasks to authenticated,service_role;
 
 alter table app.delivery_push_events drop constraint delivery_push_events_kind_check;
 alter table app.delivery_push_events add constraint delivery_push_events_kind_check
@@ -12544,6 +12567,8 @@ begin
  if new.action='send_back' then
   insert into app.delivery_return_tasks(id,item_id,kind,reason,source_at,actor_id,created_at)
    values(new.id,new.item_id,'malfunction_return',btrim(new.note),new.created_at,new.actor_id,new.created_at);
+  insert into app.item_comments(id,item_id,author_id,body,created_at)
+   values(new.id,new.item_id,new.actor_id,'差し戻し理由：'||btrim(new.note),new.created_at);
  elsif new.action in ('report','inspection_complete') then
   update app.delivery_return_tasks set resolved_at=new.created_at
    where item_id=new.item_id and kind='malfunction_return' and resolved_at is null and created_at<new.created_at;
@@ -12566,7 +12591,7 @@ do $patch$ declare original text;patched text;begin
  original:=pg_get_functiondef('app.read_resource_snapshot(text,jsonb,jsonb)'::regprocedure);
  patched:=replace(original,'where r.approved_at is null$q$','where r.approved_at is null and r.rejected_at is null$q$');
  patched:=replace(patched,'case p_resource','case p_resource' || chr(10) ||
-  ' when ''return_tasks'' then source:=$q$select to_jsonb(t) d from app.v_delivery_return_tasks t$q$;');
+  ' when ''return_tasks'' then source:=$q$select to_jsonb(t) d from app.v_delivery_notice_tasks t$q$;');
  if patched=original or strpos(patched,'r.rejected_at is null')=0 then raise exception 'Resource return anchor missing';end if;execute patched;
  original:=pg_get_functiondef('app.claim_admin_push()'::regprocedure);
  patched:=replace(original,'when ''photo_review'' then p.approved_at is null','when ''photo_review'' then p.rejected_at is null and p.approved_at is null');
@@ -12576,6 +12601,10 @@ do $patch$ declare original text;patched text;begin
   ' when ''photo_return'' then exists(select 1 from app.delivery_return_tasks t where t.item_id=i.id and t.kind=e.kind and t.created_at=e.event_at and t.resolved_at is null)' || chr(10) ||
   ' when ''malfunction_return'' then exists(select 1 from app.delivery_return_tasks t where t.item_id=i.id and t.kind=e.kind and t.created_at=e.event_at and t.resolved_at is null)');
  if patched=original then raise exception 'Delivery return eligibility anchor missing';end if;execute patched;
+ original:=pg_get_functiondef('app.capture_delivery_push()'::regprocedure);
+ patched:=replace(original,'if tg_table_name=''item_comments'' then','if tg_table_name=''item_comments'' then' || chr(10) ||
+  ' if exists(select 1 from app.delivery_return_tasks where id=new.id) then return new;end if;');
+ if patched=original then raise exception 'Return comment push anchor missing';end if;execute patched;
 end $patch$;
 notify pgrst,'reload schema';
 

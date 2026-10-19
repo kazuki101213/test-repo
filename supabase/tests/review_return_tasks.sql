@@ -60,9 +60,34 @@ do $$begin
  if (select status from app.items where lot_seq=996811)<>'検品中' then raise exception 'Report did not return to inspection';end if;
  if (select count(*) from app.v_delivery_return_tasks where id='99681100-0000-0000-0000-000000000002')<>1 then raise exception 'Report return task missing/duplicated';end if;
 end $$;
+set local role postgres;
+do $begin
+ if not exists(select 1 from app.item_comments where id='99681100-0000-0000-0000-000000000002' and body like '%接続を確認%') then raise exception 'Return reason missing from product messages';end if;
+ if exists(select 1 from app.delivery_push_events where item_id=(select id from app.items where lot_seq=996811) and kind='reply') then raise exception 'Return generated duplicate generic reply push';end if;
+ if not exists(select 1 from app.claim_delivery_push() where lot_seq=996811 and kind='malfunction_return' and eligible) then raise exception 'Report return push not eligible';end if;
+end $;
+update app.delivery_return_tasks set created_at=clock_timestamp()-interval '25 hours' where id='99681100-0000-0000-0000-000000000002';
+set local role authenticated;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+do $begin
+ if exists(select 1 from app.v_delivery_notice_tasks where item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Expired return card remains visible';end if;
+ if not exists(select 1 from app.v_delivery_return_tasks where id='99681100-0000-0000-0000-000000000002') then raise exception 'Expiry erased unresolved work';end if;
+end $;
 select app.perform_inventory_action(id,'inspection_complete','検品中') from app.items where lot_seq=996811;
 do $$begin if exists(select 1 from app.v_delivery_return_tasks where item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Reinspection retained return task';end if;end $$;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+select app.approve_photo_review((select id from app.items where lot_seq=996811));
+insert into app.item_comments(item_id,author_id,body) select id,app.current_staff_id(),'再確認への返信です。' from app.items where lot_seq=996811;
+set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+do $begin
+ if not exists(select 1 from app.v_delivery_notice_tasks where kind='photo_approved' and item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Approval card missing';end if;
+ if not exists(select 1 from app.v_delivery_notice_tasks where kind='reply' and item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Reply card missing';end if;
+end $;
+set local role postgres;
+update app.photo_reviews set approved_at=clock_timestamp()-interval '25 hours' where item_id=(select id from app.items where lot_seq=996811);
+update app.item_comments set created_at=clock_timestamp()-interval '25 hours' where item_id=(select id from app.items where lot_seq=996811);
+set local role authenticated;
+do $begin if exists(select 1 from app.v_delivery_notice_tasks where item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Expired approval/reply card visible';end if;end $;
 set local role postgres;
 update app.staff set is_active=false where code='DD';
 set local role authenticated;
