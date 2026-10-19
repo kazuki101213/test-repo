@@ -1,7 +1,7 @@
 import ReturnTasks from '../components/ReturnTasks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
-import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters, STATUSES } from '@bussan/shared';
+import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
 import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import {fetchTask} from '../api';
@@ -13,9 +13,19 @@ import SpareShippingTasks from '../components/SpareShippingTasks';
 import { useTaskViewport } from '../hooks/useTaskViewport';
 import { deliverySearchFields, deliverySearchValue, matchesDeliverySearch, normalizeSearch, type DeliverySearchField } from '../deliverySearch';
 
-type Filter = 'all' | ItemStatus;
-const FILTERS: { key: Filter; label: string }[] = STATUSES.filter(key => key !== '動作不良' && key !== '返品処理').map(key => ({key,label:key}));
-const FOOTER_FILTERS: { key: Filter; label: string }[] = [{key:'all',label:'すべて'},{key:'動作不良',label:'動作不良'},{key:'返品処理',label:'返品処理'}];
+type Filter = 'all' | 'work' | 'selling' | ItemStatus;
+const GROUP_STATUSES: Partial<Record<Filter, ItemStatus[]>> = {
+  work: ['受取前', '検品中', '商品登録前'],
+  selling: ['出品中', '取引中'],
+};
+const FILTERS: { key: Filter; label: string }[] = [
+  {key:'work',label:'作業中'}, {key:'selling',label:'販売中'},
+  {key:'販売済',label:'販売済'}, {key:'Amazon返送依頼',label:'Amazon返品依頼'},
+];
+const FOOTER_FILTERS: { key: Filter; label: string }[] = [
+  {key:'動作不良',label:'動作不良'}, {key:'Amazon補填申請中',label:'Amazon補填申請中'},
+  {key:'返品処理',label:'返品処理'}, {key:'all',label:'すべて'},
+];
 
 function serialNumber(task: DeliveryTask): string {
   const prefix = task.sku.match(/^(\d+[a-z]*)-/i)?.[1];
@@ -37,7 +47,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [allProducts, setAllProducts] = useState(false);
   const [delivererId, setDelivererId] = useState('');
   const [assigneeFilterId, setAssigneeFilterId] = useState('');
-  const [filter, setFilter] = useState<Filter>(() => canViewDeliveryAssignee(staff) ? 'all' : '検品中');
+  const [filter, setFilter] = useState<Filter>(() => canViewDeliveryAssignee(staff) ? 'all' : 'work');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
@@ -46,7 +56,13 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
   const [notices, setNotices] = useState<DeliveryItemNotice[]>([]);
   const effectiveDelivererId = canViewDeliveryAssignee(staff) ? assigneeFilterId || (queryField === 'deliverer' ? delivererId : '') : '';
-  const inventory=useInventoryPage<DeliveryTask>(allProducts?'delivery-all':'delivery',staff.id,{status:filter,states:inventoryFilters,queryField,query:queryField==='deliverer'?'':query,delivererId:effectiveDelivererId});
+  const groupedStatuses = GROUP_STATUSES[filter];
+  // Use the existing server-side status array, retaining all other filter fields.
+  // For disjoint detailed statuses, keep both conditions so the server returns zero.
+  const overlappingStatuses = groupedStatuses?.filter(status => !inventoryFilters.status?.length || inventoryFilters.status.includes(status));
+  const requestStates = overlappingStatuses?.length ? {...inventoryFilters, status: overlappingStatuses} : inventoryFilters;
+  const requestStatus = groupedStatuses ? (overlappingStatuses?.length ? 'all' : groupedStatuses[0]) : filter;
+  const inventory=useInventoryPage<DeliveryTask>(allProducts?'delivery-all':'delivery',staff.id,{status:requestStatus,states:requestStates,queryField,query:queryField==='deliverer'?'':query,delivererId:effectiveDelivererId});
   const tasks=inventory.rows,loading=inventory.loading;
   const [exporting, setExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -115,10 +131,10 @@ export default function TaskList({ staff }: { staff: Staff }) {
     })).filter(({ task: t, members }) => {
       if (queryField !== 'deliverer' && q && !members.some(member => matchesDeliverySearch(deliverySearchValue(member, queryField, originalIds), queryField, query))) return false;
       if (!members.some(member => matchesInventoryFilters(member, inventoryFilters))) return false;
-      return filter === 'all' || t.status === filter;
+      return filter === 'all' || (groupedStatuses ? groupedStatuses.includes(t.status) : t.status === filter);
     });
     return { rows, originalIds };
-  }, [tasks, filter, query, queryField, staff.role, staff.code, effectiveDelivererId, inventoryFilters]);
+  }, [tasks, filter, groupedStatuses, query, queryField, staff.role, staff.code, effectiveDelivererId, inventoryFilters]);
   const shownRows = shown.rows;
   const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
   const selectableRows = allProducts ? [] : shownRows.filter(({members}) => members.every(canOperate));
@@ -180,7 +196,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
             key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key}
             onClick={() => selectState(f.key)}
           >
-            {f.label}
+            <span>{f.label}</span>
           </button>
         ))}
         <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key} onClick={() => selectState(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
