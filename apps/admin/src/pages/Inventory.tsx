@@ -138,6 +138,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
 
 
+      <div className="inventory-controls">
       <div className="inventory-registration-actions">
         <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
           {purchaseOpen ? '在庫登録を閉じる' : '在庫登録'}
@@ -161,12 +162,12 @@ export default function Inventory({ me }: { me: Staff }) {
             <DateInput aria-label="仕入日・終了日" placeholder="YY-MM-DD" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
           </label>
         </div>
-        {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
+        {(purchasedFrom || purchasedTo) && <button className="btn inventory-clear-dates" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
         <button type="button" className="btn inventory-clear-filters" onClick={clearFilters}>フィルター解除</button>
         {activeColumnCount > 0 && <span className="sub">項目フィルター {activeColumnCount}件</span>}
 
       </div>
-
+      </div>
 
       <details className="card purchase-draft-panel">
         <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>

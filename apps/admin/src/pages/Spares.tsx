@@ -5,7 +5,7 @@ import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import {useTaskConfirmation} from '../components/TaskConfirmation';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { MARKETPLACES, deleteSpareAccessory, fetchSpareAccessories, yen } from '@bussan/shared';
+import { MARKETPLACES, deleteSpareAccessory, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
 import { createSpareAccessory, findInventoryAccessoryForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory } from '../api';
 import type { SpareAccessoryField, SpareAccessoryInput } from '../api';
@@ -128,6 +128,8 @@ export default function Spares({ me }: { me: Staff }) {
     finally { setDeletingId(null); }
   }
 
+  const deleteButton = (row: SpareAccessory) => me.role === 'admin' && <button type="button" className="btn danger spare-row-delete" disabled={deletingId !== null || confirmation.pending} onClick={() => confirmation.ask(`予備の削除：${row.title}${row.source_sku ? `（${row.source_sku}）` : ''}`, () => remove(row), 'この操作は取り消せません。')}>{deletingId === row.id ? '削除中…' : '削除'}</button>;
+
   return <section className="card">
     {confirmation.confirmation}
     <div className="spare-search spare-toolbar" role="group" aria-label="予備検索">
@@ -168,7 +170,19 @@ export default function Spares({ me }: { me: Staff }) {
     </form>}
 
     {error && !adding && <p className="error">{error}</p>}
-    {loading ? <p>読み込み中…</p> : <div className="scroll"><table><thead><tr>
+    {loading ? <p>読み込み中…</p> : <><div className="management-spare-mobile-list">{filtered.map(row => <div className="management-spare-card" key={row.id}>
+      <div className="management-spare-heading"><strong><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></strong> <span className="badge">{spareState(row)}</span></div>
+      <div>保管担当者：<EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{staffDisplayName(row.owner_name) || '未設定'}</EditableSpare></div>
+      <div>メーカー：<EditableSpare row={row} field="manufacturer" onEdit={setEditFor}>{row.manufacturer || '未登録'}</EditableSpare></div>
+      <div>購入日：<EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare>　仕入金額：<EditableSpare row={row} field="cost_amount" onEdit={setEditFor}>{yen(row.cost_amount)}</EditableSpare></div>
+      <div>SKU：<EditableSpare row={row} field="source_sku" onEdit={setEditFor}>{row.source_sku || '—'}</EditableSpare></div>
+      <div>仕入先：<EditableSpare row={row} field="marketplace" onEdit={setEditFor}><ColoredLabel value={row.marketplace || '—'} /></EditableSpare></div>
+      <div>商品ID：<EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare></div>
+      <div>追跡番号：<EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></div>
+      <div>利用記録：<EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || '—'}</EditableSpare></div>
+      {deleteButton(row)}
+    </div>)}</div>
+    <div className="scroll spare-table-scroll"><table aria-label="予備一覧"><thead><tr>
       <th>保管担当者</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th>操作</th>}
     </tr></thead><tbody>{filtered.map(row => <tr key={row.id}>
       <td><EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{staffDisplayName(row.owner_name) || '未設定'}</EditableSpare></td>
@@ -180,8 +194,8 @@ export default function Spares({ me }: { me: Staff }) {
       <td><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || (row.used_for_item_id ? '商品へ割当済み' : '—')}</EditableSpare></td>
-      {me.role === 'admin' && <td><button type="button" className="btn danger spare-row-delete" disabled={deletingId !== null || confirmation.pending} onClick={() => confirmation.ask(`予備の削除：${row.title}${row.source_sku ? `（${row.source_sku}）` : ''}`, () => remove(row), 'この操作は取り消せません。')}>{deletingId === row.id ? '削除中…' : '削除'}</button></td>}
-    </tr>)}</tbody></table></div>}
+      {me.role === 'admin' && <td>{deleteButton(row)}</td>}
+    </tr>)}</tbody></table></div></>}
     {editFor && <SpareFieldDialog row={editFor.row} field={editFor.field} onClose={() => setEditFor(null)} onSaved={async () => { setEditFor(null); await reload(); }} />}
   </section>;
 }
