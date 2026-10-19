@@ -284,3 +284,20 @@
   .inventory-workflow-menu > [data-status="selling"] { grid-column:4; }
   .inventory-workflow-menu > [data-status="販売済"] { grid-column:5; }
 }
+
+/* Desktop auxiliary filters form one equal-width column, 18px after sold. */
+@media screen and (min-width:1280px) {
+  .delivery-inventory-workspace { padding-right:206px; }
+  .app .inventory-workflow-menu { grid-template-columns:106px 140px 94px 100px 100px max-content; }
+  .inventory-workflow-footer {
+    grid-column:6; grid-row:1 / 8; display:grid;
+    grid-template-columns:156px; grid-template-rows:repeat(5,44px);
+    gap:6px; align-content:start; margin-left:12px;
+  }
+  .app .inventory-workflow-footer > .btn { grid-column:1; width:100% !important; box-sizing:border-box; margin:0; }
+  .inventory-workflow-footer > .inventory-all-products { grid-row:1; }
+  .inventory-workflow-footer > [data-status="all"] { grid-row:2; }
+  .inventory-workflow-footer > [data-status="動作不良"] { grid-row:3; }
+  .inventory-workflow-footer > [data-status="返品処理"] { grid-row:4; }
+  .inventory-workflow-footer > [data-status="Amazon補填申請中"] { grid-row:5; }
+}
