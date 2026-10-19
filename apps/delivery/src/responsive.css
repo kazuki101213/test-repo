@@ -227,3 +227,12 @@
 @media screen and (max-width:1023px) {
   .app .invoice-toolbar .invoice-month-value { height:44px; padding-inline:4px; }
 }
+
+@media screen and (max-width:1023px) {
+  .app .invoice-toolbar .invoice-month-value { font-size:14px; }
+}
+@media screen and (max-width:359px) {
+  .invoice-toolbar { grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); }
+  .invoice-toolbar > .invoice-settings-button { grid-column:2; grid-row:3; justify-self:end; }
+  .invoice-toolbar > .invoice-toolbar-actions { grid-row:4; }
+}

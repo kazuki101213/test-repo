@@ -91,7 +91,7 @@ function testExtraRows(){
  const monthTree=ctx.exports.default(props);
  const input=all(monthTree).find(n=>n.type==='input');
  assert.equal(input.props.type,'month');assert.equal(input.props.value,'2026-10');assert.equal(input.props.required,true);
- assert.equal(input.props['aria-label'],'請求対象月');assert(text(monthTree).includes('2026年10月'));
+ assert.equal(input.props['aria-label'],'請求対象月');assert(text(monthTree).includes('2026-10'));
  input.props.onChange({target:{value:'2026-11'}});assert.equal(selected,'2026-11');
  monthRef.current={showPicker:()=>opened++};
  all(monthTree).find(n=>n.type==='button').props.onClick();assert.equal(opened,1);

@@ -5,6 +5,7 @@ import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchPr
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
 import {listingDraft} from '../listingDraft';
 import DescriptionEditor from './DescriptionEditor';
+import WorkflowConfirmation from './WorkflowConfirmation';
 
 function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>void}){
  const video=useRef<HTMLVideoElement>(null),[error,setError]=useState('');
@@ -24,6 +25,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const [draft,setDraft]=useState<SellerDraft|null>(null),[photos,setPhotos]=useState<ItemPhoto[]>([]),[selected,setSelected]=useState<string[]>([]),[context,setContext]=useState<SellerContext|null>(null);
  const [descriptionSource,setDescriptionSource]=useState<{task:DeliveryTask;maker:string}|null>(null);
  const [listingUrl,setListingUrl]=useState('');
+ const [confirming,setConfirming]=useState<'listing'|'listing_complete'|'ship_notice'|null>(null);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[camera,setCamera]=useState(false),[code,setCode]=useState(''),[posted,setPosted]=useState(false),[qr,setQr]=useState(''),[message,setMessage]=useState('');
  const lock=useRef(false),request=useRef(crypto.randomUUID()),lastFinished=useRef(''),readCode=useRef<(code:string)=>void>(()=>{});
  readCode.current=value=>{setCode(value);setCamera(false);};
@@ -76,9 +78,9 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     <label><span>{order<0?'出品しない':`${order+1}枚目`}</span><img src={photo.url} alt="出品写真" loading="lazy"/><input type="checkbox" aria-label={order<0?'この写真を出品に含める':`${order+1}枚目を出品に含める`} checked={order>=0} disabled={disabled||order<0&&selected.length>=10} onChange={event=>{setSelected(current=>event.target.checked?[...current,photo.id]:current.filter(id=>id!==photo.id));request.current=crypto.randomUUID();}}/></label>
     {order>=0&&<div className="seller-photo-order"><button type="button" className="btn" aria-label={`写真${order+1}を前へ`} title="前へ" disabled={disabled||order===0} onClick={()=>movePhoto(photo.id,-1)}>←</button><button type="button" className="btn" aria-label={`写真${order+1}を後へ`} title="後へ" disabled={disabled||order===selected.length-1} onClick={()=>movePhoto(photo.id,1)}>→</button></div>}
    </div>;})}</div>
-   <button type="button" className="btn primary" disabled={disabled||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||task.sales_channel==='ヤフオク'&&(!(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).includes(draft.size)||/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&draft.shippingPayer==='出品者負担'&&!draft.weightKg)||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>{if(window.confirm(`${task.sales_channel}へこの内容で出品しますか？`))void submit('listing',{...draft,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];})});}}>出品</button>
+   <button type="button" className="btn primary" disabled={disabled||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||task.sales_channel==='ヤフオク'&&(!(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).includes(draft.size)||/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&draft.shippingPayer==='出品者負担'&&!draft.weightKg)||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
    </>}
-   {amazonListing&&<button type="button" className="btn primary" disabled={disabled} onClick={()=>void completeAmazonListing()}>出品完了</button>}
+   {amazonListing&&<button type="button" className="btn primary" disabled={disabled} onClick={()=>setConfirming('listing_complete')}>出品完了</button>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
    <div className="seller-form"><label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{['100','140',...SMALL_PACKAGES.map(value=>value.name)].map(value=><option key={value}>{value}</option>)}</select></label><label>発送場所<select value={draft.dropoff} disabled={disabled} onChange={event=>change('dropoff',event.target.value)}><option value="">選択</option>{['ヤマト営業所','セブンイレブン','ローソン'].map(value=><option key={value}>{value}</option>)}</select></label></div>
    {draft.category==='小物'&&<div>{SMALL_PACKAGES.map(value=><p key={value.name}>{value.name}：{value.dimensions}</p>)}</div>}
@@ -87,7 +89,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
     {proof?.kind==='register_package'&&<label><input type="checkbox" checked={posted} onChange={event=>setPosted(event.target.checked)}/>投函しました</label>}
    </>:<><button type="button" className="btn" disabled={disabled||!draft.size||!draft.dropoff} onClick={()=>void submit('shipping_code',tradePayload)}>配送QRコードを表示</button>{qr&&<img src={qr} className="seller-qr" alt="対象取引の配送QRコード"/>}<button type="button" className="btn" disabled={disabled||!latestCode} onClick={()=>void submit('verify_shipping',tradePayload)}>店舗での受付を確認</button></>}
-   <button type="button" className="btn primary" disabled={disabled||!proof||proof.kind==='register_package'&&!posted} onClick={()=>void submit('ship_notice',{...tradePayload,proof_id:proof?.id,posted})}>発送通知</button>
+   <button type="button" className="btn primary" disabled={disabled||!proof||proof.kind==='register_package'&&!posted} onClick={()=>setConfirming('ship_notice')}>発送通知</button>
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>
    {Array.isArray(latestMessages)&&latestMessages.map((entry,index)=><p key={index} className="seller-preview">{entry&&typeof entry==='object'&&typeof entry.body==='string'?entry.body:''}</p>)}
@@ -95,6 +97,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <button type="button" className="btn primary" disabled={disabled||!message.trim()} onClick={()=>{if(window.confirm('取引相手へ送信しますか？'))void submit('message_send',{...tradePayload,body:message.trim()});}}>送信</button>
   </>}
   {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<div><label>出品済み商品のURL（任意）<input type="url" value={listingUrl} disabled={busy||!!watching} onChange={event=>setListingUrl(event.target.value)}/></label><button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button></div>}
+  {confirming&&<WorkflowConfirmation button={{key:confirming==='ship_notice'?'shipping':confirming,label:confirming==='listing_complete'?'出品完了':confirming==='ship_notice'?'発送通知':task.sales_channel+'出品',confirmation:confirming==='listing'?task.sales_channel+'へこの内容で出品しますか？':undefined}} busy={busy} onCancel={()=>setConfirming(null)} onConfirm={()=>{if(lock.current||disabled||!draft||confirming==='ship_notice'&&(!proof||proof.kind==='register_package'&&!posted))return;void (async()=>{try{if(confirming==='listing_complete')await completeAmazonListing();else if(confirming==='ship_notice')await submit('ship_notice',{...tradePayload,proof_id:proof?.id,posted});else await submit('listing',{...draft,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];})});}finally{setConfirming(null);}})();}}/>}
   <div className="seller-history" aria-live="polite">{operations.map(op=><p key={op.id}>{statusText(op)}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
  </section>;
 }
