@@ -33,6 +33,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const { sectionRef, shippingRef, viewportHeight } = useTaskViewport();
 
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
+  const [allProducts, setAllProducts] = useState(false);
   const [delivererId, setDelivererId] = useState('');
   const [assigneeFilterId, setAssigneeFilterId] = useState('');
   const [filter, setFilter] = useState<Filter>(() => canViewDeliveryAssignee(staff) ? 'all' : '検品中');
@@ -44,7 +45,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
   const [notices, setNotices] = useState<DeliveryItemNotice[]>([]);
   const effectiveDelivererId = canViewDeliveryAssignee(staff) ? assigneeFilterId || (queryField === 'deliverer' ? delivererId : '') : '';
-  const inventory=useInventoryPage<DeliveryTask>('delivery',staff.id,{status:filter,states:inventoryFilters,queryField,query:queryField==='deliverer'?'':query,delivererId:effectiveDelivererId});
+  const inventory=useInventoryPage<DeliveryTask>(allProducts?'delivery-all':'delivery',staff.id,{status:filter,states:inventoryFilters,queryField,query:queryField==='deliverer'?'':query,delivererId:effectiveDelivererId});
   const tasks=inventory.rows,loading=inventory.loading;
   const [exporting, setExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -118,6 +119,11 @@ export default function TaskList({ staff }: { staff: Staff }) {
     return { rows, originalIds };
   }, [tasks, filter, query, queryField, staff.role, staff.code, effectiveDelivererId, inventoryFilters]);
   const shownRows = shown.rows;
+  const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
+  const selectableRows = allProducts ? [] : shownRows.filter(({members}) => members.every(canOperate));
+  function toggleAllProducts() {
+    setAllProducts(current => !current);setFilter('all');setInventoryFilters({});setAssigneeFilterId('');setDelivererId('');setQuery('');setQueryField('serial');setExpandedId(null);setSelected(new Set());
+  }
   const noticeRef = useRef(notices);
   noticeRef.current = notices;
   const openingReads = useRef(new Set<string>());
@@ -172,13 +178,13 @@ export default function TaskList({ staff }: { staff: Staff }) {
             {f.label}
           </button>
         ))}
-        <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={filter === f.key} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</button>)}</div>
+        <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={filter === f.key} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
       </div>
       </div>
       <div className="export-actions">
         <span>{shownRows.length} / {inventory.total}商品</span>
         <button className="btn" disabled={exporting || selected.size === 0} onClick={() => void exportAmazon()}><span className="inventory-desktop-label">{exporting ? '出力中…' : `Amazon出品ファイル（${selected.size}件）`}</span><span className="inventory-mobile-label">{exporting ? '出力中…' : 'Amazon出品ファイル'}</span></button>
-        <button className="btn" disabled={exporting || shownRows.length === 0} onClick={() => setSelected(current => new Set([...current, ...shownRows.map(group => group.task.id)]))}><span className="inventory-desktop-label">表示中を選択</span><span className="inventory-mobile-label">全選択</span></button>
+        <button className="btn" disabled={exporting || selectableRows.length === 0} onClick={() => setSelected(current => new Set([...current, ...selectableRows.map(group => group.task.id)]))}><span className="inventory-desktop-label">表示中を選択</span><span className="inventory-mobile-label">全選択</span></button>
         <button className="btn" disabled={exporting || selected.size === 0} onClick={() => setSelected(new Set())}>選択解除</button>
       </div>
 
@@ -187,7 +193,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;

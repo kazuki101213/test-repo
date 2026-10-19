@@ -64,7 +64,7 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
   </span>;
 }
 
-export default function TaskCard({ task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
+export default function TaskCard({ readOnly = false, showAssignee = false, task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange, selected, onSelect, disabled }: { readOnly?: boolean; showAssignee?: boolean; task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void; selected: boolean; onSelect: () => void; disabled: boolean }) {
   const [panel,setPanel]=useState<ProductPanel>(()=>new URLSearchParams(window.location.search).get('openMessages')==='1'?'messages':'photos');
   const [actionError,setActionError]=useState<string|null>(null);
   async function refreshAction(){const updated=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(updated)onTaskChange(updated);}
@@ -81,11 +81,12 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
   return (
     <div id={`delivery-task-${task.id}`} className="card task-card" data-expanded={!!expandedId} data-item-status={task.status}>
       {members.some(member => unreadItemIds.has(member.id)) && <span className="photo-approval-mark" role="img" aria-label="未確認のメッセージまたは写真承認があります" />}
-      <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled} onChange={onSelect} />
+      <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled || readOnly} onChange={onSelect} />
       <div className="task-content">
       <div className="task-product-summary">
       <div className="task-card-overview">
         <div className="task-card-info">
+          {readOnly && <span className="muted task-read-only">閲覧のみ</span>}
           <span className="task-section-title">{task.is_accessory ? '付属品' : '本体'}</span>
           {task.is_accessory && <span className="task-detail-field"><span>品名</span><span>{task.title}</span></span>}
           <CopyableText label="SKU" value={task.sku} />
@@ -98,11 +99,11 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
           <span className="task-detail-field"><span>仕入日</span><span>{jpDate(task.purchased_at)}</span></span>
           <span className="task-detail-field"><span>仕入先</span><span>{task.marketplace}</span></span>
           <span className="task-detail-field"><span>状態</span><span>{task.status}</span></span>
-          {canViewDeliveryAssignee(staff) && <span className="task-detail-field task-assignee"><span>納品担当者</span><span>{task.deliverer_name || '未設定'}</span></span>}
+          {(canViewDeliveryAssignee(staff) || showAssignee) && <span className="task-detail-field task-assignee"><span>納品担当者</span><span>{task.deliverer_name || '未設定'}</span></span>}
           {task.memo?.trim() && <span className="purchaser-comment">仕入担当者からのコメント：{task.memo}</span>}
         </div>
         <div className="task-photo-action">
-          <button type="button" className="task-card-photo-button" aria-label={expandedId&&panel==='photos' ? '写真を閉じる' : '写真を表示'} aria-expanded={!!expandedId} onClick={() => expandedId&&panel==='photos' ? onClose() : openPanel('photos')}>
+          <button type="button" className="task-card-photo-button" disabled={readOnly} aria-label={expandedId&&panel==='photos' ? '写真を閉じる' : '写真を表示'} aria-expanded={!!expandedId} onClick={() => expandedId&&panel==='photos' ? onClose() : openPanel('photos')}>
             {amazonImageUrl ? <img className="task-card-photo" src={amazonImageUrl} alt={`${task.title}のAmazon商品画像`} loading="lazy" /> : <span className="task-card-photo task-card-no-photo" aria-label="Amazon商品画像なし">写真なし</span>}
           </button>
         </div>
@@ -111,31 +112,31 @@ export default function TaskCard({ task, amazonImageUrl, members, originalMarket
         {members.filter(member => member.id !== task.id).map(member => <div key={member.id} className={`task-member-row${member.is_accessory ? ' task-member-accessory' : ''}`}>
           {member.is_accessory ? <>
             <span className="task-section-title">付属品</span>
-            <button type="button" className="task-member-open task-detail-field" aria-expanded={expandedId === member.id} onClick={() => {setPanel('photos');onOpenMember(member.id);}}><span>品名</span><span>{member.title}</span></button>
+            <button type="button" className="task-member-open task-detail-field" disabled={readOnly} aria-expanded={expandedId === member.id} onClick={() => {setPanel('photos');onOpenMember(member.id);}}><span>品名</span><span>{member.title}</span></button>
             <span className="task-item-id-line"><CopyableText label={itemIdLabel(member)} value={productIdFor(member)} /><button type="button" className="task-item-page-link" aria-label="仕入先の商品ページを開く" disabled={!isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)} title={isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url) ? '仕入先の商品ページを開く' : '登録されたURLは対応フリマサイトの商品ページではありません'} onClick={() => { if (isAllowedMarketplaceUrl(member.marketplace, member.marketplace_url)) window.open(member.marketplace_url!, '_blank', 'noopener,noreferrer'); }}><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg></button></span>
             <CopyableText label={trackingLabel(member)} value={member.tracking_no || '—'} />
             <span className="task-detail-field"><span>仕入日</span><span>{jpDate(member.purchased_at)}</span></span>
             <span className="task-detail-field"><span>仕入先</span><span>{member.marketplace}</span></span>
             <span className="task-detail-field"><span>利用記録</span><span>{member.lot_seq}</span></span>
-            {canViewDeliveryAssignee(staff) && <span className="task-detail-field task-assignee"><span>納品担当者</span><span>{member.deliverer_name || '未設定'}</span></span>}
+            {(canViewDeliveryAssignee(staff) || showAssignee) && <span className="task-detail-field task-assignee"><span>納品担当者</span><span>{member.deliverer_name || '未設定'}</span></span>}
             {member.memo?.trim() && <span className="purchaser-comment">仕入担当者からのコメント：{member.memo}</span>}
           </> : <>
-            <button type="button" className="btn task-member-open" aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
+            <button type="button" className="btn task-member-open" disabled={readOnly} aria-expanded={expandedId === member.id} onClick={() => onOpenMember(member.id)}>
               同じ商品：{modelFor(member)}
             </button>
             {member.marketplace === '動作品Amazon返品' && <CopyableText label="ENA" value={productIdFor(member)} />}
             <CopyableText label={trackingLabel(member)} value={member.tracking_no || '—'} />
-            {canViewDeliveryAssignee(staff) && <span>納品担当者 {member.deliverer_name || '未設定'}</span>}
+            {(canViewDeliveryAssignee(staff) || showAssignee) && <span>納品担当者 {member.deliverer_name || '未設定'}</span>}
             {member.memo?.trim() && <span className="purchaser-comment">仕入担当者からのコメント：{member.memo}</span>}
             <span className="muted task-member-date">仕入日 {jpDate(member.purchased_at)}</span>
           </>}
         </div>)}
       </div>}
       </div>
-      <WorkflowControls task={task} onChanged={refreshAction} onError={setActionError} onPanel={openPanel} />
+      {!readOnly && <WorkflowControls task={task} onChanged={refreshAction} onError={setActionError} onPanel={openPanel} />}
       {actionError&&<p className="error" role="alert">{actionError}</p>}
       </div>
-      {expandedId && (panel==='listing'||panel==='shipping'||panel==='messages'&&(task.status==='取引中'||task.status==='出品中') ? <Suspense fallback={<p>読み込み中…</p>}><SellerPanel listingSkus={listingSkus} mode={panel} task={members.find(member=>member.id===expandedId)??task} staff={staff} onClose={onClose} onChanged={onTaskChange}/></Suspense> : <TaskDetail mode={panel} key={`${expandedId}-${detailRevision}-${panel}`} itemId={expandedId} latestTask={members.find(member => member.id === expandedId)} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />)}
+      {!readOnly && expandedId && (panel==='listing'||panel==='shipping'||panel==='messages'&&(task.status==='取引中'||task.status==='出品中') ? <Suspense fallback={<p>読み込み中…</p>}><SellerPanel listingSkus={listingSkus} mode={panel} task={members.find(member=>member.id===expandedId)??task} staff={staff} onClose={onClose} onChanged={onTaskChange}/></Suspense> : <TaskDetail mode={panel} key={`${expandedId}-${detailRevision}-${panel}`} itemId={expandedId} latestTask={members.find(member => member.id === expandedId)} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened} />)}
     </div>
   );
 }

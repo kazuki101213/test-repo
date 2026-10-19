@@ -130,8 +130,14 @@ export default function Spares({ me }: { me: Staff }) {
 
   return <section className="card">
     {confirmation.confirmation}
-    <div className="toolbar"><span style={{ flex: 1 }} />
+    <div className="spare-search spare-toolbar" role="group" aria-label="予備検索">
       <button className="btn primary" aria-expanded={adding} onClick={() => { setAdding(open => !open); setError(''); }}>予備追加</button>
+      <select aria-label="予備の検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as SpareSearchField); setQuery(''); setOwnerId(''); }}>
+        {spareSearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
+      </select>
+      {queryField === 'owner'
+        ? <select aria-label="保管担当者で検索" value={ownerId} onChange={event => setOwnerId(event.target.value)}><option value="">全員</option>{deliveryStaffOptions(staff).map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select>
+        : <input type="search" aria-label="予備を検索" value={query} onChange={event => setQuery(event.target.value)} placeholder="検索" />}
     </div>
     {adding && <form className="card spare-entry" onSubmit={event => void add(event)}>
       <h3>予備付属品を登録</h3>
@@ -160,14 +166,7 @@ export default function Spares({ me }: { me: Staff }) {
       {error && <p className="error" role="alert">{error}</p>}
       <div className="toolbar"><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '登録する'}</button><button type="button" className="btn" disabled={saving || autofillBusy} onClick={() => setAdding(false)}>閉じる</button></div>
     </form>}
-    <div className="spare-search" role="group" aria-label="予備検索">
-      <select aria-label="予備の検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as SpareSearchField); setQuery(''); setOwnerId(''); }}>
-        {spareSearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
-      </select>
-      {queryField === 'owner'
-        ? <select aria-label="保管担当者で検索" value={ownerId} onChange={event => setOwnerId(event.target.value)}><option value="">全員</option>{deliveryStaffOptions(staff).map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select>
-        : <input type="search" aria-label="予備を検索" value={query} onChange={event => setQuery(event.target.value)} placeholder="検索" />}
-    </div>
+
     {error && !adding && <p className="error">{error}</p>}
     {loading ? <p>読み込み中…</p> : <div className="scroll"><table><thead><tr>
       <th>保管担当者</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th>操作</th>}

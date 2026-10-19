@@ -48,11 +48,9 @@ export default function ExpenseList({ revision }: { revision: number }) {
     && (!query.trim() || d.name.toLowerCase().includes(query.trim().toLowerCase())));
   return <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費">
-    <div className="toolbar"><span style={{ flex: 1 }} />
+    <div className="toolbar expense-search-toolbar">
       <button className="btn primary" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => { setExpenseOpen(open => !open); setEditing(undefined); setDraft(undefined); }}>{expenseOpen ? '経費登録を閉じる' : '経費登録'}</button>
-    </div>
-    <div className="toolbar">
-      <label className="field"><span>内容</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} /></label>
+      <input aria-label="経費を検索" placeholder="検索" type="search" value={query} onChange={e => setQuery(e.target.value)} />
     </div>
     {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
       <div className="expense-columns-scroll"><div className="expense-columns">{columns.map(category => {
