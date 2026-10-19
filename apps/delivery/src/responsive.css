@@ -236,3 +236,7 @@
   .invoice-toolbar > .invoice-settings-button { grid-column:2; grid-row:3; justify-self:end; }
   .invoice-toolbar > .invoice-toolbar-actions { grid-row:4; }
 }
+
+@media screen {
+  .app .invoice-toolbar input:not([aria-hidden=true]), .app .invoice-toolbar select, .app .invoice-toolbar button, .app .invoice-toolbar .invoice-month-value { box-sizing:border-box; height:44px; min-height:44px; }
+}
