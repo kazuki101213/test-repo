@@ -99,6 +99,7 @@
 
 @media screen and (min-width:1280px) {
   .delivery-inventory-workspace { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:16px; align-items:stretch; }
+  .delivery-inventory-workspace:has(.delivery-return-task) { grid-template-columns:minmax(0,1fr); }
   .delivery-inventory-sidebar { display:flex; flex-direction:column; min-width:0; }
   .delivery-inventory-sidebar .delivery-inventory-search { display:grid; grid-template-columns:148px minmax(0,1fr) auto; gap:8px; margin-top:0; }
   .delivery-inventory-sidebar .delivery-inventory-search > select { grid-column:1; grid-row:1; }
