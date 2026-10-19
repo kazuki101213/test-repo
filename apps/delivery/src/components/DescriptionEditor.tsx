@@ -5,9 +5,10 @@ import { fetchProductMaker, saveDeliveryDescription } from '../api';
 import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, type DescriptionTarget } from '../description';
 
 function initialTarget(task: DeliveryTask): DescriptionTarget {
-  if (task.marketplace === '動作品Amazon返品') return 'mercari';
-  if (task.sales_channel === 'メルカリ' || task.description?.includes('商品名（メルカリ）')) return 'mercari';
-  if (task.sales_channel === 'ヤフオク' || task.description?.includes('商品名（ヤフオク）')) return 'yahoo-auction';
+  if (task.sales_channel === 'メルカリ') return 'mercari';
+  if (task.sales_channel === 'ヤフオク') return 'yahoo-auction';
+  if (task.marketplace === '動作品Amazon返品' || task.description?.startsWith('商品名（メルカリ）')) return 'mercari';
+  if (task.description?.startsWith('商品名（ヤフオク）')) return 'yahoo-auction';
   return 'amazon';
 }
 
@@ -41,8 +42,10 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
   const [accessories, setAccessories] = useState(task.accessories ?? '');
   const [year, setYear] = useState(task.manufacture_year?.toString() ?? '');
   const [manufacturer, setManufacturer] = useState(embedded?.manufacturer??'');
-  const [manual, setManual] = useState<string | null>(task.description || null);
-  const [saved, setSaved] = useState(Boolean(task.description));
+  const savedChannel=task.description?.match(/^商品名（(メルカリ|ヤフオク)）/)?.[1];
+  const savedForOtherChannel=!!savedChannel&&['メルカリ','ヤフオク'].includes(task.sales_channel??'')&&savedChannel!==task.sales_channel;
+  const [manual, setManual] = useState<string | null>(savedForOtherChannel?null:task.description || null);
+  const [saved, setSaved] = useState(Boolean(task.description)&&!savedForOtherChannel);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

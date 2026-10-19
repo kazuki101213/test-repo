@@ -13,7 +13,8 @@ export function listingDraft(task:DeliveryTask,manufacturer:string,listingSkus:s
   modelNo:productModelText(task),manufacturer,inspected:task.inspected,cleaned:task.cleaned,salesChannel:task.sales_channel});
  if(target==='amazon')return {...defaults,condition,description:task.description?.trim()?task.description:generated};
  const automatic=sellerDefaults({...task,description:generated});
- if(!task.description?.trim())return automatic;
+ const savedChannel=task.description?.match(/^商品名（(メルカリ|ヤフオク)）/)?.[1];
+ if(!task.description?.trim()||savedChannel&&savedChannel!==task.sales_channel)return automatic;
  // Older saved descriptions have no title section; retain their body and generate the title.
  return /^商品名（(?:メルカリ|ヤフオク)）\r?\n/.test(task.description)?defaults:{...defaults,title:automatic.title};
 }

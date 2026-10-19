@@ -123,3 +123,14 @@ test('出品結果の待機中にmainが交換されても最新の完了リン�
 test('出品結果の非同期エラーを応答に残しnullへ落とさない',async()=>{
  const p=await page('<h1>エラーが発生しました</h1>','https://jp.mercari.com/sell/create');const result=await p.evaluate(sellerDomOperation,{job:listing,phase:'listing_result',reportErrors:true});assert.match(result.__error,/販売サイトがエラー/);await p.close();
 });
+
+test('ヤフオクの商品URLリダイレクト後も出品結果の商品IDを取得し再送しない',async()=>{
+ const job={...listing,channel:'ヤフオク'};
+ for(const url of ['https://auctions.yahoo.co.jp/jp/auction/m1248960977','https://page.auctions.yahoo.co.jp/jp/auction/m1248960977']){
+  const p=await page('<h1>【2398】4B-C20AT3 SHARP</h1><button onclick="document.body.dataset.submitted=1">出品する</button>',url);
+  const result=await p.evaluate(sellerDomOperation,{job,phase:'listing_result',reportErrors:true});assert.equal(result.external_id,'m1248960977');assert.equal(result.url,'https://page.auctions.yahoo.co.jp/jp/auction/m1248960977');assert.equal(await p.evaluate(()=>document.body.dataset.submitted),undefined);await p.close();
+ }
+});
+test('ヤフオク完了画面の新ホスト商品リンクから一意の結果だけを読む',async()=>{
+ const p=await page('<h1>出品が完了しました</h1><a href="https://auctions.yahoo.co.jp/jp/auction/m1248960977">商品を見る</a>','https://auctions.yahoo.co.jp/sell/jp/show/complete');const r=await p.evaluate(sellerDomOperation,{job:{...listing,channel:'ヤフオク'},phase:'listing_result',reportErrors:true});assert.equal(r.external_id,'m1248960977');await p.close();
+});
