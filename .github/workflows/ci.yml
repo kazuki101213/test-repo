@@ -13,7 +13,7 @@ jobs:
   # ── アプリ側: 型の不整合とビルドエラーを見つける ──────────────────
   apps:
     name: アプリのビルド確認
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -49,7 +49,7 @@ jobs:
   # ── データベース側: スキーマと権限設定が壊れていないか確認する ────
   database:
     name: データベースの検証
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     # 使い捨ての PostgreSQL を立てて、そこにマイグレーションを流す
     services:
