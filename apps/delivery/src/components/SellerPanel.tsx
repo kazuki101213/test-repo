@@ -51,7 +51,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  function change<K extends keyof SellerDraft>(field:K,value:SellerDraft[K]){setDraft(current=>current?{...current,[field]:value}:current);request.current=crypto.randomUUID();}
  const amazonListing=mode==='listing'&&['FBA','自己発送'].includes(task.sales_channel??'');
  async function descriptionSaved(){setContext(await fetchSellerContext(task.id));const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(full)onChanged(full);}
- function updateDescription(value:Partial<SellerDraft>){setDraft(current=>current?{...current,...value}:current);request.current=crypto.randomUUID();}
+ function updateDescription(value:Partial<SellerDraft>){setDraft(current=>current?{...current,...value,...(task.sales_channel==='ヤフオク'&&value.category&&value.category!==current.category?{weightKg:value.category==='小物'?'2':'5'}:{})}:current);request.current=crypto.randomUUID();}
  async function completeAmazonListing(){if(lock.current||busy||context?.photo_review_approved!==true||task.photo_review_approved!==true)return;lock.current=true;setBusy(true);setError('');try{await performInventoryAction(task,'listing_complete','',request.current);request.current=crypto.randomUUID();const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(full)onChanged(full);}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
  const disabled=busy||pending||(mode==='listing'&&(task.photo_review_approved!==true||context?.photo_review_approved!==true)),trade=context?.listing?.trade_key;
  const tradePayload={trade_key:trade,size:draft?.size,dropoff:draft?.dropoff,shippingMethod:draft?.shippingMethod,category:draft?.category};

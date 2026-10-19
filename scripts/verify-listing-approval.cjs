@@ -51,8 +51,12 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
  if(channel==='ヤフオク'){
   const weight=all(tree).find(n=>n.type==='label'&&all(n).some(child=>child==='梱包後の重さ'||child?.props?.children==='梱包後の重さ'))||all(tree).find(n=>n.type==='label'&&Array.isArray(n.props?.children)&&n.props.children[0]==='梱包後の重さ');
   assert(weight,'Buyer-paid postal shipping must expose the packed weight');const select=all(weight).find(n=>n.type==='select');assert(select);
-  const named=()=>all(tree).find(n=>n.type==='button'&&n.props.children==='出品');assert.equal(named().props.disabled,true,'Missing weight blocks publish before queue');assert.equal(queued,undefined);
-  select.props.onChange({target:{value:'5'}});await settle();assert.equal(named().props.disabled,false);assert.equal(queued,undefined,'Selecting weight never queues a listing');return;
+  const named=()=>all(tree).find(n=>n.type==='button'&&n.props.children==='出品');assert.equal(select.props.value,'5','Recorder weight defaults to 5kg');assert.equal(named().props.disabled,false);select.props.onChange({target:{value:''}});await settle();assert.equal(named().props.disabled,true,'Clearing weight blocks publish before queue');assert.equal(queued,undefined);
+    select.props.onChange({target:{value:'10'}});await settle();assert.equal(named().props.disabled,false);
+  const embedded=()=>all(tree).find(n=>n.props?.embedded)?.props.embedded;
+  embedded().onChange({description:'手入力本文',category:'ブルーレイレコーダー'});await settle();assert.equal(embedded().value.weightKg,'10','Same category edits retain manual weight');
+  embedded().onChange({category:'小物'});await settle();assert.equal(embedded().value.weightKg,'2');
+  embedded().onChange({category:'モニター'});await settle();assert.equal(embedded().value.weightKg,'5');assert.equal(queued,undefined,'Weight and category selection never queues a listing');return;
  }
  if(approved&&!saved){
   const order=()=>all(tree).filter(n=>n.props?.className==='seller-photo').map(n=>all(n).find(child=>child.type==='img').props.src);
