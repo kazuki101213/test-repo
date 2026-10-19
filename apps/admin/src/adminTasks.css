@@ -1,10 +1,11 @@
+.invoice-task-rows > .admin-task-card a { color:var(--accent); }
 /* Approved management task cards. Screen styles only; document previews stay unchanged. */
 .invoice-task-rows > .admin-task-card { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:0 12px; padding:10px 12px; margin:0 0 8px; border:1px solid var(--border); border-radius:12px; background:var(--surface); min-width:0; font-size:13.333px; line-height:20px; }
 .invoice-task-rows > .admin-task-card .task-action-details { display:flex; flex-flow:row wrap; align-items:baseline; gap:0 4px; min-width:0; white-space:normal; font-size:inherit; line-height:20px; }
 .invoice-task-rows > .admin-task-card .task-action-details > strong { flex-basis:100%; margin:0; line-height:20px; }
 .invoice-task-rows > .admin-task-card .task-action-details > small { display:inline; margin:0; font:inherit; overflow-wrap:anywhere; }
 .invoice-task-rows > .admin-task-card .task-action-details > a,.invoice-task-rows > .admin-task-card .task-action-details > span { margin:0; min-width:0; overflow-wrap:anywhere; }
-.invoice-task-rows > .admin-task-card .btn { display:inline-flex; justify-content:center; align-items:center; width:auto; min-height:44px; margin:0; padding:8px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); white-space:nowrap; font-size:13px; }
+.invoice-task-rows > .admin-task-card .btn { display:inline-flex; justify-content:center; align-items:center; width:auto; min-height:44px; margin:0; padding:8px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); white-space:nowrap; font-size:13px; }
 .invoice-task-rows > .admin-simple-task > .btn { grid-column:2; grid-row:1 / span 2; align-self:start; }
 .invoice-task-rows > .admin-photo-task .admin-photo-count { grid-column:1; line-height:20px; }
 .invoice-task-rows > .admin-task-card .malfunction-task-content { grid-column:1; grid-row:1; min-width:0; }
