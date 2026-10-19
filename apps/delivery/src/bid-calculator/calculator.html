@@ -170,6 +170,25 @@ body{font-family:inherit;background:#f3efe5;color:#342f28}.tab-header{background
  html[data-layout="compact"] .shipping-mobile-row { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:5px; }
  html[data-layout="compact"] .shipping-mobile-row > button { width:100% !important; min-width:0; justify-self:stretch; padding:8px 4px !important; font-size:12px; }
 }
+
+/* Match the application's text tabs and use explicit PC/phone row layouts. */
+@media screen {
+ html[data-layout] .tab-header { display:flex; align-items:center; justify-content:flex-start; gap:24px; border:0; border-radius:0; background:transparent; padding:8px 0; }
+ html[data-layout] .tab-btn { padding:8px 4px !important; border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:#342f28; font-size:15px; font-weight:400; }
+ html[data-layout] .tab-btn.active { border-bottom-color:#71836a; color:#71836a; }
+ html[data-layout="desktop"] .calculator-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; align-items:start; }
+ .calculator-column { min-width:0; }
+ html[data-layout="desktop"] [id^="shippingRow"] { display:flex !important; flex-wrap:nowrap !important; gap:3px !important; }
+ html[data-layout="desktop"] [id^="shippingRow"] > button { padding-inline:4px !important; font-size:12px; }
+ html[data-layout="compact"] .tab-header { justify-content:space-between; gap:4px; }
+ html[data-layout="compact"] .tab-btn { padding-inline:0 !important; font-size:clamp(10px,3vw,12px); }
+ html[data-layout="compact"] .model-input-row { grid-template-columns:minmax(0,1fr) auto auto; gap:4px !important; }
+ html[data-layout="compact"] .model-input-row > .model-select { grid-column:auto; padding-inline:6px; }
+ html[data-layout="compact"] .model-input-row > button { padding-inline:6px !important; font-size:12px !important; }
+ html[data-layout="compact"] .shipping-row { grid-template-columns:auto 96px auto; justify-content:start; }
+ html[data-layout="compact"] .shipping-row input { width:96px; }
+}
+
 </style>
 <script>
 function appendMobileShippingPresets(containerId,inputId) {
@@ -185,12 +204,12 @@ function appendMobileShippingPresets(containerId,inputId) {
 </head>
 <body>
 
-<div class="tab-header">
-  <button class="tab-btn active" onclick="showTab('calc', this)">ブルーレイ</button>
-  <button class="tab-btn" onclick="showTab('manual', this)">使い方（ブルーレイ）</button>
+<nav class="tab-header" aria-label="計算ツールのメニュー">
+  <button class="tab-btn active" aria-current="page" onclick="showTab('calc', this)">ブルーレイレコーダー</button>
+  <button class="tab-btn" onclick="showTab('manual', this)">使い方(BD)</button>
   <button class="tab-btn" onclick="showTab('calc_m', this)">モニター</button>
-  <button class="tab-btn" onclick="showTab('manual_m', this)">使い方（モニター）</button>
-</div>
+  <button class="tab-btn" onclick="showTab('manual_m', this)">使い方(M)</button>
+</nav>
 
 <section id="sourceFeedback" aria-label="データ取得の確認事項">
   <p id="bussanStatus" role="alert"></p>
@@ -200,9 +219,10 @@ function appendMobileShippingPresets(containerId,inputId) {
 <div id="calc" class="tab-content active">
 
   <!-- Data load -->
+  <div class="calculator-columns"><div class="calculator-column">
   <div class="load-card">
     <div class="load-row">
-      <button class="load-btn" onclick="loadData()">🔄 商品データ読込</button>
+      <button class="load-btn" onclick="loadData()">商品データ読込</button>
       <span id="loadStatus" class="load-status"></span>
     </div>
   </div>
@@ -239,6 +259,7 @@ function appendMobileShippingPresets(containerId,inputId) {
   </div>
 
   <!-- STEP 3: Multiplier -->
+  </div><div class="calculator-column">
   <div class="card">
     <div class="card-title"><span class="step-badge">3</span>掛け率を選択</div>
     <div class="rate-list">
@@ -324,6 +345,7 @@ function appendMobileShippingPresets(containerId,inputId) {
 
   </div>
 
+  </div></div>
   <button class="calc-btn" onclick="calculate()">入札金額を計算する</button>
 
   <div id="resultBox" style="display:none;">
@@ -454,9 +476,10 @@ function appendMobileShippingPresets(containerId,inputId) {
 <!-- ===== MONITOR CALCULATOR ===== -->
 <div id="calc_m" class="tab-content">
 
+  <div class="calculator-columns"><div class="calculator-column">
   <div class="load-card">
     <div class="load-row">
-      <button class="load-btn" onclick="loadData_m()">🔄 商品データ読込</button>
+      <button class="load-btn" onclick="loadData_m()">商品データ読込</button>
       <span id="loadStatus_m" class="load-status"></span>
     </div>
   </div>
@@ -484,6 +507,7 @@ function appendMobileShippingPresets(containerId,inputId) {
     </div>
   </div>
 
+  </div><div class="calculator-column">
   <div class="card">
     <div class="card-title"><span class="step-badge">3</span>掛け率を選択</div>
     <div class="rate-list">
@@ -544,6 +568,7 @@ function appendMobileShippingPresets(containerId,inputId) {
     </div>
   </div>
 
+  </div></div>
   <button class="calc-btn" onclick="calculate_m()">入札金額を計算する</button>
 
   <div id="resultBox_m" style="display:none;">
@@ -634,9 +659,10 @@ const VALID_MAKERS = ['Panasonic', 'SONY', 'SHARP', 'TOSHIBA', 'Panasonic リモ
 // ---- Tab ----
 function showTab(tab, btn) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => { el.classList.remove('active'); el.removeAttribute('aria-current'); });
   document.getElementById(tab).classList.add('active');
   btn.classList.add('active');
+  btn.setAttribute('aria-current', 'page');
 }
 
 
@@ -782,7 +808,7 @@ function resolveBussanProduct(value,monitor=false) {
 function setBussanLoading(loading) {
   for(const button of document.querySelectorAll('button[onclick="loadData()"], button[onclick="loadData_m()"]')) {
     button.disabled=loading;
-    button.textContent=loading?'読み込み中…':'🔄 商品データ読込';
+    button.textContent=loading?'読み込み中…':'商品データ読込';
     button.setAttribute('aria-busy',String(loading));
   }
 }
