@@ -169,7 +169,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       <div className="delivery-inventory-workspace">
       <div className="delivery-inventory-sidebar">
       <div className="delivery-inventory-search" role="group" aria-label="在庫検索">
-        <select aria-label="検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as DeliverySearchField | 'deliverer'); setDelivererId(''); setQuery(''); setExpandedId(null); setSelected(new Set()); }}>
+        <select aria-label="検索項目" data-search-field={queryField} value={queryField} onChange={event => { setQueryField(event.target.value as DeliverySearchField | 'deliverer'); setDelivererId(''); setQuery(''); setExpandedId(null); setSelected(new Set()); }}>
           {canViewDeliveryAssignee(staff) && <option value="deliverer">納品担当者</option>}
           {deliverySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
         </select>
