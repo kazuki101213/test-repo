@@ -9,6 +9,14 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Standard runner for publication
+        type: choice
+        default: ubuntu-24.04
+        options:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
 
 permissions:
   contents: read
@@ -21,7 +29,7 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
