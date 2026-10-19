@@ -323,9 +323,19 @@
 }
 @media screen and (min-width:1280px) and (max-width:1439px) {
   .delivery-inventory-workspace { height:331.6px; }
-}@media screen and (min-width:1280px) {
+}
+@media screen and (min-width:1280px) {
   .app .delivery-inventory-sidebar .delivery-inventory-search > :is(input,select[aria-label="納品担当者で検索"]) { grid-column:2; grid-row:1; width:100%; }
   .app .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:3; grid-row:1; width:max-content; }
   .app .delivery-inventory-sidebar .delivery-inventory-search > select:first-child { grid-column:1; grid-row:1; }
   .inventory-workflow-lane { font-size:12px; padding-left:8px; }
+}
+/* Keep search and state selection on the left, giving the right todo more height. */
+@media screen and (min-width:1280px) {
+  .delivery-inventory-workspace { grid-template-rows:44px minmax(0,1fr); row-gap:5.6px; }
+  .delivery-inventory-sidebar { display:contents; }
+  .app .delivery-inventory-sidebar .delivery-inventory-search { grid-column:1; grid-row:1; margin:0; }
+  .app .delivery-inventory-workspace > .inventory-workflow-menu { grid-column:1; grid-row:2; }
+  .app .delivery-inventory-sidebar .delivery-task-heading { grid-column:2; grid-row:1; align-self:start; margin:0; }
+  .app .delivery-inventory-sidebar .delivery-reply-tasks { grid-column:2; grid-row:1 / -1; margin:28px 0 0; min-height:0; }
 }
