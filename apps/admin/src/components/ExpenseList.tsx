@@ -49,7 +49,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   return <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費">
     <div className="toolbar"><span style={{ flex: 1 }} />
-      <button className="btn" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => { setExpenseOpen(open => !open); setEditing(undefined); setDraft(undefined); }}>{expenseOpen ? '経費登録を閉じる' : '経費登録'}</button>
+      <button className="btn primary" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => { setExpenseOpen(open => !open); setEditing(undefined); setDraft(undefined); }}>{expenseOpen ? '経費登録を閉じる' : '経費登録'}</button>
     </div>
     <div className="toolbar">
       <label className="field"><span>内容</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} /></label>

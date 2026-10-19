@@ -129,9 +129,9 @@ export default function Spares({ me }: { me: Staff }) {
 
   return <section className="card">
     <div className="toolbar"><span style={{ flex: 1 }} />
-      <button className="btn primary" aria-expanded={adding} onClick={() => { setAdding(open => !open); setError(''); }}>予備を追加</button>
+      <button className="btn primary" aria-expanded={adding} onClick={() => { setAdding(open => !open); setError(''); }}>予備追加</button>
     </div>
-    {adding && <form className="card" onSubmit={event => void add(event)}>
+    {adding && <form className="card spare-entry" onSubmit={event => void add(event)}>
       <h3>予備付属品を登録</h3>
       <div className="grid cols2">
         <label className="field"><span>利用記録（通番号）</span><input value={form.usage_note ?? ''} onChange={event => { setSourceItemId(null); setReferenceFound(false); setForm(current => ({ ...current, usage_note: event.target.value || null })); }} onBlur={event => void autofillFromUsageSerial(event.target.value)} /></label>

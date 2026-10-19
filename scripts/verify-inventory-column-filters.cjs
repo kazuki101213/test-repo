@@ -44,7 +44,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
 (async()=>{
  await settle();
  assert(all(tree).some(n=>n.type==='table'&&n.props.className==='inventory-table'),'Show first batch while remaining rows load');
- assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='一覧をCSV').props.disabled,true,'Do not export an incomplete result');
+ assert(!all(tree).some(n=>n.type==='button'&&['一覧をCSV','再読込'].includes(n.props.children)),'Requested inventory export and reload controls are absent');
  initialRead=false;dirty=true;await settle();
  const commentHeadings=all(tree).filter(n=>n.type==='button'&&['仕入担当者からのコメントのフィルター','納品担当者からのコメントのフィルター'].includes(n.props['aria-label']));assert.equal(commentHeadings[0].props['aria-label'],'仕入担当者からのコメントのフィルター');
  const commentButtons=all(tree).filter(n=>n.type==='button'&&n.props.className==='inventory-comment');assert.equal(commentButtons.length,6);
@@ -61,7 +61,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert(stateFilter());assert(!all(tree).some(n=>['仕入先フィルター','販売先フィルター','販売状態フィルター'].includes(n.props?.['aria-label'])));
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1);
- all(tree).find(n=>n.type==='button'&&n.props.children==='フィルターをすべて解除').props.onClick();await settle();assert.equal(Object.keys(stateFilter().props.value).length,0);
+ all(tree).find(n=>n.type==='button'&&n.props.children==='フィルター解除').props.onClick();await settle();assert.equal(Object.keys(stateFilter().props.value).length,0);
  const accessoryRow=all(tree).find(n=>n.type==='tr'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
  const saleCell=all(accessoryRow).filter(n=>n.type==='td')[11];
  const moneyButtons=all(saleCell).filter(n=>n.type==='button');
@@ -81,7 +81,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1,'Keep headings with zero matching rows');
  selector().props.onChange({target:{value:'serial'}});await settle();
  all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.onChange({target:{value:'search'}});await settle();
- all(tree).find(n=>n.type==='button'&&n.props.children==='フィルターをすべて解除').props.onClick();await settle();
+ all(tree).find(n=>n.type==='button'&&n.props.children==='フィルター解除').props.onClick();await settle();
  assert.equal(lastRequest.queryField,'serial');assert.equal(selector().props.value,'serial');
  assert.equal(lastRequest.query,'');assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds,undefined);assert.equal(lastRequest.from,'');assert.equal(lastRequest.to,'');
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
