@@ -60,7 +60,13 @@ export default function Spares({ staff }: { staff: Staff }) {
     </div>
     {error && <p className="error" role="alert">{error}</p>}
     {loading ? <p>読み込み中…</p> : shown.length === 0 ? <p className="empty">予備はありません。</p> :
-      <div className="spare-list">{shown.map(row => <div className="spare-row" key={row.id}>
+      <><div className="spare-desktop-table"><table aria-label="予備一覧"><thead><tr>
+        <th>保管担当者</th><th>品名</th><th>状態</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>SKU</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>
+      </tr></thead><tbody>{shown.map(row => <tr key={row.id}>
+        <td>{staffDisplayName(row.owner_name) || '未設定'}</td><td>{row.title}</td><td>{spareState(row)}</td><td>{row.manufacturer || '未登録'}</td>
+        <td>{row.purchased_at || '—'}</td><td>{yen(row.cost_amount)}</td><td>{row.source_sku || '—'}</td><td>{row.marketplace_item_id || '—'}</td><td>{row.tracking_no || '—'}</td><td>{row.usage_note || '—'}</td>
+      </tr>)}</tbody></table></div>
+      <div className="spare-list spare-mobile-list">{shown.map(row => <div className="spare-row" key={row.id}>
         <div className="spare-row-heading"><div><strong>{row.title}</strong> <span className="badge">{spareState(row)}</span></div></div>
         <div>保管担当者：{staffDisplayName(row.owner_name) || '未設定'}</div>
         <div>メーカー：{row.manufacturer || '未登録'}</div>
@@ -69,6 +75,6 @@ export default function Spares({ staff }: { staff: Staff }) {
         {row.marketplace_item_id && <div>商品ID：{row.marketplace_item_id}</div>}
         {row.tracking_no && <div>追跡番号：{row.tracking_no}</div>}
         {row.usage_note && <div>利用記録：{row.usage_note}</div>}
-      </div>)}</div>}
+      </div>)}</div></>}
   </section>;
 }
