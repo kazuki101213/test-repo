@@ -1,4 +1,4 @@
-import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.116';
+import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.123';
 const PROFILE_ACCOUNTS={
  'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':'auctions-1',
  'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1',
@@ -8,6 +8,7 @@ const PROFILE_SALES={'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':['auctions-1'],'f29f
 export function sellerInspectionApplies(request,profileId,previous,now=Date.now()){
  if(!request||!PROFILE_ACCOUNTS[profileId]||request.id===previous||!/^[-0-9a-f]{36}$/i.test(request.id||''))return false;
  if(request.advanceShippingSize!=null||request.issueShippingQr!=null||request.listingPreview!=null||request.readListingShippingOnly!=null)return false;
+ if(request.saleEvidenceLimit!=null&&(!request.saleEvidence||!Number.isInteger(request.saleEvidenceLimit)||request.saleEvidenceLimit<1||request.saleEvidenceLimit>40))return false;
  if(request.saleEvidence!=null&&(request.saleEvidence!==true||request.sellerListsOnly!==true||!request.accountId))return false;
  if(request.accountId!=null&&(!request.sellerListsOnly||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
  if(request.sellerListsOnly!=null&&(request.sellerListsOnly!==true||!request.accountId&&profileId!=='ba92b386-e0bc-48be-b3b6-ca9550fa1a2d'))return false;
@@ -22,7 +23,10 @@ export function saleDetailEvidence(site,row,page){
  const result={external_id:row.external_id,serial:row.serial,source:url.origin+url.pathname,productIds:ids,amounts:{},dates:[]};
  for(const label of ['商品代金','販売利益','決済金額','受取金額'])result.amounts[label]=[...text.matchAll(new RegExp(label+'\\s*[:：]?\\s*[¥￥]?\\s*([0-9][0-9,]*)\\s*(?:円)?','g'))].map(m=>Number(m[1].replaceAll(',',''))).slice(0,4);
  result.dates=[...text.matchAll(/(?:購入日時|取引日)\s*[:：]?\s*(20[0-9]{2})[年/.-]\s*([0-9]{1,2})[月/.-]\s*([0-9]{1,2})/g)].map(m=>m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')).slice(0,4);
- try{result.parsed=parseSellerSaleDetail(site==='mercari'?'メルカリ':'ヤフオク',text,row.external_id);}catch(error){result.parseError=error.message;}
+ try{result.parsed=parseSellerSaleDetail(site==='mercari'?'メルカリ':'ヤフオク',text,row.external_id,page.url);}catch(error){result.parseError=error.message;}
+ result.sourceItemMatches=[...url.searchParams.values()].includes(row.external_id);result.sourceQueryKeys=[...url.searchParams.keys()];result.dateFragments=[...text.matchAll(/(開始日時|終了日時|落札日時|落札日|終了日|取引日)\s*[:：]?\s*([0-9０-９年月日時分秒月火水木金土日（日）()：:/.\s-]{1,65})/g)].map(m=>({label:m[1],value:m[2].trim()})).slice(0,8);result.dateTokens=[...text.matchAll(/20[0-9]{2}\s*[年/.\-]\s*[0-9]{1,2}\s*[月/.\-]\s*[0-9]{1,2}/g)].map(m=>m[0]).slice(0,8);result.dateLabels=['開始日時','終了日時','落札日時','終了日','落札日','取引日'].filter(label=>text.includes(label));result.dateFields=[];
+ for(const label of ['購入日時','取引日','取引日時','落札日時','終了日時','落札日','終了日','支払日','取扱日','決済日','入金日']){const found=[...text.matchAll(new RegExp(label+'\\s*[:：]?\\s*(20[0-9]{2})[年/.-]\\s*([0-9]{1,2})[月/.-]\\s*([0-9]{1,2})(?:日)?(?:\\s+([0-9]{1,2})[:：]([0-9]{2}))?','g'))];for(const m of found.slice(0,4))result.dateFields.push({label,date:m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0')});}
+ result.detailLinks=(page.links||[]).filter(l=>/取引画面|取引ナビ|取引情報|商品ページ/.test(l.text)).map(l=>{const u=new URL(l.url);return{label:l.text.slice(0,20),host:u.hostname,path:u.pathname,itemMatches:l.url.includes(row.external_id)};}).slice(0,8);
  return result;
 }
 /** User-supplied item ID: exact transaction and serial checks, no form entry or clicks. */
@@ -99,7 +103,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    const enqueue=links=>{for(const link of links)if(['出品した商品','出品一覧','出品中','取引中','売却済み','出品終了分','売上金管理'].includes(link.text)&&!seen.has(link.url)&&!queue.some(x=>x.url===link.url))queue.push(link);};
    enqueue(menu);evidence.pages.push({kind:'seller-menu',...await session.structure()});
    for(let n=0;queue.length&&n<7;n++){const link=queue.shift();seen.add(link.url);await session.go(link.url);const phase=['出品した商品','出品一覧'].includes(link.text)?null:link.text;const page=await session.read(phase);if(request.saleEvidence===true)for(const row of page.rows.slice(0,account.site==='auctions'?40:50))if(row.status==='販売済'&&!saleRows.some(old=>old.external_id===row.external_id))saleRows.push(row);const plans=rpc&&page.rows.length?await rpc('seller_observation_plan',{p_account_id:account.id,p_rows:page.rows.slice(0,100)}):[];evidence.pages.push({kind:'seller-list-only',phase:link.text,planCounts:plans.reduce((out,p)=>(out[p.action]=(out[p.action]||0)+1,out),{}),samples:page.rows.slice(0,8).map(({external_id,serial,status})=>({external_id,serial,status})),...await session.structure(),rowCount:page.rows.length,itemCount:page.itemCount,empty:page.empty,active:page.active,statuses:[...new Set(page.rows.map(row=>row.status))],emptyPhrases:[...page.text.matchAll(/[^。]{0,25}(?:ありません|ございません|見つかりません)[^。]{0,30}/g)].map(m=>m[0]).slice(0,5)});enqueue(page.navigation);}
-   if(request.saleEvidence===true){const row=saleRows[0];evidence.saleEvidence=row?saleDetailEvidence(account.site,row,await session.detail(row.detail_url,row.external_id)):{empty:true};}
+   if(request.saleEvidence===true){evidence.saleEvidenceRows=[];for(const row of saleRows.slice(0,request.saleEvidenceLimit||1)){if(Date.now()>Date.parse(request.expiresAt))throw Error('診断の有効期限を過ぎました');evidence.currentItem=row.external_id;const detail=await session.detail(row.detail_url,row.external_id),result=saleDetailEvidence(account.site,row,detail);evidence.saleEvidenceRows.push(result);if(result.parseError&&account.site==='auctions'&&session.auctionDetail){try{const auction=await session.auctionDetail(row.external_id);result.alternate=saleDetailEvidence(account.site,row,auction);result.parsed=parseSellerSaleDetail('ヤフオク',detail.text,row.external_id,detail.url,auction);delete result.parseError;}catch(error){result.alternateError=error.message;}}if(result.parseError)break;}evidence.saleEvidence=evidence.saleEvidenceRows[0]||{empty:true};}
    evidence.status='completed';return true;
   }
 
