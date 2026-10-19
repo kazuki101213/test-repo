@@ -20,7 +20,7 @@
   .layout .spare-table-scroll { display:none; }
   .management-spare-mobile-list { display:grid; gap:8px; margin-top:14px; }
   .management-spare-card { padding:12px; border:1px solid var(--border); border-radius:10px; line-height:1.6; min-width:0; overflow-wrap:anywhere; }
-  .management-spare-card .expense-edit { display:inline; min-height:0; padding:0; line-height:inherit; font:inherit; text-align:left; }
+  .management-spare-card .expense-edit { display:inline-block; width:auto; max-width:100%; min-height:0; padding:0; line-height:inherit; font:inherit; text-align:left; vertical-align:baseline; }
   .management-spare-heading { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
   .management-spare-card > .spare-row-delete { margin-top:8px; }
 }
