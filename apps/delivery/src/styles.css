@@ -303,7 +303,7 @@ textarea { min-height: 80px; resize: vertical; }
 .inventory-multi-filter-actions { position:sticky; top:0; z-index:1; display:flex; align-items:center; gap:8px; padding-bottom:8px; background:var(--surface); }
 
 @media (max-width: 640px), (pointer: coarse) {
-  .inventory-multi-filter-panel { position: fixed; z-index: 1200; left: 8px; right: 8px; top: 8px; width: auto; max-width: none; max-height: calc(100dvh - 16px); box-sizing: border-box; }
+  .inventory-multi-filter-panel { position: fixed; z-index: 1200; left: 0; right: auto; top: 8px; width: min(300px, 55vw); max-width: calc(100vw - 96px); max-height: calc(100dvh - 16px); box-sizing: border-box; }
 }
 
 
