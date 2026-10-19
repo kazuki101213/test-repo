@@ -67,3 +67,7 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/malfunction_report_photos.sql"
 DB="$DB" "$HERE/check-app-schema.py"
 
 echo "すべて成功しました"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/review_return_tasks.sql"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/packing_photo_notices.sql"

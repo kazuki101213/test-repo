@@ -23,6 +23,7 @@ export function notificationPayload(row: { app_kind: string; kind: string; lot_s
   if (row.app_kind === 'delivery') return { body: notificationBody(row.kind, row.lot_seq), itemId: row.item_id, tag: `delivery-${row.item_id}-${row.kind}` };
   const docs = ['invoice','receipts'].includes(row.kind);
   const body = row.kind === 'malfunction' ? `【${row.lot_seq}】動作不良の報告が届きました。`
+    : row.kind === 'packing_photo' ? `【${row.lot_seq}】梱包が追加されました。`
     : row.kind === 'photo_review' ? `【${row.lot_seq}】写真確認のタスクが追加されました。`
     : row.kind === 'action' ? `【${row.lot_seq}】${row.task_name?.includes('ヤフオク') ? 'ヤフオク販売' : row.task_name || '作業'}のタスクが追加されました。`
     : `【${row.billing_month?.slice(0,7)}】${row.owner_name || '担当者'}の書類確認タスクが追加されました。`;
@@ -31,7 +32,9 @@ export function notificationPayload(row: { app_kind: string; kind: string; lot_s
 }
 
 export function notificationBody(kind: string, lot: number): string {
-  if (kind === 'reply') return `【${lot}】メッセージが届きました`;
-  if (kind === 'photo') return `【${lot}】写真が承認されました。`;
+  if (kind === 'photo_return') return `【${lot}】商品写真の修正お願いします。`;
+  if (kind === 'malfunction_return') return `【${lot}】動作不良への返信があります。`;
+  if (kind === 'reply') return `【${lot}】動作不良への返信があります。`;
+  if (kind === 'photo') return `【${lot}】商品写真承認されました。`;
   return `【${lot}】新しい担当商品が追加されました。`;
 }

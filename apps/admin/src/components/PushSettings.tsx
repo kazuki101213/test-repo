@@ -69,7 +69,7 @@ export default function PushSettings({ userId }: { userId: string }) {
     </div>
     {homeScreen ? <p className="muted">iPhoneはSafariの共有メニューから「ホーム画面に追加」し、追加した管理アプリを開いて「通知を有効にする」を押してください（iOS 16.4以降）。</p>
       : !supported ? <p className="muted">このブラウザでは通知を利用できません。対応ブラウザまたはホーム画面から開いてください。</p>
-      : <p className="muted">新しい動作不良・販売作業・写真確認・書類確認のタスクをお知らせします。通知音は端末の通知・消音設定に従います。</p>}
+      : <p className="muted">新しい動作不良・販売作業・写真確認・梱包写真・書類確認のタスクをお知らせします。通知音は端末の通知・消音設定に従います。</p>}
     {message && <p role="status">{message}</p>}
   </section>;
 }

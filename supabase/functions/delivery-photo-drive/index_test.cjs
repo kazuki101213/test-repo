@@ -15,9 +15,10 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     ],
     lot_photo_folders:[{lot_seq:123,drive_folder_id:'shared'}],
     photo_reviews:[{item_id:'original',drive_folder_id:'old-folder',approved_at:'approved',exported_photo_count:1}],
-    google:[], downloads:[], signed:[],
+    google:[], downloads:[], signed:[], notices:[],
   };
   const service = {
+    async rpc(name,args){assert.equal(name,'record_packing_photo_notice');state.notices.push(args);return {error:null};},
     auth:{getUser:async()=>({data:{user:{id:'user'}}})},
     from(table) {
       const filters=[]; let from=0,to=Infinity, mutation=null;
@@ -48,6 +49,7 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     if(String(url).includes('/upload/drive/')) return new Response('{}',{headers:{Location:'https://www.googleapis.com/upload/session'}});
     if(String(url).includes('/upload/session')) return Response.json({id:'new-file'});
     if(String(url).includes('/files/shared?') && !init.method) return Response.json({id:'shared',name:'old-sku'});
+    if(String(url).includes('/files/new-file?') && !init.method) return Response.json({id:'new-file',parents:['shared']});
     if(String(url).includes('/files/old-file?') && !init.method) return Response.json({id:'old-file',parents:['old-folder']});
     if(String(url).includes('/files?') && !init.method) return Response.json({files:[]});
     if(init.method==='PATCH') return Response.json({id:'patched'});
@@ -135,6 +137,7 @@ test('packing evidence shares the existing Drive folder without entering listing
  const response=await call('save',{purpose:'packing'});assert.equal(response.status,200);
  assert.deepEqual(await response.json(),{folderId:'shared',added:1,total:1});
  assert.deepEqual(state.downloads,['photos/packed.jpg']);
+ assert.equal(state.notices.length,1);assert.deepEqual(state.notices[0],{p_item_id:itemId,p_source_photo_id:'packed',p_photo_count:1});
  assert.equal(JSON.stringify(state.photo_reviews),before);
  const upload=state.google.find(req=>req.url.includes('/upload/drive/'));
  assert.deepEqual(JSON.parse(upload.body).parents,['shared']);
@@ -150,4 +153,13 @@ test('packing export accepts only the configured pre-transition stage and retain
   }
  }
  const {call}=setup({assigned:false});assert.equal((await call('save',{purpose:'packing'})).status,403);
+});
+
+test('rejected photos can be resubmitted without duplicate file uploads',async()=>{
+ const {state,call}=setup();assert.equal((await call('save')).status,200);
+ const review=state.photo_reviews.find(row=>row.item_id===itemId);review.rejected_at='returned';review.submitted_at='old-submission';
+ const downloads=state.downloads.length;const uploads=state.google.filter(row=>row.url.includes('/upload/drive/')).length;
+ const response=await call('save');assert.equal(response.status,200);assert.equal((await response.json()).added,0);
+ assert.notEqual(review.submitted_at,'old-submission','A new submission reaches the DB resubmission trigger');
+ assert.equal(state.downloads.length,downloads);assert.equal(state.google.filter(row=>row.url.includes('/upload/drive/')).length,uploads);
 });

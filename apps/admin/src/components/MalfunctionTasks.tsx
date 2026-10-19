@@ -1,3 +1,4 @@
+import ReturnReasonDialog from './ReturnReasonDialog';
 import { useTaskConfirmation } from './TaskConfirmation';
 import MalfunctionReportPhotos from './MalfunctionReportPhotos';
 import { productSerial } from '../inventory';
@@ -268,6 +269,14 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     finally { setBusy(null); }
   }
 
+  const [returning,setReturning]=useState<MalfunctionTask|null>(null);
+  const returnRequest=useRef('');
+  async function returnReport(reason:string){
+    if(!returning)return;
+    const {error:returnError}=await getSupabase().rpc('perform_inventory_action',{p_item_id:returning.id,p_action:'send_back',p_expected_status:returning.status,p_note:reason,p_request_id:returnRequest.current});
+    if(returnError)throw returnError;
+    await refresh();setReturning(null);
+  }
   async function resolve(row: MalfunctionTask, action: InventoryAction) {
     setBusy(row.id); setError('');
     try {
@@ -289,7 +298,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {rows.map(row => {
       const source = purchaseSources.get(row.id);
       const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, source?.marketplace_item_id ?? row.marketplace_item_id, source?.marketplace_url ?? null);
-      const controls = (staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).filter(button=>button.key!=='yahoo_instruction').sort((a,b)=>['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(a.key)-['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(b.key)).map(button=><button key={button.key} className="btn" data-action={button.key} data-direction={workflowButtonDirection(button.key)} disabled={busy !== null || pending} onClick={()=>ask((row.status === '動作不良' ? '動作不良' : '破損報告')+'：'+button.label,()=>resolve(row,button.key as InventoryAction))}>{button.label}</button>)}</div>;
+      const controls = (staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).filter(button=>button.key!=='yahoo_instruction').sort((a,b)=>['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(a.key)-['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(b.key)).map(button=><button key={button.key} className="btn" data-action={button.key} data-direction={workflowButtonDirection(button.key)} disabled={busy !== null || pending} onClick={()=>{if(button.key==='send_back'){returnRequest.current=crypto.randomUUID();setReturning(row);}else ask((row.status === '動作不良' ? '動作不良' : '破損報告')+'：'+button.label,()=>resolve(row,button.key as InventoryAction));}}>{button.label}</button>)}</div>;
       return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className={`malfunction-task-row admin-task-card ${row.status === '動作不良' ? 'malfunction-report-row admin-fault-task' : 'admin-damage-task'}`}>
       <div className="malfunction-task-content">
         <div className="task-action-details malfunction-report-details">
@@ -304,6 +313,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       </div>
       {row.status === '動作不良' ? <MalfunctionConversation item={{...row, marketplace_item_id: source?.marketplace_item_id ?? row.marketplace_item_id}} staff={staff} onReplied={refresh} actions={controls} /> : controls}
     </li>;})}
+    {returning&&<ReturnReasonDialog label={(returning.status==='動作不良'?'動作不良':'破損報告')+'：差し戻し'} onSubmit={returnReport} onCancel={()=>setReturning(null)}/>}
     {confirmation}
   </>;
 }
