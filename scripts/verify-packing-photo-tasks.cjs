@@ -3,6 +3,8 @@ const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOpt
 const jsx=(type,props)=>({type,props}),all=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(n.props?.children)];
 const flush=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
 const urlContext={exports:{},URL,encodeURIComponent};vm.runInNewContext(compile('packages/shared/src/noticeUrl.ts'),urlContext);
+assert.equal(urlContext.exports.noticeProductUrl('ヤフオク','1246364486',null),'https://auctions.yahoo.co.jp/jp/auction/1246364486');
+assert.equal(urlContext.exports.noticeProductUrl(null,null,'javascript:alert(1)'),null);
 async function scenario(mode){
  let cursor=0,hooks=[],effects=[],acks=0,reads=0;
  const react={useState(initial){let i=cursor++;hooks[i]??={value:initial};return[hooks[i].value,v=>hooks[i].value=typeof v==='function'?v(hooks[i].value):v];},useRef(value){return hooks[cursor++]??={current:value};},useEffect(fn,deps){let i=cursor++;if(!hooks[i]||deps.some((v,k)=>v!==hooks[i].deps[k])){hooks[i]?.cleanup?.();let h=hooks[i]={deps};effects.push(()=>h.cleanup=fn());}}};
