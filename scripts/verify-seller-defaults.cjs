@@ -9,3 +9,7 @@ for(const [name,origin,place,postal] of cases)for(const channel of ['メルカ�
  assert.equal(draft.price,Math.ceil(20981*(channel==='メルカリ'?.8:.4)));assert.equal(draft.size,'100');
 }
 console.log('Seven staff shipping defaults and channel prices passed');
+for(const [title,category,weight] of [['リモコン','小物','2'],['ブルーレイレコーダー BDZ-ZW1500','ブルーレイレコーダー','5'],['液晶テレビ','テレビ','5'],['液晶モニター','モニター','5']]){
+ for(const channel of ['ヤフオク','メルカリ']){const draft=sellerExports.sellerDefaults({title,sales_channel:channel});assert.equal(draft.category,category);assert.equal(draft.weightKg,channel==='ヤフオク'?weight:undefined);}
+}
+console.log('Yahoo packed weight: small 2kg, other categories 5kg; Mercari unchanged');
