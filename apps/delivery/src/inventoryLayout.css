@@ -301,5 +301,5 @@
   .inventory-workflow-footer > [data-status="動作不良"] { grid-row:1; }
   .inventory-workflow-footer > [data-status="返品処理"] { grid-row:2; }
   .inventory-workflow-footer > [data-status="Amazon補填申請中"] { grid-row:3; }
-  .app .inventory-workflow-footer > :is(.inventory-all-products,[data-status="all"]) { grid-column:2; width:max-content !important; justify-self:start; }
+  .app .inventory-workflow-footer > :is(.inventory-all-products,[data-status="all"]) { grid-column:2; width:100% !important; justify-self:start; }
 }
