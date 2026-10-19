@@ -32,6 +32,9 @@ function inventoryLink(nodes,label,item){
  const many=Array.from({length:201},(_,n)=>({id:'task'+n,lot_seq:n,sku:'SKU'+n,sales_channel:'ヤフオク'}));
  const manyNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{listing_tasks:many},many.map(t=>({id:t.id,marketplace_item_id:'ID'+t.id})));
  assert.equal(manyNodes.filter(n=>n.props?.className==='task-action-details listing-task-details').length,201,'All task IDs survive bounded query batches');
+ const channels=['メルカリ','ヤフオク','自己発送','FBA'];
+ const photoNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{photo_reviews:channels.map((sales_channel,n)=>({id:'review'+n,item_id:'review'+n,submitted_at:'2026-10-19',exported_photo_count:8,item:{id:'review'+n,sku:'250'+n+'-SKU',lot_seq:2500+n,title:'写真商品',sales_channel}}))});
+ for(const channel of channels)assert(photoNodes.some(n=>n.type==='strong'&&text(n)==='写真確認（'+channel+'販売用）'),'Photo review retains actual '+channel+' channel through reference hydration');
  const itemId='22222222-2222-4222-8222-222222222222';
  const actionNodes=await render('apps/admin/src/components/MalfunctionTasks.tsx',{malfunctions:['動作不良','Amazon補填申請中'].map((status,n)=>({id:'report'+n,status,sku:(2400+n)+'b-REPORT',lot_seq:2400+n,title:'報告商品',asin:null,marketplace_item_id:'report-product-'+n,people:[],malfunction_reported_at:'2026-10-18T01:00:00Z',malfunction_comment:'報告内容'})),actions:[{id:'different-comment-id',item_id:itemId,task_kind:'SONY◯ヤフオク',sku:'auction',created_at:'2026-10-18'},{id:'supplier-task',item_id:'supplier-item',task_kind:'仕入先確認',lot_seq:2395,marketplace_item_id:'mSUPPLIER',sku:'2395b-SUPPLIER',created_at:'2026-10-18'}]});
  assert(!actionNodes.some(n=>n.props?.id==='admin-action-different-comment-id'),'Obsolete Yahoo sale card is hidden');
@@ -44,9 +47,6 @@ function inventoryLink(nodes,label,item){
   if(n===0){const conversation=all(report).filter(node=>typeof node.type==='function'&&node.props.item?.id==='report0');assert.equal(conversation.length,1,'One conversation renders actual history, without duplicate fetches');assert.deepEqual(JSON.parse(JSON.stringify(all(conversation[0].props.actions).filter(node=>node.type==='button').map(node=>node.props['data-action']))),['supplier_check','send_back']);}
   assert(all(report).some(node=>node.props?.className==='malfunction-report-message'&&text(node)==='報告内容'),'Original report message remains');
  }
- const supplier=actionNodes.find(n=>n.props?.id==='admin-action-supplier-task');assert(supplier,'Supplier confirmation remains visible');
- const supplierIdentity=all(supplier).find(n=>n.props?.className==='task-action-details supplier-task-details');assert(supplierIdentity);assert.deepEqual(JSON.parse(JSON.stringify(supplierIdentity.props.children.map(text))),['仕入先確認','【2395b】','【mSUPPLIER】','2395b-SUPPLIER']);
- inventoryLink(all(supplier),'仕入先確認商品の在庫を開く','supplier-item');
- const supplierLink=all(supplier).find(n=>n.type==='a'&&n.props['aria-label']==='仕入先確認のメッセージを開く');const supplierUrl=new URL(supplierLink.props.href);assert.equal(supplierUrl.searchParams.get('itemId'),'supplier-item');assert.equal(supplierUrl.searchParams.get('openMessages'),'1');
- console.log('PASS: both listing channels show ordered matching IDs/SKUs, bounded ID reads, inventory links; obsolete Yahoo cards hidden and supplier tasks retained without transactions');
+ assert(!actionNodes.some(n=>n.props?.id==='admin-action-supplier-task'),'Supplier confirmation does not add a separate action card');
+ console.log('PASS: listing IDs/SKUs and links, bounded reads, photo review sales channels, original reports retained without duplicate supplier action cards');
 })().catch(error=>{console.error(error);process.exitCode=1;});

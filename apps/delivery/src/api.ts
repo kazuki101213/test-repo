@@ -84,6 +84,11 @@ export async function markDeliveryItemNoticesRead(notice: DeliveryItemNotice): P
   if (error) throw error;
 }
 
+export async function completeDeliveryNotice(noticeId: string, itemId: string): Promise<void> {
+  const {error} = await getSupabase().rpc('complete_delivery_notice', {p_notice_id:noticeId,p_item_id:itemId});
+  if (error) throw error;
+}
+
 export async function saveDeliveryDescription(itemId: string, input: {
   condition: ItemCondition | null; accessories: string; description: string; template: string | null; year: number | null;
 }) {

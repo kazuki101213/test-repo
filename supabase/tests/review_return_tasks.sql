@@ -70,7 +70,7 @@ update app.delivery_return_tasks set created_at=clock_timestamp()-interval '25 h
 set local role authenticated;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$begin
- if exists(select 1 from app.v_delivery_notice_tasks where item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Expired return card remains visible';end if;
+ if not exists(select 1 from app.v_delivery_notice_tasks where item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Return card expired before confirmation';end if;
  if not exists(select 1 from app.v_delivery_return_tasks where id='99681100-0000-0000-0000-000000000002') then raise exception 'Expiry erased unresolved work';end if;
 end $$;
 select app.perform_inventory_action(id,'inspection_complete','検品中') from app.items where lot_seq=996811;
@@ -86,8 +86,10 @@ end $$;
 set local role postgres;
 update app.photo_reviews set approved_at=clock_timestamp()-interval '25 hours' where item_id=(select id from app.items where lot_seq=996811);
 update app.item_comments set created_at=clock_timestamp()-interval '25 hours' where item_id=(select id from app.items where lot_seq=996811);
+-- Keep the aged reply after its report; otherwise it is correctly excluded as unrelated history.
+update app.items set malfunction_reported_at=clock_timestamp()-interval '26 hours' where lot_seq=996811;
 set local role authenticated;
-do $$begin if exists(select 1 from app.v_delivery_notice_tasks where item_id=(select id from app.items where lot_seq=996811)) then raise exception 'Expired approval/reply card visible';end if;end $$;
+do $$begin if (select count(*) from app.v_delivery_notice_tasks where item_id=(select id from app.items where lot_seq=996811))<>2 then raise exception 'Approval/reply cards expired before confirmation';end if;end $$;
 set local role postgres;
 update app.staff set is_active=false where code='DD';
 set local role authenticated;

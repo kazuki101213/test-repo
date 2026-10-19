@@ -12,7 +12,7 @@ import { deliveryAppUrl } from '../appUrls';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
 interface PurchaseReference { marketplace_item_id?: string | null; marketplace?: string | null; marketplace_url?: string | null }
-interface Item extends PurchaseReference { id: string; sku: string; title: string; lot_seq: number }
+interface Item extends PurchaseReference { id: string; sku: string; title: string; lot_seq: number; sales_channel?:string|null }
 interface ListingTask extends PurchaseReference { id: string; sku: string; lot_seq: number; sales_channel: string; marketplace_item_id?: string | null }
 
 async function listingProductIds(tasks: ListingTask[]): Promise<ListingTask[]> {
@@ -57,7 +57,7 @@ export default function PhotoReviewTasks() {
         readResourceSnapshot<Review & {id:string;item:Item}>('photo_reviews'),
         readResourceSnapshot<ListingTask>('listing_tasks'),
       ]);
-      const references = await listingProductIds([...nextListingTasks, ...rows.map(row => ({...row.item, id:row.item_id, sales_channel:''}))]);
+      const references = await listingProductIds([...nextListingTasks, ...rows.map(row => ({...row.item, id:row.item_id, sales_channel:row.item.sales_channel??''}))]);
       const byReference = new Map(references.map(row => [row.id,row]));
       const detailedListingTasks = nextListingTasks.map(row => ({...row,...byReference.get(row.id)}));
       const byId:Record<string,Item>=Object.fromEntries(rows.map(row=>[row.item_id,{...row.item,...byReference.get(row.item_id)}]));
@@ -151,7 +151,7 @@ export default function PhotoReviewTasks() {
         <button type="button" className="btn" disabled={busy || pending} onClick={() => ask(task.sales_channel+'出品：完了', () => completeListing(task))}>完了</button>
       </li>;})}
       {reviews.map(review => { const item=items[review.item_id]; const sourceUrl=purchaseItemUrl(item?.marketplace??null,item?.marketplace_item_id??null,item?.marketplace_url??null); return <li key={review.item_id} className="admin-task-card admin-simple-task admin-photo-task">
-        <div className="task-action-details"><strong>写真確認</strong><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(review.item_id)} target="_blank" rel="noopener noreferrer">【{item?productSerial(item.sku,item.lot_seq):'通番号確認中'}】</a>{sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{item?.marketplace_item_id||'商品ID未登録'}】</a>:<span>【{item?.marketplace_item_id||'商品ID未登録'}】</span>}<small>{item?.sku||'SKU確認中'}</small></div>
+        <div className="task-action-details"><strong>写真確認{item?.sales_channel&&<span style={{fontWeight:400}}>（{item.sales_channel}販売用）</span>}</strong><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(review.item_id)} target="_blank" rel="noopener noreferrer">【{item?productSerial(item.sku,item.lot_seq):'通番号確認中'}】</a>{sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{item?.marketplace_item_id||'商品ID未登録'}】</a>:<span>【{item?.marketplace_item_id||'商品ID未登録'}】</span>}<small>{item?.sku||'SKU確認中'}</small></div>
         <span className="admin-photo-count">写真 {review.exported_photo_count}枚</span><button type="button" className="btn" onClick={() => setSelected(review)}>確認</button>
       </li>;})}
     {rejecting&&selected&&<ReturnReasonDialog label="写真確認：NG（差し戻し）" onSubmit={reject} onCancel={()=>setRejecting(false)}/> }

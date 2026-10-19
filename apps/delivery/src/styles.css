@@ -328,6 +328,7 @@ textarea { min-height: 80px; resize: vertical; }
 
 .delivery-return-task { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; padding:12px; border:1px solid var(--border); border-radius:8px; min-width:0; overflow-wrap:anywhere; }
 .delivery-return-content { min-width:0; }
+.delivery-return-content > strong { white-space:pre-wrap; overflow-wrap:anywhere; }
 .delivery-return-task > .btn { white-space:nowrap; text-decoration:none; }
 .delivery-return-details { display:flex; gap:4px 8px; flex-wrap:wrap; margin-top:4px; }
 .delivery-return-reason { white-space:pre-wrap; overflow-wrap:anywhere; }
