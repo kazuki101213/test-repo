@@ -2,7 +2,7 @@ begin;
 set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,status)
- select 996812,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'Packing notice fixture',1000,'メルカリ','メルカリ','fixture','検品中';
+ select 996812,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'Packing notice fixture',1000,'メルカリ','メルカリ','fixture','出品中';
 set local role postgres;
 insert into app.item_photos(id,item_id,storage_path,uploaded_by,drive_file_id,photo_kind)
  select '99681200-0000-0000-0000-000000000001',id,'packing-fixture/front.jpg',deliverer_id,'fixture_private_file','packing' from app.items where lot_seq=996812;
@@ -25,7 +25,7 @@ select app.acknowledge_packing_photos(item_id,submitted_at) from app.packing_pho
 do $$declare payload jsonb;begin
  payload:=app.read_resource_snapshot('packing_photos');
  if exists(select 1 from jsonb_array_elements(payload->'rows') r where r->>'item_id'=(select id::text from app.items where lot_seq=996812)) then raise exception 'Checked task still visible';end if;
- if (select status from app.items where lot_seq=996812)<>'検品中' then raise exception 'Confirmation changed inventory state';end if;
+ if (select status from app.items where lot_seq=996812)<>'出品中' then raise exception 'Confirmation changed inventory state';end if;
  if exists(select 1 from app.photo_reviews where item_id=(select id from app.items where lot_seq=996812)) then raise exception 'Packing entered product approval';end if;
 end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
