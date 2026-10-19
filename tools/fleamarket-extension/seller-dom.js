@@ -73,6 +73,15 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  function checkbox(names,checked){const target=field(names);if(target.type!=='checkbox')throw Error('チェック欄の形式に対応していません');if(target.checked!==checked)target.click();if(target.checked!==checked)throw Error('チェックの結果を確認できません');}
  const formSignature=()=>JSON.stringify({fields:fields().map(e=>({id:e.id,name:e.name,label:label(e),value:e.value,checked:e.type==='checkbox'||e.type==='radio'?e.checked:null})),editor:descriptionEditor()?.innerText??null});
  const imageSignature=zone=>JSON.stringify([...zone.querySelectorAll('img')].filter(visible).map(image=>image.src));
+ const yahooPhotoSignature=count=>{
+  if(job.channel!=='ヤフオク')return '';
+  const value=name=>root.querySelector('input[name="'+name+'"]')?.value.trim()||'';
+  const uploaded=url=>{try{const u=new URL(url);return u.protocol==='https:'&&/(^|[.])(?:yahoo[.]co[.]jp|yimg[.]jp)$/.test(u.hostname)&&!/\/(?:load|loading)[.](?:gif|png)(?:$|[?#])/i.test(u.pathname);}catch{return false;}};
+  if(!Number.isInteger(count)||count<1||count>10)return null;
+  const rows=Array.from({length:10},(_,i)=>({url:value('ImageFullPath'+(i+1)),width:value('ImageWidth'+(i+1)),height:value('ImageHeight'+(i+1))}));
+  if(rows.slice(0,count).some(row=>!uploaded(row.url)||!/^\d+$/.test(row.width)||Number(row.width)<1||!/^\d+$/.test(row.height)||Number(row.height)<1)||rows.slice(count).some(row=>row.url)||new Set(rows.slice(0,count).map(row=>row.url)).size!==count||!uploaded(value('thumbNail')))return null;
+  return JSON.stringify({photos:rows.slice(0,count),thumbnail:value('thumbNail')});
+ };
  const current=()=>globalThis.__bussanSellerOperation;
  function reserve(){if(current()?.id===job.id&&current()?.submitted)throw Error('この操作は送信を試行済みです。自動再送しません');globalThis.__bussanSellerOperation={...current(),id:job.id,submitted:true};}
  function tradeGuard(){const exactMercari=job.channel==='メルカリ'&&/^m[0-9]+$/.test(job.external_id||'')&&(location.pathname==='/transaction/'+job.external_id||location.pathname.startsWith('/transaction/'+job.external_id+'/'));if(!job.external_id||!job.trade_key||!exactMercari&&!text().includes(job.external_id)||!/取引画面|取引情報|取引ナビ|発送|配送/.test(text()))throw Error('対象の出品者取引を確認できません');if(/この商品を購入|購入手続きへ|受け取り評価をする|受取連絡をする/.test(controls().map(buttonLabel).join(' ')))throw Error('購入者側の操作画面のため停止しました');}
@@ -137,17 +146,17 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(!photoZone)throw Error('出品写真の表示領域を確認できません');
   if([...photoZone.querySelectorAll('img')].some(image=>visible(image)&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)))throw Error('既存の出品写真があるため上書きしません');
   if(!files.length||files.length>10)throw Error('出品写真を確認してください');const transfer=new DataTransfer();for(const file of files)transfer.items.add(new File([new Uint8Array(file.bytes)],file.name,{type:file.type}));inputs[0].files=transfer.files;inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
-  await waitFor(()=>{const images=[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&image.complete&&image.naturalWidth>0&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)&&!/削除|回転|拡大/.test(image.alt));const count=job.channel==='ヤフオク'?new Set(images.map(image=>image.closest('li')).filter(Boolean)).size:images.length;return !root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&count===files.length;},'写真のアップロード完了を確認できません');
+  await waitFor(()=>{const images=[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&image.complete&&image.naturalWidth>0&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)&&!/削除|回転|拡大/.test(image.alt));const count=job.channel==='ヤフオク'?new Set(images.map(image=>image.closest('li')).filter(Boolean)).size:images.length;return !root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&count===files.length&&(job.channel!=='ヤフオク'||yahooPhotoSignature(files.length)!==null);},'写真のアップロード完了を確認できません',job.channel==='ヤフオク'?90000:20000);
   if(title.value!==payload.title||descriptionField().value!==payload.description||Number(price.value)!==payload.price||descriptionEditor()&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('出品内容が入力値と一致しません');
-  globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),photoZone,photos:imageSignature(photoZone),expected:expectedValues(),title,description:descriptionField(),price,auctionOptionsConfirmed};return {prepared:true};
+  globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),photoZone,photos:imageSignature(photoZone),photoCount:files.length,uploadedPhotos:yahooPhotoSignature(files.length),expected:expectedValues(),title,description:descriptionField(),price,auctionOptionsConfirmed};return {prepared:true};
  }
  if(phase==='preview_listing'){
-  const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||!prepared.photoZone?.isConnected||prepared.photos!==imageSignature(prepared.photoZone))throw Error('出品確認前の入力内容が変更されています');
+  const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||!prepared.photoZone?.isConnected||prepared.photos!==imageSignature(prepared.photoZone)||job.channel==='ヤフオク'&&prepared.uploadedPhotos!==yahooPhotoSignature(prepared.photoCount))throw Error('出品確認前の入力内容が変更されています');
   const confirm=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));if(confirm.length>1)throw Error('確認画面への入口が曖昧です');if(confirm.length===1){setTimeout(()=>confirm[0].click(),100);return {confirmation_requested:true};}
   return {prepared:true,stoppedBeforePublish:true,photoCount:files.length||prepared.photoZone.querySelectorAll('img').length};
  }
  if(phase==='publish'){
-  const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||!prepared.photoZone?.isConnected||prepared.photos!==imageSignature(prepared.photoZone)||prepared.title.value!==payload.title||prepared.description.value!==payload.description||Number(prepared.price.value)!==payload.price)throw Error('出品直前の内容を確認できません');
+  const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||!prepared.photoZone?.isConnected||prepared.photos!==imageSignature(prepared.photoZone)||job.channel==='ヤフオク'&&prepared.uploadedPhotos!==yahooPhotoSignature(prepared.photoCount)||prepared.title.value!==payload.title||prepared.description.value!==payload.description||Number(prepared.price.value)!==payload.price)throw Error('出品直前の内容を確認できません');
   const forms=[...root.querySelectorAll('form')].filter(visible);if(forms.some(form=>!form.checkValidity()))throw Error('出品に必要な項目が不足しています');
   const confirm=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));
   if(confirm.length===1){confirm[0].click();return {confirmation:true};}
@@ -163,6 +172,12 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(job.channel==='ヤフオク'&&(!['あり','する','有効'].includes(confirmationSetting('自動延長'))||!['なし','しない','0回','設定しない'].includes(confirmationSetting('自動再出品'))))throw Error('確認画面で自動延長あり・自動再出品なしを確認できません。出品は送信しません');
   if(phase==='check_listing_confirmation')return {verified:true,stoppedBeforePublish:true};
   const button=oneButton(['出品する','ガイドラインに同意して出品する','上記のガイドライン、規約、情報提供等に同意して 出品する']);reserve();button.click();return {submitted:true};
+ }
+ if(phase==='listing_ended'){
+  const direct=location.href.match(/^https:\/\/(?:page[.])?auctions[.]yahoo[.]co[.]jp\/jp\/auction\/([a-z][0-9]+)(?:[/?#]|$)/i)?.[1];
+  const noBids=[...root.querySelectorAll('a[href]')].some(a=>{try{const u=new URL(a.href);return u.protocol==='https:'&&['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp'].includes(u.hostname)&&u.pathname==='/jp/show/bid_hist'&&u.searchParams.get('aID')===job.external_id&&/^0\s*件$/.test(norm(a.innerText));}catch{return false;}});
+  if(job.channel!=='ヤフオク'||!direct||direct!==job.external_id||!/このオークションは終了しています/.test(text())||!noBids)throw Error('対象の出品終了・入札なしを確認できません');
+  return {external_id:direct,url:'https://page.auctions.yahoo.co.jp/jp/auction/'+direct,observed_at:new Date().toISOString(),ended_without_sale:true,bid_count:0};
  }
  if(phase==='listing_result'){
   return await waitFor(()=>{

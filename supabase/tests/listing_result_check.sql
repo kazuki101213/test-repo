@@ -53,4 +53,28 @@ insert into app.seller_listings(item_id,channel,account_id,external_id,url) sele
 set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 select pg_temp.reject_check(id,proof) from reconciliation_probe where lot_seq between 993203 and 993207;
+set local role postgres;
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at)
+select 993209,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'ended listing fixture',1000,'ヤフオク','ヤフオク','fixture',now();
+insert into app.seller_operations(id,item_id,actor_id,kind,channel,account_id,expected_status,expected_updated_at,payload,status)
+select gen_random_uuid(),id,(select id from app.staff where code='AA'),'listing','ヤフオク','auctions-1',status,updated_at,'{}','uncertain' from app.items where lot_seq=993209;
+create temporary table ended_probe as select o.id,o.item_id,jsonb_build_object('external_id','m993209','url','https://page.auctions.yahoo.co.jp/jp/auction/m993209','observed_at',clock_timestamp(),'ended_without_sale',true,'bid_count',0,'account_id','auctions-1','ownership_source','seller_closed_list') proof from app.seller_operations o join app.items i on i.id=o.item_id where i.lot_seq=993209;
+grant select on ended_probe to authenticated;
+set local role authenticated;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+do $$declare p ended_probe;begin
+ select * into p from ended_probe;
+ perform app.request_listing_result_check(p.item_id,p.proof->>'url');
+ if not app.extension_claim_listing_result_check(p.id,'auctions-1') then raise exception 'Ended listing not claimed';end if;
+ perform pg_temp.reject_check(p.id,p.proof||'{"bid_count":1}');
+ perform pg_temp.reject_check(p.id,p.proof||'{"account_id":"auctions-2"}');
+ perform pg_temp.reject_check(p.id,p.proof-'ownership_source');
+ perform app.extension_finish_listing_result_check(p.id,p.proof);
+ perform app.extension_finish_listing_result_check(p.id,p.proof);
+ if (select status from app.seller_operations where id=p.id)<>'failed' then raise exception 'Ended result still blocks inventory';end if;
+ if exists(select 1 from app.seller_listings where item_id=p.item_id) then raise exception 'Ended listing became active';end if;
+ if exists(select 1 from jsonb_array_elements(app.extension_seller_queue(array['auctions-1'])) q where q->>'id'=p.id::text) then raise exception 'Ended listing republished automatically';end if;
+ perform app.perform_inventory_action(p.item_id,'inspection_cancel','商品登録前',null,gen_random_uuid());
+ if (select status from app.items where id=p.item_id)<>'検品中' then raise exception 'Inspection cannot be reversed after ended result';end if;
+end $$;
 rollback;

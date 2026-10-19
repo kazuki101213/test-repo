@@ -59,12 +59,18 @@ test('メルカリの読み込み中の変化だけでは先へ進まず、カ�
  const session=await openSellerSession({site:'mercari',identity:{pageUrl:original}},{tabs,scripting:{executeScript:async({func,args})=>[{result:await p.evaluate(func,args[0])}]},identity:async()=>({confirmed:true})});await session.go('https://jp.mercari.com/sell/create');assert.equal(await session.inspectChoice('category'),true);assert.equal(new URL(p.url()).pathname,'/sell/categories');assert.equal(await session.searchCategory('ブルーレイレコーダー'),true);await session.close();await p.close();
 });
 
-test('実ヤフオク形式の欄名・ラジオ・日付・iframe説明を入力し、エディターの変更で送信を止める',async()=>{
+function yahooForm(){
  const end=new Date(Date.now()+3*86400000),date=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(end),parts=date.split('-');
  const html='<h1>出品</h1><form><input name="Title" placeholder="商品名、ブランド名、型番"><input name="productSearchTitle" placeholder="商品名、メーカー、型番から検索"><textarea id="fleaDescription" name="Description_plain_work" style="display:none"></textarea><iframe id="rteEditorComposition0" srcdoc="&lt;body contenteditable=true&gt;&lt;/body&gt;"></iframe><input name="StartPrice">'+
  '<select name="istatus"><option value="3">やや傷や汚れあり</option></select><label>落札者<input type="radio" name="shipping_dummy" value="buyer" onclick="document.querySelectorAll(\'input[name=shipmethod_dummy]\').forEach(e=>e.checked=false)"></label><label>出品者<input type="radio" name="shipping_dummy" value="seller" checked></label><label>ゆうパック 全国一律750円〜<input type="radio" name="shipmethod_dummy"></label><label>ゆうパケット 全国一律215円<input type="radio" name="shipmethod_dummy"></label><select name="loc_cd"><option value="12">千葉県</option></select><select name="shipschedule"><option value="3">2〜3日</option></select>'+field('カテゴリー','ブルーレイレコーダー')+
  `<select name="ClosingYMD"><option value="${parts.join('')}">${Number(parts[1])}月${Number(parts[2])}日 (曜日)</option></select><select name="ClosingTime"><option value="late">午後11時から午前0時</option></select>`+
  '<select id="ship_delivery_yupack_size_select"><option>100cm以内</option></select><select id="ship_delivery_yupack_weight_select"><option>2kg以内</option><option>5kg以内</option><option>15kg以内</option><option>25kg以内</option></select><label>自動延長<input type="checkbox"></label><label>自動再出品<input type="checkbox" checked></label><input type="file" multiple accept="image/*"><section id="ImageList"><ul id="preview"></ul></section><input id="submit_form_btn" type="button" value="出品する" onclick="document.getElementById(\'counter\').textContent=\'1\'"></form><p id="counter">0</p><script>document.querySelector("input[type=file]").onchange=()=>{let i=document.createElement("img");i.width=10;i.height=10;i.src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jk/QAAAAASUVORK5CYII=";const item=document.createElement("li");item.append(i);document.getElementById("preview").append(item);};</script>';
+ const backing='<input type="hidden" name="thumbNail">'+Array.from({length:10},(_,i)=>['ImageFullPath','ImageWidth','ImageHeight'].map(key=>'<input type="hidden" name="'+key+(i+1)+'">').join('')).join('');
+ const finish='<script>const originalUpload=document.querySelector("input[type=file]").onchange;document.querySelector("input[type=file]").onchange=()=>{originalUpload();const count=document.querySelectorAll("#preview img").length;for(let n=1;n<=count;n++){document.querySelector("[name=ImageFullPath"+n+"]").value="https://auctions.c.yimg.jp/images/test-"+n+".jpg";document.querySelector("[name=ImageWidth"+n+"]").value="1200";document.querySelector("[name=ImageHeight"+n+"]").value="900";}document.querySelector("[name=thumbNail]").value="https://auctions.c.yimg.jp/images/test-thumb.jpg";};</script>';
+ return {html:html.replace('</form>',backing+'</form>')+finish,parts};
+}
+test('実ヤフオク形式の欄名・ラジオ・日付・iframe説明を入力し、エディターの変更で送信を止める',async()=>{
+ const {html,parts}=yahooForm();
  const p=await page(html.replace('<select id="ship_delivery_yupack_size_select">','<select hidden id="ship_delivery_yupack_size_select">').replace('<select id="ship_delivery_yupack_weight_select">','<select hidden id="ship_delivery_yupack_weight_select">'),'https://auctions.yahoo.co.jp/jp/show/submit');const job={...listing,channel:'ヤフオク',payload:{...listing.payload,condition:'やや傷や汚れあり',shippingMethod:'おてがる配送（日本郵便）',shippingPayer:'購入者負担',size:'100',weightKg:'5',auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false}};
  await p.evaluate(sellerDomOperation,{job,phase:'prepare_listing',files:[{name:'photo.png',type:'image/png',bytes:[1,2,3]}]});
  assert.equal(await p.locator('[name=Title]').inputValue(),job.payload.title);assert.equal(await p.locator('[name=productSearchTitle]').inputValue(),'');
@@ -133,4 +139,19 @@ test('ヤフオクの商品URLリダイレクト後も出品結果の商品IDを
 });
 test('ヤフオク完了画面の新ホスト商品リンクから一意の結果だけを読む',async()=>{
  const p=await page('<h1>出品が完了しました</h1><a href="https://auctions.yahoo.co.jp/jp/auction/m1248960977">商品を見る</a>','https://auctions.yahoo.co.jp/sell/jp/show/complete');const r=await p.evaluate(sellerDomOperation,{job:{...listing,channel:'ヤフオク'},phase:'listing_result',reportErrors:true});assert.equal(r.external_id,'m1248960977');await p.close();
+});
+
+test('ヤフオクは仮画像9枚を完了と数えず全写真URLとサムネイルを待つ',async()=>{
+ const {html}=yahooForm();const p=await page(html,'https://auctions.yahoo.co.jp/jp/show/submit');
+ await p.evaluate(()=>{
+  const form=document.querySelector('form'),thumb=document.querySelector('[name=thumbNail]');
+  const input=document.querySelector('input[type=file]'),original=input.onchange;input.onchange=()=>{for(let n=0;n<9;n++)original();for(const field of form.querySelectorAll('input[type=hidden]'))field.value='';setTimeout(()=>{for(let n=1;n<=9;n++){document.querySelector('[name=ImageFullPath'+n+']').value='https://auctions.c.yimg.jp/images/fixture-'+n+'.jpg';document.querySelector('[name=ImageWidth'+n+']').value='1200';document.querySelector('[name=ImageHeight'+n+']').value='900';}thumb.value='https://auctions.c.yimg.jp/images/fixture-thumb.jpg';document.body.dataset.uploadComplete='1';},2500);};
+ });
+ const job={...listing,channel:'ヤフオク',payload:{...listing.payload,condition:'やや傷や汚れあり',shippingMethod:'おてがる配送（日本郵便）',shippingPayer:'購入者負担',size:'100',weightKg:'5',auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false}};
+ await p.evaluate(sellerDomOperation,{job,phase:'prepare_listing',files:Array.from({length:9},(_,n)=>({name:'photo-'+n+'.jpg',type:'image/jpeg',bytes:[1,2,3]}))});assert.equal(await p.evaluate(()=>document.body.dataset.uploadComplete),'1','Loading previews must not pass before uploaded fields exist');assert.equal(await p.locator('#counter').innerText(),'0');
+ await p.locator('[name=ImageFullPath5]').evaluate(e=>e.value='');await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'publish'}),/写真|出品直前/);assert.equal(await p.locator('#counter').innerText(),'0');await p.close();
+});
+
+test('元アカウント終了一覧で照合した商品も終了表示と入札0件が揃わなければ解除しない',async()=>{
+ for(const [ended,bids,id,valid] of [[true,0,'m1248960977',true],[true,1,'m1248960977',false],[false,0,'m1248960977',false],[true,0,'m9999999999',false]]){const p=await page('<h1>'+ (ended?'このオークションは終了しています':'出品中')+'</h1><a href="https://auctions.yahoo.co.jp/jp/show/bid_hist?aID=m1248960977">'+bids+'件</a><button onclick="document.body.dataset.clicked=1">出品する</button>','https://auctions.yahoo.co.jp/jp/auction/m1248960977');const r=await p.evaluate(sellerDomOperation,{job:{...listing,channel:'ヤフオク',external_id:id},phase:'listing_ended',reportErrors:true});assert.equal(r.ended_without_sale===true,valid);assert.equal(await p.evaluate(()=>document.body.dataset.clicked),undefined);await p.close();}
 });
