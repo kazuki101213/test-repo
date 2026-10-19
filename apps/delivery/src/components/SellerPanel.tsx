@@ -37,7 +37,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  useEffect(()=>{if(!watching)return;let active=true,inFlight=false;
   async function refresh(){if(!active||inFlight||document.visibilityState!=='visible')return;if(Date.now()-Date.parse(checking(watching!)?String(watching!.result.read_check_requested_at):watching!.created_at)>600000){setError('実行結果の確認が必要です。自動再実行はしません。');return;}inFlight=true;
    try{const state=checking(watching!)?{status:'uncertain'}:await fetchSellerOperation(watching!.id);if(!active)return;
-    if(checking(watching!)||!['queued','running'].includes(state.status)){const info=await fetchSellerContext(task.id);if(!active)return;setContext(info);const finished=info.operations.find(op=>op.id===watching!.id&&op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){lastFinished.current=finished.id;const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(active&&full)onChanged(full);}}
+    if(checking(watching!)||!['queued','running'].includes(state.status)){const info=await fetchSellerContext(task.id);if(!active)return;const finished=info.operations.find(op=>op.id===watching!.id&&op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(!active)return;if(full){lastFinished.current=finished.id;onChanged(full);}}setContext(info);}
    }catch(cause){if(active)setError(cause instanceof Error?cause.message:String(cause));}finally{inFlight=false;}
   }
   const timer=window.setInterval(()=>void refresh(),15000);return()=>{active=false;window.clearInterval(timer);};

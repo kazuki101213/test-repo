@@ -25,12 +25,12 @@ for(const channel of ['FBA','自己発送','メルカリ','ヤフオク'])for(co
  assert.equal(all(tree).find(n=>n.props?.['data-action']==='photos').props.disabled,false);
 }
 async function panelCheck(approved,saved,uncertain=false,channel='メルカリ'){
- let cursor=0,hooks=[],pending=[],tree,dirty=true,queued,checks=0,finished=false;const checkOperation=()=>({id:'uncertain-op',kind:'listing',status:finished?'succeeded':'uncertain',created_at:'2026-01-01T00:00:00Z',result:checks&&!finished?{read_check_state:'queued',read_check_requested_at:new Date().toISOString()}:{}});
- const hookReact={useRef(v){return hooks[cursor++]??={current:v};},useState(v){const n=cursor++;hooks[n]??={value:v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};pending.push(fn);}}};
+ let cursor=0,hooks=[],pending=[],tree,dirty=true,queued,checks=0,finished=false,changed=[];const checkOperation=()=>({id:'uncertain-op',kind:'listing',status:finished?'succeeded':'uncertain',created_at:'2026-01-01T00:00:00Z',result:checks&&!finished?{read_check_state:'queued',read_check_requested_at:new Date().toISOString()}:{}});
+ const hookReact={useRef(v){return hooks[cursor++]??={current:v};},useState(v){const n=cursor++;hooks[n]??={value:v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){const previous=hooks[n];hooks[n]={deps};pending.push(()=>{previous?.cleanup?.();hooks[n].cleanup=fn();});}}};
  const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,canViewDeliveryAssignee:()=>false},'./DescriptionEditor':{default:({embedded})=>jsx('div',{children:[jsx('input',{maxLength:128,value:embedded.value.title,disabled:embedded.disabled}),jsx('textarea',{maxLength:5000,value:embedded.value.description,disabled:embedded.disabled})]})},'../listingDraft':{listingDraft},'../api':{
-  fetchTask:async()=>({...base,sales_channel:channel,description:saved}),fetchSellerContext:async()=>({revision:'one',operations:uncertain?[checkOperation()]:[],photo_review_approved:approved}),fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',requestListingResultCheck:async id=>{assert.equal(id,base.id);checks++;},fetchSellerOperation:async()=>{throw Error('Extra polling RPC');},queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
+  fetchTask:async()=>{for(let i=0;i<4;i++)await Promise.resolve();return {...base,sales_channel:channel,description:saved,status:finished?'出品中':base.status};},fetchSellerContext:async()=>({revision:'one',operations:uncertain?[checkOperation()]:[],photo_review_approved:approved}),fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',requestListingResultCheck:async id=>{assert.equal(id,base.id);checks++;},fetchSellerOperation:async()=>{throw Error('Extra polling RPC');},queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
  }}).default;
- const props={mode:'listing',task:{...base,sales_channel:channel,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(){},onClose(){}};
+ const props={mode:'listing',task:{...base,sales_channel:channel,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(task){changed.push(task);},onClose(){}};
  async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=Panel(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
  await settle();
  assert.equal(all(tree).some(n=>n.type==='button'&&n.props.children==='閉じる'),false);
@@ -46,7 +46,7 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
   const named=name=>all(tree).find(n=>n.type==='button'&&n.props.children===name);
   assert.equal(named('出品').props.disabled,true);assert.equal(named('出品結果を確認').props.disabled,false);
   await named('出品結果を確認').props.onClick();await settle();assert.equal(checks,1);assert.equal(queued,undefined);assert.equal(named('出品結果を確認').props.disabled,true);
-  finished=true;testTimers.at(-1)();await settle();assert.equal(named('出品結果を確認'),undefined);assert.equal(queued,undefined);return;
+  finished=true;testTimers.at(-1)();await settle();assert.equal(named('出品結果を確認'),undefined);assert.equal(queued,undefined);assert.equal(changed.length,1,'Result confirmation must update the stock card before ending the effect');assert.equal(changed[0].status,'出品中');return;
  }
  if(channel==='ヤフオク'){
   const weight=all(tree).find(n=>n.type==='label'&&all(n).some(child=>child==='梱包後の重さ'||child?.props?.children==='梱包後の重さ'))||all(tree).find(n=>n.type==='label'&&Array.isArray(n.props?.children)&&n.props.children[0]==='梱包後の重さ');
