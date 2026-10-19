@@ -151,3 +151,12 @@ test('packing export accepts only the configured pre-transition stage and retain
  }
  const {call}=setup({assigned:false});assert.equal((await call('save',{purpose:'packing'})).status,403);
 });
+
+test('rejected photos can be resubmitted without duplicate file uploads',async()=>{
+ const {state,call}=setup();assert.equal((await call('save')).status,200);
+ const review=state.photo_reviews.find(row=>row.item_id===itemId);review.rejected_at='returned';review.submitted_at='old-submission';
+ const downloads=state.downloads.length;const uploads=state.google.filter(row=>row.url.includes('/upload/drive/')).length;
+ const response=await call('save');assert.equal(response.status,200);assert.equal((await response.json()).added,0);
+ assert.notEqual(review.submitted_at,'old-submission','A new submission reaches the DB resubmission trigger');
+ assert.equal(state.downloads.length,downloads);assert.equal(state.google.filter(row=>row.url.includes('/upload/drive/')).length,uploads);
+});
