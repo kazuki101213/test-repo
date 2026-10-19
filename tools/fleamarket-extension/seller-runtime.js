@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.129';
-import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.129';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.130';
+import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.130';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.129';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.130';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -219,7 +219,7 @@ export async function checkExistingListing(session,job,account){
  if(matches.size===0&&targetId&&account.site==='auctions'){
   const closed=[],visited=new Set();const add=links=>{for(const link of links){const url=new URL(sellerUrl(account,link.url));if(url.hostname==='auctions.yahoo.co.jp'&&url.pathname==='/my/closed'&&['出品終了分','落札者なし','次へ','次のページ','次'].includes(link.text)&&!visited.has(url.href)&&!closed.includes(url.href))closed.push(url.href);}};
   add(menu);add(await session.links());let owned=false;
-  for(let n=0;closed.length&&n<5;n++){const url=closed.shift();visited.add(url);await session.go(url);const data=await session.read('出品終了分');if(data.itemIds?.includes(targetId)){owned=true;break;}add(data.navigation);add(await session.links());}
+  for(let n=0;closed.length&&n<5;n++){const url=closed.shift();visited.add(url);await session.go(url);if(session.selectTab)await session.selectTab('落札者なし');const data=await session.read('出品終了分');if(data.itemIds?.includes(targetId)){owned=true;break;}add(data.navigation);add(await session.links());}
   if(owned){await session.go(target);const proof=await session.operation({...job,external_id:targetId},'listing_ended');return {...proof,account_id:account.id,ownership_source:'seller_closed_list'};}
  }
  if(matches.size!==1)throw Error('出品済み商品を1件に確認できません。商品URLを入力して確認してください');
