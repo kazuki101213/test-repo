@@ -178,7 +178,7 @@ export async function postComment(itemId: string, authorId: string, body: string
   if (error) throw error;
 }
 
-async function preparePhotoForUpload(file: File): Promise<File> {
+export async function preparePhotoForUpload(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) throw new Error('画像ファイルを選択してください。');
   let bitmap: ImageBitmap;
   try {
@@ -358,6 +358,21 @@ export async function setInventoryWorkflow(itemId:string,status:ItemStatus):Prom
 
 export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status'>,action:import('@bussan/shared').InventoryAction,note?:string,requestId=crypto.randomUUID()):Promise<void>{
  const {error}=await getSupabase().rpc('perform_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_note:note??null,p_request_id:requestId});
+ if(error)throw error;
+}
+export type ReportAttachment={id:string;file:File};
+export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'status'>,note:string,requestId:string,photos:ReportAttachment[]):Promise<void>{
+ if(photos.length<1||photos.length>10)throw new Error('写真は1〜10枚で指定してください。');
+ const sb=getSupabase();
+ for(let index=0;index<photos.length;index++){
+  const photo=photos[index]!;const file=await preparePhotoForUpload(photo.file);
+  if(file.size>8*1024*1024)throw new Error('写真1枚が8MBを超えています。');
+  const body=new FormData();body.set('itemId',task.id);body.set('requestId',requestId);body.set('photoId',photo.id);body.set('sortOrder',String(index));body.set('file',file);
+  const {data,error}=await sb.functions.invoke('malfunction-report-photos',{body});
+  if(error||data?.error)throw new Error(data?.error||error?.message||'報告写真を保存できませんでした。');
+  if(data?.id!==photo.id)throw new Error('報告写真の保存結果を確認できませんでした。');
+ }
+ const {error}=await sb.rpc('submit_malfunction_report',{p_item_id:task.id,p_expected_status:task.status,p_note:note,p_request_id:requestId,p_photo_ids:photos.map(photo=>photo.id)});
  if(error)throw error;
 }
 export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}

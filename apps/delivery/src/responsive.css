@@ -1,5 +1,10 @@
 /* Screen layout only. Document templates and print rules remain in invoice.css. */
 .spare-desktop-table { display:none; }
+@media screen and (max-width:1279px) {
+  .workflow-action-form:has(.workflow-report-photo) { grid-template-columns:minmax(0,1fr) auto; }
+  .app .workflow-action-form:has(.workflow-report-photo) .btn { font-size:13px; padding-inline:8px !important; }
+  .app .workflow-action-form .workflow-report-photo { width:44px !important; padding-inline:0 !important; }
+}
 @media screen and (min-width:1024px) {
   .spare-mobile-list { display:none; }
   .spare-desktop-table { display:block; overflow:auto; max-height:68vh; margin-top:14px; border:1px solid var(--border); border-radius:10px; }

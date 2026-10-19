@@ -1,4 +1,5 @@
 import { useTaskConfirmation } from './TaskConfirmation';
+import MalfunctionReportPhotos from './MalfunctionReportPhotos';
 import { productSerial } from '../inventory';
 import { readResourceSnapshot } from '@bussan/shared';
 import { managementWorkflowButtons, staffDisplayName, workflowButtonDirection } from '@bussan/shared';
@@ -299,6 +300,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
         </div>
 
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
+        <MalfunctionReportPhotos key={row.malfunction_reported_at} itemId={row.id} />
       </div>
       {row.status === '動作不良' ? <MalfunctionConversation item={{...row, marketplace_item_id: source?.marketplace_item_id ?? row.marketplace_item_id}} staff={staff} onReplied={refresh} actions={controls} /> : controls}
     </li>;})}
