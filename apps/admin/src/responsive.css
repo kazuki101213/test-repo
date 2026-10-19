@@ -211,3 +211,24 @@
  .invoice-task-rows .supplier-task-details > small { grid-column:1 / -1; grid-row:4; margin:0; font-size:inherit; line-height:1.5; }
  .invoice-task-rows .malfunction-task-row:has(> .supplier-task-details) > button.btn { grid-column:2; grid-row:1 / span 2; justify-self:end; }
 }
+
+/* Inventory actions and search are explicit rows; registration fields share the staff-picker fill. */
+@media screen {
+ .layout .inventory-registration-actions { display:flex; flex-wrap:wrap; align-items:flex-start; gap:8px; margin-bottom:8px; }
+ .layout .inventory-registration-actions .amazon-sales-update { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0; }
+ .layout .inventory-registration-actions .btn { width:auto; }
+ .layout .inventory-toolbar > .inventory-multi-filter { width:max-content; max-width:100%; justify-self:start; }
+ .layout .inventory-multi-filter > summary { width:max-content; max-width:100%; }
+ .layout .inventory-multi-filter-panel { left:0; right:auto; }
+ .layout .inventory-toolbar > .inventory-clear-filters { width:auto; justify-self:start; }
+ .layout .spare-entry input:not([type=checkbox]):not([type=radio]),
+ .layout .product-entry input:not([type=checkbox]):not([type=radio]) { background:var(--surface-2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
+}
+@media screen and (min-width:1024px) {
+ .layout .inventory-toolbar { display:grid; grid-template-columns:minmax(240px,1fr) max-content minmax(260px,300px) max-content; align-items:center; gap:8px; margin-top:0; }
+ .layout .inventory-toolbar > .inventory-search { grid-column:1; grid-row:1; }
+ .layout .inventory-toolbar > .inventory-multi-filter { grid-column:2; grid-row:1; }
+ .layout .inventory-toolbar > .inventory-date-range { grid-column:3; grid-row:1; }
+ .layout .inventory-toolbar > .inventory-clear-filters { grid-column:4; grid-row:1; }
+ .layout .inventory-toolbar > .sub { grid-column:1 / -1; }
+}

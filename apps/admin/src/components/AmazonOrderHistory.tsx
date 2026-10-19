@@ -125,7 +125,6 @@ export default function AmazonOrderHistory() {
     <div className="toolbar" style={{ marginTop: 12 }}>
       <strong>取得済み注文 {rows.length.toLocaleString()}件</strong>
       <span>期間 {first ?? '—'} ～ {last ?? '—'}（{batches.length}レポート）</span>
-      <button className="btn" onClick={() => void load()} disabled={loading}>再読込</button>
     </div>
     <p className="sub">Amazonの注文レポートを保存し、アプリのSKUと照合しています。古いSKU形式も変換します。この履歴画面では在庫の販売記録を変更しません。</p>
     <div className="toolbar">

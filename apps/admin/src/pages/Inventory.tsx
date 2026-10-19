@@ -1,4 +1,4 @@
-import { fetchCompleteInventory, staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES } from '@bussan/shared';
+import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
@@ -8,7 +8,6 @@ import type { PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
-import { downloadCsv } from '../csv';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import ColoredLabel from '../components/ColoredLabel';
@@ -67,7 +66,6 @@ export default function Inventory({ me }: { me: Staff }) {
   const [openColumn, setOpenColumn] = useState<{ field: string; anchor: HTMLElement } | null>(null);
   const closeColumn = useCallback(() => setOpenColumn(null), []);
   const activeColumnCount=Object.values(columnFilters).filter(isColumnFilterActive).length;
-  const [error,setError]=useState<string|null>(null);
   const inventory=useInventoryPage<InventoryItem>('management',me.id,{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters},!!openColumn||activeColumnCount>0);
   const items=inventory.rows,count=inventory.total,loading=inventory.loading;
   const viewItems=useMemo(()=>filterInventoryColumns(items.filter(item=>matchesInventoryFilters(item,inventoryFilters)),columnFilters),[items,columnFilters,inventoryFilters]);
@@ -85,13 +83,6 @@ export default function Inventory({ me }: { me: Staff }) {
   const inventoryTableScrollRef = useRef<HTMLDivElement>(null);
 
   const load=async()=>{await inventory.refresh();};
-  async function exportInventory(){
-    setError(null);
-    try{
-      const rows=await fetchCompleteInventory<InventoryItem>('management',{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters});
-      downloadCsv('inventory-'+new Date().toISOString().slice(0,10)+'.csv',filterInventoryColumns(rows,columnFilters) as unknown as Record<string,unknown>[]);
-    }catch(cause){setError(inventoryError(cause));}
-  }
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
   const loadPurchaseDrafts = useCallback(() => {
     fetchPurchaseDrafts().then(rows => { setPurchaseDrafts(rows); setDraftError(null); }).catch(error => {
@@ -147,6 +138,12 @@ export default function Inventory({ me }: { me: Staff }) {
 
 
 
+      <div className="inventory-registration-actions">
+        <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
+          {purchaseOpen ? '在庫登録を閉じる' : '在庫登録'}
+        </button>
+        {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
+      </div>
       <div className="toolbar inventory-toolbar">
         <div className="inventory-search" role="group" aria-label="在庫検索">
           <select aria-label="検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as InventorySearchField); setQuery(''); }}>
@@ -165,19 +162,12 @@ export default function Inventory({ me }: { me: Staff }) {
           </label>
         </div>
         {(purchasedFrom || purchasedTo) && <button className="btn" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
-        <button className="btn" onClick={() => void load()}>再読込</button>
-        <button type="button" className="btn inventory-clear-filters" onClick={clearFilters}>フィルターをすべて解除</button>
+        <button type="button" className="btn inventory-clear-filters" onClick={clearFilters}>フィルター解除</button>
         {activeColumnCount > 0 && <span className="sub">項目フィルター {activeColumnCount}件</span>}
-        <span style={{ flex: 1 }} />
-        <button className="btn" disabled={loading} onClick={()=>void exportInventory()}>
-          一覧をCSV
-        </button>
-        <button className="btn" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
-          {purchaseOpen ? '在庫登録を閉じる' : '在庫登録'}
-        </button>
+
       </div>
 
-      {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
+
       <details className="card purchase-draft-panel">
         <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
         <div className="toolbar" style={{ marginTop: 12 }}>
@@ -195,7 +185,7 @@ export default function Inventory({ me }: { me: Staff }) {
       {me.role === 'admin' && <AmazonOrderHistory />}
       <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
 
-      {(error||inventory.error)&&<div className="error">{error||inventory.error}</div>}
+      {inventory.error&&<div className="error">{inventory.error}</div>}
       {loading && items.length === 0 && <div className="empty">読み込み中…</div>}
       {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 

@@ -86,7 +86,7 @@ export default function Products() {
         />
         <span className="sub" style={{ margin: 0 }}>{rows.length} 件</span>
         <span style={{ flex: 1 }} />
-        <button className="btn" aria-expanded={adding} onClick={() => setAdding(open => !open)}>{adding ? '商品登録を閉じる' : '商品登録'}</button>
+        <button className="btn primary" aria-expanded={adding} onClick={() => setAdding(open => !open)}>{adding ? '商品登録を閉じる' : '商品登録'}</button>
         <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
       </div>
 
