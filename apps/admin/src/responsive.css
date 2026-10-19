@@ -1,4 +1,20 @@
 /* Screen-only layout: keep document/PDF/print styles untouched. */
+@media screen and (min-width:1024px) {
+  .layout .inventory-controls { display:grid; grid-template-columns:max-content max-content minmax(140px,220px) max-content 282px max-content; gap:6px; align-items:center; margin-bottom:8px; }
+  .layout .inventory-controls .inventory-registration-actions, .layout .inventory-controls .inventory-registration-actions .amazon-sales-update, .layout .inventory-controls .inventory-toolbar { display:contents; }
+  .layout .inventory-controls .inventory-registration-actions > .btn { grid-column:1; grid-row:1; }
+  .layout .inventory-controls .amazon-sales-update > .btn { grid-column:2; grid-row:1; }
+  .layout .inventory-controls .amazon-sales-update > :is(.sub,.error) { grid-column:1 / -1; grid-row:2; }
+  .layout .inventory-controls .inventory-toolbar > .inventory-search { grid-column:3; grid-row:1; grid-template-columns:88px minmax(0,1fr); gap:6px; }
+  .layout .inventory-controls .inventory-search > :is(input,select) { font-size:14px; padding-inline:6px; }
+  .layout .inventory-controls .inventory-toolbar > .inventory-multi-filter { grid-column:4; grid-row:1; }
+  .layout .inventory-controls .inventory-toolbar > .inventory-date-range { grid-column:5; grid-row:1; grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr); }
+  .layout .inventory-controls .inventory-date-field > span { width:100%; }
+  .layout .inventory-controls .inventory-date-field input:not([type=date]) { width:100%; min-width:0; font-size:14px; padding-inline:6px; }
+  .layout .inventory-controls .inventory-toolbar > .inventory-clear-filters { grid-column:6; grid-row:1; }
+  .layout .inventory-controls .inventory-toolbar > .inventory-clear-dates { grid-column:5; grid-row:2; }
+  .layout .inventory-controls .inventory-toolbar > .sub { grid-column:1 / -1; grid-row:3; }
+}
 .management-spare-mobile-list { display:none; }
 @media screen and (max-width:1023px) {
   .layout .spare-table-scroll { display:none; }
