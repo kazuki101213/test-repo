@@ -275,3 +275,12 @@
   .app .delivery-inventory-search > .inventory-multi-filter > summary::before { content:'▸'; font-size:12px; }
   .app .delivery-inventory-search > .inventory-multi-filter[open] > summary::before { content:'▾'; }
 }
+
+@media screen and (min-width:1280px) {
+  /* Shrink the selector by 380px without expanding the existing todo column. */
+  .delivery-inventory-workspace { padding-right:380px; }
+  .app .inventory-workflow-menu { grid-template-columns:106px 140px 94px 100px 100px; }
+  .inventory-workflow-menu > [data-status="work"] { grid-column:2 / 4; }
+  .inventory-workflow-menu > [data-status="selling"] { grid-column:4; }
+  .inventory-workflow-menu > [data-status="販売済"] { grid-column:5; }
+}
