@@ -238,3 +238,8 @@
  .inventory-workflow-footer > [data-status="all"] { grid-column:1; }
  .inventory-workflow-footer > .inventory-all-products { order:12; grid-column:2; }
 }
+
+@media screen and (max-width:359px) {
+  .app .export-actions { gap:3px; }
+  .app .export-actions > button { padding-inline:3px !important; }
+}
