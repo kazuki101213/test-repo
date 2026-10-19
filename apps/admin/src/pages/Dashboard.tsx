@@ -51,7 +51,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
 
   return (
     <div className="dashboard-workspace">
-      <section className="dashboard-content" aria-label="ダッシュボード">
+      <section className={`dashboard-content${isAdmin ? ' management-dashboard' : ''}`} aria-label="ダッシュボード">
 
       {error && <div className="error">{error}</div>}
 
@@ -115,7 +115,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card monthly-trend-card" style={{ marginTop: 16 }}>
         <h3>月次推移</h3>
         <div className="scroll" style={{ maxHeight: '40vh', border: 0 }}>
           <table>
