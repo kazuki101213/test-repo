@@ -1,5 +1,5 @@
 import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from '../../tools/fleamarket-extension/seller-inspection.js';
-import {advanceSellerList,clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
+import {clickSellerListTab,advanceSellerList,clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
 import test,{before,after} from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
 import {readSellerPage} from '../../tools/fleamarket-extension/seller-sync.js';import {sellerDomOperation} from '../../tools/fleamarket-extension/seller-dom.js';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/長部一輝/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');let browser;
@@ -157,4 +157,9 @@ test('ヤフオクは仮画像9枚を完了と数えず全写真URLとサムネ�
 
 test('元アカウント終了一覧で照合した商品も終了表示と入札0件が揃わなければ解除しない',async()=>{
  for(const [ended,bids,id,valid] of [[true,0,'m1248960977',true],[true,1,'m1248960977',false],[false,0,'m1248960977',false],[true,0,'m9999999999',false]]){const p=await page('<h1>'+ (ended?'このオークションは終了しています':'出品中')+'</h1><a href="https://auctions.yahoo.co.jp/jp/show/bid_hist?aID=m1248960977">'+bids+'件</a><button onclick="document.body.dataset.clicked=1">出品する</button>','https://auctions.yahoo.co.jp/jp/auction/m1248960977');const r=await p.evaluate(sellerDomOperation,{job:{...listing,channel:'ヤフオク',external_id:id},phase:'listing_ended',reportErrors:true});assert.equal(r.ended_without_sale===true,valid);assert.equal(await p.evaluate(()=>document.body.dataset.clicked),undefined);await p.close();}
+});
+
+test('落札者なしの切替は画面遷移で実行結果が消える前に返し、再出品しない',async()=>{
+ const p=await page('<h1>出品終了分</h1><button onclick="location.href=\'/my/closed?hasWinner=0\'">落札者なし</button><button onclick="document.body.dataset.relisted=1">再出品</button>','https://auctions.yahoo.co.jp/my/closed?hasWinner=1');
+ const result=await p.evaluate(clickSellerListTab,'落札者なし');assert.deepEqual(result,{changing:true});await p.waitForURL('https://auctions.yahoo.co.jp/my/closed?hasWinner=0');assert.equal(await p.evaluate(()=>document.body.dataset.relisted),undefined);await p.close();
 });
