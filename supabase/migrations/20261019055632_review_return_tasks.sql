@@ -29,7 +29,7 @@ grant select on app.v_delivery_return_tasks to authenticated,service_role;
 create view app.v_delivery_notice_tasks with(security_invoker=true) as
  with notices as (
   select t.id::text id,t.item_id,case when t.kind='malfunction_return' then 'reply' else t.kind end kind,
-   t.created_at,i.sku,i.lot_seq,i.marketplace_item_id
+   t.created_at,i.sku,i.lot_seq,i.marketplace_item_id,i.marketplace,i.marketplace_url
   from app.delivery_return_tasks t join app.items i on i.id=t.item_id where t.resolved_at is null
   union all
   select 'approved:'||i.id::text||':'||extract(epoch from r.approved_at)::text,i.id,'photo_approved',

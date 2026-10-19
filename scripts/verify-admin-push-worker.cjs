@@ -10,7 +10,7 @@ async function verify(scope,existing){
  handlers.push({data:{json:()=>({body:'【2198】動作不良の報告が届きました。',kind:'malfunction',itemId:id})},waitUntil:p=>waiting=p});await waiting;
  assert.equal(shown[0].title,'管理アプリ');assert.equal(shown[0].options.data.itemId,id);
  const destinations=existing?navigated:opened;
- for(const kind of ['malfunction','action','photo_review','invoice','receipts']){
+ for(const kind of ['malfunction','action','photo_review','packing_photo','invoice','receipts']){
   handlers.notificationclick({notification:{data:{kind,itemId:id,taskId:id,invoiceStaffId:id,billingMonth:'2026-10-01'},close(){}},waitUntil:p=>waiting=p});await waiting;
   const url=new URL(destinations.at(-1));assert.equal(url.origin,new URL(scope).origin);assert.equal(url.pathname,new URL(scope).pathname);
   assert.equal(url.searchParams.get('taskKind'),kind);assert.equal(url.searchParams.get('itemId'),id);

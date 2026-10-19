@@ -15,9 +15,10 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     ],
     lot_photo_folders:[{lot_seq:123,drive_folder_id:'shared'}],
     photo_reviews:[{item_id:'original',drive_folder_id:'old-folder',approved_at:'approved',exported_photo_count:1}],
-    google:[], downloads:[], signed:[],
+    google:[], downloads:[], signed:[], notices:[],
   };
   const service = {
+    async rpc(name,args){assert.equal(name,'record_packing_photo_notice');state.notices.push(args);return {error:null};},
     auth:{getUser:async()=>({data:{user:{id:'user'}}})},
     from(table) {
       const filters=[]; let from=0,to=Infinity, mutation=null;
@@ -136,6 +137,7 @@ test('packing evidence shares the existing Drive folder without entering listing
  const response=await call('save',{purpose:'packing'});assert.equal(response.status,200);
  assert.deepEqual(await response.json(),{folderId:'shared',added:1,total:1});
  assert.deepEqual(state.downloads,['photos/packed.jpg']);
+ assert.equal(state.notices.length,1);assert.deepEqual(state.notices[0],{p_item_id:itemId,p_source_photo_id:'packed',p_photo_count:1});
  assert.equal(JSON.stringify(state.photo_reviews),before);
  const upload=state.google.find(req=>req.url.includes('/upload/drive/'));
  assert.deepEqual(JSON.parse(upload.body).parents,['shared']);

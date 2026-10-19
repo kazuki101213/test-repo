@@ -117,17 +117,14 @@ export default function TaskDetail({
         await uploadPhoto(task.sku, task.id, staff.id, file,purpose);
         uploadedCount++;
       }
-      if (packing) setDriveMessage('新しい梱包写真があります。Googleドライブ追加してください。');
-      else {
-        submitting = true;
-        setDriveMessage('写真をGoogleドライブへ保存し、写真確認へ提出しています…');
-        const result = await addPhotosToDrive(task.id, purpose);
-        setDriveMessage(result.total + '枚をGoogleドライブへ保存し、写真確認に提出しました。');
-      }
+      submitting = true;
+      setDriveMessage(packing?'梱包写真をGoogleドライブへ保存しています…':'写真をGoogleドライブへ保存し、写真確認へ提出しています…');
+      const result = await addPhotosToDrive(task.id, purpose);
+      setDriveMessage(packing?result.total+'枚の梱包写真を保存し、管理者への通知を登録しました。':result.total+'枚をGoogleドライブへ保存し、写真確認に提出しました。');
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setDriveMessage('');
-      setError(submitting ? '写真はアプリに保存済みですが、Googleドライブ保存・写真確認への提出が完了していません。「Googleドライブ追加」で再試行してください。' + message : /Failed to fetch|NetworkError|Load failed/i.test(message)
+      setError(submitting ? '写真はアプリに保存済みですが、Googleドライブ保存・'+(packing?'管理者への通知':'写真確認への提出')+'が完了していません。「Googleドライブ追加」で再試行してください。' + message : /Failed to fetch|NetworkError|Load failed/i.test(message)
         ? '写真をSupabaseへ送信できませんでした。通信状態を確認し、安定したWi‑Fiまたはモバイル通信で再度お試しください。'
         : message);
     } finally {

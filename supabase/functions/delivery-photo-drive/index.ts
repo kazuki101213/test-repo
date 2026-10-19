@@ -208,6 +208,11 @@ export async function handler(req: Request): Promise<Response> {
       });
       if (taskError) throw taskError;
     }
+    if(purpose==='packing'){
+      const source=photos[photos.length-1];
+      const {error:noticeError}=await service.rpc('record_packing_photo_notice',{p_item_id:itemId,p_source_photo_id:source.id,p_photo_count:photos.length});
+      if(noticeError)throw noticeError;
+    }
     return json(200, { folderId, added, total: photos.length });
   } catch (cause) {
     const error = cause as Error;
