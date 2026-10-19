@@ -1,7 +1,7 @@
 import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.123';
 import {sellerScheduleReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.123';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.123';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.126';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -259,7 +259,11 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
   status='succeeded';
  }catch(error){status=mutating?'uncertain':'failed';result={note:error.message,phase};
   // Navigation can destroy the submit frame. Read its settled result, never submit twice.
-  if(mutating&&job.kind==='listing'&&session){try{await session.loaded();result={...await session.operation(job,'listing_result'),recovered_after_navigation:true};status='succeeded';}catch(checkError){result={...result,result_check_note:checkError.message};}}
+  if(mutating&&job.kind==='listing'&&session){try{await session.loaded();result={...await session.operation(job,'listing_result'),recovered_after_navigation:true};status='succeeded';}catch(checkError){result={...result,result_check_note:checkError.message};
+   // Read the original account's existing listings once. Never reopen the publish form.
+   try{await session.go(sellerUrl(account,account.identity?.pageUrl||account.listUrl));result={...await checkExistingListing(session,job,account),recovered_from_listing_list:true};status='succeeded';}
+   catch(listError){result={...result,list_check_note:listError.message};}
+  }}
   if(status!=='succeeded')await log('error','販売サイトの操作を停止しました。自動再送はしません：'+error.message);
  }
  finally{await session?.close();}

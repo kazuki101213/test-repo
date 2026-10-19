@@ -24,21 +24,21 @@ for(const channel of ['FBA','自己発送','メルカリ','ヤフオク'])for(co
  assert(button);assert.equal(button.props.disabled,approval!==true,channel+':'+approval);
  assert.equal(all(tree).find(n=>n.props?.['data-action']==='photos').props.disabled,false);
 }
-async function panelCheck(approved,saved,uncertain=false){
+async function panelCheck(approved,saved,uncertain=false,channel='メルカリ'){
  let cursor=0,hooks=[],pending=[],tree,dirty=true,queued,checks=0,finished=false;const checkOperation=()=>({id:'uncertain-op',kind:'listing',status:finished?'succeeded':'uncertain',created_at:'2026-01-01T00:00:00Z',result:checks&&!finished?{read_check_state:'queued',read_check_requested_at:new Date().toISOString()}:{}});
  const hookReact={useRef(v){return hooks[cursor++]??={current:v};},useState(v){const n=cursor++;hooks[n]??={value:v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};pending.push(fn);}}};
  const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,canViewDeliveryAssignee:()=>false},'./DescriptionEditor':{default:({embedded})=>jsx('div',{children:[jsx('input',{maxLength:128,value:embedded.value.title,disabled:embedded.disabled}),jsx('textarea',{maxLength:5000,value:embedded.value.description,disabled:embedded.disabled})]})},'../listingDraft':{listingDraft},'../api':{
-  fetchTask:async()=>({...base,description:saved}),fetchSellerContext:async()=>({revision:'one',operations:uncertain?[checkOperation()]:[],photo_review_approved:approved}),fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',requestListingResultCheck:async id=>{assert.equal(id,base.id);checks++;},fetchSellerOperation:async()=>{throw Error('Extra polling RPC');},queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
+  fetchTask:async()=>({...base,sales_channel:channel,description:saved}),fetchSellerContext:async()=>({revision:'one',operations:uncertain?[checkOperation()]:[],photo_review_approved:approved}),fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',requestListingResultCheck:async id=>{assert.equal(id,base.id);checks++;},fetchSellerOperation:async()=>{throw Error('Extra polling RPC');},queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
  }}).default;
- const props={mode:'listing',task:{...base,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(){},onClose(){}};
+ const props={mode:'listing',task:{...base,sales_channel:channel,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(){},onClose(){}};
  async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=Panel(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
  await settle();
  assert.equal(all(tree).some(n=>n.type==='button'&&n.props.children==='閉じる'),false);
  const title=all(tree).find(n=>n.type==='input'&&n.props.maxLength===128);
  const body=all(tree).find(n=>n.type==='textarea'&&n.props.maxLength===5000);
  assert(title&&body);assert.equal(title.props.disabled,!approved||uncertain);
- assert.equal(body.props.value,saved?'保存済み本文':listingDraft(base,'東芝',[base.sku]).description);
- assert.equal(title.props.value,saved?'保存済みタイトル':listingDraft(base,'東芝',[base.sku]).title);
+ assert.equal(body.props.value,saved?'保存済み本文':listingDraft({...base,sales_channel:channel},'東芝',[base.sku]).description);
+ assert.equal(title.props.value,saved?'保存済みタイトル':listingDraft({...base,sales_channel:channel},'東芝',[base.sku]).title);
  const button=name=>all(tree).find(n=>n.type==='button'&&n.props['aria-label']===name);
  assert.equal(button('写真1を前へ').props.disabled,true);assert.equal(button('写真3を後へ').props.disabled,true);
  assert.equal(button('写真2を前へ').props.disabled,!approved||uncertain);
@@ -47,6 +47,12 @@ async function panelCheck(approved,saved,uncertain=false){
   assert.equal(named('出品').props.disabled,true);assert.equal(named('出品結果を確認').props.disabled,false);
   await named('出品結果を確認').props.onClick();await settle();assert.equal(checks,1);assert.equal(queued,undefined);assert.equal(named('出品結果を確認').props.disabled,true);
   finished=true;testTimers.at(-1)();await settle();assert.equal(named('出品結果を確認'),undefined);assert.equal(queued,undefined);return;
+ }
+ if(channel==='ヤフオク'){
+  const weight=all(tree).find(n=>n.type==='label'&&all(n).some(child=>child==='梱包後の重さ'||child?.props?.children==='梱包後の重さ'))||all(tree).find(n=>n.type==='label'&&Array.isArray(n.props?.children)&&n.props.children[0]==='梱包後の重さ');
+  assert(weight,'Buyer-paid postal shipping must expose the packed weight');const select=all(weight).find(n=>n.type==='select');assert(select);
+  const named=()=>all(tree).find(n=>n.type==='button'&&n.props.children==='出品');assert.equal(named().props.disabled,true,'Missing weight blocks publish before queue');assert.equal(queued,undefined);
+  select.props.onChange({target:{value:'5'}});await settle();assert.equal(named().props.disabled,false);assert.equal(queued,undefined,'Selecting weight never queues a listing');return;
  }
  if(approved&&!saved){
   const order=()=>all(tree).filter(n=>n.props?.className==='seller-photo').map(n=>all(n).find(child=>child.type==='img').props.src);
@@ -59,7 +65,7 @@ async function panelCheck(approved,saved,uncertain=false){
   publish.props.onClick();await settle();assert.equal(queued,undefined,'Opening confirmation must not publish');let modal=all(tree).find(n=>n.props?.button?.key==='listing');assert(modal);modal.props.onCancel();await settle();assert.equal(queued,undefined);publish.props.onClick();await settle();modal=all(tree).find(n=>n.props?.button?.key==='listing');modal.props.onConfirm();modal.props.onConfirm();await settle();assert.equal(queued.kind,'listing');assert.deepEqual(Array.from(queued.payload.photos),['photo3','photo2','photo1']);
  }
 }
-(async()=>{await panelCheck(true,null,true);await panelCheck(false,null);await panelCheck(true,null);await panelCheck(true,'商品名（メルカリ）\n保存済みタイトル\n\n説明文\n保存済み本文');console.log('PASS: four-channel approval gate, listing-panel generation, family SKUs and saved edits');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{await panelCheck(true,null,false,'ヤフオク');await panelCheck(true,null,true);await panelCheck(false,null);await panelCheck(true,null);await panelCheck(true,'商品名（メルカリ）\n保存済みタイトル\n\n説明文\n保存済み本文');console.log('PASS: four-channel approval gate, listing-panel generation, family SKUs and saved edits');})().catch(error=>{console.error(error);process.exitCode=1;});
 
 async function forwardPanelCheck(kind) {
  let cursor=0,hooks=[],effects=[],dirty=true,tree,writes=0,release;
@@ -70,7 +76,7 @@ async function forwardPanelCheck(kind) {
  const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,canViewDeliveryAssignee:()=>false},'../listingDraft':{listingDraft},'./DescriptionEditor':{default:()=>null},'../api':{fetchTask:async()=>task,fetchSellerContext:async()=>info,fetchPhotoUrls:async()=>[],fetchProductMaker:async()=>'',performInventoryAction:write,queueSellerOperation:write}}).default;
  async function settle(){for(let n=0;n<25;n++){if(dirty){cursor=0;dirty=false;tree=Panel({mode:kind==='listing_complete'?'listing':'shipping',task,staff:{id:'MM'},onChanged(){},onClose(){}});effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
  const modal=()=>all(tree).find(n=>n.props?.button?.key===(kind==='ship_notice'?'shipping':kind));
- await settle();let button=all(tree).find(n=>n.type==='button'&&n.props.children===(kind==='ship_notice'?'発送通知':'出品完了'));assert(button&&!button.props.disabled);
+ await settle();let button=all(tree).find(n=>n.type==='button'&&n.props.children===(kind==='ship_notice'?'発送通知':'出品'));assert(button&&!button.props.disabled);
  button.props.onClick();await settle();assert(modal());assert.equal(writes,0);modal().props.onCancel();await settle();assert(!modal());assert.equal(writes,0);
  button.props.onClick();await settle();const yes=modal().props.onConfirm;yes();yes();assert.equal(writes,1);release();await settle();assert(!modal());
 }

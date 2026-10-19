@@ -108,3 +108,18 @@ test('ヤフオクの実際の売上金管理ラベルを販売済み一覧へ�
 test('売却済み一覧のもっと見るは読み取り行を増やすだけで出品・通知は押さない',async()=>{const p=await page('<main><h1>出品した商品 売却済み</h1><a href="/item/m11001">【11001】商品</a><button id="more" onclick="const a=document.createElement(\'a\');a.href=\'/item/m11002\';a.textContent=\'【11002】商品\';document.querySelector(\'main\').append(a);this.remove()">もっと見る</button><button onclick="throw Error(\'business action\')">発送通知をする</button></main>','https://jp.mercari.com/mypage/listings/completed');assert.equal(await p.evaluate(advanceSellerList),true);const r=await p.evaluate(readSellerPage,{site:'mercari',phase:'売却済み'});assert.equal(r.rows.length,2);await p.close();});
 
 test('ヤフオク2の終了商品・売上金管理が空でも後続確認へ進める',async()=>{for(const [phase,phrase,url] of [['出品終了分','終了した商品はありません','https://auctions.yahoo.co.jp/my/closed'],['売上金管理','お取り扱いはありません','https://salesmanagement.yahoo.co.jp/list']]){const p=await page('<h1>'+phase+'</h1><p>'+phrase+'</p>',url);const r=await p.evaluate(readSellerPage,{site:'auctions',phase});assert.equal(r.empty,true);assert.equal(r.rows.length,0);await p.close();}});
+
+test('出品済み商品は実URLの商品IDだけで確認し商品名が変わっても送信しない',async()=>{
+ const title='【1856b】2B-C30DW1 SHARP',job={...listing,read_only_listing_check:true,payload:{...listing.payload,title}};
+ const p=await page('<h1>編集後の商品名</h1><button onclick="document.body.dataset.submitted=1">出品する</button>','https://jp.mercari.com/item/m28680790154');
+ const result=await p.evaluate(sellerDomOperation,{job,phase:'listing_result'});assert.equal(result.external_id,'m28680790154');assert.equal(result.url,'https://jp.mercari.com/item/m28680790154');assert(result.observed_at);assert.equal(await p.evaluate(()=>document.body.dataset.submitted),undefined);await p.close();
+});
+
+test('出品結果の待機中にmainが交換されても最新の完了リンクを読み、再送しない',async()=>{
+ const p=await page('<h1>出品処理中</h1><button onclick="document.body.dataset.submitted=1">出品する</button>','https://jp.mercari.com/sell/create');
+ await p.evaluate(()=>setTimeout(()=>{const main=document.createElement('main');main.innerHTML='<h1>出品が完了しました</h1><a href="/item/m12345678901">商品を見る</a>';document.querySelector('main').replaceWith(main);},100));
+ const result=await p.evaluate(sellerDomOperation,{job:listing,phase:'listing_result',reportErrors:true});assert.equal(result.external_id,'m12345678901');assert.equal(await p.evaluate(()=>document.body.dataset.submitted),undefined);await p.close();
+});
+test('出品結果の非同期エラーを応答に残しnullへ落とさない',async()=>{
+ const p=await page('<h1>エラーが発生しました</h1>','https://jp.mercari.com/sell/create');const result=await p.evaluate(sellerDomOperation,{job:listing,phase:'listing_result',reportErrors:true});assert.match(result.__error,/販売サイトがエラー/);await p.close();
+});

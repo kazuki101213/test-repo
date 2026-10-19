@@ -4,7 +4,7 @@ const workflow=moduleAt('packages/shared/src/workflow.ts'),seller=moduleAt('pack
 const base={id:'one',sku:'2407-AAMM-20261012-1000',title:'ブルーレイレコーダー',model_no:'DBR-W508',marketplace:'ヤフオク',sales_channel:'メルカリ',planned_price:15981,condition:'非常に良い',deliverer_name:'MM 株式会社吉光'};
 const keys=(status,extra={})=>Array.from(workflow.deliveryWorkflowButtons({...base,status,...extra}),button=>button.key);
 assert.equal(workflow.deliveryWorkflowButtons({...base,status:'Amazon返送依頼'})[0].label,'発送依頼済');
-assert.equal(workflow.deliveryWorkflowButtons({...base,status:'取引中'})[0].label,'発送済');
+assert.equal(workflow.deliveryWorkflowButtons({...base,status:'取引中'})[0].label,'発送');
 for(const key of ['return_request_complete','inspection_complete','report','listing','listing_complete','shipping','supplier_return_complete','return_impossible','supplier_check','yahoo_instruction','compensation_complete','compensation_denied'])assert.equal(workflow.workflowButtonDirection(key),'forward',key);
 for(const key of ['inspection_cancel','listing_cancel','return_request_cancel','supplier_return_cancel','report_cancel','trade_cancel','resell','send_back','yahoo_instruction_cancel'])assert.equal(workflow.workflowButtonDirection(key),'back',key);
 for(const key of ['photos','packingPhotos','messages','comments','description'])assert.equal(workflow.workflowButtonDirection(key),undefined,key);
