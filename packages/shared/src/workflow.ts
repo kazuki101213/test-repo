@@ -1,7 +1,7 @@
 import type {DeliveryTask} from './types';
 export type InventoryAction='work_complete'|'return_request_complete'|'return_request_cancel'|'inspection_complete'|'inspection_cancel'|'report'|'report_cancel'|'send_back'|'supplier_check'|'supplier_return_complete'|'supplier_return_cancel'|'return_impossible'|'yahoo_instruction'|'yahoo_instruction_cancel'|'compensation_complete'|'compensation_denied'|'listing_complete'|'listing_cancel'|'trade_cancel'|'resell';
 export type ProductPanel='photos'|'packingPhotos'|'description'|'messages'|'comments'|'listing'|'shipping';
-export interface WorkflowButton {key:InventoryAction|ProductPanel;label:string;note?:boolean;confirmation?:string}
+export interface WorkflowButton {key:InventoryAction|ProductPanel;label:string;note?:boolean;confirmation?:string;disabled?:boolean}
 const forwardActions=new Set<WorkflowButton['key']>(['work_complete','return_request_complete','inspection_complete','report','supplier_return_complete','return_impossible','listing','listing_complete','shipping','supplier_check','yahoo_instruction','compensation_complete','compensation_denied']);
 export function workflowButtonDirection(key:WorkflowButton['key']):'forward'|'back'|undefined {
  return key.endsWith('_cancel')||key==='resell'||key==='send_back'?'back':forwardActions.has(key)?'forward':undefined;
@@ -22,7 +22,7 @@ export function deliveryWorkflowButtons(task:DeliveryTask):WorkflowButton[]{
   ...(task.workflow_decision==='yahoo'?[{key:'yahoo_instruction_cancel' as const,label:'販売不可取消'}]:!task.workflow_decision?[{key:'inspection_cancel' as const,label:'検品完了取消'}]:[])];
  case '出品中':return [...(canAddPackingPhotos(task)?[{key:'packingPhotos' as const,label:'梱包写真'}]:[]),...(task.seller_message_attention?[{key:'messages' as const,label:'取引メッセージを確認'}]:[]),{key:'listing_cancel',label:'出品中完了取消',note:true,confirmation:'実際に出品されていないことを確認しましたか？ サイトの出品は取り下げません。'}];
  case '取引中':return [...(task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク'?[{key:'shipping' as const,label:'発送'},{key:'messages' as const,label:task.seller_message_attention?'取引メッセージを確認':'取引メッセージ'}]:[]),{key:'trade_cancel',label:'出品中へ',note:true,confirmation:'アプリ内だけを出品中へ戻します。サイトのキャンセル手続きは行いません。'},{key:'resell',label:'商品登録前へ',note:true,confirmation:'購入者からの返品を確認し、商品登録前へ戻します。'}];
- case '動作不良':return [{key:'comments',label:'仕入担当者へメッセージ'},...(task.supplier_contact_requested_at?[{key:'messages' as const,label:'取引メッセージ'},{key:'supplier_return_complete' as const,label:'返品完了'},{key:'return_impossible' as const,label:'返品不可'}]:[]),...(!task.packed_on?[{key:'work_complete' as const,label:'作業完了'}]:[]),{key:'report_cancel',label:'動作不良取消'}];
+ case '動作不良':return [{key:'comments',label:'仕入担当者へメッセージ'},{key:'messages',label:'取引メッセージ'},{key:'supplier_return_complete',label:'返品完了',disabled:!task.supplier_contact_requested_at},{key:'return_impossible',label:'返品不可',disabled:!task.supplier_contact_requested_at},...(!task.packed_on?[{key:'work_complete' as const,label:'作業完了'}]:[]),{key:'report_cancel',label:'動作不良取消'}];
  case 'Amazon補填申請中':return [{key:'compensation_complete',label:'補填完了'},...(!task.packed_on?[{key:'work_complete' as const,label:'作業完了'}]:[])];
  case '返品処理':return amazon?[]:[{key:'supplier_return_cancel',label:'返品完了取消'}];
  default:return [];

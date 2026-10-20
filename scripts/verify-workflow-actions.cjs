@@ -13,7 +13,7 @@ assert.deepEqual(keys('検品中'),['inspection_complete','report']);assert.deep
 assert.equal(workflow.deliveryWorkflowButtons({...base,status:'検品中',marketplace:'動作品Amazon返品'})[1].label,'破損報告');
 assert(keys('商品登録前').includes('listing'));assert(!keys('商品登録前').includes('listing_complete'));assert(keys('商品登録前',{sales_channel:'FBA'}).includes('listing_complete'));
 assert(keys('商品登録前',{workflow_decision:'yahoo'}).includes('yahoo_instruction_cancel'));assert(!keys('商品登録前',{workflow_decision:'compensated'}).includes('inspection_cancel'));
-assert(!keys('動作不良').includes('supplier_return_complete'));assert(keys('動作不良',{supplier_contact_requested_at:'now'}).includes('supplier_return_complete'));
+assert(workflow.deliveryWorkflowButtons({...base,status:'動作不良'}).find(b=>b.key==='supplier_return_complete').disabled);assert(keys('動作不良',{supplier_contact_requested_at:'now'}).includes('supplier_return_complete'));
 assert.deepEqual(keys('返品処理'),['supplier_return_cancel']);assert(!keys('返品処理',{marketplace:'Amazon返品'}).length);
 assert(!keys('検品中',{is_accessory:true}).length);assert(keys('検品中',{is_accessory:true,sku:'2407c-AAMM-test'}).length);
 assert.deepEqual(Array.from(workflow.managementWorkflowButtons('Amazon補填申請中'),x=>x.key),['send_back','compensation_complete','compensation_denied']);

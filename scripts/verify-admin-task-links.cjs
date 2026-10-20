@@ -45,6 +45,7 @@ function inventoryLink(nodes,label,item){
   inventoryLink(all(report),'報告商品の在庫を開く','report'+n);
   assert(!all(report).some(node=>node.type==='details'),'Report details removed as requested');
   if(n===0){const conversation=all(report).filter(node=>typeof node.type==='function'&&node.props.item?.id==='report0');assert.equal(conversation.length,1,'One conversation renders actual history, without duplicate fetches');assert.deepEqual(JSON.parse(JSON.stringify(all(conversation[0].props.actions).filter(node=>node.type==='button').map(node=>node.props['data-action']))),['supplier_check','send_back']);}
+  if(n===1){const buttons=all(report).filter(node=>node.type==='button');assert.deepEqual(Array.from(buttons,n=>n.props['data-action']),['complete_compensation_report','send_back']);assert.deepEqual(Array.from(buttons,n=>text(n)),['完了','差し戻し']);assert(buttons.every(n=>n.props['data-direction']==='back'));}
   assert(all(report).some(node=>node.props?.className==='malfunction-report-message'&&text(node)==='報告内容'),'Original report message remains');
  }
  assert(!actionNodes.some(n=>n.props?.id==='admin-action-supplier-task'),'Supplier confirmation does not add a separate action card');
