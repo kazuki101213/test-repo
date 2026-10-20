@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './responsive.css';
 import './adminTasks.css';
+import './registrationFields.css';
 import App from './App';
 import PasswordSetup from './components/PasswordSetup';
 

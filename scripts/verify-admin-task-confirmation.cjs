@@ -3,7 +3,7 @@ const compile=(file,extra='')=>ts.transpileModule(fs.readFileSync(file,'utf8')+e
 const jsx=(type,props)=>({type,props});
 const all=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(n.props?.children)];
 function runtime(){let cursor=0,hooks=[];const react={useState(initial){const n=cursor++;hooks[n]??={value:initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;}];},useRef(v){return hooks[cursor++]??={current:v};},useEffect(){}};return{react,reset(){cursor=0;}};}
-const rt=runtime(),context={exports:{},require:id=>id==='react'?rt.react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};
+const rt=runtime(),context={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?rt.react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};
 vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx'),context);
 const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
 (async()=>{
@@ -11,7 +11,7 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
  hook.confirmation.props.onClose();assert.equal(writes,0);assert.equal(render().confirmation,null);
  hook=render();hook.ask('送信',async()=>{writes++;await new Promise(r=>release=r);});hook=render();
  const props=hook.confirmation.props;
- const modalRuntime=runtime();const modalContext={exports:{},require:id=>id==='react'?modalRuntime.react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};
+ const modalRuntime=runtime();const modalContext={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?modalRuntime.react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};
  vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx','\nexport { Confirmation };'),modalContext);
  let closed=0;const request={label:'送信',action:props.request.action};
  const modal=()=>{modalRuntime.reset();return modalContext.exports.Confirmation({request,onClose:()=>closed++});};
@@ -23,7 +23,7 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
  release();for(let n=0;n<12;n++)await Promise.resolve();assert.equal(closed,3);
  request.action=async()=>{throw Error('failed');};tree=modal();all(tree).find(n=>n.props?.children==='はい').props.onClick();for(let n=0;n<12;n++)await Promise.resolve();tree=modal();assert(all(tree).some(n=>n.props?.role==='alert'));assert.equal(closed,3,'Failed operation remains available for retry');
  const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
- const template={exports:{},require:id=>id==='../inventory'?inventory.exports:{}};vm.runInNewContext(compile('apps/admin/src/components/MalfunctionTasks.tsx','\nexport { templateBody };'),template);
+ const template={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='../inventory'?inventory.exports:{}};vm.runInNewContext(compile('apps/admin/src/components/MalfunctionTasks.tsx','\nexport { templateBody };'),template);
  const item={lot_seq:1856,sku:'1856b-EEMM-20261019-1000',marketplace_item_id:'m1234567891',products:[{model_no:'BDZ-ZW550'}]};
  const prefix='【1856b】【m1234567891】【BDZ-ZW550】\n';
  assert.equal(template.exports.templateBody('仕入先確認',item),prefix+'取引メッセージより仕入先へ連絡お願いします。');
@@ -36,9 +36,9 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
 async function spareDeleteConfirmation() {
  let hooks=[],cursor=0,effects=[],dirty=true,tree,deletes=0,release;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useRef:v=>hooks[cursor++]??={current:v},useCallback(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i]))hooks[n]={deps,fn};return hooks[n].fn;},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};effects.push(fn);}}};
- const confirm={exports:{},require:id=>id==='react'?react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx'),confirm);
+ const confirm={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx'),confirm);
  const shared={staffDisplayName:()=>'',deliveryStaffOptions:x=>x,MARKETPLACES:[],spareSearchFields:[],matchesSpareSearch:()=>true,spareState:()=>'予備',yen:v=>String(v),fetchSpareAccessories:async()=>[{id:'spare-1',title:'確認用リモコン',source_sku:'2508-test'}],deleteSpareAccessory:async id=>{assert.equal(id,'spare-1');deletes++;await new Promise(r=>release=r);}};
- const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../components/TaskConfirmation'?confirm.exports:id==='../api'?{fetchStaff:async()=>[]}: {default:'input'},window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
+ const ctx={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../components/TaskConfirmation'?confirm.exports:id==='../api'?{fetchStaff:async()=>[]}: {default:'input'},window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
  vm.runInNewContext(compile('apps/admin/src/pages/Spares.tsx'),ctx);
  async function settle(){for(let n=0;n<20;n++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me:{id:'AA',role:'admin'}});effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
  const modal=()=>all(tree).find(n=>n.props?.request?.label?.startsWith('予備の削除'));
