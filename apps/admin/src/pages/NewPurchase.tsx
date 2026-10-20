@@ -1,6 +1,7 @@
 import { STAFF_DISPLAY_NAMES, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
+import { entryWidth } from '../components/entryWidth';
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
   CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen,
@@ -344,41 +345,41 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       {done && <div className="ok">{done}</div>}
       {error && <div className="error">{error}</div>}
 
-      <form onSubmit={submit}>
+      <form className="registration-entry" onSubmit={submit}>
         <div className="card">
           <div className="grid cols2">
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <label className="field"><span>購入日</span>
-                <DateInput value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} required />
+                <DateInput className="registration-date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} required />
               </label>
               <label className="field"><span>仕入金額（円）</span>
-                <input type="number" min={0} value={cost} onChange={(e) => setCost(e.target.value === '' ? '' : Number(e.target.value))} required />
+                <input type="number" min={0} value={cost} style={entryWidth(cost, 8)} onChange={(e) => setCost(e.target.value === '' ? '' : Number(e.target.value))} required />
               </label>
               <label className="field"><span>仕入先</span>
-                <ColoredSelect value={marketplace} onChange={(e) => { setMarketplace(e.target.value as Marketplace); setUrlOverride(null); }}>
+                <ColoredSelect value={marketplace} style={entryWidth(marketplace, 4)} onChange={(e) => { setMarketplace(e.target.value as Marketplace); setUrlOverride(null); }}>
                   {MARKETPLACES.map((m) => <option key={m} value={m}>{m}</option>)}
                 </ColoredSelect>
               </label>
               <label className="field"><span>支払い方法</span>
-                <select value={cardId} onChange={(e) => setCardId(e.target.value)}>
+                <select value={cardId} style={entryWidth(cards.find(card => card.id === cardId)?.name ?? '—', 4)} onChange={(e) => setCardId(e.target.value)}>
                   <option value="">—</option>
                   {cards.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </label>
               <label className="field"><span>{isWorkingAmazonReturn ? 'ENA' : '商品ID'}</span>
-                <input type="text" value={marketplaceItemId} onChange={(e) => changeItemId(e.target.value)} />
+                <input type="text" value={marketplaceItemId} style={entryWidth(marketplaceItemId, 12)} onChange={(e) => changeItemId(e.target.value)} />
               </label>
               <label className="field"><span>{isWorkingAmazonReturn ? 'FNSKU' : '追跡番号'}</span>
-                <input type="text" value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} />
+                <input type="text" value={trackingNo} style={entryWidth(trackingNo, 14)} onChange={(e) => setTrackingNo(e.target.value)} />
               </label>
               <label className="field"><span>仕入先URL</span>
-                <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} />
+                <input type="url" value={marketplaceUrl} style={entryWidth(marketplaceUrl, 24)} onChange={(e) => changePurchaseUrl(e.target.value)} />
               </label>
             </div>
             {!isWorkingAmazonReturn && marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           <div>
             {!isWorkingAmazonReturn && <label className="field"><span>商品リスト検索</span>
-                <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
+                <input type="search" value={productSearch} style={entryWidth(productSearch, 18)} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
               </label>}
             {!isWorkingAmazonReturn && matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
               {matchingProducts.slice(0, 20).map(p => <button type="button" role="option" aria-selected={productId === p.id} key={p.id} onClick={() => { setProductId(p.id); setProductSearch(`${p.model_no ?? ''} / ${p.asin ?? ''}`); }}>
@@ -387,27 +388,27 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
             </div>}
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 8 }}>
               <label className="field"><span>型番</span>
-                <input type="text" value={isWorkingAmazonReturn ? returnProduct?.model_no || '' : title} readOnly={isWorkingAmazonReturn} placeholder={isWorkingAmazonReturn ? 'ASINから型番を参照' : undefined} onChange={(e) => setTitle(e.target.value)} required={!isWorkingAmazonReturn} />
+                <input type="text" value={isWorkingAmazonReturn ? returnProduct?.model_no || '' : title} style={entryWidth(isWorkingAmazonReturn ? returnProduct?.model_no || '' : title, 18)} readOnly={isWorkingAmazonReturn} placeholder={isWorkingAmazonReturn ? 'ASINから型番を参照' : undefined} onChange={(e) => setTitle(e.target.value)} required={!isWorkingAmazonReturn} />
               </label>
               <label className="field"><span>ASIN</span>
-                <input type="text" value={asin} onChange={(e) => setAsin(e.target.value)} />
+                <input type="text" value={asin} style={entryWidth(asin, 12)} onChange={(e) => setAsin(e.target.value)} />
               </label>
               <label className="field"><span>コンディション</span>
-                <ColoredSelect value={condition} onChange={(e) => setCondition(e.target.value as ItemCondition)}>
+                <ColoredSelect value={condition} style={entryWidth(condition, 4)} onChange={(e) => setCondition(e.target.value as ItemCondition)}>
                   <option value="">—</option>
                   {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
                 </ColoredSelect>
               </label>
               <label className="field"><span>販売先</span>
-                <ColoredSelect value={salesChannel} onChange={(e) => setSalesChannel(e.target.value as SalesChannel)}>
+                <ColoredSelect value={salesChannel} style={entryWidth(salesChannel, 4)} onChange={(e) => setSalesChannel(e.target.value as SalesChannel)}>
                   {SALES_CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
                 </ColoredSelect>
               </label>
               <label className="field"><span>販売予定価格</span>
-                <input type="number" min={0} value={plannedPrice} onChange={(e) => setPlannedPrice(e.target.value === '' ? '' : Number(e.target.value))} />
+                <input type="number" min={0} value={plannedPrice} style={entryWidth(plannedPrice, 8)} onChange={(e) => setPlannedPrice(e.target.value === '' ? '' : Number(e.target.value))} />
               </label>
               <label className="field"><span>振込予定額</span>
-                <input type="number" min={0} value={plannedPayout} onChange={(e) => setPlannedPayout(e.target.value === '' ? '' : Number(e.target.value))} />
+                <input type="number" min={0} value={plannedPayout} style={entryWidth(plannedPayout, 8)} onChange={(e) => setPlannedPayout(e.target.value === '' ? '' : Number(e.target.value))} />
               </label>
             </div>
             {overTarget && (
@@ -419,18 +420,18 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
           <div>
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <label className="field"><span>仕入担当者</span>
-                <select value={purchaserId} onChange={(e) => setPurchaserId(e.target.value)} required>
+                <select value={purchaserId} style={entryWidth(STAFF_DISPLAY_NAMES[staff.find(person => person.id === purchaserId)?.code ?? ''] ?? '—', 4)} onChange={(e) => setPurchaserId(e.target.value)} required>
                   {staff.filter(s => s.role !== 'deliverer' && purchaserNames.includes(s.name)).map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code] || `${s.code} ${s.name}`}</option>)}
                 </select>
               </label>
               <label className="field"><span>納品担当者</span>
-                <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)} required={workStream !== '付属品'}>
+                <select value={delivererId} style={entryWidth(STAFF_DISPLAY_NAMES[staff.find(person => person.id === delivererId)?.code ?? ''] ?? '— 未定 —', 4)} onChange={(e) => setDelivererId(e.target.value)} required={workStream !== '付属品'}>
                   <option value="">— 未定 —</option>
                   {deliveryStaffOptions(staff).map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code]}</option>)}
                 </select>
               </label>
               <label className="field"><span>作業ライン</span>
-                <select value={workStream} onChange={(e) => setWorkStream(e.target.value as WorkStream)}>
+                <select value={workStream} style={entryWidth(workStream ? workStreamLabels[workStream] : '—', 4)} onChange={(e) => setWorkStream(e.target.value as WorkStream)}>
                   <option value="">—</option>
                   {WORK_STREAMS.map((w) => <option key={w} value={w}>{workStreamLabels[w]}</option>)}
                 </select>
@@ -441,7 +442,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                   min={isAmazonReturn || isWorkingAmazonReturn ? undefined : 1}
                   inputMode={isAmazonReturn || isWorkingAmazonReturn ? 'text' : 'numeric'}
                   placeholder={isAmazonReturn || isWorkingAmazonReturn ? '例：1z、1za' : undefined}
-                  value={lotSeq}
+                  value={lotSeq} style={entryWidth(lotSeq, 8)}
                   onChange={(e) => setLotSeq(e.target.value)}
                 />
               </label>

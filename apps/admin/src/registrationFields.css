@@ -1,0 +1,17 @@
+/* Registration controls fit their contents without changing other forms. */
+.layout .registration-entry .field {
+  min-width: 0;
+}
+.layout .registration-entry .field > select,
+.layout .registration-entry .field > .colored-select {
+  width: fit-content;
+  max-width: 100%;
+}
+.layout .registration-entry .colored-select select {
+  max-width: 100%;
+}
+.layout .registration-entry .registration-date {
+  width: calc(10ch + 1.5rem);
+  min-width: 0;
+  flex: 0 1 auto;
+}
