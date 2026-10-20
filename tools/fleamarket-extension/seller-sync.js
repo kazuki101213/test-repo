@@ -3,6 +3,15 @@ export function sellerScheduleReady(settings,records,day){
  if(settings.mode==='diagnostic'||records.job||records.sellerDailyAttempt?.day===day)return false;
  return ['tracking',...(settings.purchaseImportEnabled?['purchases']:[])].every(kind=>records.scheduledRuns?.[kind]?.day===day&&records.lastRun?.[kind]?.day===day);
 }
+/** Active sale checks are independent of the 01:00 purchase/import barrier. */
+export function sellerHourlyReady(settings,records,now=Date.now()){
+ if(settings.mode==='diagnostic'||records.job||records.authProblem||!sellerAccounts(settings).length)return false;
+ for(const attempt of [records.sellerHourlyAttempt,records.sellerDailyAttempt]){
+  const time=Date.parse(attempt?.startedAt||attempt?.at||'');
+  if(Number.isFinite(time)&&now-time<60*60000)return false;
+ }
+ return true;
+}
 export function sellerAccounts(settings){return settings.accounts.filter(account=>account.enabled&&['mercari-1','mercari-2','auctions-1','auctions-2'].includes(account.id));}
 export function sellerUrl(account,url){
  const value=new URL(url),hosts=account.site==='mercari'?['jp.mercari.com']:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','salesmanagement.yahoo.co.jp','aucpay.yahoo.co.jp'];

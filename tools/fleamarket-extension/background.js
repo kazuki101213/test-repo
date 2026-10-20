@@ -1,6 +1,6 @@
-import {runSellerReadOnlyInspection} from './seller-inspection.js?v=0.1.131';
+import {runSellerReadOnlyInspection} from './seller-inspection.js?v=0.1.132';
 import {supplierQueuedOperations} from './supplier-runtime.js';
-import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair} from './seller-runtime.js?v=0.1.131';
+import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair} from './seller-runtime.js?v=0.1.132';
 import {readSellerInventory} from './sales-status.js';
 import {openLauncherSites,missingTabRecovery,desktopRequestApplies} from './launcher.js';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
@@ -382,7 +382,7 @@ async function prepareDesktopLaunchRequest(){
 
 async function runSellerWork(){
  if(sellerBusy||busy||await launchPending())return;
- const records=await STORE.get(['session','authProblem','job','diagnosticInstance','lastRun','scheduledRuns','sellerDailyAttempt','sellerSaleBackfills','sellerBarrierDay','sellerBarrierError','sellerQueueErrorDay']);
+ const records=await STORE.get(['session','authProblem','job','diagnosticInstance','lastRun','scheduledRuns','sellerDailyAttempt','sellerHourlyAttempt','sellerSaleBackfills','sellerBarrierDay','sellerBarrierError','sellerQueueErrorDay']);
  if(records.job||records.authProblem||!records.session?.access_token||!PRODUCTION_PLAN.profiles[records.diagnosticInstance])return;
  const settings=await getSettings();if(settings.mode==='diagnostic')return;
  sellerBusy=true;try{
@@ -391,5 +391,7 @@ async function runSellerWork(){
   if(await runSellerSaleRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest:async()=>{try{const response=await fetch(chrome.runtime.getURL('seller-inspection-request.json'),{cache:'no-store'});return response.ok?await response.json():null;}catch{return null;}}}))return;
   if(records.sellerQueueErrorDay!==jstDay())try{await supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log});await sellerQueuedOperations(dependencies);}catch(error){await STORE.set({sellerQueueErrorDay:jstDay()});await log('error','販売操作の取得を停止しました。自動再試行はしません：'+error.message);}
   await sellerDaily({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance});
+  const hourlyRecords={...records,...await STORE.get(['job','authProblem','sellerDailyAttempt','sellerHourlyAttempt'])};
+  await sellerDaily({...dependencies,records:hourlyRecords,day:jstDay(),profileId:records.diagnosticInstance,hourly:true});
  }finally{sellerBusy=false;}
 }

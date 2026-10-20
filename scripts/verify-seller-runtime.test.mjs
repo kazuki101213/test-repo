@@ -45,3 +45,56 @@ test('結果読取自体の応答消失でも再出品せず一度だけ読み�
  await sellerQueuedOperations({settings,rpc:async(name,args)=>{if(name==='extension_seller_queue')return[job];if(name==='extension_claim_seller_operation')return true;if(name==='extension_finish_seller_operation'){finished=args;return;}throw Error(name);},openSession:async()=>({links:async()=>[{text:'出品',url:'https://jp.mercari.com/sell/create'}],go:async()=>{},structure:async()=>({fileInputs:[{}]}),loaded:async()=>{},operation:async(job,phase)=>{if(phase==='publish'){publishes++;return {submitted:true};}if(phase==='listing_result'){if(++reads===1)throw Error('response lost');return {external_id:'m123',url:'https://jp.mercari.com/item/m123'};}return {};},close:async()=>{}}),log:async()=>{}});
  assert.equal(publishes,1);assert.equal(reads,2);assert.equal(finished.p_status,'succeeded');
 });
+
+import {sellerHourlyReady} from '../tools/fleamarket-extension/seller-sync.js';
+test('毎時確認は前回開始から60分、日付変更や再起動で連続実行せず日次処理は維持',()=>{
+ const now=Date.parse('2026-10-19T15:05:00Z');
+ assert(sellerHourlyReady(settings,{},now));
+ for(const status of ['running','completed','failed']){
+  const r={sellerHourlyAttempt:{status,startedAt:new Date(now-3599999).toISOString()}};
+  assert.equal(sellerHourlyReady(settings,r,now),false);
+  assert.equal(sellerHourlyReady(settings,r,now+1),true);
+ }
+ assert.equal(sellerHourlyReady(settings,{sellerDailyAttempt:{at:new Date(now).toISOString()}},now),false);
+ for(const r of [{job:{}},{authProblem:true}])assert.equal(sellerHourlyReady(settings,r,now),false);
+ assert.equal(sellerHourlyReady({...settings,mode:'diagnostic'},{},now),false);
+ assert.equal(sellerHourlyReady({...settings,accounts:[]},{},now),false);
+});
+for(const source of ['tools','apps'])test(source+' 毎時は販売状態だけ、過去売上/完了判定/日次バリア/サイト書込みなし',async()=>{
+ const {sellerDaily:run}=await import('../'+source+'/fleamarket-extension/seller-runtime.js');
+ const state={},visits=[],calls=[],detail=[],applied=[];const now=Date.parse('2026-10-19T15:05:00Z');
+ const account={id:'mercari-2',site:'mercari',label:'メルカリ2',enabled:true};
+ const menu=[{text:'出品中',url:'https://jp.mercari.com/mypage/listings/listing'}, {text:'取引中',url:'https://jp.mercari.com/mypage/listings/in_progress'}, {text:'売却済み',url:'https://jp.mercari.com/mypage/listings/completed'}];
+ const row={external_id:'m123456789',serial:'2398',status:'取引中',detail_url:'https://jp.mercari.com/transaction/m123456789'};
+ const deps={settings:{...settings,accounts:[account]},records:{},day:'2026-10-20',profileId:'profile',hourly:true,now,storage:{set:async v=>Object.assign(state,v)},log:async()=>{},rpc:async(name,args)=>{
+  calls.push(name);
+  if(name==='seller_observation_plan')return args.p_rows.map(r=>({external_id:r.external_id,action:'detail'}));
+  if(name==='sync_seller_observation'){applied.push(args.p_observation);return 'updated';}
+  throw Error('Unexpected RPC '+name);
+ },openSession:async()=>({links:async()=>menu,go:async url=>visits.push(url),read:async phase=>({empty:phase==='出品中',itemCount:2,rows:phase==='取引中'?[row,{external_id:'m999',status:'販売済'}]:[],navigation:menu}),detail:async url=>{detail.push(url);return {url,text:'購入日時 2026年10月20日 00:04'};},operation:()=>{throw Error('Site write prohibited');},close:async()=>{visits.push('restored');}})};
+ await run(deps);
+ assert.equal(state.sellerHourlyAttempt.status,'completed');assert.equal(state.sellerHourlyAttempt.updated,1);
+ assert.equal(state.sellerDailyAttempt,undefined);assert.equal(state.sellerSaleBackfills,undefined);
+ assert.deepEqual(visits,[menu[0].url,menu[1].url,'restored']);assert.deepEqual(detail,[row.detail_url]);
+ assert.deepEqual(calls,['seller_observation_plan','sync_seller_observation']);assert.equal(applied[0].status,'取引中');
+ assert(!('sold_on' in applied[0]));assert(state.sellerHourlyAttempt.responseBytes>0);
+ await run({...deps,records:state,now:now+59999});assert.equal(applied.length,1);
+ await run({...deps,records:state,now:now+3600000});assert.equal(applied.length,2);
+});
+test('毎時確認失敗も60分は再実行せず、キュー操作を呼ばない',async()=>{
+ const data={},now=Date.parse('2026-10-20T01:00:00Z');let access=0;
+ const deps={settings,records:{},day:'2026-10-20',hourly:true,now,storage:{set:async v=>Object.assign(data,v)},rpc:async()=>{throw Error('unexpected RPC');},openSession:async()=>{access++;throw Error('ログイン・追加認証が必要');},log:async()=>{}};
+ await sellerDaily(deps);assert.equal(data.sellerHourlyAttempt.status,'failed');assert.equal(access,3);
+ await sellerDaily({...deps,records:data,now:now+60000});assert.equal(access,3);
+});
+
+test('ヤフオク毎時は出品終了分もページ送りし、変化のない取引中は個別画面/更新を省略',async()=>{
+ const state={},visits=[],planned=[],account={id:'auctions-1',site:'auctions',label:'ヤフオク1',enabled:true};
+ const menu=[{text:'出品中',url:'https://auctions.yahoo.co.jp/my/selling'},{text:'出品終了分',url:'https://auctions.yahoo.co.jp/my/closed'},{text:'売上金管理',url:'https://salesmanagement.yahoo.co.jp/list'}];
+ let url;
+ await sellerDaily({settings:{...settings,accounts:[account]},records:{},day:'2026-10-20',hourly:true,storage:{set:async v=>Object.assign(state,v)},log:async()=>{},rpc:async(name,args)=>{
+  assert.equal(name,'seller_observation_plan');planned.push(...args.p_rows);return args.p_rows.map(r=>({external_id:r.external_id,action:'unchanged'}));
+ },openSession:async()=>({links:async()=>menu,go:async u=>{url=u;visits.push(u);},read:async phase=>({empty:phase==='出品中',itemCount:1,rows:phase==='出品終了分'?[{external_id:url.endsWith('page=2')?'m2':'m1',status:'取引中'}]:[],navigation:url===menu[1].url?[{text:'次へ',url:menu[1].url+'?page=2'}]:[]}),detail:async()=>{throw Error('Unchanged trade detail must not open');},close:async()=>{}})});
+ assert.deepEqual(visits,[menu[0].url,menu[1].url,menu[1].url+'?page=2']);assert.equal(planned.length,2);
+ assert.equal(state.sellerHourlyAttempt.status,'completed');assert.equal(state.sellerHourlyAttempt.updated,0);
+});
