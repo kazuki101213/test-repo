@@ -48,3 +48,8 @@
  .invoice-task-rows > .admin-damage-task > .workflow-buttons { flex-direction:column; align-items:flex-end; width:94px; }
  .invoice-task-rows > .admin-shipping-task .admin-shipping-fields { flex-direction:column; align-items:flex-start; }
 }
+
+/* Acknowledging a damage report is separate from the deliverer's compensation transition. */
+.invoice-task-rows > .admin-damage-task > .workflow-buttons { display:grid; grid-template-columns:84px; gap:4px; width:84px; justify-self:end; }
+.invoice-task-rows > .admin-damage-task > .workflow-buttons > .btn { width:84px; min-width:0; height:44px; padding:8px; margin:0; }
+@media(max-width:767px){.invoice-task-rows > .admin-task-card.admin-damage-task { grid-template-columns:minmax(0,1fr) 84px; }}

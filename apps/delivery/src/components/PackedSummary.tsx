@@ -25,7 +25,7 @@ export default function PackedSummary({ staffId }: { staffId: string }) {
     <h3>納品実績</h3>
     {error && <p className="error" role="alert">{error}</p>}
     {loading ? <p>読み込み中…</p> : !error && <div className="packed-summary-scroll">
-      <table><thead><tr><th>通番号</th><th>購入日</th><th>梱包日</th><th>SKU</th><th>商品名</th></tr></thead>
+      <table><thead><tr><th>通番号</th><th>購入日</th><th>作業完了日</th><th>SKU</th><th>商品名</th></tr></thead>
         <tbody>{rows.map(row => <tr key={row.id}><td>{row.lot_seq}</td><td>{row.purchased_at?.slice(0, 10) ?? '—'}</td><td>{row.packed_on?.slice(0, 10)}</td><td>{row.sku}</td><td>{row.title}</td></tr>)}</tbody>
       </table>
       {!rows.length && <p>該当する商品はありません。</p>}

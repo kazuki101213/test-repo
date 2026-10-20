@@ -269,6 +269,10 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     finally { setBusy(null); }
   }
 
+  async function completeCompensationReport(row:MalfunctionTask){
+    const {error}=await getSupabase().rpc('complete_compensation_report',{p_item_id:row.id,p_reported_at:row.malfunction_reported_at});
+    if(error)throw error;await refresh();
+  }
   const [returning,setReturning]=useState<MalfunctionTask|null>(null);
   const returnRequest=useRef('');
   async function returnReport(reason:string){
@@ -298,7 +302,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {rows.map(row => {
       const source = purchaseSources.get(row.id);
       const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, source?.marketplace_item_id ?? row.marketplace_item_id, source?.marketplace_url ?? null);
-      const controls = (staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{managementWorkflowButtons(row.status).filter(button=>button.key!=='yahoo_instruction').sort((a,b)=>['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(a.key)-['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(b.key)).map(button=><button key={button.key} className="btn" data-action={button.key} data-direction={workflowButtonDirection(button.key)} disabled={busy !== null || pending} onClick={()=>{if(button.key==='send_back'){returnRequest.current=crypto.randomUUID();setReturning(row);}else ask((row.status === '動作不良' ? '動作不良' : '破損報告')+'：'+button.label,()=>resolve(row,button.key as InventoryAction));}}>{button.label}</button>)}</div>;
+      const controls = (staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{row.status==='Amazon補填申請中'&&<button type="button" className="btn" data-action="complete_compensation_report" data-direction="back" disabled={busy!==null||pending} onClick={()=>ask('破損報告：完了',()=>completeCompensationReport(row))}>完了</button>}{managementWorkflowButtons(row.status).filter(button=>!['yahoo_instruction','compensation_complete','compensation_denied'].includes(button.key)).sort((a,b)=>['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(a.key)-['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(b.key)).map(button=><button key={button.key} className="btn" data-action={button.key} data-direction={workflowButtonDirection(button.key)} disabled={busy !== null || pending} onClick={()=>{if(button.key==='send_back'){returnRequest.current=crypto.randomUUID();setReturning(row);}else ask((row.status === '動作不良' ? '動作不良' : '破損報告')+'：'+button.label,()=>resolve(row,button.key as InventoryAction));}}>{button.label}</button>)}</div>;
       return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className={`malfunction-task-row admin-task-card ${row.status === '動作不良' ? 'malfunction-report-row admin-fault-task' : 'admin-damage-task'}`}>
       <div className="malfunction-task-content">
         <div className="task-action-details malfunction-report-details">
