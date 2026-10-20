@@ -12,7 +12,7 @@ Deno.test('push destinations and keys reject arbitrary/private endpoints', async
   for (const endpoint of ['http://web.push.apple.com/example','https://localhost/example','https://web.push.apple.com.evil.example/test','https://user:pass@web.push.apple.com/example','https://web.push.apple.com:8443/example']) assert(!validSubscription({ ...sub, endpoint }));
   assert(!validSubscription({ ...sub, keys:{ ...sub.keys, auth:'short' } }));
   assertEquals(notificationBody('reply',2198),'【2198】動作不良への返信があります。');
-  assertEquals(notificationBody('photo',2198),'【2198】商品写真承認されました。');
+  assertEquals(notificationBody('photo',2198),'【2198】出品お願いします。');
 });
 
 Deno.test('admin notifications retain their task target and app scope', () => {
