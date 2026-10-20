@@ -13176,4 +13176,15 @@ begin
  execute patched;
 end $migration$;
 
+-- Existing cards were seeded without push events. Restore their actual first
+-- trading observation from the latest transition in the audit history.
+update app.delivery_shipping_tasks t set created_at=history.started_at
+from lateral (select 1) anchor,app.items i,
+lateral(select a.created_at started_at from app.audit_log a
+ where a.table_name='items' and a.row_id=i.id and a.new_data->>'status'='取引中'
+ and a.old_data->>'status' is distinct from '取引中'
+ order by a.created_at desc limit 1) history
+where t.item_id=i.id and t.resolved_at is null and history.started_at<t.created_at
+ and not exists(select 1 from app.delivery_push_events e where e.kind='shipping' and e.item_id=t.item_id and e.event_at=t.created_at);
+
 
