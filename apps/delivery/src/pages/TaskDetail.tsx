@@ -250,8 +250,8 @@ export default function TaskDetail({
       {photoMode && <>
       <div className="card photo-control-row">
         <span className="muted">{packing?'梱包写真':'写真'} {photos.length}枚</span>
-        {canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : packing?'梱包写真追加':'写真追加'}
-          <input type="file" aria-label={packing?'梱包写真追加':'商品写真追加'} accept="image/*" multiple disabled={uploading || driveBusy || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+        {canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : packing?'梱包写真追加':'写真表示'}
+          <input type="file" aria-label={packing?'梱包写真追加':'商品写真表示'} accept="image/*" multiple disabled={uploading || driveBusy || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>}
         {(canEditPhotos || (!packing && photos.length > 0 && !photoReview?.approved_at))&&<button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
           onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブ追加中…' : 'Googleドライブ追加'}</button>}
