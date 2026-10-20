@@ -137,7 +137,7 @@ export default function Inventory({ me }: { me: Staff }) {
       <div className="inventory-controls">
       <div className="inventory-registration-actions">
         <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => { if (purchaseOpen) setSelectedPurchaseDraft(null); setPurchaseOpen(open => !open); }}>
-          {purchaseOpen ? '在庫登録を閉じる' : '在庫登録'}
+          在庫登録
         </button>
         {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
       </div>
