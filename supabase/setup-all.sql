@@ -12999,7 +12999,7 @@ create function app.capture_shipping_request() returns trigger language plpgsql 
 declare task app.delivery_shipping_tasks;
 begin
  if new.is_accessory and not app.is_standalone_accessory_serial(new.sku,new.lot_seq) then return new;end if;
- if new.status<>'取引中' or new.shipped_on is not null or new.sales_channel not in ('メルカリ','ヤフオク','自己発送') then
+ if new.status is distinct from '取引中' or new.shipped_on is not null or not coalesce(new.sales_channel in ('メルカリ','ヤフオク','自己発送'),false) then
   update app.delivery_shipping_tasks set resolved_at=clock_timestamp() where item_id=new.id and resolved_at is null;
  elsif old.status is distinct from new.status then
   update app.delivery_shipping_tasks set resolved_at=clock_timestamp() where item_id=new.id and resolved_at is null;
