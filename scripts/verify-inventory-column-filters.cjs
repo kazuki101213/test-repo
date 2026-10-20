@@ -87,3 +87,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
  console.log('34 headings, combined filters, signed ranges, dates, empty values, all fetched rows, zero-match recovery and clear-all UI passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
+
+for(const returned of [{...row,status:'返品処理',days_in_stock:100,days_to_sell:50},{...row,status:'返品処理',product_sold_on:'2026-10-20',purchased_at:'2026-10-01'}]){assert.equal(filters.exports.saleDays(returned),null);assert.equal(filters.exports.inventoryColumns.sold_days.value(returned),null);assert.equal(apply([returned],{sold_days:f(null,'1','200')}).length,0);}
+assert.equal(filters.exports.saleDays({...row,status:'出品中',product_sold_on:null,days_in_stock:10}),10);
+assert.equal(filters.exports.saleDays({...row,status:'販売済',product_sold_on:'2026-10-20',purchased_at:'2026-10-01'}),19);
