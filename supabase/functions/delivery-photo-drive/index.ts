@@ -176,7 +176,10 @@ export async function handler(req: Request): Promise<Response> {
       }
       return json(200, { sourceSerial, added, total: ownPhotos.length + added });
     }
-    const selectedPhotos=photos.filter(photo=>(photo.photo_kind??'product')===purpose && ((purpose!=='packing' && !aSeries)||photo.item_id===itemId));
+    const selectedPhotos=photos.filter(photo=>(photo.photo_kind??'product')===purpose
+      && ((purpose!=='packing' && !aSeries)||photo.item_id===itemId)
+      // Reflected copies belong only to their target; do not duplicate/save them through the original lot.
+      && (photo.item_id===itemId || !photo.storage_path.includes('/reflected-')));
     photos.splice(0,photos.length,...selectedPhotos);
     if (action === 'list') {
       const urls: Array<{ id: string; url: string; canDelete: boolean }> = [];

@@ -189,6 +189,13 @@ test('a-series lists and saves only its own product photos; packing remains isol
  assert.deepEqual(state.downloads,['photos/new.jpg']);
  assert(!state.google.some(req=>req.url.includes('/files/old-file')));
 });
+test('original lot does not display or export staged reflected copies from another item',async()=>{
+ const {state,call}=setup();state.item_photos.push({id:'copied',item_id:'original',storage_path:'123a-SKU/reflected-source.jpg',drive_file_id:null,uploaded_by:'staff'});
+ assert.deepEqual((await (await call('list')).json()).photos.map(row=>row.id),['p1','p2']);
+ assert.equal((await call('save')).status,200);
+ assert(!state.downloads.includes('123a-SKU/reflected-source.jpg'),'A save on a different item cannot submit staged reflected copies');
+ assert.equal(state.item_photos.find(row=>row.id==='copied').drive_file_id,null);
+});
 test('reflection reads original Drive product photos only, keeps source order, and never submits review',async()=>{
  const {state,call}=reflectionSetup();
  state.items.push({id:'sibling',lot_seq:123,sku:'123b-AAII-20261020-1000'});
