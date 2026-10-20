@@ -32,6 +32,7 @@ export function notificationPayload(row: { app_kind: string; kind: string; lot_s
 }
 
 export function notificationBody(kind: string, lot: number): string {
+  if (kind === 'shipping') return `【${lot}】発送お願いします。`;
   if (kind === 'photo_return') return `【${lot}】商品写真の修正お願いします。`;
   if (kind === 'malfunction_return') return `【${lot}】動作不良への返信があります。`;
   if (kind === 'reply') return `【${lot}】動作不良への返信があります。`;

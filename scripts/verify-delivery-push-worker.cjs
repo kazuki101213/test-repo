@@ -9,6 +9,7 @@ const validationSource=fs.readFileSync(path.join(__dirname,'../supabase/function
 const validationModule={exports:{}};vm.runInNewContext(esbuild.transformSync(validationSource,{loader:'ts',format:'cjs'}).code,{module:validationModule,exports:validationModule.exports,URL});
 const approvalPayload=validationModule.exports.notificationPayload({app_kind:'delivery',kind:'photo',lot_seq:2198,item_id:'61892662-9437-4d89-8926-348ed017e954'});
 assert.equal(approvalPayload.body,'【2198】出品お願いします。');assert.equal(approvalPayload.tag,'delivery-61892662-9437-4d89-8926-348ed017e954-photo');
+const shippingPayload=validationModule.exports.notificationPayload({app_kind:'delivery',kind:'shipping',lot_seq:2390,item_id:'shipping-item'});assert.equal(shippingPayload.body,'【2390】発送お願いします。');assert.equal(shippingPayload.itemId,'shipping-item');assert.equal(shippingPayload.tag,'delivery-shipping-item-shipping');
 const source = fs.readFileSync(path.join(__dirname, '../apps/delivery/public/sw.js'), 'utf8');
 async function verify(scope, useExisting) {
   const handlers = {}, notifications = [], opened = [], navigated = [];

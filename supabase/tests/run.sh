@@ -76,3 +76,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/delivery_notice_completion.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/yahoo_fault_template_condition.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/work_completion_dates.sql"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/delivery_shipping_requests.sql"
