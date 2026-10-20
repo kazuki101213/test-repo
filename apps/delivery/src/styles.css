@@ -333,3 +333,5 @@ textarea { min-height: 80px; resize: vertical; }
 .delivery-return-details { display:flex; gap:4px 8px; flex-wrap:wrap; margin-top:4px; }
 .delivery-return-reason { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(max-width:640px) { .delivery-return-details { flex-direction:column; } }
+
+.delivery-shipping-task .delivery-return-details { flex-direction:column; gap:4px; }
