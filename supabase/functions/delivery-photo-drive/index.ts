@@ -116,7 +116,7 @@ export async function handler(req: Request): Promise<Response> {
     const token = authorization.replace(/^Bearer\s+/i, '');
     const { itemId, action = 'save', purpose = 'product' } = await req.json().catch(() => ({}));
     if (purpose !== 'product' && purpose !== 'packing') throw new RequestError(400, '写真の種類が不正です。');
-    if (action !== 'list' && action !== 'save') throw new RequestError(400, '写真の操作が不正です。');
+    if (!['list', 'save', 'reflect'].includes(action)) throw new RequestError(400, '写真の操作が不正です。');
     if (typeof itemId !== 'string' || !/^[\da-f-]{36}$/i.test(itemId)) throw new RequestError(400, '商品の指定が不正です。');
     const url = Deno.env.get('SUPABASE_URL')!;
     const userClient = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, {
@@ -135,8 +135,10 @@ export async function handler(req: Request): Promise<Response> {
     if (itemError || !item || (staff.role !== 'admin' && item.deliverer_id !== profile.staff_id && !(action === 'list' && staff.role === 'purchaser'))) throw new RequestError(403, 'この商品の写真を扱う権限がありません。');
     if(purpose==='packing' && action==='save' && !(item.sales_channel==='FBA'?item.status==='商品登録前':['自己発送','メルカリ','ヤフオク'].includes(item.sales_channel)&&item.status==='出品中')) throw new RequestError(409,'現在の販売状態では梱包写真を追加できません。');
     // Authorize the requested item first, then expose only its own lot's photos.
-    const members = await allRows<{ id: string }>((from, to) => service.from('items')
-      .select('id').eq('lot_seq', item.lot_seq).order('id').range(from, to));
+    const aSeries = /^(\d+)a+-/i.exec(item.sku ?? '');
+    if (action === 'reflect' && (purpose !== 'product' || !aSeries || item.status !== '商品登録前')) throw new RequestError(409, '商品登録前のa系商品の商品写真で利用できます。');
+    const members = await allRows<{ id: string; sku: string; is_accessory: boolean }>((from, to) => service.from('items')
+      .select('id,sku,is_accessory').eq('lot_seq', item.lot_seq).order('id').range(from, to));
     const memberIds = members.map(member => member.id);
     const photos: Photo[] = [];
     for (let start = 0; start < memberIds.length; start += 100) {
@@ -146,7 +148,35 @@ export async function handler(req: Request): Promise<Response> {
     }
     // Batches of related items must share the same oldest-first addition order.
     photos.sort((a,b)=>(a.created_at??'').localeCompare(b.created_at??'')||a.id.localeCompare(b.id));
-    const selectedPhotos=photos.filter(photo=>(photo.photo_kind??'product')===purpose && (purpose!=='packing'||photo.item_id===itemId));
+    if (action === 'reflect') {
+      const sourceSerial = aSeries![1];
+      const originals = members.filter(member => member.sku?.split('-')[0] === sourceSerial && !member.is_accessory);
+      if (originals.length !== 1) throw new RequestError(409, `通番号${sourceSerial}の元商品を一意に確認できません。管理者に確認してください。`);
+      const sourcePhotos = photos.filter(photo => photo.item_id === originals[0].id && (photo.photo_kind ?? 'product') === 'product' && photo.drive_file_id && photo.uploaded_by);
+      if (!sourcePhotos.length) throw new RequestError(409, `通番号${sourceSerial}にGoogleドライブ保存済みの商品写真がありません。`);
+      const ownPhotos = photos.filter(photo => photo.item_id === itemId && (photo.photo_kind ?? 'product') === 'product');
+      const paths = new Set(ownPhotos.map(photo => photo.storage_path));
+      const pending = sourcePhotos.filter(photo => !paths.has(`${item.sku}/reflected-${photo.id}.jpg`));
+      if (!pending.length) return json(200, { sourceSerial, added: 0, total: ownPhotos.length });
+      const driveToken = await googleToken();
+      let added = 0;
+      for (const source of pending) {
+        // Read Drive, but create an independent target copy. Never share the source Drive file ID.
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(source.drive_file_id!)}?alt=media`, { headers: { Authorization: `Bearer ${driveToken}` } });
+        if (!response.ok) throw new RequestError(502, `元商品の写真をGoogleドライブから取得できません（HTTP ${response.status}）。${added}枚反映済みです。再度「写真反映」で残りを取り込めます。`);
+        const blob = await response.blob();
+        if (!blob.type.startsWith('image/') || blob.size === 0 || blob.size > 20 * 1024 * 1024) throw new RequestError(502, '元商品の写真形式またはサイズを確認してください。');
+        const storagePath = `${item.sku}/reflected-${source.id}.jpg`;
+        const { error: uploadError } = await service.storage.from('item-photos').upload(storagePath, blob, { contentType: blob.type, upsert: true });
+        if (uploadError) throw new RequestError(502, '写真の反映先へ保存できません。再度「写真反映」で取り込めます。');
+        // This service-only RPC serializes duplicate registrations and rechecks source/target ownership.
+        const { error: recordError } = await service.rpc('record_reflected_product_photo', { p_item_id: itemId, p_source_photo_id: source.id, p_staff_id: profile.staff_id });
+        if (recordError) throw new RequestError(409, '写真を反映できません。商品状態を確認し、再度「写真反映」で取り込んでください。');
+        added++;
+      }
+      return json(200, { sourceSerial, added, total: ownPhotos.length + added });
+    }
+    const selectedPhotos=photos.filter(photo=>(photo.photo_kind??'product')===purpose && ((purpose!=='packing' && !aSeries)||photo.item_id===itemId));
     photos.splice(0,photos.length,...selectedPhotos);
     if (action === 'list') {
       const urls: Array<{ id: string; url: string; canDelete: boolean }> = [];

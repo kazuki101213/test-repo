@@ -1,7 +1,9 @@
 import {useEffect,useRef,useState} from 'react';
 import {readResourceSnapshot,noticeProductUrl} from '@bussan/shared';
 import {completeDeliveryNotice} from '../api';
-type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping';reason?:string|null;expires_at?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null};
+type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping';created_at?:string;reason?:string|null;expires_at?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null};
+const taskOrder={photo_approved:0,shipping:1,photo_return:2,reply:3};
+const orderedTasks=(rows:ReturnTask[])=>[...rows].sort((a,b)=>taskOrder[a.kind]-taskOrder[b.kind]||(a.created_at??'').localeCompare(b.created_at??'')||a.id.localeCompare(b.id));
 export default function ReturnTasks({staffId}:{staffId:string}){
  const [rows,setRows]=useState<ReturnTask[]>([]),[error,setError]=useState(''),[pending,setPending]=useState<string[]>([]);
  const locks=useRef(new Set<string>());
@@ -36,7 +38,7 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   window.addEventListener('delivery-return-tasks-changed',changed);window.addEventListener('delivery-item-workflow-changed',workflowChanged);
   return()=>{active=false;window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);window.removeEventListener('delivery-return-tasks-changed',changed);window.removeEventListener('delivery-item-workflow-changed',workflowChanged);};
  },[staffId]);
- return <>{error&&<li className="error" role="alert">{error}</li>}{rows.map(row=>{const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')}>
+ return <>{error&&<li className="error" role="alert">{error}</li>}{orderedTasks(rows).map(row=>{const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')}>
   <div className="delivery-return-content"><strong>{row.kind==='shipping'?'発送お願いします。':row.kind==='photo_return'?(row.reason?.trim()||'商品写真の修正お願いします。'):row.kind==='photo_approved'?'出品お願いします。':'動作不良への返信があります。'}</strong>
    <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
     {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{row.sku}</span></div>

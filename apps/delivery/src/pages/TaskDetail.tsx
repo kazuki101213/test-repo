@@ -4,7 +4,7 @@ import { jpDate, canViewDeliveryAssignee, canAddPackingPhotos } from '@bussan/sh
 import type { DeliveryTask, ItemComment, Staff } from '@bussan/shared';
 import {
   addPhotosToDrive, deletePhoto, fetchComments, fetchSupplierConversation, fetchSupplierOperation, fetchPhotoReview, fetchPhotoUrls, fetchTask, postComment,
-  queueSupplierOperation, recordListingPhotoUpload, uploadPhoto,
+  queueSupplierOperation, recordListingPhotoUpload, reflectOriginalProductPhotos, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
 import DescriptionEditor from '../components/DescriptionEditor';
@@ -27,6 +27,7 @@ export default function TaskDetail({
   const [photos, setPhotos] = useState<ItemPhoto[]>([]);
   const [photoReview, setPhotoReview] = useState<PhotoReviewState | null>(null);
   const [driveBusy, setDriveBusy] = useState(false);
+  const [reflecting, setReflecting] = useState(false);
   const [driveMessage, setDriveMessage] = useState('');
   const [draft, setDraft] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -144,10 +145,24 @@ export default function TaskDetail({
     setDriveBusy(true); setError(null); setDriveMessage('');
     try {
       const result = await addPhotosToDrive(task.id,purpose);
+      if (!packing && !task.photo_uploaded) await recordListingPhotoUpload(task.id);
       setDriveMessage(packing?`梱包写真${result.total}枚を商品写真と同じ保存先に追加しました。`:`${result.total}枚を通番号${task.lot_seq}の共通フォルダに保存しました。管理アプリで写真確認を待っています。`);
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setDriveBusy(false); photoOperation.current = false; }
+  }
+
+  async function reflectPhotos() {
+    if (!task || photoOperation.current) return;
+    photoOperation.current = true;
+    setReflecting(true); setError(null); setDriveMessage('');
+    try {
+      const result = await reflectOriginalProductPhotos(task.id);
+      setDriveMessage(result.added > 0
+        ? `通番号${result.sourceSerial}の商品写真${result.added}枚を反映しました。「Googleドライブ追加」で保存してください。`
+        : '元の商品写真はすべて反映済みです。');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { await reload(); setReflecting(false); photoOperation.current = false; }
   }
 
   async function saveAllPhotosToAlbum() {
@@ -250,12 +265,13 @@ export default function TaskDetail({
       {photoMode && <>
       <div className="card photo-control-row">
         <span className="muted">{packing?'梱包写真':'写真'} {photos.length}枚</span>
-        {canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : packing?'梱包写真追加':'写真表示'}
-          <input type="file" aria-label={packing?'梱包写真追加':'商品写真表示'} accept="image/*" multiple disabled={uploading || driveBusy || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+        <div className="photo-primary-actions">{canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : packing?'梱包写真追加':'写真表示'}
+          <input type="file" aria-label={packing?'梱包写真追加':'商品写真表示'} accept="image/*" multiple disabled={uploading || driveBusy || reflecting || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>}
-        {(canEditPhotos || (!packing && photos.length > 0 && !photoReview?.approved_at))&&<button type="button" className="btn" disabled={driveBusy || uploading || deletingPhotoId !== null || photos.length === 0}
+        {canEditPhotos && !packing && /^\d+a+-/i.test(task.sku) && <button type="button" className="btn photo-reflect" disabled={reflecting || uploading || driveBusy || deletingPhotoId !== null || savingPhotoId !== null} onClick={() => void reflectPhotos()}>{reflecting ? '反映中…' : '写真反映'}</button>}</div>
+        {(canEditPhotos || (!packing && photos.length > 0 && !photoReview?.approved_at))&&<button type="button" className="btn photo-drive-add" disabled={driveBusy || uploading || reflecting || deletingPhotoId !== null || photos.length === 0}
           onClick={() => void addToDrive()}>{driveBusy ? 'Googleドライブ追加中…' : 'Googleドライブ追加'}</button>}
-        <button type="button" className="btn photo-save-all" aria-label="商品写真をすべて端末に保存" title="すべての写真を端末に保存" disabled={savingPhotoId !== null || photos.length === 0 || driveBusy || uploading} onClick={() => void saveAllPhotosToAlbum()}>
+        <button type="button" className="btn photo-save-all" aria-label="商品写真をすべて端末に保存" title="すべての写真を端末に保存" disabled={savingPhotoId !== null || photos.length === 0 || driveBusy || uploading || reflecting} onClick={() => void saveAllPhotosToAlbum()}>
           {savingPhotoId === 'all' ? '…' : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>}
         </button>
       </div>
@@ -266,7 +282,7 @@ export default function TaskDetail({
           <a href={photo.url} target="_blank" rel="noreferrer">
             <img src={photo.url} alt={`登録した${packing?'梱包写真':'商品写真'} ${index + 1}`} loading="lazy" />
           </a>
-                    <div className="uploaded-photo-actions">{canEditPhotos&&<button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={photo.canDelete === false || deletingPhotoId !== null || uploading || driveBusy || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
+                    <div className="uploaded-photo-actions">{canEditPhotos&&<button type="button" className="btn danger photo-delete" aria-label={`写真${index + 1}を削除`} disabled={photo.canDelete === false || deletingPhotoId !== null || uploading || driveBusy || reflecting || savingPhotoId !== null} onClick={() => void removePhoto(photo)}>
               {deletingPhotoId === photo.id ? '削除中…' : '削除'}
             </button>}
           </div>
