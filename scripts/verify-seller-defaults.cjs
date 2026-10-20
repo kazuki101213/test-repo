@@ -6,7 +6,7 @@ for(const [name,origin,place,postal] of cases)for(const channel of ['メルカ�
  const draft=sellerExports.sellerDefaults({deliverer_name:name,sales_channel:channel,title:'BDZ-ZW1500',planned_price:20981,condition:'非常に良い'});
  assert.equal(draft.origin,origin);assert.equal(draft.dropoff,place);
  assert.equal(draft.shippingMethod,channel==='メルカリ'?(postal?'ゆうゆうメルカリ便':'らくらくメルカリ便'):(postal?'おてがる配送（日本郵便）':'おてがる配送（ヤマト運輸）'));
- assert.equal(draft.price,Math.ceil(20981*(channel==='メルカリ'?.8:.3)));assert.equal(draft.size,'100');
+ assert.equal(draft.price,Math.ceil(20981*(channel==='メルカリ'?.8:.35)));assert.equal(draft.size,'100');
 }
 console.log('Seven staff shipping defaults and channel prices passed');
 for(const [title,category,weight] of [['リモコン','小物','2'],['ブルーレイレコーダー BDZ-ZW1500','ブルーレイレコーダー','5'],['液晶テレビ','テレビ','5'],['液晶モニター','モニター','5']]){
@@ -14,7 +14,11 @@ for(const [title,category,weight] of [['リモコン','小物','2'],['ブルー�
 }
 console.log('Yahoo packed weight: small 2kg, other categories 5kg; Mercari unchanged');
 
-for(const [planned,expected] of [[30000,9000],[20981,6295],[1,1],[0,0]]){
- assert.equal(sellerExports.sellerDefaults({sales_channel:'ヤフオク',planned_price:planned}).price,expected);
+for(const condition of ['ほぼ新品','非常に良い','良い','可',null]){
+ const expected=condition==='可'?6000:10500;
+ assert.equal(sellerExports.sellerDefaults({sales_channel:'ヤフオク',planned_price:30000,condition}).price,expected);
 }
-console.log('Yahoo starts at 30 percent, rounded up to the next yen');
+for(const [planned,condition,expected] of [[20981,'可',4197],[20981,'非常に良い',7344],[1,'可',1],[1,'良い',1],[0,'可',0],[0,'良い',0]]){
+ assert.equal(sellerExports.sellerDefaults({sales_channel:'ヤフオク',planned_price:planned,condition}).price,expected);
+}
+console.log('Yahoo: acceptable 20 percent, all others 35 percent, rounded up; Mercari unchanged');
