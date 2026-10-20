@@ -11,7 +11,7 @@
   max-width: 100%;
 }
 .layout .registration-entry .registration-date {
-  width: calc(10ch + 1.5rem);
+  width: calc(10ch + 2.5rem);
   min-width: 0;
   flex: 0 1 auto;
 }
