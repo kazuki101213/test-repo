@@ -305,7 +305,7 @@
 /* Keep each date and its calendar inside the daily-sales card. */
 @media screen {
  .layout .daily-sales { container-type:inline-size; }
- .layout .daily-sales .daily-sales-range { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .layout .daily-sales .daily-sales-range { grid-template-columns:repeat(2,minmax(0,148px)); }
  .layout .daily-sales-range > .field { min-width:0; }
  .layout .daily-sales-range > .field > span:last-child { width:100%; margin-bottom:0; font-size:14px; }
  .layout .daily-sales-range input[type=text] { flex:1 1 0; width:0; min-width:0; box-sizing:border-box; }
@@ -314,8 +314,24 @@
 }
 @container (max-width:340px) {
  .layout .daily-sales .daily-sales-range { grid-template-columns:minmax(0,1fr); }
- .layout .daily-sales-range > .field { width:100%; max-width:210px; }
+ .layout .daily-sales-range > .field { width:100%; max-width:148px; }
 }
-@container (min-width:500px) {
- .layout .daily-sales .daily-sales-range { grid-template-columns:repeat(2,minmax(0,1fr)) max-content; }
+@container (min-width:420px) {
+ .layout .daily-sales .daily-sales-range { grid-template-columns:148px 148px max-content; }
+}
+
+/* Mobile date range stays on one line, including both calendar controls. */
+@media screen and (max-width:1023px) {
+ .layout .daily-sales .daily-sales-range { grid-template-columns:repeat(2,minmax(0,1fr)) max-content; gap:4px; }
+ .layout .daily-sales-range > .field { width:auto; max-width:none; }
+ .layout .daily-sales-range > .field > span:last-child { font-size:12px; gap:2px !important; }
+ .layout .daily-sales-range input[type=text] { padding-inline:3px; }
+ .layout .daily-sales-range button[title] { width:24px; padding-inline:0 !important; }
+ .layout .daily-sales .daily-sales-range > .btn { font-size:12px; padding-inline:4px; }
+}
+@media screen and (max-width:359px) {
+ .layout .daily-sales-range > .field > span:last-child { font-size:11px; }
+ .layout .daily-sales-range input[type=text] { padding-inline:1px; }
+ .layout .daily-sales-range button[title] { width:20px; }
+ .layout .daily-sales .daily-sales-range > .btn { font-size:11px; padding-inline:2px; }
 }
