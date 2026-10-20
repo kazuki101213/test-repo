@@ -80,3 +80,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/work_completion_dates.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/delivery_shipping_requests.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/admin_listing_task_delay.sql"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/status_driven_notices_shipping_reminders.sql"
