@@ -378,3 +378,18 @@
 /* Keep the photo inside its own column beside the fault/compensation actions. */
 .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.task-card-photo-button,.task-card-photo) { width:80px; max-width:100%; }
 .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-photo { height:80px; }
+
+/* Six equal desktop status cells, retaining the card bounds and the sold/footer gap. */
+@media screen and (min-width:1280px) {
+ .app .delivery-inventory-workspace > .inventory-workflow-menu {
+  --status-cell-width:calc((100% - 122px) / 6);
+  grid-template-columns:74px repeat(4,var(--status-cell-width)) calc(var(--status-cell-width) + var(--status-cell-width) + 18px);
+ }
+ .app .inventory-workflow-menu > .btn { white-space:normal; padding-block:4px; }
+ .app .inventory-workflow-menu > [data-status="work"],
+ .app .inventory-workflow-menu > [data-status="work"]::before {
+  clip-path:polygon(0 0,100% 0,100% 100%,calc((100% + 6px) / 2) 100%,calc((100% + 6px) / 2) calc(100% - 50px),0 calc(100% - 50px));
+ }
+ .app .inventory-workflow-menu > .inventory-workflow-footer { grid-template-columns:repeat(2,minmax(0,1fr)); min-width:0; }
+ .app .inventory-workflow-footer > .btn { min-width:0; padding:4px !important; white-space:normal; }
+}
