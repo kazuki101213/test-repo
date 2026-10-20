@@ -137,7 +137,7 @@ export default function Inventory({ me }: { me: Staff }) {
       <div className="inventory-controls">
       <div className="inventory-registration-actions">
         <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => { if (purchaseOpen) setSelectedPurchaseDraft(null); setPurchaseOpen(open => !open); }}>
-          {purchaseOpen ? '在庫登録を閉じる' : '在庫登録'}
+          在庫登録
         </button>
         {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
       </div>
@@ -166,7 +166,6 @@ export default function Inventory({ me }: { me: Staff }) {
       </div>
 
       {purchaseOpen && <section id="inventory-purchase-panel" className="inventory-purchase-panel" aria-label="在庫登録" style={{ marginBlock: 16, minWidth: 0 }}>
-        <div className="toolbar" style={{ justifyContent: 'flex-end' }}><button type="button" className="btn" onClick={() => { setPurchaseOpen(false); setSelectedPurchaseDraft(null); }}>閉じる</button></div>
         {selectedPurchaseDraft && <p>仕入れリストから登録: {selectedPurchaseDraft.title}</p>}
         <NewPurchase key={selectedPurchaseDraft?.id ?? 'new'} me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
       </section>}

@@ -166,7 +166,7 @@ export default function Spares({ me }: { me: Staff }) {
         {referenceMessage && <p className="muted" role="status" style={{ gridColumn: '1 / -1' }}>{referenceMessage}</p>}
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="toolbar"><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '登録する'}</button><button type="button" className="btn" disabled={saving || autofillBusy} onClick={() => setAdding(false)}>閉じる</button></div>
+      <div className="toolbar"><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '登録する'}</button></div>
     </form>}
 
     {error && !adding && <p className="error">{error}</p>}
