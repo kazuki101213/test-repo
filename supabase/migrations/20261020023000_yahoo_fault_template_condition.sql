@@ -1,5 +1,12 @@
 -- Only the four explicit faulty-photo templates change the inventory condition.
 -- Keep the existing actor, ownership, state and sold-item guards.
+-- Match the existing production/UI choices; an older migration omitted Other.
+alter table app.item_comments drop constraint if exists item_comments_task_kind_check;
+alter table app.item_comments add constraint item_comments_task_kind_check check (
+ task_kind is null or task_kind in ('Amazon販売','仕入先確認',
+ 'Panasonic◯ヤフオク','Panasonic×ヤフオク','SONY◯ヤフオク','SONY×ヤフオク',
+ 'SHARP◯ヤフオク','SHARP×ヤフオク','TOSHIBA◯ヤフオク','TOSHIBA×ヤフオク','ヤフオク その他')
+);
 create or replace function app.apply_malfunction_reply() returns trigger
 language plpgsql security definer set search_path=pg_catalog,app as $$
 begin
