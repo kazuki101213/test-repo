@@ -86,3 +86,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/status_driven_notices_shipping_re
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/return_without_sales_days.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/reflect_original_product_photos.sql"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/malfunction_remote_transfer.sql"
