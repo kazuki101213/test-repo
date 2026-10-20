@@ -1,5 +1,6 @@
 import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
+import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -70,9 +71,8 @@ export default function Inventory({ me }: { me: Staff }) {
   const items=inventory.rows,count=inventory.total,loading=inventory.loading;
   const viewItems=useMemo(()=>filterInventoryColumns(items.filter(item=>matchesInventoryFilters(item,inventoryFilters)),columnFilters),[items,columnFilters,inventoryFilters]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
-  const [purchaseDrafts, setPurchaseDrafts] = useState<PurchaseDraft[]>([]);
+  const { rows: purchaseDrafts, setRows: setPurchaseDrafts, loading: draftsLoading, error: draftError, setError: setDraftError, updated: draftsUpdated, refresh: loadPurchaseDrafts } = usePurchaseDrafts(fetchPurchaseDrafts);
   const [selectedPurchaseDraft, setSelectedPurchaseDraft] = useState<PurchaseDraft | null>(null);
-  const [draftError, setDraftError] = useState<string | null>(null);
   const [dismissingDraft, setDismissingDraft] = useState<string | null>(null);
   const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
   const [fullEditFor, setFullEditFor] = useState<InventoryItem | null>(null);
@@ -84,12 +84,6 @@ export default function Inventory({ me }: { me: Staff }) {
 
   const load=async()=>{await inventory.refresh();};
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
-  const loadPurchaseDrafts = useCallback(() => {
-    fetchPurchaseDrafts().then(rows => { setPurchaseDrafts(rows); setDraftError(null); }).catch(error => {
-      setDraftError(error instanceof Error ? error.message : String(error));
-    });
-  }, []);
-  useEffect(() => { loadPurchaseDrafts(); }, [loadPurchaseDrafts]);
   useEffect(() => { setVisibleCount(80); }, [queryField, query, purchasedFrom, purchasedTo, inventoryFilters, columnFilters]);
   useEffect(() => {
     const el = loadMoreRef.current;
@@ -173,8 +167,8 @@ export default function Inventory({ me }: { me: Staff }) {
       <details className="card purchase-draft-panel">
         <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
         <div className="toolbar" style={{ marginTop: 12 }}>
-          <button type="button" className="btn" onClick={loadPurchaseDrafts}>リストを更新</button>
-          <span className="sub">フリマの購入・落札履歴から取得した下書きです。在庫へ反映する前に金額・担当者を確認してください。</span>
+          <button type="button" className="btn" disabled={draftsLoading} onClick={() => void loadPurchaseDrafts(true)}>{draftsLoading ? '更新中…' : 'リストを更新'}</button>
+          <span className="sub" role="status" aria-live="polite">{draftsLoading ? '仕入れリストを読み込んでいます…' : draftsUpdated ? `${draftsUpdated.at} 更新しました（未反映 ${draftsUpdated.count}件）` : ''}</span>
         </div>
         {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
         {purchaseDrafts.length > 0 ? <div className="scroll"><table className="purchase-draft-table"><thead><tr><th>購入日</th><th>商品情報</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>販売予定金額</th><th>振込予定金額</th><th>操作</th></tr></thead><tbody>
@@ -182,7 +176,7 @@ export default function Inventory({ me }: { me: Staff }) {
             <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); window.scrollTo({ top: 0 }); }}>在庫へ反映</button>
             <button type="button" className="btn" disabled={dismissingDraft !== null} onClick={() => void excludeDraft(draft.id)}>{dismissingDraft === draft.id ? '除外中…' : '除外'}</button>
           </div></td></tr>)}
-        </tbody></table></div> : !draftError && <p className="sub">未反映の購入履歴はありません。</p>}
+        </tbody></table></div> : !draftError && !draftsLoading && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
       <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
