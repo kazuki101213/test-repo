@@ -33,7 +33,7 @@ do $$declare i uuid;r uuid;d date:=current_date-2;begin
  perform app.perform_dated_inventory_action(i,'supplier_return_complete','動作不良',current_date,gen_random_uuid());
  if (select packed_on from app.items where id=i) is distinct from d then raise exception 'Repeated return overwrote work date';end if;
  i:=(select id from work_probe where lot_seq=998306);
- begin perform app.complete_delivery_work(i,current_date+1);raise exception 'Future date accepted';exception when invalid_parameter_value then null;end;
+ begin perform app.complete_delivery_work(i,(clock_timestamp() at time zone 'Asia/Tokyo')::date+1);raise exception 'Future date accepted';exception when invalid_parameter_value then null;end;
  begin perform app.complete_delivery_work(i,current_date-11);raise exception 'Pre-purchase date accepted';exception when invalid_parameter_value then null;end;
  perform app.complete_delivery_work(i,d);perform app.complete_delivery_work(i,d);
  if not exists(select 1 from app.items where id=i and status='動作不良' and packed_on=d) then raise exception 'Manual completion changed status';end if;
