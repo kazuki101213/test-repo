@@ -36,7 +36,7 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   return()=>{active=false;window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);window.removeEventListener('delivery-return-tasks-changed',changed);};
  },[staffId]);
  return <>{error&&<li className="error" role="alert">{error}</li>}{rows.map(row=>{const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);return <li key={row.id} className="delivery-return-task">
-  <div className="delivery-return-content"><strong>{row.kind==='photo_return'?(row.reason?.trim()||'商品写真の修正お願いします。'):row.kind==='photo_approved'?'商品写真承認されました。':'動作不良への返信があります。'}</strong>
+  <div className="delivery-return-content"><strong>{row.kind==='photo_return'?(row.reason?.trim()||'商品写真の修正お願いします。'):row.kind==='photo_approved'?'出品お願いします。':'動作不良への返信があります。'}</strong>
    <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
     {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{row.sku}</span></div>
   </div>

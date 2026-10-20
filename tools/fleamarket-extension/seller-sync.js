@@ -8,7 +8,7 @@ export function sellerHourlyReady(settings,records,now=Date.now()){
  if(settings.mode==='diagnostic'||records.job||records.authProblem||!sellerAccounts(settings).length)return false;
  for(const attempt of [records.sellerHourlyAttempt,records.sellerDailyAttempt]){
   const time=Date.parse(attempt?.startedAt||attempt?.at||'');
-  if(Number.isFinite(time)&&now-time<60*60000)return false;
+  if(Number.isFinite(time)&&now-time<240*60000)return false;
  }
  return true;
 }

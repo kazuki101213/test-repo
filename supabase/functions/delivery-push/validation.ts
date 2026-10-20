@@ -35,6 +35,6 @@ export function notificationBody(kind: string, lot: number): string {
   if (kind === 'photo_return') return `【${lot}】商品写真の修正お願いします。`;
   if (kind === 'malfunction_return') return `【${lot}】動作不良への返信があります。`;
   if (kind === 'reply') return `【${lot}】動作不良への返信があります。`;
-  if (kind === 'photo') return `【${lot}】商品写真承認されました。`;
+  if (kind === 'photo') return `【${lot}】出品お願いします。`;
   return `【${lot}】新しい担当商品が追加されました。`;
 }
