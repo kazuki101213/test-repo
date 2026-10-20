@@ -7,6 +7,9 @@ export type ColumnFilters = Record<string, ColumnFilter>;
 export interface InventoryColumn { label: string; kind?: 'number' | 'date'; value: (item: InventoryItem) => string | number | null | undefined }
 export const salePrice = (i: InventoryItem) => i.is_accessory || i.product_sale_conflict ? i.sold_price : i.product_sold_price;
 export const salePayout = (i: InventoryItem) => i.is_accessory || i.product_sale_conflict ? i.payout_amount : i.product_payout_amount;
+export const saleDays = (i: InventoryItem):number|null => i.status==='返品処理' ? null : i.product_sold_on && i.purchased_at
+  ? Math.round((Date.parse(i.product_sold_on+'T00:00:00Z')-Date.parse(i.purchased_at+'T00:00:00Z'))/86400000)
+  : i.days_in_stock ?? i.days_to_sell;
 export const inventoryColumns: Record<string, InventoryColumn> = {
   photo: { label: 'Amazonの写真', value: i => i.amazon_image_url ? 'あり' : 'なし' },
   serial: { label: '通番号', value: i => productSerial(i.sku, i.lot_seq) },
@@ -30,8 +33,7 @@ export const inventoryColumns: Record<string, InventoryColumn> = {
   expected_profit: { label: '見込利益額', kind: 'number', value: i => i.expected_profit },
   expected_rate: { label: '予定利益率', kind: 'number', value: i => i.planned_price && i.expected_profit !== null ? Number((i.expected_profit / i.planned_price * 100).toFixed(1)) : null },
   sold_on: { label: '販売日', kind: 'date', value: i => i.product_sale_conflict ? i.sold_on : i.product_sold_on },
-  sold_days: { label: '販売日数', kind: 'number', value: i => i.product_sold_on && i.purchased_at
-    ? Math.round((Date.parse(`${i.product_sold_on}T00:00:00Z`) - Date.parse(`${i.purchased_at}T00:00:00Z`)) / 86400000) : i.days_in_stock ?? i.days_to_sell },
+  sold_days: { label: '販売日数', kind: 'number', value: saleDays },
   sold_price: { label: '販売金額', kind: 'number', value: salePrice },
   payout: { label: '振込金額', kind: 'number', value: salePayout },
   profit: { label: '利益額', kind: 'number', value: i => i.product_profit },

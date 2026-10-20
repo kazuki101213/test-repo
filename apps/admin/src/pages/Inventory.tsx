@@ -13,7 +13,7 @@ import AmazonSalesSync from '../components/AmazonSalesSync';
 import ColoredLabel from '../components/ColoredLabel';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { productCount, productSerial } from '../inventory';
-import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, type ColumnFilters } from '../inventoryFilters';
+import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, saleDays, type ColumnFilters } from '../inventoryFilters';
 import InventoryStateFilter from '../components/InventoryStateFilter';
 import InventoryColumnFilter from '../components/InventoryColumnFilter';
 import { inventorySearchFields, type InventorySearchField } from '../inventorySearch';
@@ -223,9 +223,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const rowTone = inventoryRowTone(i);
                 const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
 
-                const soldDays = i.product_sold_on && i.purchased_at
-                  ? Math.round((Date.parse(`${i.product_sold_on}T00:00:00Z`) - Date.parse(`${i.purchased_at}T00:00:00Z`)) / 86400000)
-                  : i.days_in_stock ?? i.days_to_sell;
+                const soldDays = saleDays(i);
                 const modelOrAccessoryName = i.is_accessory ? i.title : productModelText(i);
                 const modelOrAccessoryField: InventoryField = i.is_accessory || (!i.model_no && i.marketplace !== '動作品Amazon返品') ? 'title' : 'model_no';
                 return (
@@ -252,7 +250,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{stacked(jpDate(i.packed_on), 'packed_on', jpDate(i.shipped_on), 'shipped_on')}</td>
                   <td>{stacked(yen(i.planned_price), 'planned_price', yen(i.planned_payout), 'planned_payout')}</td>
                   <td>{stacked(yen(i.expected_profit), 'planned_payout', expectedRate, 'planned_price')}</td>
-                  <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
+                  <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', i.status==='返品処理' ? undefined : soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
                   <td>{attachedAccessory ? <div className="inventory-cell-stack"><span>—</span><span>—</span></div> : stacked(yen(salePrice(i)), 'sold_price', yen(salePayout(i)), 'payout_amount')}</td>
                   <td>{attachedAccessory ? <div className="inventory-cell-stack"><span>—</span><span>—</span></div> : stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
                   <td>{stacked(yen(i.inventory_refund_amount), 'inventory_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
