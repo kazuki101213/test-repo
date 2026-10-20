@@ -396,7 +396,7 @@ const fieldLabels: Record<InventoryField, string> = {
   is_accessory: '登録区分',
   title: '商品名', asin: 'ASIN', tracking_no: '追跡番号', purchased_at: '仕入日',
   cost_amount: '仕入金額', planned_price: '販売予定金額', planned_payout: '振込予定金額',
-  packed_on: '梱包日', shipped_on: '出荷日', status: '作業状態', memo: 'メモ',
+  packed_on: '作業完了日', shipped_on: '出荷日', status: '作業状態', memo: 'メモ',
   purchaser_id: '仕入担当者', deliverer_id: '納品担当者', marketplace: '仕入先',
   condition: '商品状態', sales_channel: '販売先', sold_on: '販売日',
   sold_price: '販売金額', payout_amount: '振込金額', amazon_refund_amount: 'Amazon返金金額',

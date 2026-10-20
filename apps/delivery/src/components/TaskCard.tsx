@@ -97,10 +97,12 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
           <span className="task-detail-field"><span>コンディション</span><span>{task.condition || '—'}</span></span>
           <span className="task-detail-field"><span>販売先</span><span>{task.sales_channel || '—'}</span></span>
           <span className="task-detail-field"><span>仕入日</span><span>{jpDate(task.purchased_at)}</span></span>
+          <span className="task-detail-field"><span>作業完了日</span><span>{task.packed_on ? jpDate(task.packed_on) : '未登録'}</span></span>
           <span className="task-detail-field"><span>仕入先</span><span>{task.marketplace}</span></span>
           <span className="task-detail-field"><span>状態</span><span>{task.status}</span></span>
           {(canViewDeliveryAssignee(staff) || showAssignee) && <span className="task-detail-field task-assignee"><span>納品担当者</span><span>{task.deliverer_name || '未設定'}</span></span>}
           {task.memo?.trim() && <span className="purchaser-comment">仕入担当者からのコメント：{task.memo}</span>}
+
         </div>
         <div className="task-photo-action">
           <button type="button" className="task-card-photo-button" disabled={readOnly} aria-label={expandedId&&panel==='photos' ? '写真を閉じる' : '写真を表示'} aria-expanded={!!expandedId} onClick={() => expandedId&&panel==='photos' ? onClose() : openPanel('photos')}>

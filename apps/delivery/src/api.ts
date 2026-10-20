@@ -1,6 +1,11 @@
 import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition, ItemStatus } from '@bussan/shared';
 
+export async function completeDeliveryWork(itemId:string,date:string):Promise<void>{
+ const {error}=await getSupabase().rpc('complete_delivery_work',{p_item_id:itemId,p_on:date});
+ if(error)throw error;
+}
+
 export async function fetchAmazonFeed(): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
   for (let from = 0; ; from += 500) {
@@ -370,6 +375,14 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  const {error}=await getSupabase().rpc('perform_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_note:note??null,p_request_id:requestId});
  if(error)throw error;
  announceReturnTaskChange();
+}
+export async function performDatedInventoryAction(task:Pick<DeliveryTask,'id'|'status'>,action:'listing_complete'|'supplier_return_complete',date:string,requestId:string):Promise<void>{
+ const {error}=await getSupabase().rpc('perform_dated_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_on:date,p_request_id:requestId});
+ if(error)throw error;announceReturnTaskChange();
+}
+export async function completeDeliveryCompensation(itemId:string,requestId:string):Promise<void>{
+ const {error}=await getSupabase().rpc('complete_delivery_compensation',{p_item_id:itemId,p_request_id:requestId});
+ if(error)throw error;announceReturnTaskChange();
 }
 export type ReportAttachment={id:string;file:File};
 export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'status'>,note:string,requestId:string,photos:ReportAttachment[]):Promise<void>{

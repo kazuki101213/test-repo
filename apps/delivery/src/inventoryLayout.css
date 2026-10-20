@@ -344,3 +344,18 @@
  .app .delivery-inventory-sidebar .delivery-task-heading { display:none; }
  .app .delivery-inventory-sidebar .delivery-reply-tasks { margin:0; align-self:start; height:calc(100% + 54px); }
 }
+
+/* Fault/compensation actions share one compact column, independent of the photo actions elsewhere. */
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:8px; align-items:start; }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-product-summary { display:block; grid-column:1; grid-row:1; min-width:0; }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-overview { display:flex; flex-direction:column-reverse; align-items:flex-start; gap:8px; }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-info { grid-column:auto; grid-row:auto; width:100%; }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-photo-action { grid-column:auto; grid-row:auto; width:80px; }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.workflow-controls,.workflow-buttons) { display:contents; }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-photo-buttons { display:grid; grid-column:2; grid-row:1; grid-template-columns:max-content; gap:4px; align-self:start; justify-self:end; }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-photo-buttons > .btn { grid-column:1; grid-row:auto; width:100% !important; height:44px; min-width:0; padding:8px 12px; margin:0; white-space:nowrap; }
+.app .task-card[data-item-status="Amazon補填申請中"] .workflow-photo-buttons { width:100px; grid-template-columns:minmax(0,1fr); }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-action-form { grid-column:1 / -1; }
+.app .task-card[data-item-status="動作不良"] [data-action="return_impossible"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+.work-date-field { display:grid; gap:8px; margin-top:16px; margin-bottom:4px; }
+@media(max-width:767px){.app .task-card[data-item-status="動作不良"] .workflow-photo-buttons > .btn { font-size:12px; padding:8px; }}

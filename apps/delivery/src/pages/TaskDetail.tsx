@@ -81,7 +81,7 @@ export default function TaskDetail({
     try {
       const current = await fetchSupplierConversation(itemId); setMarketplaceConversation(current);
       if(current.account_id&&!supplierAccount)setSupplierAccount(current.account_id);
-      if (current.expired) { setMarketplaceError('梱包完了から7日を過ぎたため、取引メッセージは保存期間終了です。'); return; }
+      if (current.expired) { setMarketplaceError('作業完了から7日を過ぎたため、取引メッセージは保存期間終了です。'); return; }
 
       const supplierRequestId=await queueSupplierOperation(itemId,'read',supplierAccount||current.account_id||'',supplierRequest.current);supplierRequest.current=crypto.randomUUID();
       const deadline = Date.now() + 120000;
@@ -317,7 +317,7 @@ export default function TaskDetail({
                 <div className="meta">{({ queued: '拡張機能の送信待ち', sending: 'サイトへ送信中', sent: '送信済み', failed: '送信失敗', uncertain: '送信結果を要確認' } as const)[request.status]}{request.sent_at ? ' · ' + new Date(request.sent_at).toLocaleString('ja-JP') : ''}</div><p>{request.body}</p>{request.result_note && <small>{request.result_note}</small>}
               </article>)}
             </div>
-            {marketplaceConversation.expired ? <p className="muted">梱包完了から7日を経過したため、会話の保存期間は終了しました。</p> : <div className="marketplace-message-composer">
+            {marketplaceConversation.expired ? <p className="muted">作業完了から7日を経過したため、会話の保存期間は終了しました。</p> : <div className="marketplace-message-composer">
               <textarea aria-label="フリマ取引相手へのメッセージ" value={marketplaceDraft} onChange={event => setMarketplaceDraft(event.target.value)} maxLength={2000} placeholder="取引相手へのメッセージ" />
               <button type="button" className="btn primary" disabled={!marketplaceDraft.trim() || marketplaceSending} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信結果を確認中…' : '取引メッセージを送信'}</button>
               <small className="muted">送信後は、ログイン済みChromeの拡張機能が取引画面へ反映します。</small>

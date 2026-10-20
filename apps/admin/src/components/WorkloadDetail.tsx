@@ -31,9 +31,9 @@ export default function WorkloadDetail({ delivererId, name, metric, onClose }: {
       <p>{rows.length}件{metric === '平均作業日数' && ` · 平均 ${days.length ? (days.reduce((sum, day) => sum + day, 0) / days.length).toFixed(1) : '—'}日`}</p>
       {metric === '作業在庫' && <p className="sub">検品中・Amazon返送依頼・商品登録前の本体が対象です。</p>}
       {metric === '保有在庫' && <p className="sub">受取前・検品中・Amazon返送依頼・Amazon補填申請中・商品登録前・動作不良の本体と、販売先が自己発送・メルカリ・ヤフオクの出品中、および取引中で発送前の本体が対象です。</p>}
-      {metric === '平均作業日数' && <p className="sub">仕入日から梱包日までの日数。直近3ヶ月に梱包した本体が対象です。</p>}
+      {metric === '平均作業日数' && <p className="sub">仕入日から作業完了日までの日数。直近3ヶ月に作業完了した本体が対象です。</p>}
       {rows.length === 0 ? <p>該当する商品はありません。</p> : <div className="scroll"><table>
-        <thead><tr><th>通番号</th><th>商品・仕入先</th><th>状況</th><th>仕入日</th><th>梱包日</th><th>出荷日</th><th className="num">作業日数</th></tr></thead>
+        <thead><tr><th>通番号</th><th>商品・仕入先</th><th>状況</th><th>仕入日</th><th>作業完了日</th><th>出荷日</th><th className="num">作業日数</th></tr></thead>
         <tbody>{rows.map((row, index) => <tr key={row.id}>
           <td>{productSerial(rows[index - 1]?.sku,rows[index - 1]?.lot_seq) !== productSerial(row.sku,row.lot_seq) ? productSerial(row.sku,row.lot_seq) : ''}</td>
           <td className="detail-description">{row.title}<div className="expense-hint"><ColoredLabel value={row.marketplace || '—'} /> · {row.sku}</div></td>

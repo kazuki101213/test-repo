@@ -1,11 +1,12 @@
 import {useEffect,useRef,useState} from 'react';
 import {sellerDefaults,SMALL_PACKAGES,canViewDeliveryAssignee} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
-import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,requestListingResultCheck,performInventoryAction} from '../api';
+import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,requestListingResultCheck,performDatedInventoryAction} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
 import {listingDraft} from '../listingDraft';
 import DescriptionEditor from './DescriptionEditor';
 import WorkflowConfirmation from './WorkflowConfirmation';
+import WorkDateConfirmation from './WorkDateConfirmation';
 
 function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>void}){
  const video=useRef<HTMLVideoElement>(null),[error,setError]=useState('');
@@ -52,7 +53,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const amazonListing=mode==='listing'&&['FBA','自己発送'].includes(task.sales_channel??'');
  async function descriptionSaved(){setContext(await fetchSellerContext(task.id));const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(full)onChanged(full);}
  function updateDescription(value:Partial<SellerDraft>){setDraft(current=>current?{...current,...value,...(task.sales_channel==='ヤフオク'&&value.category&&value.category!==current.category?{weightKg:value.category==='小物'?'2':'5'}:{})}:current);request.current=crypto.randomUUID();}
- async function completeAmazonListing(){if(lock.current||busy||context?.photo_review_approved!==true||task.photo_review_approved!==true)return;lock.current=true;setBusy(true);setError('');try{await performInventoryAction(task,'listing_complete','',request.current);request.current=crypto.randomUUID();const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(full)onChanged(full);}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
+ async function completeAmazonListing(date:string){if(lock.current||busy||context?.photo_review_approved!==true||task.photo_review_approved!==true)return;lock.current=true;setBusy(true);setError('');try{await performDatedInventoryAction(task,'listing_complete',date,request.current);request.current=crypto.randomUUID();const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(full)onChanged(full);}catch(cause){setError(cause instanceof Error?cause.message:String(cause));throw cause;}finally{lock.current=false;setBusy(false);}}
  const disabled=busy||pending||(mode==='listing'&&(task.photo_review_approved!==true||context?.photo_review_approved!==true)),trade=context?.listing?.trade_key;
  const tradePayload={trade_key:trade,size:draft?.size,dropoff:draft?.dropoff,shippingMethod:draft?.shippingMethod,category:draft?.category};
  const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key)?.result.messages;
@@ -97,7 +98,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <button type="button" className="btn primary" disabled={disabled||!message.trim()} onClick={()=>{if(window.confirm('取引相手へ送信しますか？'))void submit('message_send',{...tradePayload,body:message.trim()});}}>送信</button>
   </>}
   {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<div><label>出品済み商品のURL（任意）<input type="url" value={listingUrl} disabled={busy||!!watching} onChange={event=>setListingUrl(event.target.value)}/></label><button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button></div>}
-  {confirming&&<WorkflowConfirmation button={{key:confirming==='ship_notice'?'shipping':confirming,label:confirming==='listing_complete'?(task.sales_channel==='FBA'?'出品':'出品完了'):confirming==='ship_notice'?'発送通知':task.sales_channel+'出品',confirmation:confirming==='listing'?task.sales_channel+'へこの内容で出品しますか？':undefined}} busy={busy} onCancel={()=>setConfirming(null)} onConfirm={()=>{if(lock.current||disabled||!draft||confirming==='ship_notice'&&(!proof||proof.kind==='register_package'&&!posted))return;void (async()=>{try{if(confirming==='listing_complete')await completeAmazonListing();else if(confirming==='ship_notice')await submit('ship_notice',{...tradePayload,proof_id:proof?.id,posted});else await submit('listing',{...draft,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];})});}finally{setConfirming(null);}})();}}/>}
+  {confirming&&(confirming==='ship_notice'?<WorkflowConfirmation button={{key:'shipping',label:'発送通知'}} busy={busy} onCancel={()=>setConfirming(null)} onConfirm={()=>{if(lock.current||disabled||!proof||proof.kind==='register_package'&&!posted)return;void submit('ship_notice',{...tradePayload,proof_id:proof.id,posted}).finally(()=>setConfirming(null));}}/>:<WorkDateConfirmation title="出品しますか。" purchasedAt={task.purchased_at} savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onConfirm={async date=>{if(lock.current||disabled)return;if(!draft)throw new Error('出品内容を確認してください。');if(confirming==='listing_complete')await completeAmazonListing(date);else{lock.current=true;setBusy(true);try{const {expected_revision,...payload}={...draft,work_completed_on:date,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];}),expected_revision:context?.revision};await queueSellerOperation(task.id,'listing',{...payload,expected_revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));}finally{lock.current=false;setBusy(false);}}}}/>)}
   <div className="seller-history" aria-live="polite">{operations.map(op=><p key={op.id}>{statusText(op)}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
  </section>;
 }
