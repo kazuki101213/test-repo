@@ -4,6 +4,7 @@ import './styles.css';
 import './responsive.css';
 import './adminTasks.css';
 import './registrationFields.css';
+import './registrationLayouts.css';
 import App from './App';
 import PasswordSetup from './components/PasswordSetup';
 

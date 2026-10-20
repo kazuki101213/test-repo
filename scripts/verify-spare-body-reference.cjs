@@ -20,7 +20,7 @@ function field(label){const row=all(tree).find(n=>n.type==='label'&&all(n).some(
 (async()=>{
  const source=await api.exports.findInventoryAccessoryForSpare('2398');assert.equal(source.maker,'SHARP');assert.equal(source.purchaser_id,'EE');assert.equal(source.cost_amount,1450);assert.equal(source.deliverer_id,'MM');
  const returned=await api.exports.findInventoryAccessoryForSpare('2398a');assert.equal(returned.id,'remote-a');assert.equal(returned.maker,'SONY');assert.equal(returned.deliverer_id,'II');
- await settle();all(tree).find(n=>n.type==='button'&&n.props.children==='予備追加').props.onClick();await settle();
+ await settle();all(tree).find(n=>n.type==='button'&&n.props.children==='予備登録').props.onClick();await settle();
  const usage=field('利用記録（通番号）');usage.props.onChange({target:{value:'2398'}});await settle();await field('利用記録（通番号）').props.onBlur({target:{value:'2398'}});await settle();
  assert.equal(field('メーカー').props.value,'SHARP');
  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(saved.owner_staff_id,'MM');assert.equal(saved.owner_name,'株式会社吉光');assert.equal(saved.manufacturer,'SHARP');

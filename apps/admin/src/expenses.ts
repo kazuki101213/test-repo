@@ -6,8 +6,8 @@ export type ExpenseInput = {
 };
 export type ExpenseDraft = { id: string; target_month: string; category: '固定費' | '外注費'; name: string; card_id: string | null };
 export function validateExpense(input: ExpenseInput) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.incurred_on) || !Number.isFinite(Date.parse(input.incurred_on)) || new Date(input.incurred_on).toISOString().slice(0, 10) !== input.incurred_on) throw new Error('経費の日付を選択してください。');
-  if (input.category !== '給与' && input.category !== '諸経費' && !expenseCategories.includes(input.category)) throw new Error('経費の区分を選択してください。');
-  if (!input.name.trim()) throw new Error('経費の内容を入力してください。');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.incurred_on) || !Number.isFinite(Date.parse(input.incurred_on)) || new Date(input.incurred_on).toISOString().slice(0, 10) !== input.incurred_on) throw new Error('経費日を選択してください。');
+  if (input.category !== '給与' && input.category !== '諸経費' && !expenseCategories.includes(input.category)) throw new Error('経費区分を選択してください。');
+  if (!input.name.trim()) throw new Error('内容を入力してください。');
   if (!Number.isSafeInteger(input.amount)) throw new Error('金額は整数で入力してください。');
 }
