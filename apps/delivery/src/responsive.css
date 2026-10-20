@@ -261,3 +261,11 @@
  .app .spare-search { grid-template-columns:108px minmax(0,1fr); }
  .app .spare-search > select:first-child { font-size:14px; padding-inline:6px; }
 }
+
+/* Keep the download control at the right edge for every product and packing panel. */
+.app .photo-control-row { display:grid; grid-template-columns:minmax(0,1fr) 44px; gap:8px; align-items:center; }
+.app .photo-control-row > .muted { grid-column:1 / -1; grid-row:1; }
+.app .photo-control-row > .photo-primary-actions { grid-column:1; grid-row:2; display:flex; gap:8px; min-width:0; align-items:stretch; }
+.app .photo-primary-actions > .btn { display:inline-flex; align-items:center; justify-content:center; min-height:44px; white-space:nowrap; }
+.app .photo-control-row > .photo-save-all { grid-column:2; grid-row:2; justify-self:end; width:44px; height:44px; }
+.app .photo-control-row > .photo-drive-add { grid-column:1 / -1; grid-row:3; justify-self:start; min-height:44px; }

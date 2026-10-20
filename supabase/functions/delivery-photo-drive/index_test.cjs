@@ -15,10 +15,18 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     ],
     lot_photo_folders:[{lot_seq:123,drive_folder_id:'shared'}],
     photo_reviews:[{item_id:'original',drive_folder_id:'old-folder',approved_at:'approved',exported_photo_count:1}],
-    google:[], downloads:[], signed:[], notices:[],
+    google:[], downloads:[], signed:[], notices:[], copies:[], mediaFailure:null,
   };
   const service = {
-    async rpc(name,args){assert.equal(name,'record_packing_photo_notice');state.notices.push(args);return {error:null};},
+    async rpc(name,args){
+      if(name==='record_reflected_product_photo') {
+        const target=state.items.find(row=>row.id===args.p_item_id);
+        const storage_path=target.sku+'/reflected-'+args.p_source_photo_id+'.jpg';
+        if(!state.item_photos.some(row=>row.item_id===target.id&&row.storage_path===storage_path))state.item_photos.push({id:'copy-'+args.p_source_photo_id,item_id:target.id,storage_path,uploaded_by:args.p_staff_id,photo_kind:'product',drive_file_id:null,created_at:new Date().toISOString()});
+        return {error:null};
+      }
+      assert.equal(name,'record_packing_photo_notice');state.notices.push(args);return {error:null};
+    },
     auth:{getUser:async()=>({data:{user:{id:'user'}}})},
     from(table) {
       const filters=[]; let from=0,to=Infinity, mutation=null;
@@ -41,11 +49,13 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     storage:{from(){return {
       async createSignedUrls(paths){state.signed.push(...paths);return {data:paths.map(path=>({signedUrl:'https://photos.invalid/'+path})),error:null}},
       async download(path){state.downloads.push(path);return {data:new Blob(['image']),error:null}},
+      async upload(path,blob){state.copies.push({path,size:blob.size});return {error:null}},
     }}},
   };
   const fetch = async (url, init={}) => {
     state.google.push({url:String(url),...init});
     if(String(url).includes('oauth2')) return Response.json({access_token:'test-token'});
+    if(String(url).includes('alt=media')) return String(url).includes(state.mediaFailure??'NEVER') ? new Response('',{status:404}) : new Response(new Blob(['image'],{type:'image/jpeg'}));
     if(String(url).includes('/upload/drive/')) return new Response('{}',{headers:{Location:'https://www.googleapis.com/upload/session'}});
     if(String(url).includes('/upload/session')) return Response.json({id:'new-file'});
     if(String(url).includes('/files/shared?') && !init.method) return Response.json({id:'shared',name:'old-sku'});
@@ -164,4 +174,56 @@ test('rejected photos can be resubmitted without duplicate file uploads',async()
  const response=await call('save');assert.equal(response.status,200);assert.equal((await response.json()).added,0);
  assert.notEqual(review.submitted_at,'old-submission','A new submission reaches the DB resubmission trigger');
  assert.equal(state.downloads.length,downloads);assert.equal(state.google.filter(row=>row.url.includes('/upload/drive/')).length,uploads);
+});
+
+function reflectionSetup(){
+ const fixture=setup();const {state}=fixture;
+ Object.assign(state.items[0],{sku:'123-AAII-20261020-1000',is_accessory:false});
+ Object.assign(state.items[1],{sku:'123a-AAII-20261020-1000',status:'商品登録前',is_accessory:false});
+ return fixture;
+}
+test('a-series lists and saves only its own product photos; packing remains isolated',async()=>{
+ const {state,call}=reflectionSetup();
+ assert.deepEqual((await (await call('list')).json()).photos.map(row=>row.id),['p2']);
+ assert.equal((await call('save')).status,200);
+ assert.deepEqual(state.downloads,['photos/new.jpg']);
+ assert(!state.google.some(req=>req.url.includes('/files/old-file')));
+});
+test('reflection reads original Drive product photos only, keeps source order, and never submits review',async()=>{
+ const {state,call}=reflectionSetup();
+ state.items.push({id:'sibling',lot_seq:123,sku:'123b-AAII-20261020-1000'});
+ state.item_photos=[
+  {...state.item_photos[0],created_at:'2026-10-20T02:00:00Z'},
+  {id:'p0',item_id:'original',storage_path:'first.jpg',drive_file_id:'first-file',uploaded_by:'other',created_at:'2026-10-20T01:00:00Z'},
+  {id:'packed',item_id:'original',photo_kind:'packing',drive_file_id:'packing-file',uploaded_by:'other'},
+  {id:'unsaved',item_id:'original',photo_kind:'product',drive_file_id:null,uploaded_by:'other'},
+  {id:'external',item_id:'original',photo_kind:'product',drive_file_id:'external-file',uploaded_by:null},
+  {id:'sibling',item_id:'sibling',photo_kind:'product',drive_file_id:'sibling-file',uploaded_by:'other'},
+ ];
+ const originals=JSON.stringify(state.item_photos);const reviews=JSON.stringify(state.photo_reviews);
+ const response=await call('reflect');assert.equal(response.status,200);
+ assert.deepEqual(await response.json(),{sourceSerial:'123',added:2,total:2});
+ assert.deepEqual(state.copies.map(row=>row.path),['123a-AAII-20261020-1000/reflected-p0.jpg','123a-AAII-20261020-1000/reflected-p1.jpg']);
+ assert.equal(JSON.stringify(state.item_photos.slice(0,6)),originals);
+ assert(state.item_photos.filter(row=>row.item_id===itemId).every(row=>row.drive_file_id===null));
+ assert.equal(JSON.stringify(state.photo_reviews),reviews);assert.equal(state.notices.length,0);
+ assert(state.google.every(req=>req.url.includes('oauth2')||req.url.includes('alt=media')),'No Drive writes on reflection');
+ const operations=state.google.length;
+ assert.deepEqual(await (await call('reflect')).json(),{sourceSerial:'123',added:0,total:2});
+ assert.equal(state.google.length,operations,'Already reflected photos require no additional Drive reads');
+});
+test('partial Drive failure preserves copied photos and retry imports only the remainder',async()=>{
+ const {state,call}=reflectionSetup();state.item_photos[0].created_at='2026-10-20T01:00:00Z';
+ state.item_photos.push({id:'later',item_id:'original',drive_file_id:'missing-file',uploaded_by:'other',created_at:'2026-10-20T02:00:00Z'});
+ state.mediaFailure='missing-file';const failed=await call('reflect');assert.equal(failed.status,502);assert.match((await failed.json()).error,/1枚反映済み/);
+ assert.equal(state.copies.length,1);state.mediaFailure=null;
+ const retry=await call('reflect');assert.equal(retry.status,200);assert.equal((await retry.json()).added,1);assert.equal(state.copies.length,2);
+ assert.equal(state.item_photos.filter(row=>row.storage_path?.includes('reflected-p1')).length,1);
+});
+test('reflection rejects wrong stage/purpose, missing or ambiguous originals, and unassigned actors',async()=>{
+ for(const alter of [s=>s.items[1].status='出品中',s=>s.items[1].sku='123b-AAII-20261020-1000',s=>s.items[0].is_accessory=true,s=>s.items.push({...s.items[0],id:'duplicate'})]){
+  const {state,call}=reflectionSetup();alter(state);assert.equal((await call('reflect')).status,409);assert.equal(state.google.length,0);
+ }
+ const {state,call}=reflectionSetup();assert.equal((await call('reflect',{purpose:'packing'})).status,409);
+ state.items[1].deliverer_id='other';assert.equal((await call('reflect')).status,403);assert.equal(state.google.length,0);
 });

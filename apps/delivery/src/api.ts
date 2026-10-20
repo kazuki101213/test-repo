@@ -319,6 +319,16 @@ export async function deletePhoto(photoId: string): Promise<void> {
   if (data?.deleted !== true) throw new Error('写真の削除結果を確認できません。');
 }
 
+export async function reflectOriginalProductPhotos(itemId: string): Promise<{ added: number; total: number; sourceSerial: string }> {
+  const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, action: 'reflect', purpose: 'product' } });
+  if (error) {
+    const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
+    throw new Error(message || error.message);
+  }
+  if (!data || typeof data.added !== 'number' || typeof data.total !== 'number' || typeof data.sourceSerial !== 'string') throw new Error('写真の反映結果を確認できません。');
+  return data;
+}
+
 export interface PhotoReviewState {
   rejected_at?: string | null;
   rejection_reason?: string | null;
