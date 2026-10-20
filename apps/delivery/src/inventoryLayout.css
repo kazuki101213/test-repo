@@ -372,3 +372,6 @@
 }
 .work-date-field > span > button { width:36px; height:44px; display:grid; place-items:center; padding:0 !important; }
 .work-date-field > span > input[type="text"] { height:44px; }
+@media screen and (max-width:1279px) {
+ .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.copyable-text,.task-detail-field) > span:first-child { white-space:normal; overflow-wrap:anywhere; }
+}
