@@ -41,7 +41,7 @@ export default function DailySalesChart() {
     <div className="toolbar">
       <h3>{range ? '日別売上' : '日別売上（直近7日間）'}</h3>
     </div>
-    <div className="toolbar">
+    <div className="toolbar daily-sales-range">
       <label className="field"><span>開始日</span><DateInput value={from} max={to || undefined} onChange={e => { setRange({ from: e.target.value, to }); setSelected(null); }} /></label>
       <label className="field"><span>終了日</span><DateInput value={to} min={from || undefined} onChange={e => { setRange({ from, to: e.target.value }); setSelected(null); }} /></label>
       <button className="btn" onClick={() => { setRange(null); setSelected(null); }}>直近7日間</button>

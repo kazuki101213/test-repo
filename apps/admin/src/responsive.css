@@ -302,3 +302,20 @@
  .layout .management-dashboard > .monthly-trend-card { grid-column:1 / -1; grid-row:4; margin-top:0 !important; }
  .layout .management-dashboard > .error { grid-column:1 / -1; }
 }
+/* Keep each date and its calendar inside the daily-sales card. */
+@media screen {
+ .layout .daily-sales { container-type:inline-size; }
+ .layout .daily-sales .daily-sales-range { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .layout .daily-sales-range > .field { min-width:0; }
+ .layout .daily-sales-range > .field > span:last-child { width:100%; margin-bottom:0; font-size:14px; }
+ .layout .daily-sales-range input[type=text] { flex:1 1 0; width:0; min-width:0; box-sizing:border-box; }
+ .layout .daily-sales-range button[title] { height:44px; box-sizing:border-box; }
+ .layout .daily-sales-range > .btn { justify-self:start; }
+}
+@container (max-width:340px) {
+ .layout .daily-sales .daily-sales-range { grid-template-columns:minmax(0,1fr); }
+ .layout .daily-sales-range > .field { width:100%; max-width:210px; }
+}
+@container (min-width:500px) {
+ .layout .daily-sales .daily-sales-range { grid-template-columns:repeat(2,minmax(0,1fr)) max-content; }
+}
