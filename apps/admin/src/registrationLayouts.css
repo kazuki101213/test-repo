@@ -1,0 +1,36 @@
+/* Registration forms sit beside their lists on desktop and stack on mobile. */
+.layout .registration-sidebar, .layout .spare-list, .layout .inventory-data { min-width:0; }
+.layout .registration-sidebar .grid > * { min-width:0; }
+.layout .registration-sidebar .registration-wide { grid-column:1 / -1; }
+.layout .registration-sidebar .registration-entry > .card > .grid.cols2 { grid-template-columns:minmax(0,1fr); }
+.layout .spare-entry > .grid.cols2 { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.layout .expense-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.layout .expense-date-field > span:last-child { display:flex; width:100%; min-width:0; }
+.layout .expense-fields .expense-date-input { width:calc(10ch + 20px); max-width:calc(100% - 34px); min-width:0; flex:0 1 auto; box-sizing:border-box; }
+.layout .expense-fields input[type=number], .layout .expense-fields select { width:100%; min-width:0; box-sizing:border-box; }
+@media screen and (min-width:1280px) {
+ .layout .inventory-workspace.with-purchase { grid-template-columns:minmax(0,1fr); overflow:visible; }
+ .layout .with-purchase > .inventory-list { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,380px); gap:18px; align-items:start; }
+ .layout .with-purchase .inventory-controls { grid-column:1; grid-row:1; }
+ .layout .with-purchase .inventory-data { grid-column:1; grid-row:2; min-width:0; }
+ .layout .inventory-purchase-panel { grid-column:2; grid-row:1 / span 2; }
+ .layout .spare-workspace.with-spare-entry { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,380px); gap:18px; align-items:start; }
+ .layout .spare-workspace.with-spare-entry > .spare-toolbar { grid-column:1; grid-row:1; }
+ .layout .spare-workspace.with-spare-entry > .spare-list { grid-column:1; grid-row:2; }
+ .layout .spare-workspace.with-spare-entry > .spare-entry { grid-column:2; grid-row:1 / span 2; margin:0; }
+ .layout .registration-sidebar { position:sticky; top:16px; max-height:calc(100dvh - 32px); overflow-y:auto; }
+ .layout .with-purchase .inventory-controls { display:flex; flex-wrap:wrap; }
+ .layout .with-purchase .inventory-controls .inventory-search { width:200px; }
+ .layout .with-purchase .inventory-controls .inventory-date-range { width:282px; }
+}
+@media screen and (max-width:1279px) {
+ .layout .inventory-workspace.with-purchase { grid-template-columns:minmax(0,1fr); overflow:visible; }
+ .layout .inventory-purchase-panel { margin-block:16px; }
+}
+@media screen and (max-width:359px) {
+ .layout .expense-date-field { grid-column:1 / -1; }
+ .layout .spare-entry > .grid.cols2 { grid-template-columns:minmax(0,1fr); }
+}
+
+.layout .spare-reference-choices { display:flex; flex-wrap:wrap; gap:6px 12px; }
+.layout .spare-reference-choices legend { margin-bottom:6px; }

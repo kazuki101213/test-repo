@@ -121,7 +121,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
 
   return (
-    <div className="inventory-workspace">
+    <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
       <section className="inventory-list" aria-label="在庫">
 
 
@@ -159,11 +159,12 @@ export default function Inventory({ me }: { me: Staff }) {
       </div>
       </div>
 
-      {purchaseOpen && <section id="inventory-purchase-panel" className="inventory-purchase-panel" aria-label="在庫登録" style={{ marginBlock: 16, minWidth: 0 }}>
+      {purchaseOpen && <section id="inventory-purchase-panel" className="inventory-purchase-panel registration-sidebar" aria-label="在庫登録" style={{ minWidth: 0 }}>
         {selectedPurchaseDraft && <p>仕入れリストから登録: {selectedPurchaseDraft.title}</p>}
         <NewPurchase key={selectedPurchaseDraft?.id ?? 'new'} me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
       </section>}
 
+      <div className="inventory-data">
       <details className="card purchase-draft-panel">
         <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
         <div className="toolbar" style={{ marginTop: 12 }}>
@@ -262,6 +263,7 @@ export default function Inventory({ me }: { me: Staff }) {
       )}
       {!loading && items.length > 0 && viewItems.length === 0 && <p className="empty" role="status">フィルターに一致する在庫はありません。フィルターの条件を変更するか、すべて解除してください。</p>}
       {(visibleCount<viewItems.length||inventory.more)&&<div ref={loadMoreRef} className="toolbar"><button className="btn" disabled={loading} onClick={()=>{if(visibleCount<viewItems.length)setVisibleCount(current=>Math.min(current+80,viewItems.length));else {setVisibleCount(current=>current+50);inventory.loadMore();}}}>さらに表示</button></div>}
+      </div>
       </section>
       {openColumn && <InventoryColumnFilter key={openColumn.field} field={openColumn.field} anchor={openColumn.anchor} items={items} current={columnFilters[openColumn.field]} onClose={closeColumn} onApply={filter => {
         setColumnFilters(current => { const next = { ...current }; if (filter && isColumnFilterActive(filter)) next[openColumn.field] = filter; else delete next[openColumn.field]; return next; });

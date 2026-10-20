@@ -372,7 +372,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
               <label className="field"><span>{isWorkingAmazonReturn ? 'FNSKU' : '追跡番号'}</span>
                 <input type="text" value={trackingNo} style={entryWidth(trackingNo, 14)} onChange={(e) => setTrackingNo(e.target.value)} />
               </label>
-              <label className="field"><span>仕入先URL</span>
+              <label className="field registration-wide"><span>仕入先URL</span>
                 <input type="url" value={marketplaceUrl} style={entryWidth(marketplaceUrl, 24)} onChange={(e) => changePurchaseUrl(e.target.value)} />
               </label>
             </div>
