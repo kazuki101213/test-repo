@@ -2,7 +2,7 @@ begin;
 set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,status)
- select 998430+n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'Listing delay fixture',1000,'メルカリ',case (n-1)%4 when 0 then 'メルカリ' when 1 then 'ヤフオク' when 2 then '自己発送' else 'FBA' end,'fixture','商品登録前' from generate_series(1,8) n;
+ select 998430+n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'Listing delay fixture',1000,'メルカリ',case (n-1)%4 when 0 then 'メルカリ' when 1 then 'ヤフオク' when 2 then '自己発送' else 'FBA' end::app.sales_channel,'fixture','商品登録前' from generate_series(1,8) n;
 set local role postgres;
 insert into app.photo_reviews(item_id,drive_folder_id,exported_photo_count,submitted_at,approved_at,approved_by)
  select id,'fixture_folder',1,now()-interval '8 days',now()-case when sales_channel='FBA' then interval '120 hours' else interval '24 hours' end+case when lot_seq<=998434 then interval '1 second' else interval '0 seconds' end,purchaser_id from app.items where lot_seq between 998431 and 998438;
