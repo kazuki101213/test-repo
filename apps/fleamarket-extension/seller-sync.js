@@ -12,6 +12,11 @@ export function sellerHourlyReady(settings,records,now=Date.now()){
  }
  return true;
 }
+export function sellerObservationFingerprint(row){return JSON.stringify([row.external_id,row.serial||null,row.status,row.attention===true,row.trade_key||null]);}
+export function sellerCachedObservation(cache,row,now=Date.now()){
+ const saved=cache[row.external_id],age=now-(saved?.checkedAt??NaN);
+ return Number.isFinite(age)&&age>=0&&age<24*60*60000&&saved.fingerprint===sellerObservationFingerprint(row);
+}
 export function sellerAccounts(settings){return settings.accounts.filter(account=>account.enabled&&['mercari-1','mercari-2','auctions-1','auctions-2'].includes(account.id));}
 export function sellerUrl(account,url){
  const value=new URL(url),hosts=account.site==='mercari'?['jp.mercari.com']:['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp','salesmanagement.yahoo.co.jp','aucpay.yahoo.co.jp'];

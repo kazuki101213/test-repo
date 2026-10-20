@@ -79,7 +79,7 @@ for(const source of ['tools','apps'])test(source+' 毎時は販売状態だけ�
  assert.deepEqual(calls,['seller_observation_plan','sync_seller_observation']);assert.equal(applied[0].status,'取引中');
  assert(!('sold_on' in applied[0]));assert(state.sellerHourlyAttempt.responseBytes>0);
  await run({...deps,records:state,now:now+59999});assert.equal(applied.length,1);
- await run({...deps,records:state,now:now+3600000});assert.equal(applied.length,2);
+ await run({...deps,records:state,now:now+3600000});assert.equal(applied.length,1);assert.equal(state.sellerHourlyAttempt.cacheHits,1);assert.equal(state.sellerHourlyAttempt.rpcCalls,0);row.status='キャンセル';await run({...deps,records:state,now:now+7200000});assert.equal(applied.length,2);
 });
 test('毎時確認失敗も60分は再実行せず、キュー操作を呼ばない',async()=>{
  const data={},now=Date.parse('2026-10-20T01:00:00Z');let access=0;
@@ -97,4 +97,18 @@ test('ヤフオク毎時は出品終了分もページ送りし、変化のな�
  },openSession:async()=>({links:async()=>menu,go:async u=>{url=u;visits.push(u);},read:async phase=>({empty:phase==='出品中',itemCount:1,rows:phase==='出品終了分'?[{external_id:url.endsWith('page=2')?'m2':'m1',status:'取引中'}]:[],navigation:url===menu[1].url?[{text:'次へ',url:menu[1].url+'?page=2'}]:[]}),detail:async()=>{throw Error('Unchanged trade detail must not open');},close:async()=>{}})});
  assert.deepEqual(visits,[menu[0].url,menu[1].url,menu[1].url+'?page=2']);assert.equal(planned.length,2);
  assert.equal(state.sellerHourlyAttempt.status,'completed');assert.equal(state.sellerHourlyAttempt.updated,0);
+});
+
+import {sellerCachedObservation,sellerObservationFingerprint} from '../tools/fleamarket-extension/seller-sync.js';
+test('確認済み商品のキャッシュはアカウント別で24時間以内だけ、状態/注意/通番号/取引キー変更を見逃さない',()=>{
+ const now=Date.parse('2026-10-20T03:00:00Z'),row={external_id:'m123',serial:'2398',status:'取引中',trade_key:'m123',attention:false};
+ const cache={m123:{checkedAt:now,fingerprint:sellerObservationFingerprint(row)}};
+ assert(sellerCachedObservation(cache,row,now+23*3600000));assert(!sellerCachedObservation(cache,row,now+24*3600000));assert(!sellerCachedObservation(cache,row,now-1));
+ for(const changed of [{status:'キャンセル'},{attention:true},{serial:'2398b'},{trade_key:'m123:new'},{external_id:'m456'}])assert(!sellerCachedObservation(cache,{...row,...changed},now));
+ assert(!sellerCachedObservation({},row,now));
+});
+test('未一致・保護中の商品をキャッシュせず、アプリ登録や保留解除後も再照合する',async()=>{
+ const data={},now=Date.parse('2026-10-20T03:00:00Z'),account=settings.accounts[0];let calls=0;
+ const deps={settings:{...settings,accounts:[account]},records:{},day:'2026-10-20',hourly:true,now,storage:{set:async v=>Object.assign(data,v)},log:async()=>{},rpc:async(name,args)=>{assert.equal(name,'seller_observation_plan');calls++;return args.p_rows.map(r=>({external_id:r.external_id,action:r.external_id==='m1'?'unmatched':'protected'}));},openSession:async()=>({links:async()=>[{text:'取引中',url:'https://jp.mercari.com/mypage/listings/in_progress'}],go:async()=>{},read:async()=>({rows:[{external_id:'m1',status:'取引中'},{external_id:'m2',status:'取引中'}],navigation:[],itemCount:2}),close:async()=>{}})};
+ await sellerDaily(deps);await sellerDaily({...deps,records:data,now:now+3600000});assert.equal(calls,2);assert.deepEqual(data.sellerObservationCache.accounts[account.id],{});
 });

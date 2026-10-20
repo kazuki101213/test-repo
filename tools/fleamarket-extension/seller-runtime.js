@@ -1,5 +1,5 @@
 import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.132';
-import {sellerScheduleReady,sellerHourlyReady,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.132';
+import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.132';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
 import {sellerDomOperation} from './seller-dom.js?v=0.1.132';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -108,11 +108,14 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
  catch(error){await storage.set({sellerBarrierError:day});await log('error','販売確認の開始条件を確認できません。再試行せず停止しました');return;}
  }
  if(!ready||!accounts.length)return;
- let responseBytes=0,rpcCalls=0;const baseRpc=rpc;
+ let responseBytes=0,rpcCalls=0,cacheHits=0;const baseRpc=rpc;
+ const observationCache={...(records.sellerObservationCache?.version===1?records.sellerObservationCache.accounts:{})};
  rpc=async(...args)=>{const value=await baseRpc(...args);rpcCalls++;responseBytes+=new TextEncoder().encode(JSON.stringify(value)??'null').length;return value;};
  await storage.set({[attemptKey]:{...metadata,day,status:'running',at:new Date().toISOString()}});
  const baselines={...(records.sellerSaleBackfills||{})};let updated=0,errors=0,unmatched=0,conflicts=0;const failures=[];
  for(const account of accounts){let session;
+  const cache=Object.fromEntries(Object.entries(observationCache[account.id]||{}).filter(([,v])=>Number.isFinite(v?.checkedAt)&&now-v.checkedAt>=0&&now-v.checkedAt<24*60*60000));
+  const remember=row=>{if(['出品中','取引中','支払い待ち'].includes(row.status))cache[row.external_id]={fingerprint:sellerObservationFingerprint(row),checkedAt:now};};
   try{
    session=await openSession(account);
    const queue=[],seen=new Set(),processed=new Set(),pending=[],fullScan=baselines[account.id]!=='serial-case-v2';
@@ -139,8 +142,9 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
       }
       if(auctionSaleIds.size>=40)salesStopped=true;
      }
-     const rows=data.rows.filter(row=>(!hourly||['出品中','取引中','支払い待ち','キャンセル'].includes(row.status))&&!processed.has(row.external_id+'/'+row.status)
+     const candidates=data.rows.filter(row=>(!hourly||['出品中','取引中','支払い待ち','キャンセル'].includes(row.status))&&!processed.has(row.external_id+'/'+row.status)
       &&(account.site!=='auctions'||page.phase!=='売上金管理'||auctionSaleIds.has(row.external_id)));
+     const rows=candidates.filter(row=>{if(hourly&&sellerCachedObservation(cache,row,now)){processed.add(row.external_id+'/'+row.status);cacheHits++;return false;}return true;});
      const plans=new Map();
      for(let offset=0;offset<rows.length;offset+=100){
       const batch=rows.slice(offset,offset+100),result=await rpc('seller_observation_plan',{p_account_id:account.id,p_rows:batch});
@@ -155,7 +159,8 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
        if(!fullScan&&registeredRun>=5){salesStopped=true;break;}
       }
       if(action==='unmatched'){unmatched++;continue;}
-      if(action==='registered'||action==='unchanged'||action==='protected')continue;
+      if(action==='registered'||action==='unchanged'){remember(row);continue;}
+      if(action==='protected')continue;
       pending.push({row,action});
      }
      if(salesStopped&&salePhase(page.phase))break;
@@ -177,15 +182,15 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
      extra.trade_url=detail.url;extra.attention=/キャンセル|中止/.test(detail.text);
     }
     const result=await rpc('sync_seller_observation',{p_account_id:account.id,p_observation:{...row,...extra,observed_at:new Date().toISOString()}});
-    if(result==='updated'||result==='registered')updated++;else if(result==='unmatched')unmatched++;else if(result==='conflict')conflicts++;
+    if(result==='updated'||result==='registered'){updated++;remember(row);}else if(result==='unmatched')unmatched++;else if(result==='conflict')conflicts++;
     }catch(error){throw Error('商品ID '+row.external_id+'：'+error.message);}
    }
    if(fullScan&&salesSeen){baselines[account.id]='serial-case-v2';await storage.set({sellerSaleBackfills:{...baselines}});}
   }catch(error){errors++;failures.push({accountId:account.id,error:error.message});await log('error',account.label+(hourly?'の毎時販売確認を停止しました。次回の定期確認まで再実行しません：':'の販売確認を停止しました。自動再試行はしません：')+error.message);}
-  finally{await session?.close();}
+  finally{observationCache[account.id]=Object.fromEntries(Object.entries(cache).slice(-2000));await session?.close();}
  }
  if(unmatched||conflicts)await log('warning','販売情報の要確認：商品未一致 '+unmatched+'件、販売実績の不一致 '+conflicts+'件。自動上書きしていません');
- await storage.set({[attemptKey]:{...metadata,day,status:errors?'failed':'completed',updated,errors,unmatched,conflicts,responseBytes,rpcCalls,...(repair?{failures}:{}),at:new Date().toISOString()}});
+ await storage.set({sellerObservationCache:{version:1,accounts:observationCache},[attemptKey]:{...metadata,day,status:errors?'failed':'completed',updated,errors,unmatched,conflicts,responseBytes,rpcCalls,cacheHits,...(repair?{failures}:{}),at:new Date().toISOString()}});
 }
 /** Explicit repair is consumed once; it never clears or rewrites the normal daily attempt. */
 export async function runSellerSaleRepair(dependencies){
