@@ -124,14 +124,10 @@ export default function Inventory({ me }: { me: Staff }) {
     {inventoryColumns[field]!.label}<span aria-hidden="true">{isColumnFilterActive(columnFilters[field]) ? ' ▾✓' : ' ▾'}</span>
   </button>;
 
-  if (purchaseOpen) return <section className="purchase-registration-screen" aria-label="在庫登録">
-    <button type="button" className="btn" onClick={() => { setPurchaseOpen(false); setSelectedPurchaseDraft(null); }}>在庫・仕入れリストへ戻る</button>
-    {selectedPurchaseDraft && <p>仕入れリストから登録: {selectedPurchaseDraft.title}</p>}
-    <NewPurchase key={selectedPurchaseDraft?.id ?? 'new'} me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
-  </section>;
+
 
   return (
-    <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
+    <div className="inventory-workspace">
       <section className="inventory-list" aria-label="在庫">
 
 
@@ -140,7 +136,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
       <div className="inventory-controls">
       <div className="inventory-registration-actions">
-        <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => setPurchaseOpen(open => !open)}>
+        <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => { if (purchaseOpen) setSelectedPurchaseDraft(null); setPurchaseOpen(open => !open); }}>
           {purchaseOpen ? '在庫登録を閉じる' : '在庫登録'}
         </button>
         {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
@@ -168,6 +164,12 @@ export default function Inventory({ me }: { me: Staff }) {
 
       </div>
       </div>
+
+      {purchaseOpen && <section id="inventory-purchase-panel" className="inventory-purchase-panel" aria-label="在庫登録">
+        <div className="toolbar"><button type="button" className="btn" onClick={() => { setPurchaseOpen(false); setSelectedPurchaseDraft(null); }}>閉じる</button></div>
+        {selectedPurchaseDraft && <p>仕入れリストから登録: {selectedPurchaseDraft.title}</p>}
+        <NewPurchase key={selectedPurchaseDraft?.id ?? 'new'} me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
+      </section>}
 
       <details className="card purchase-draft-panel">
         <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
