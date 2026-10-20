@@ -69,7 +69,7 @@ export default function PushSettings({ userId }: { userId: string }) {
     </div>
     {homeScreen ? <p className="muted">iPhoneはSafariの共有メニューから「ホーム画面に追加」し、追加した納品アプリを開いて「通知を有効にする」を押してください（iOS 16.4以降）。</p>
       : !supported ? <p className="muted">このブラウザでは通知を利用できません。対応ブラウザまたはホーム画面から開いてください。</p>
-      : <p className="muted">新しい返信・写真承認・担当商品の追加をお知らせします。通知音は端末の通知・消音設定に従います。</p>}
+      : <p className="muted">出品依頼・写真の修正依頼・動作不良への返信・発送依頼・担当商品の追加をお知らせします。通知音は端末の通知・消音設定に従います。</p>}
     {message && <p role="status">{message}</p>}
   </section>;
 }
