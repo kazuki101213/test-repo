@@ -90,10 +90,11 @@ do $$begin
  begin perform app.complete_delivery_notice('reply:99681300-0000-0000-0000-000000000002',(select id from app.items where lot_seq=996813));raise exception 'Inactive staff completed notice';exception when insufficient_privilege then null;end;
 end $$;
 set local role postgres;
+update app.staff set is_active=true where code='DD';
 update app.photo_reviews set approved_at=now()-interval '72 hours' where item_id=(select id from app.items where lot_seq=996813);
 set local role authenticated;
-do $begin
+do $$begin
  if exists(select 1 from app.v_delivery_notice_tasks where lot_seq=996813 and kind='photo_approved') then raise exception 'Approval still visible after 72 hours';end if;
  if not exists(select 1 from app.v_delivery_notice_tasks where lot_seq=996813 and kind='reply') then raise exception 'Reply expired with approval';end if;
-end $;
+end $$;
 rollback;
