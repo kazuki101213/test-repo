@@ -1,6 +1,6 @@
 begin;
-insert into app.items(lot_seq,sku,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,tracking_no,inspected_at,status)
- select 998561,'998561'||suffix||'-AADD-20261020-1000',(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'Photo reflection fixture',1000,'メルカリ','fixture',now(),'商品登録前'
+insert into app.items(lot_seq,sku,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at,status)
+ select 998561,'998561'||suffix||'-AADD-20261020-1000',(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'Photo reflection fixture',1000,'メルカリ','FBA','fixture',now(),'商品登録前'
  from unnest(array['','a','b']) suffix;
 insert into app.item_photos(id,item_id,storage_path,uploaded_by,drive_file_id,photo_kind)
  select ('99856100-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,i.id,'fixture/'||n||'.jpg',i.deliverer_id,case when n=3 then null else 'source-file-'||n end,case when n=2 then 'packing' else 'product' end
