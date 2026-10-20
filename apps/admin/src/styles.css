@@ -433,8 +433,3 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .invoice-task-rows .malfunction-report-details .malfunction-source-link { min-width:20px; min-height:0; vertical-align:middle; }
 .malfunction-report-extra { margin-top:8px; font-size:13.333px; }
 .malfunction-report-extra summary { cursor:pointer; color:var(--muted); }
-
-/* Registration stays in the inventory page, like the spare-entry form. */
-.inventory-purchase-panel { margin-block:16px; min-width:0; }
-.inventory-purchase-panel > .toolbar { justify-content:flex-end; margin-bottom:0; }
-.inventory-purchase-panel h2 { margin-top:0; }
