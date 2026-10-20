@@ -375,3 +375,6 @@
 @media screen and (max-width:1279px) {
  .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.copyable-text,.task-detail-field) > span:first-child { white-space:normal; overflow-wrap:anywhere; }
 }
+/* Keep the photo inside its own column beside the fault/compensation actions. */
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.task-card-photo-button,.task-card-photo) { width:80px; max-width:100%; }
+.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-photo { height:80px; }
