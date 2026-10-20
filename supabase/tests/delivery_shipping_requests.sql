@@ -58,6 +58,12 @@ set local role authenticated;
 do $$begin
  if (select count(*) from app.v_delivery_notice_tasks where kind='shipping' and lot_seq=998422)<>1 then raise exception 'New trading episode hidden by older notice or expiry';end if;
 end $$;
+set local role postgres;
+update app.delivery_shipping_tasks set created_at=now()-interval '72 hours' where item_id=(select id from shipping_probe where lot_seq=998422) and resolved_at is null;
+set local role authenticated;
+do $begin
+ if exists(select 1 from app.v_delivery_notice_tasks where kind='shipping' and lot_seq=998422) then raise exception 'Shipping still visible after 72 hours';end if;
+end $;
 set local role anon;
 do $$begin
  begin perform 1 from app.delivery_shipping_tasks;raise exception 'Anonymous shipping read allowed';exception when insufficient_privilege then null;end;
