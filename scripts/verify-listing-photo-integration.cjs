@@ -18,7 +18,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
 async function settle(){for(let i=0;i<40;i++){if(dirty){cursor=0;dirty=false;tree=context.exports.default(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
 const listing=()=>all(tree).find(n=>n.type==='button'&&text(n).includes('商品登録・写真登録'));
-function upload(files){all(tree).find(n=>n.props?.['aria-label']==='商品写真追加').props.onChange({target:{files,value:'file'}});}
+function upload(files){all(tree).find(n=>n.props?.['aria-label']==='商品写真表示').props.onChange({target:{files,value:'file'}});}
 (async()=>{
  await settle();assert(!listing(),'Legacy combined progress control is removed');
  upload([{name:'a'},{name:'b'}]);upload([{name:'duplicate'}]);await settle();assert.equal(photos.length,2);assert.equal(driveCalls,1,'Complete product batch automatically reaches Drive and review submission');assert(text(tree).includes('写真確認に提出しました'));assert.equal(photoEvents,1);assert.equal(row.product_registered,false);assert(!listing());assert.equal(rpcCalls[0][0],'set_delivery_listing_progress');assert.equal(rpcCalls[0][1].p_done,null);assert.equal(rpcCalls[0][1].p_item_id,'one');
