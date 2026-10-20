@@ -370,3 +370,5 @@
  .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-item-page-link { width:17px; min-width:0; padding:0; }
  .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .purchaser-comment { font-size:12px; line-height:18px; }
 }
+.work-date-field > span > button { width:36px; height:44px; display:grid; place-items:center; padding:0 !important; }
+.work-date-field > span > input[type="text"] { height:44px; }
