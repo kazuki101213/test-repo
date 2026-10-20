@@ -35,6 +35,10 @@ function inventoryLink(nodes,label,item){
  const channels=['メルカリ','ヤフオク','自己発送','FBA'];
  const photoNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{photo_reviews:channels.map((sales_channel,n)=>({id:'review'+n,item_id:'review'+n,submitted_at:'2026-10-19',exported_photo_count:8,item:{id:'review'+n,sku:'250'+n+'-SKU',lot_seq:2500+n,title:'写真商品',sales_channel}}))});
  for(const channel of channels)assert(photoNodes.some(n=>n.type==='strong'&&text(n)==='写真確認（'+channel+'販売用）'),'Photo review retains actual '+channel+' channel through reference hydration');
+ const shippingNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_shipping_tasks:['メルカリ','ヤフオク','自己発送'].map((sales_channel,n)=>({id:'shipping'+n,item_id:'stock'+n,sku:(2500+n)+'-SHIPPING',lot_seq:2500+n,sales_channel,marketplace_item_id:'product'+n}))});
+ inventoryLink(shippingNodes,'発送する商品の在庫を開く','stock0');
+ for(const channel of ['メルカリ','ヤフオク','自己発送'])assert(shippingNodes.some(n=>n.type==='strong'&&text(n)===channel+'発送'));
+ assert.equal(shippingNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,3,'Shipping reminders open the existing shipping flow');
  const itemId='22222222-2222-4222-8222-222222222222';
  const actionNodes=await render('apps/admin/src/components/MalfunctionTasks.tsx',{malfunctions:['動作不良','Amazon補填申請中'].map((status,n)=>({id:'report'+n,status,sku:(2400+n)+'b-REPORT',lot_seq:2400+n,title:'報告商品',asin:null,marketplace_item_id:'report-product-'+n,people:[],malfunction_reported_at:'2026-10-18T01:00:00Z',malfunction_comment:'報告内容'})),actions:[{id:'different-comment-id',item_id:itemId,task_kind:'SONY◯ヤフオク',sku:'auction',created_at:'2026-10-18'},{id:'supplier-task',item_id:'supplier-item',task_kind:'仕入先確認',lot_seq:2395,marketplace_item_id:'mSUPPLIER',sku:'2395b-SUPPLIER',created_at:'2026-10-18'}]});
  assert(!actionNodes.some(n=>n.props?.id==='admin-action-different-comment-id'),'Obsolete Yahoo sale card is hidden');

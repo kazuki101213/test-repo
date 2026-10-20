@@ -71,6 +71,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const deepLinkHandled = useRef(false);
   const toggleExpanded = (id: string) => setExpandedId(current => current === id ? null : id);
   const updateTask = useCallback((updated: DeliveryTask) => {
+    window.dispatchEvent(new CustomEvent('delivery-item-workflow-changed',{detail:updated}));
     inventory.updateRow(updated);
   }, [inventory.updateRow]);
 

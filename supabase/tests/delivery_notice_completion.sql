@@ -1,8 +1,8 @@
 begin;
 set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,status)
- select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'Notice completion fixture',1000,'メルカリ','メルカリ','fixture','商品登録前'
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at,status)
+ select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'Notice completion fixture',1000,'メルカリ','メルカリ','fixture',now(),'商品登録前'
  from unnest(array[996813,996814]) n;
 set local role postgres;
 update app.items set malfunction_reported_at=now()-interval '4 days' where lot_seq=996813;
@@ -94,7 +94,7 @@ update app.staff set is_active=true where code='DD';
 update app.photo_reviews set approved_at=now()-interval '72 hours' where item_id=(select id from app.items where lot_seq=996813);
 set local role authenticated;
 do $$begin
- if exists(select 1 from app.v_delivery_notice_tasks where lot_seq=996813 and kind='photo_approved') then raise exception 'Approval still visible after 72 hours';end if;
+ if not exists(select 1 from app.v_delivery_notice_tasks where lot_seq=996813 and kind='photo_approved') then raise exception 'Unlisted request expired after 72 hours';end if;
  if not exists(select 1 from app.v_delivery_notice_tasks where lot_seq=996813 and kind='reply') then raise exception 'Reply expired with approval';end if;
 end $$;
 rollback;
