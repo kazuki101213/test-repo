@@ -93,3 +93,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/shipping_dates_per_trade.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/accessory_deliverer_inheritance.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/spare_accessory_holder_identity.sql"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/reconcile_existing_shipping_requests.sql"
