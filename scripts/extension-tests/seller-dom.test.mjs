@@ -221,3 +221,20 @@ test('ローソンの発送用2次元コードを発行を認識し品名を入�
 test('2398の実画面と同じく9写真が届けば空のthumbNailで停止せず、欠落と不正な値は送信前に拒否する',async()=>{const {html}=yahooForm();const p=await page(html,'https://auctions.yahoo.co.jp/jp/show/submit');await p.evaluate(()=>{const input=document.querySelector('input[type=file]'),upload=input.onchange;input.onchange=()=>{for(let n=0;n<9;n++)upload();document.querySelector('[name=thumbNail]').value='';};});const job={...listing,channel:'ヤフオク',payload:{...listing.payload,condition:'やや傷や汚れあり',shippingMethod:'おてがる配送（日本郵便）',shippingPayer:'購入者負担',size:'100',weightKg:'5',auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false}};const prepared=await p.evaluate(sellerDomOperation,{job,phase:'prepare_listing',files:Array.from({length:9},(_,n)=>({name:'photo-'+n+'.jpg',type:'image/jpeg',bytes:[1,2,3]}))});assert.equal(prepared.prepared,true);assert.equal(await p.locator('[name=thumbNail]').inputValue(),'');assert.equal(await p.locator('#counter').innerText(),'0');await p.locator('[name=ImageFullPath5]').evaluate(e=>e.value='');await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'publish'}),/出品直前/);await p.locator('[name=ImageFullPath5]').evaluate(e=>e.value='https://auctions.c.yimg.jp/images/test-5.jpg');await p.locator('[name=thumbNail]').evaluate(e=>e.value='https://example.com/unverified.jpg');await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'publish'}),/出品直前/);assert.equal(await p.locator('#counter').innerText(),'0');await p.close();});
 
 test('ヤフオクは写真反映後の確認ボタン有効化まで待ち、無効なボタンでは確認要求を返さない',async()=>{const {html}=yahooForm();const p=await page(html,'https://auctions.yahoo.co.jp/jp/show/submit');await p.evaluate(()=>{const input=document.querySelector('input[type=file]'),upload=input.onchange,button=document.querySelector('#submit_form_btn');button.value='確認する';input.onchange=()=>{upload();button.disabled=true;setTimeout(()=>button.disabled=false,700);};});const job={...listing,channel:'ヤフオク',payload:{...listing.payload,condition:'やや傷や汚れあり',shippingMethod:'おてがる配送（日本郵便）',shippingPayer:'購入者負担',size:'100',weightKg:'5',auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false}};const r=await p.evaluate(sellerDomOperation,{job,phase:'prepare_listing',files:[{name:'photo.jpg',type:'image/jpeg',bytes:[1,2,3]}]});assert.equal(r.prepared,true);assert.equal(await p.locator('#submit_form_btn').isEnabled(),true);await p.locator('#submit_form_btn').evaluate(e=>e.disabled=true);await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'preview_listing'}),/確認ボタンが無効/);await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'publish'}),/確認ボタンが無効/);assert.equal(await p.locator('#counter').innerText(),'0');await p.close();});
+
+test('ヤフオク説明文はHTMLに保存されても改行・空行を維持し、タグ文字列をHTMLとして実行しない',async()=>{
+ const {html}=yahooForm();
+ const p=await page(html,'https://auctions.yahoo.co.jp/jp/show/submit');
+ const description='1行目の説明。\n2行目の説明。\n\n<img src=x onerror="alert(1)"> & 商品説明\n最終行。';
+ const job={...listing,channel:'ヤフオク',payload:{...listing.payload,description,condition:'やや傷や汚れあり',shippingMethod:'おてがる配送（日本郵便）',shippingPayer:'購入者負担',size:'100',weightKg:'5',auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false}};
+ const prepared=await p.evaluate(sellerDomOperation,{job,phase:'prepare_listing',files:[{name:'photo.jpg',type:'image/jpeg',bytes:[1,2,3]}]});
+ assert.equal(prepared.prepared,true);
+ assert.equal(await p.locator('#fleaDescription').inputValue(),description);
+ const saved=await p.frameLocator('#rteEditorComposition0').locator('body').evaluate(e=>({html:e.innerHTML,breaks:e.querySelectorAll('br').length,images:e.querySelectorAll('img').length}));
+ assert.equal(saved.breaks,4);assert.equal(saved.images,0);
+ // Yahoo stores the rich editor as HTML; render that serialized HTML using normal whitespace.
+ const displayed=await p.evaluate(html=>{const div=document.createElement('div');div.style.whiteSpace='normal';div.innerHTML=html;document.body.append(div);return div.innerText;},saved.html);
+ assert.equal(displayed,description);
+ assert.equal(await p.locator('#counter').innerText(),'0');
+ await p.close();
+});
