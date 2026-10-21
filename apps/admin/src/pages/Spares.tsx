@@ -150,10 +150,9 @@ export default function Spares({ me }: { me: Staff }) {
           <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'remote'} onChange={() => { setReferenceMode('remote'); void autofillFromUsageSerial(form.usage_note ?? '', 'remote'); }} />リモコン情報参照</label>
           <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
         </fieldset>
-        {me.role === 'admin' ? <label className="field"><span>保管担当者</span>
+        {me.role === 'admin' ? <label className="field registration-wide"><span>保管担当者</span>
           <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff).map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
-        </label> : <label className="field"><span>保管担当者</span><input value={staffDisplayName(me)} readOnly /></label>}
-        <label className="field"><span>保管担当者名</span><input value={form.owner_name ?? ''} onChange={event => setForm(current => ({ ...current, owner_name: event.target.value }))} /></label>
+        </label> : <label className="field registration-wide"><span>保管担当者</span><input value={staffDisplayName(me)} readOnly /></label>}
         <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>
         <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
         <label className="field"><span>ASIN</span><input value={form.asin ?? ''} onChange={event => setForm(current => ({ ...current, asin: event.target.value || null }))} /></label>

@@ -334,4 +334,4 @@ textarea { min-height: 80px; resize: vertical; }
 .delivery-return-reason { white-space:pre-wrap; overflow-wrap:anywhere; }
 @media(max-width:640px) { .delivery-return-details { flex-direction:column; } }
 
-.delivery-shipping-task .delivery-return-details { flex-direction:column; gap:4px; }
+@media(min-width:641px) { .delivery-shipping-task .delivery-return-details { flex-direction:row; gap:0; } }
