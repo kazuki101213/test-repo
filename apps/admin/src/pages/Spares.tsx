@@ -95,7 +95,7 @@ export default function Spares({ me }: { me: Staff }) {
         model_no: item.model_no,
         asin: item.asin,
       }));
-      setReferenceMessage(mode === 'remote' ? `${item.sku} のリモコン情報を反映します。登録後、在庫のこのリモコン行を削除します。` : `${item.sku} の本体情報を反映します（品名・金額・SKUを指定どおりに設定）。本体行は変更しません。`);
+      setReferenceMessage(mode === 'remote' ? `${item.sku} のリモコン情報を反映します。登録後、在庫のこのリモコン行を削除します。` : '');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally { setAutofillBusy(false); }
@@ -176,13 +176,9 @@ export default function Spares({ me }: { me: Staff }) {
       <div className="grid cols2 registration-fields">
         <label className="field"><span>利用記録（通番号）</span><input value={form.usage_note ?? ''} onChange={event => { setSourceItemId(null); setReferenceFound(false); setForm(current => ({ ...current, usage_note: event.target.value || null })); }} onBlur={event => void autofillFromUsageSerial(event.target.value)} /></label>
         <label className="field"><span>購入日</span><DateInput className="registration-date" value={form.purchased_at ?? ''} onChange={event => setForm(current => ({ ...current, purchased_at: event.target.value || null }))} /></label>
-        <fieldset className="field registration-wide spare-reference-choices" style={{ border: 0, padding: 0, margin: 0 }}><legend>登録情報参照元</legend>
-          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'remote'} onChange={() => { setReferenceMode('remote'); void autofillFromUsageSerial(form.usage_note ?? '', 'remote'); }} />リモコン情報参照</label>
-          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
-        </fieldset>
-        {me.role === 'admin' ? <label className="field registration-wide"><span>保管担当者</span>
+        {me.role === 'admin' ? <label className="field"><span>保管担当者</span>
           <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff).map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
-        </label> : <label className="field registration-wide"><span>保管担当者</span><input value={staffDisplayName(me)} readOnly /></label>}
+        </label> : <label className="field"><span>保管担当者</span><input value={staffDisplayName(me)} readOnly /></label>}
         <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>
         <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
         <label className="field"><span>ASIN</span><input value={form.asin ?? ''} onChange={event => setForm(current => ({ ...current, asin: event.target.value || null }))} /></label>
@@ -190,12 +186,16 @@ export default function Spares({ me }: { me: Staff }) {
         <label className="field"><span>仕入先</span><ColoredSelect value={form.marketplace ?? ''} onChange={event => setForm(current => ({ ...current, marketplace: event.target.value || null }))}><option value="">未設定</option>{MARKETPLACES.map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
         <label className="field"><span>商品ID</span><input value={form.marketplace_item_id ?? ''} onChange={event => setForm(current => ({ ...current, marketplace_item_id: event.target.value || null }))} /></label>
         <label className="field"><span>追跡番号</span><input value={form.tracking_no ?? ''} onChange={event => setForm(current => ({ ...current, tracking_no: event.target.value || null }))} /></label>
-        <label className="field"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
+        <label className="field registration-wide"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
+        <div role="group" aria-label="登録情報参照元" className="field registration-wide spare-reference-choices spare-reference-footer" style={{ border: 0, padding: 0, margin: 0 }}><div className="spare-reference-heading"><span>登録情報参照元</span><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '予備登録'}</button></div>
+          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'remote'} onChange={() => { setReferenceMode('remote'); void autofillFromUsageSerial(form.usage_note ?? '', 'remote'); }} />リモコン情報参照</label>
+          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
+        </div>
         {autofillBusy && <p className="muted">通番号の商品情報を読み込み中…</p>}
         {referenceMessage && <p className="muted" role="status" style={{ gridColumn: '1 / -1' }}>{referenceMessage}</p>}
       </div>
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="toolbar registration-actions"><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '予備登録'}</button></div>
+
     </form>}
     {editFor && <SpareFieldDialog row={editFor.row} field={editFor.field} onClose={() => setEditFor(null)} onSaved={async () => { setEditFor(null); await reload(); }} />}
   </section>;
