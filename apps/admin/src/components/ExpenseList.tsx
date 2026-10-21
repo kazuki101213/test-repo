@@ -22,7 +22,6 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const [draft, setDraft] = useState<ExpenseDraft | undefined>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [expenseOpen, setExpenseOpen] = useState(false);
   const [expenseBusy, setExpenseBusy] = useState(false);
   const [savedRevision, setSavedRevision] = useState(0);
   const [query, setQuery] = useState('');
@@ -46,10 +45,9 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const filtered = rows.filter(row => !query.trim() || row.name.toLowerCase().includes(query.trim().toLowerCase()));
   const pending = drafts.filter(d => !rows.some(row => row.id === d.id || (expenseCategoryLabel(row.category) === d.category && row.incurred_on.slice(0, 7) === d.target_month.slice(0, 7) && row.name === d.name))
     && (!query.trim() || d.name.toLowerCase().includes(query.trim().toLowerCase())));
-  return <div className={`dashboard-workspace${expenseOpen ? ' with-expense' : ''}`}>
+  return <div className="dashboard-workspace with-expense">
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費">
     <div className="toolbar expense-search-toolbar">
-      <button className="btn primary" aria-expanded={expenseOpen} aria-controls="expense-panel" disabled={expenseBusy} onClick={() => { setExpenseOpen(open => !open); setEditing(undefined); setDraft(undefined); }}>経費登録</button>
       <input aria-label="経費を検索" placeholder="検索" type="search" value={query} onChange={e => setQuery(e.target.value)} />
     </div>
     {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
@@ -64,7 +62,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
             <div>{editCell(row, 'name', row.name)}</div>
             <span className="expense-hint">{editCell(row, 'category', expenseCategoryLabel(row.category))}</span>
           </li>)}{categoryDrafts.filter(row => row.target_month.startsWith(month)).map(row => <li key={row.id}>
-            <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.name}の金額と日付を入力`} onClick={() => { setEditing(undefined); setDraft(row); setExpenseOpen(true); }}>
+            <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.name}の金額と日付を入力`} onClick={() => { setEditing(undefined); setDraft(row); }}>
               <div>{row.name}</div><span className="expense-hint">日付・金額の入力待ち</span>
             </button>
           </li>)}</ul></li>)}</ul>}
@@ -72,7 +70,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
       })}</div></div>
     </>}
   </section>
-  {expenseOpen && <ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} onClose={() => { if (expenseBusy) return; setExpenseOpen(false); setEditing(undefined); setDraft(undefined); }} />}
+  {<ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} onClose={draft ? () => { if (expenseBusy) return; setEditing(undefined); setDraft(undefined); } : undefined} />}
   {fieldEdit && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="経費の項目を編集"><div className="card inventory-comment-panel">
     <h3>{{ incurred_on: '日付', category: '区分', name: '内容', amount: '金額' }[fieldEdit.field]}を編集</h3>
     <label className="field"><span>{fieldEdit.row.name}</span>{fieldEdit.field === 'category' ? <select value={fieldEdit.value} onChange={e => setFieldEdit(current => current && { ...current, value: e.target.value })}>{(['固定費', '変動費', '外注費'] as const).map(value => <option key={value} value={value}>{value}</option>)}</select>

@@ -9,5 +9,21 @@ const mocks={exports:{},crypto:{randomUUID:()=> 'sample'},window:{matchMedia:()=
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,mocks);
 async function settle(){for(let i=0;i<30;i++){if(dirty){cursor=0;dirty=false;tree=mocks.exports.default(props);for(const n of all(tree))if(n.props.ref)n.props.ref.current={scrollIntoView(){scrolls++}};pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
 await settle();return {nodes:()=>all(tree),settle,writes:()=>writes,scrolls:()=>scrolls};}
-(async()=>{const app=await mount('apps/admin/src/components/ExpenseList.tsx',{revision:0});const panel=()=>app.nodes().find(n=>n.type==='ExpensePanel');const toggle=()=>app.nodes().find(n=>n.type==='button'&&['経費登録','経費登録を閉じる'].includes(text(n)));assert(!panel());toggle().props.onClick();await app.settle();assert(panel());assert.equal(text(toggle()),'経費登録');panel().props.onBusyChange(true);await app.settle();assert(toggle().props.disabled);panel().props.onClose();await app.settle();assert(panel(),'Cannot close during save');panel().props.onBusyChange(false);await app.settle();panel().props.onClose();await app.settle();assert(!panel());app.nodes().find(n=>n.props['aria-label']==='家賃の金額と日付を入力').props.onClick();await app.settle();assert.equal(panel().props.template.month,'2026-10');assert.equal(panel().props.template.name,'家賃');assert.equal(app.writes(),0);
-let closed=0;const form=await mount('apps/admin/src/components/ExpensePanel.tsx',{onSaved(){},onBusyChange(){},onClose(){closed++}});assert.equal(form.scrolls(),1,'Opening a narrow-screen panel scrolls to the actual form');form.nodes().find(n=>n.type==='button'&&text(n)==='閉じる').props.onClick();assert.equal(closed,1);assert.equal(form.writes(),0);const desktop=await mount('apps/admin/src/components/ExpensePanel.tsx',{onSaved(){},onBusyChange(){}},false);assert.equal(desktop.scrolls(),0,'Desktop sidebar does not force page scroll');console.log('PASS: expense open/close, busy guard, draft month/name, narrow-screen form navigation, no writes');})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{
+const app=await mount('apps/admin/src/components/ExpenseList.tsx',{revision:0});
+const panel=()=>app.nodes().find(n=>n.type==='ExpensePanel');
+assert(panel(),'Registration form is always visible');
+assert.equal(panel().props.onClose,undefined);
+assert(!app.nodes().some(n=>n.type==='button'&&text(n)==='経費登録'),'No toggle button');
+app.nodes().find(n=>n.props['aria-label']==='家賃の金額と日付を入力').props.onClick();await app.settle();
+assert.equal(panel().props.template.month,'2026-10');
+assert.equal(panel().props.template.name,'家賃');
+panel().props.onBusyChange(true);await app.settle();panel().props.onClose();await app.settle();assert(panel().props.template,'Busy draft remains');
+panel().props.onBusyChange(false);await app.settle();panel().props.onClose();await app.settle();assert(panel());assert.equal(panel().props.template,undefined);assert.equal(app.writes(),0);
+const form=await mount('apps/admin/src/components/ExpensePanel.tsx',{onSaved(){},onBusyChange(){}});
+assert.equal(form.scrolls(),0,'Always-visible mobile form does not force page scroll');
+assert(form.nodes().some(n=>n.type==='button'&&text(n)==='経費登録'));
+const draft=await mount('apps/admin/src/components/ExpensePanel.tsx',{onSaved(){},onBusyChange(){},template:{id:'draft',month:'2026-10',name:'家賃',category:'固定費',card_id:null}});
+assert.equal(draft.scrolls(),1,'Selecting a draft brings the form into view');
+assert.equal(form.writes(),0);console.log('PASS: persistent registration, no toggle or initial scroll, draft selection and busy guard, no writes');
+})().catch(e=>{console.error(e);process.exitCode=1});
