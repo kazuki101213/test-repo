@@ -2,7 +2,7 @@
 .layout .registration-sidebar, .layout .spare-list, .layout .inventory-data { min-width:0; }
 .layout .registration-sidebar .grid > * { min-width:0; }
 .layout .registration-sidebar .registration-wide { grid-column:1 / -1; }
-.layout .registration-sidebar .registration-entry > .card > .grid.cols2 { grid-template-columns:minmax(0,1fr); }
+.layout .registration-sidebar .inventory-registration-entry > .grid.cols2 { grid-template-columns:minmax(0,1fr); }
 .layout .spare-entry > .grid.cols2 { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .layout .spare-entry .field > :is(input,select,.colored-select),
 .layout .spare-entry .colored-select select { width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
@@ -90,3 +90,9 @@ html:has(.registration-workspace) { scrollbar-gutter:stable; }
 .layout .inventory-registration-entry .colored-select select { width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
 .layout .inventory-registration-entry .field > span:has(> .registration-date) { display:flex; width:100%; min-width:0; }
 .layout .inventory-registration-entry .registration-date { flex:1 1 0; width:0; min-width:0; max-width:none; box-sizing:border-box; }
+
+.layout .inventory-product-search { width:calc((100% - 12px) / 2); }
+.layout .inventory-purchase-panel .registration-actions { margin:16px 0 0; }
+@media screen and (min-width:1280px) {
+ .layout .inventory-purchase-panel { box-sizing:border-box; max-height:calc(100dvh - var(--purchase-panel-top, 146px) - 16px); }
+}

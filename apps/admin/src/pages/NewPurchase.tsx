@@ -345,7 +345,6 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       {error && <div className="error">{error}</div>}
 
       <form className="registration-entry inventory-registration-entry" onSubmit={submit}>
-        <div className="card">
           <div className="grid cols2">
             <div className="grid inventory-registration-fields">
               <label className="field"><span>購入日</span>
@@ -377,7 +376,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
             </div>
             {!isWorkingAmazonReturn && marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           <div>
-            {!isWorkingAmazonReturn && <label className="field"><span>商品リスト検索</span>
+            {!isWorkingAmazonReturn && <label className="field inventory-product-search"><span>商品リスト検索</span>
                 <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
               </label>}
             {!isWorkingAmazonReturn && matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
@@ -474,8 +473,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
             </div>
           </div>
         </div>
-        </div>
-        <button className="btn primary" style={{ marginTop: 16, width: '100%' }} disabled={busy}>{busy ? '登録中…' : '登録する'}</button>
+        <div className="toolbar registration-actions"><button className="btn primary" disabled={busy}>{busy ? '登録中…' : '在庫登録'}</button></div>
       </form>
     </>
   );
