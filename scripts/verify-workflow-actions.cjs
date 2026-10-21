@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),ts=require('typescript'),assert=require('node:assert/strict');
-function moduleAt(file){const c={exports:{},require:()=>({})};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,c);return c.exports;}
-const workflow=moduleAt('packages/shared/src/workflow.ts'),seller=moduleAt('packages/shared/src/seller.ts');
+function moduleAt(file,imports={}){const c={exports:{},require:id=>imports[id]??({})};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,c);return c.exports;}
+const workflow=moduleAt('packages/shared/src/workflow.ts'),seller=moduleAt('packages/shared/src/seller.ts',{'./productCategory':moduleAt('packages/shared/src/productCategory.ts')});
 const base={id:'one',sku:'2407-AAMM-20261012-1000',title:'ブルーレイレコーダー',model_no:'DBR-W508',marketplace:'ヤフオク',sales_channel:'メルカリ',planned_price:15981,condition:'非常に良い',deliverer_name:'MM 株式会社吉光'};
 const keys=(status,extra={})=>Array.from(workflow.deliveryWorkflowButtons({...base,status,...extra}),button=>button.key);
 assert.equal(workflow.deliveryWorkflowButtons({...base,status:'Amazon返送依頼'})[0].label,'発送依頼済');

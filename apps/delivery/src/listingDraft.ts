@@ -1,11 +1,11 @@
-import {productModelText,sellerDefaults,type DeliveryTask} from '@bussan/shared';
+import {catalogProductCategory,productModelText,sellerDefaults,type DeliveryTask} from '@bussan/shared';
 import {buildDescription,conditionForTarget,PRODUCT_TYPES} from './description';
 
 /** Use the same templates as the description editor; saved edits always win. */
 export function listingDraft(task:DeliveryTask,manufacturer:string,listingSkus:string[]=[]){
  const defaults=sellerDefaults(task);
  const template=task.description_template;
- const product=PRODUCT_TYPES.find(value=>value===template)??defaults.category;
+ const product=catalogProductCategory(task)??PRODUCT_TYPES.find(value=>value===template)??defaults.category;
  const target=task.sales_channel==='ヤフオク'?'yahoo-auction':task.sales_channel==='メルカリ'?'mercari':'amazon';
  const condition=target==='amazon'?conditionForTarget('amazon',task.condition):defaults.condition;
  const generated=buildDescription({product,target,condition,accessories:task.accessories??'',year:task.manufacture_year?.toString()??'',
