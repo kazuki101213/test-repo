@@ -188,6 +188,11 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
    return {observed_at:new Date().toISOString(),external_id:id,url:job.channel==='メルカリ'?'https://jp.mercari.com/item/'+id:'https://page.auctions.yahoo.co.jp/jp/auction/'+id};
   },'出品結果を確認できません。サイトで確認するまで再実行しません');
  }
+ // A completed document can still contain Mercari's loading shell. Wait for the exact trade's shipping controls before its first guard; never click while waiting.
+ if(phase==='shipping_preflight'&&job.channel==='メルカリ'){
+  if(location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送画面ではありません');
+  await waitFor(()=>{root=document.querySelector('main')||document.body;return /取引画面|取引情報|発送|配送/.test(text())&&controls().some(e=>['商品サイズと発送場所を選択する','配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行'].includes(buttonLabel(e)));},'取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません');
+ }
  tradeGuard();
  if(phase==='read_shipping_code'){try{return {qr_code:waitForShippingCode?await waitFor(qrPng,'配送コードの画像を確認できません。再発行しません'):await qrPng()};}catch(error){return {__error:error.message};}}
  if(phase==='shipping_preflight'){
