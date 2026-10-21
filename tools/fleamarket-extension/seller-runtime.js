@@ -256,14 +256,15 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
   if(job.kind==='listing'){
    const links=await session.links(),listing=links.find(link=>/^(出品|出品する|出品フォーム)$/.test(link.text));if(!listing)throw Error('出品フォームへのリンクを確認できません');await session.go(listing.url);
    const entry=await session.structure();if(!entry.fileInputs?.length){const direct=(await session.links()).filter(link=>/^(出品|出品する|出品フォーム)$/.test(link.text)&&link.url!==listing.url);if(direct.length!==1)throw Error('出品入力画面への実リンクを1件に確認できません');await session.go(direct[0].url);}
-   await session.operation(job,'listing_preflight');
-   if(account.site==='auctions')await session.prepareCategory(job.payload.listingCategory||job.payload.category);
+   phase='listing_preflight';await session.operation(job,phase);
+   phase='listing_choices';if(account.site==='auctions')await session.prepareCategory(job.payload.listingCategory||job.payload.category);
    else if(session.prepareListingChoices)await session.prepareListingChoices(job);
+   phase='download_photos';
    const files=[];let total=0,convertedTotal=0;for(const [index,url] of job.payload.photos.entries()){
     const source=new URL(url);if(source.protocol!=='https:'||!['xgoppuqoqeppckyunnvx.supabase.co','lh3.googleusercontent.com','drive.google.com','drive.usercontent.google.com','drive.googleusercontent.com'].includes(source.hostname))throw Error('写真の取得先を確認できません');
     const response=await fetch(url,{credentials:'omit',signal:AbortSignal.timeout(20000)});if(!response.ok)throw Error('写真を取得できません');const blob=await response.blob();if(!['image/jpeg','image/png','image/webp'].includes(blob.type)||blob.size>8*1024*1024)throw Error('写真の形式・容量を確認してください');total+=blob.size;if(total>20*1024*1024)throw Error('出品写真の合計容量が20MBを超えています');const photo=await normalizeSellerPhoto({site:account.site,file:{name:`photo-${index+1}.`+(blob.type==='image/png'?'png':blob.type==='image/webp'?'webp':'jpg'),type:blob.type,bytes:[...new Uint8Array(await blob.arrayBuffer())]}});convertedTotal+=photo.bytes.length;if(convertedTotal>20*1024*1024)throw Error('変換後の出品写真の合計容量が20MBを超えています');files.push(photo);
    }
-   await session.operation(job,'prepare_listing',{files});
+   phase='prepare_listing';await session.operation(job,phase,{files});
    // Persisting the claim precedes the only publish attempt. A timeout is uncertain, never retried.
    mutating=true;phase='publish';let sent=await session.operation(job,'publish');
    if(sent.confirmation){await session.loaded();phase='publish_confirmation';sent=await session.operation(job,'publish_confirmation');}
@@ -333,7 +334,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');let timer;
   try{
    const timeout=args?.phase==='prepare_listing'?Math.max(executionTimeoutMs,120000):func===readSellerPage&&executionTimeoutMs===30000?60000:executionTimeoutMs;
-   const results=await Promise.race([scripting.executeScript({target:{tabId:borrowed.id},func,args:[args]}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('販売画面の確認が時間切れになりました。自動再試行しません')),timeout);})]);
+   const results=await Promise.race([scripting.executeScript({target:{tabId:borrowed.id},func,args:[args]}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('販売画面の確認が時間切れになりました：'+(args?.phase||func.name||'page')+'。自動再試行しません')),timeout);})]);
    if(results[0]?.error)throw Error('販売画面の読み取りに失敗しました');if(results[0]?.result==null)throw Error('販売画面から結果を取得できません：'+(func.name||'page')+' ('+new URL(last).hostname+new URL(last).pathname+')');if(results[0]?.result?.__error)throw Error(results[0].result.__error);return results[0]?.result;
   }finally{clearTimeout(timer);}
  }
