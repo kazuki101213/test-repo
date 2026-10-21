@@ -21,8 +21,8 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
   const saving = useRef(false);
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (window.matchMedia('(max-width:1279px)').matches) panel.current?.scrollIntoView({ block: 'start' });
-  }, []);
+    if (template && window.matchMedia('(max-width:1279px)').matches) panel.current?.scrollIntoView({ block: 'start' });
+  }, [template?.id]);
 
   useEffect(() => {
     let active = true;
@@ -52,19 +52,19 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
     finally { saving.current = false; setBusy(false); onBusyChange(false); }
   }
 
-  return <aside ref={panel} id="expense-panel" className="expense-panel card" aria-label="経費入力パネル">
-    <div className="toolbar"><h2>{original ? '経費編集' : '経費入力'}</h2>{onClose && <button type="button" className="btn expense-panel-close" disabled={busy} onClick={onClose}>閉じる</button>}</div>
+  return <aside ref={panel} id="expense-panel" className="expense-panel card" aria-label="経費登録パネル">
+    <div className="toolbar"><h2>{original ? '経費編集' : '経費登録'}</h2>{onClose && <button type="button" className="btn expense-panel-close" disabled={busy} onClick={onClose}>閉じる</button>}</div>
     {error && <div className="error" role="alert">{error}</div>}
     {done && <div className="ok" role="status">{done}</div>}
     <form onSubmit={submit}>
       <fieldset disabled={busy} className="expense-fields">
-        <label className="field"><span>経費区分</span><select value={category} onChange={e => setCategory(e.target.value as ExpenseInput['category'])}>{expenseCategories.map(c => <option key={c}>{c}</option>)}</select></label>
-        <label className="field expense-date-field"><span>経費日</span><DateInput className="expense-date-input" required value={date} onChange={e => setDate(e.target.value)} /></label>
+        <label className="field"><span>区分</span><select value={category} onChange={e => setCategory(e.target.value as ExpenseInput['category'])}>{expenseCategories.map(c => <option key={c}>{c}</option>)}</select></label>
+        <label className="field expense-date-field"><span>日付</span><DateInput className="expense-date-input" required value={date} onChange={e => setDate(e.target.value)} /></label>
         <label className="field expense-wide"><span>内容</span><input type="text" required maxLength={200} value={name} onChange={e => setName(e.target.value)} placeholder="梱包資材、家賃など" /></label>
         <label className="field"><span>金額（円）</span><input type="number" required step={1} value={amount} onChange={e => setAmount(e.target.value)} /></label>
         <label className="field"><span>支払い方法</span><select value={card} onChange={e => setCard(e.target.value)}><option value="">未指定</option>{cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
         <label className="field expense-wide"><span>経費メモ</span><textarea rows={2} value={memo} onChange={e => setMemo(e.target.value)} /></label>
-        <button className="btn primary expense-wide" type="submit">{busy ? '保存中…' : '経費を保存'}</button>
+        <button className="btn primary expense-submit" type="submit">{busy ? '保存中…' : '経費登録'}</button>
       </fieldset>
     </form>
   </aside>;
