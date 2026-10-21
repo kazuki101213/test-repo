@@ -82,15 +82,20 @@ export async function readSellerPage({site,phase=null,reportErrors=false}={}){
    if(ids.size>1||body.length>5000)break;
    if(ids.size===1)box=parent;
   }
-  const labels=[...box.querySelectorAll('img[alt],[aria-label],[title]')].filter(visible).map(e=>e.getAttribute('alt')||e.getAttribute('aria-label')||e.getAttribute('title')||'').filter(value=>/発送|支払|落札|入金|取引|チャージ/.test(value));
+  const labels=[...box.querySelectorAll('img[alt],[aria-label],[title]')].filter(visible).map(e=>e.getAttribute('alt')||e.getAttribute('aria-label')||e.getAttribute('title')||'').filter(value=>/発送|支払|落札|入金|取引|チャージ|評価|受取/.test(value));
   const body=norm(box.innerText+' '+labels.join(' ')),serial=body.match(/[【\[]([0-9]+[a-z]*)[】\]]/i)?.[1]?.toLowerCase();
   let status=null;
   if(site==='mercari')status=/キャンセルが成立|取引がキャンセルされました/.test(body)?'キャンセル':/支払い待ち|支払いをお待ち|お支払い待ち/.test(body)?'支払い待ち':effectivePhase==='売却済み'?'販売済':effectivePhase==='取引中'?'取引中':effectivePhase==='出品中'?'出品中':null;
   else status=/チャージ完了/.test(body)?'販売済':/入金期限.*(?:過ぎ|切れ)|取引が中止されました/.test(body)?'キャンセル':/商品を発送して(?:下さい|ください)/.test(body)&&!/落札者なし|落札されませんでした/.test(body)?'取引中':effectivePhase==='出品中'?'出品中':null;
+  if(!status&&site==='auctions'&&/落札者を評価|評価してください|評価待ち/.test(body)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(body)&&!/キャンセル|中止|返品|返金/.test(body))status='取引中';
   if(!status)continue;
   const detail=[...box.querySelectorAll('a[href]')].find(a=>allowed(a.href)&&/詳細|取引画面|取引情報|取引ナビ/.test(norm(a.innerText)));
-  const trade=[...box.querySelectorAll('a[href]')].find(a=>allowed(a.href)&&/\/transaction\/|\/trade\/|\/order\//.test(a.href));
+  const trade=[...box.querySelectorAll('a[href]')].find(a=>allowed(a.href)&&/\/transaction\/|\/trade\/|\/seller\/top|\/order\//.test(a.href));
   const row={external_id,serial,status,trade_key:external_id,url:trade?.href||link.href,detail_url:detail?.href||trade?.href||link.href,attention:/キャンセル|中止/.test(body)};
+  if(!/キャンセル|中止|返品|返金|トラブル|支払い待ち|発送してください/.test(body)&&(site==='mercari'?/評価してください|購入者を評価|評価待ち/.test(body):/落札者を評価|評価してください|評価待ち/.test(body)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(body))){row.feedback_pending=true;if(trade)row.feedback_url=trade.href;}
+  // Yahoo's settlement list may only say チャージ完了. This is a candidate,
+  // never proof of receipt: the actual seller navigator must confirm it below.
+  if(site==='auctions'&&status==='販売済'&&!row.attention)row.feedback_pending=true;
   const previous=rows.get(external_id);if(previous&&previous.status!==status)throw Error('同じ商品IDに異なる状態があります');rows.set(external_id,row);
  }
  return {itemCount,itemIds:[...itemIds],rows:[...rows.values()],navigation,active:active||null,text,empty:/終了した商品はありません|お取り扱いはありません|出品中の商品(?:は|が)(?:ありません|ございません)|出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
