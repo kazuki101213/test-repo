@@ -6,3 +6,8 @@ test('発送する場所という見出しでも正しい経路・ラジオ・�
 });
 
 test('セブンイレブンの発送用バーコードは取引画面だけで認識する',()=>{const saved={location:globalThis.location,document:globalThis.document},button={getClientRects:()=>[{}],innerText:'発送用バーコードを発行'};try{globalThis.location={hostname:'jp.mercari.com',pathname:'/transaction/m72106976118'};globalThis.document={querySelectorAll:s=>s==='button'?[button]:[]};assert.equal(sellerChoiceReady('shipping-code-ready'),true);button.innerText='発送通知をする';assert.equal(sellerChoiceReady('shipping-code-ready'),false);button.innerText='発送用バーコードを発行';location.pathname='/transaction/m72106976118/shipping_facilities';assert.equal(sellerChoiceReady('shipping-code-ready'),false);}finally{Object.assign(globalThis,saved);}});
+
+test('ローソンの発送用2次元コードは正しい取引画面だけで準備完了と判定する',()=>{
+ const saved={location:globalThis.location,document:globalThis.document},button={getClientRects:()=>[{}],innerText:'発送用2次元コードを発行'};
+ try{globalThis.location={hostname:'jp.mercari.com',pathname:'/transaction/m20550299336'};globalThis.document={querySelectorAll:s=>s==='button'?[button]:[]};assert.equal(sellerChoiceReady('shipping-code-ready'),true);button.innerText='発送通知をする';assert.equal(sellerChoiceReady('shipping-code-ready'),false);button.innerText='発送用2次元コードを発行';location.pathname='/transaction/m20550299336/shipping_facilities';assert.equal(sellerChoiceReady('shipping-code-ready'),false);}finally{Object.assign(globalThis,saved);}
+});

@@ -1,4 +1,4 @@
-import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.140';
+import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.143';
 const PROFILE_ACCOUNTS={
  'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':'auctions-1',
  'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1',
@@ -7,7 +7,7 @@ const PROFILE_ACCOUNTS={
 const PROFILE_SALES={'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':['auctions-1'],'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':['mercari-1','auctions-2'],'51502a66-28a6-4af0-81ea-660e63d8b66c':['mercari-2']};
 export function sellerInspectionApplies(request,profileId,previous,now=Date.now()){
  if(!request||!PROFILE_ACCOUNTS[profileId]||request.id===previous||!/^[-0-9a-f]{36}$/i.test(request.id||''))return false;
- if(request.advanceShippingSize!=null||request.issueShippingQr!=null||request.listingPreview!=null||request.readListingShippingOnly!=null)return false;
+ if(request.inspectShippingPreparation!=null||request.advanceShippingSize!=null||request.issueShippingQr!=null||request.listingPreview!=null||request.readListingShippingOnly!=null)return false;
  if(request.saleEvidenceLimit!=null&&(!request.saleEvidence||!Number.isInteger(request.saleEvidenceLimit)||request.saleEvidenceLimit<1||request.saleEvidenceLimit>40))return false;
  if(request.saleEvidence!=null&&(request.saleEvidence!==true||request.sellerListsOnly!==true||!request.accountId))return false;
  if(request.accountId!=null&&(!request.sellerListsOnly||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
