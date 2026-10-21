@@ -16,7 +16,7 @@ export function sellerDefaults(task:DeliveryTask):SellerDraft{
  const dropoff=postal?'ローソン':ishikawa?'ヤマト営業所':kubota||doi||shinkawa?'セブンイレブン':'';
  const listing=task.description?.match(/^商品名（(?:メルカリ|ヤフオク)）\r?\n([\s\S]*?)\r?\n\r?\n説明文\r?\n([\s\S]*)$/);
  const title=[task.title,task.model_no].filter(Boolean).join(' ');
- const category=/ブルーレイ|blu.?ray|BDZ-|DMR-|DBR-|BD-|2B-|4B-/i.test(title)?'ブルーレイレコーダー':/テレビ|TV|液晶テレビ/i.test(title)?'テレビ':/モニター|モニタ|ディスプレイ/i.test(title)?'モニター':'小物';
+ const category=/ブルーレイ|blu.?ray|BDP-|BDZ-|DMR-|DBR-|BD-|2B-|4B-/i.test(title)?'ブルーレイレコーダー':/テレビ|TV|液晶テレビ/i.test(title)?'テレビ':/モニター|モニタ|ディスプレイ/i.test(title)?'モニター':'小物';
  const maker=/SONY|ソニー|BDZ-/i.test(title)?'ソニー':/Panasonic|パナソニック|DMR-/i.test(title)?'パナソニック':/SHARP|シャープ|(?:2B|4B|BD)-/i.test(title)?'シャープ':/TOSHIBA|東芝|DBR-/i.test(title)?'東芝':/三菱|MITSUBISHI/i.test(title)?'三菱電機':'';
  const listingCategory=yahoo&&category==='ブルーレイレコーダー'&&maker?`${category} > ${maker}`:category==='小物'?(/ヘッドホン|ヘッドフォン|headphone/i.test(title)?'ヘッドホン':/イヤホン|earphone/i.test(title)?'イヤホン':/リモコン/.test(title)?'リモコン':/スピーカー/.test(title)?'スピーカー':/アンプ/.test(title)?'アンプ':''):category==='モニター'?'ディスプレイ・モニター':category;
  return {title:listing?.[1]||task.title,description:listing?.[2]||task.description||'',price:Math.ceil((task.planned_price||0)*(yahoo?(task.condition==='可'?.2:.35):.8)),

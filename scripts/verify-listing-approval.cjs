@@ -17,6 +17,12 @@ for(const channel of ['メルカリ','ヤフオク']){
  const legacy=listingDraft({...base,sales_channel:channel,description:'保存した文章'},'東芝');
  assert.equal(legacy.description,'保存した文章');assert(legacy.title.includes('【2407b】'));assert(legacy.title.includes('東芝'));
 }
+// BDP players share the app's recorder group, including saved description drafts.
+for(const saved of [null,'商品名（メルカリ）\n【2410】BDP-S6700 SONY\n\n説明文\n保存済み本文']){
+ const draft=listingDraft({...base,title:'BDP-S6700',model_no:'BDP-S6700',description:saved},'SONY');
+ assert.equal(draft.category,'ブルーレイレコーダー');assert.equal(draft.listingCategory,'ブルーレイレコーダー');assert.equal(draft.size,'100');
+ if(saved)assert.equal(draft.description,'保存済み本文');
+}
 const jsx=(type,props)=>({type,props}),react={useState:v=>[v,()=>{}],useRef:v=>({current:v})};
 const Controls=load('apps/delivery/src/components/WorkflowControls.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':workflow}).default;
 function all(n){return !n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(typeof n.type==='function'?n.type(n.props):n.props?.children)];}
