@@ -176,3 +176,22 @@ test('小さなバーコードアイコンとバーコード対応の商品写�
 
 test('メルカリ取引画面の遅延描画を待ち、発送情報が出る前に判定せずコードも発行しない',async()=>{const p=await page('<div>読み込み中</div>','https://jp.mercari.com/transaction/m72106976118');await p.evaluate(()=>{setTimeout(()=>{document.querySelector('main').innerHTML='<h1>取引画面</h1><p>らくらくメルカリ便 発送してください</p><button>セブン-イレブンからの発送方法</button><button id="issue">発送用バーコードを発行</button>';document.getElementById('issue').onclick=()=>{document.body.dataset.issued='1';};},500);});const job={external_id:'m72106976118',trade_key:'trade',channel:'メルカリ',payload:{shippingMethod:'らくらくメルカリ便'}};assert.deepEqual(await p.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'}),{needsEditor:false,readyForCode:true,configuredDropoff:'セブンイレブン'});assert.equal(await p.evaluate(()=>document.body.dataset.issued),undefined);await p.close();});
 test('発送画面の描画待ちでも別の取引は直ちに拒否する',async()=>{const p=await page('<p>読み込み中</p>','https://jp.mercari.com/transaction/m99999999999');const job={external_id:'m72106976118',trade_key:'trade',channel:'メルカリ',payload:{}};await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'}),/対象取引/);await p.close();});
+
+test('ゆうパックの60-100/120-170は100と140を対応する区分で選択しコードは発行しない',async()=>{
+ for(const [size,wanted] of [['100','ゆうパック60 - 100'],['140','ゆうパック120 - 170']]){
+  const p=await page('<h1>サイズ（１／２）</h1><label><input type="radio" name="size" value="ゆうパック60 - 100">ゆうパック60 - 100</label><label><input type="radio" name="size" value="ゆうパック120 - 170">ゆうパック120 - 170</label><button onclick="document.body.dataset.next=1">選択して次へ</button><button onclick="document.body.dataset.issued=1">QRコードを表示</button>','https://jp.mercari.com/transaction/m89610866040/shipping_class');
+  const result=await p.evaluate(advanceMercariShippingSize,{itemId:'m89610866040',size,shippingMethod:'ゆうゆうメルカリ便'});assert.equal(result.__error,undefined);
+  await p.waitForFunction(()=>document.body.dataset.next==='1');assert.equal(await p.locator('input:checked').inputValue(),wanted);assert.equal(await p.evaluate(()=>document.body.dataset.issued),undefined);await p.close();
+ }
+});
+test('ゆうパックの重複区分・不足区分では具体的なエラーを返して何も進めない',async()=>{
+ for(const values of [['ゆうパック120 - 170'],['ゆうパック60 - 100','ゆうパック60-170']]){
+  const p=await page(values.map(value=>'<label><input type="radio" value="'+value+'">'+value+'</label>').join('')+'<button onclick="document.body.dataset.next=1">選択して次へ</button>','https://jp.mercari.com/transaction/m89610866040/shipping_class');
+  const result=await p.evaluate(advanceMercariShippingSize,{itemId:'m89610866040',size:'100',shippingMethod:'ゆうゆうメルカリ便'});assert.match(result.__error,/サイズ選択の項目/);assert.equal(await p.evaluate(()=>document.body.dataset.next),undefined);await p.close();
+ }
+});
+test('ゆうゆうメルカリ便でセブンイレブンを渡しても配送操作を始めない',async()=>{
+ const p=await page('<h1>取引画面</h1><p>ゆうゆうメルカリ便 発送してください</p><button onclick="document.body.dataset.entered=1">商品サイズと発送場所を選択する</button>','https://jp.mercari.com/transaction/m89610866040');
+ const job={external_id:'m89610866040',trade_key:'trade',channel:'メルカリ',payload:{shippingMethod:'ゆうゆうメルカリ便',dropoff:'セブンイレブン'}};
+ await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'}),/配送方法と発送場所/);assert.equal(await p.evaluate(()=>document.body.dataset.entered),undefined);await p.close();
+});

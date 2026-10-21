@@ -34,3 +34,13 @@ for(const [model,expected] of [['TT-4K100','ブルーレイレコーダー'],['D
 assert.equal(sellerExports.sellerDefaults({model_no:'ｕｂｐ－ｘ７００',title:'',sales_channel:'メルカリ'}).category,'ブルーレイレコーダー');
 assert.equal(sellerExports.sellerDefaults({title:'SONY UBP-X700 本体',sales_channel:'メルカリ'}).category,'ブルーレイレコーダー');
 console.log('Catalog model categories survive renumbering, title changes and full-width input');
+
+for(const [method,bad,expected] of [['ゆうゆうメルカリ便','セブンイレブン','ローソン'],['ゆうゆうメルカリ便','ヤマト営業所','ローソン'],['らくらくメルカリ便','ローソン','ヤマト営業所']]){
+ const draft=sellerExports.sellerShippingDraft(sellerExports.sellerDefaults({title:'BD-WW1200',deliverer_name:'土井',sales_channel:'メルカリ'}),{shippingMethod:method,dropoff:bad});
+ assert(sellerExports.sellerShippingPlaces(method).includes(draft.dropoff));if(method==='ゆうゆうメルカリ便')assert.equal(draft.dropoff,expected);
+}
+for(const dropoff of ['ローソン','郵便局']){
+ const draft=sellerExports.sellerShippingDraft(sellerExports.sellerDefaults({title:'BD-WW1200',sales_channel:'メルカリ'}),{shippingMethod:'ゆうゆうメルカリ便',dropoff});
+ assert.equal(draft.dropoff,dropoff);
+}
+console.log('Saved postal shipping methods cannot inherit Yamato/Seven drop-offs');

@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.138';
-import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.138';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.139';
+import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.139';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.138';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.139';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -79,12 +79,14 @@ export function returnMercariListingForm(){
 }
 /** Advance only the size step, never the place confirmation or QR issuance. */
 export function advanceMercariShippingSize({itemId,size,shippingMethod='らくらくメルカリ便'}){
+ try{
  if(location.hostname!=='jp.mercari.com'||location.pathname!=='/transaction/'+itemId+'/shipping_class'||!/^m[0-9]{8,14}$/.test(itemId))throw Error('対象取引のサイズ選択画面ではありません');
  const norm=s=>String(s||'').replace(/\s/g,'').replace(/[〜～−–]/g,'-'),visible=e=>e.getClientRects().length>0;
  const wanted=['100','140'].includes(String(size))?shippingMethod==='らくらくメルカリ便'?'宅急便60-160':shippingMethod==='ゆうゆうメルカリ便'?'ゆうパック':null:['宅急便コンパクト','ゆうパケットプラス','ゆうパケット'].includes(size)?size:null;if(!wanted)throw Error('配送サイズを確認できません');
- const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&(norm(e.value)===wanted||wanted==='ゆうパック'&&/^ゆうパック60-170$/.test(norm(e.value))));
+ const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>{if(!visible(e)||e.disabled)return false;const value=norm(e.value);if(value===wanted)return true;if(wanted!=='ゆうパック')return false;const range=value.match(/^ゆうパック(60|120)-(100|170)$/);return !!range&&Number(size)>=Number(range[1])&&Number(size)<=Number(range[2]);});
  const buttons=[...document.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled&&e.innerText.trim()==='選択して次へ');if(radios.length!==1||buttons.length!==1)throw Error('サイズ選択の項目を1件に確認できません');
  const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('サイズ選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
+ }catch(error){return {__error:error.message};}
 }
 /** Called only for an app-requested shipping operation, not a display inspection. */
 export function advanceMercariShippingPlace({itemId,dropoff}){
