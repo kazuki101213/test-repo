@@ -71,7 +71,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
 
 export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;staff:Staff}){
  const notice=adminTaskNotice();const noticeHandled=useRef(false);
- const [rows,setRows]=useState<Task[]>([]);const [filter,setFilter]=useState<'pending'|'approved'>('pending');const [selected,setSelected]=useState<Task|null>(null);
+ const [rows,setRows]=useState<Task[]>([]);const [selected,setSelected]=useState<Task|null>(null);
  const [error,setError]=useState('');const [message,setMessage]=useState('');const [loading,setLoading]=useState(true);const [revision,setRevision]=useState(0);
  useEffect(()=>{
   let active=true;let fetching=false;
@@ -79,16 +79,15 @@ export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;sta
   void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},300000);
   return()=>{active=false;window.clearInterval(timer);};
  },[revision]);
- const pending=rows.filter(row=>!approval(row.invoice)).length;
  useEffect(()=>{
   if(loading||noticeHandled.current||!notice||!['invoice','receipts'].includes(notice.kind))return;
   noticeHandled.current=true;
   const target=rows.find(row=>row.staff_id===notice.invoiceStaffId&&row.month===notice.billingMonth);
-  if(target){setFilter(approval(target.invoice)?'approved':'pending');setSelected(target);}
+  if(target)setSelected(target);
   else setMessage('通知の書類確認タスクは現在確認できません。');
  },[loading,rows]);
- const filtered=rows.filter(row=>filter==='pending'?!approval(row.invoice):!!approval(row.invoice));
- return <section className="card invoice-tasks" aria-label="やること"><div className="toolbar"><h3>やること</h3><span>書類承認待ち {pending}件</span><select aria-label="書類の状態" value={filter} onChange={e=>setFilter(e.target.value as 'pending'|'approved')}><option value="pending">承認待ち</option><option value="approved">承認済み</option></select></div>
+ const filtered=rows.filter(row=>!approval(row.invoice));
+ return <section className="card invoice-tasks" aria-label="やること">
  {error&&<div className="error" role="alert">{error}<button className="btn" onClick={()=>setRevision(n=>n+1)}>再読み込み</button></div>}{message&&<p className="ok" role="status">{message}</p>}
  {loading?<p>読み込み中…</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id} className="admin-task-card admin-simple-task admin-invoice-task"><div className="task-action-details"><strong>{row.invoice?'請求書':'領収書'}</strong><span>【{staffDisplayName(row.name)}】</span><span>【{row.month.slice(0,7)}】</span><small>{row.invoice?yen(row.invoice.total):'領収書のみ'}</small></div><button type="button" className="btn" onClick={()=>setSelected(row)}>確認</button></li>)}<ReceiptEvaluationTasks/><PhotoReviewTasks /><ShippingReminderTasks />{staff.role==='admin'&&<PackingPhotoTasks/>}<MalfunctionTasks staff={staff} /><SpareShippingTasks staff={staff} management /></ul>}
  {selected&&<InvoiceReview key={selected.id} task={selected} onClose={()=>setSelected(null)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費の外注費に追加しました。');onApproved();}}/>}
