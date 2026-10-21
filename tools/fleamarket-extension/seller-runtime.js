@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.137';
-import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.137';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.138';
+import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.138';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.137';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.138';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
