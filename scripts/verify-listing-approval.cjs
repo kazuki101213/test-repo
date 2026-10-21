@@ -1,9 +1,9 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict'),path=require('node:path');
 const testTimers=[];
 function load(file,imports={}){const c={exports:{},crypto:require('node:crypto').webcrypto,document:{visibilityState:'visible'},window:{confirm:()=>true,setInterval:fn=>{testTimers.push(fn);return testTimers.length;},clearInterval:()=>{}},require:id=>imports[id]??{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);return c.exports;}
-const seller=load('packages/shared/src/seller.ts'),model=load('packages/shared/src/productModel.ts'),workflow=load('packages/shared/src/workflow.ts');
+const seller=load('packages/shared/src/seller.ts',{'./productCategory':load('packages/shared/src/productCategory.ts')}),model=load('packages/shared/src/productModel.ts'),workflow=load('packages/shared/src/workflow.ts');
 const description=load('apps/delivery/src/description.ts',{'./descriptionTemplates':load('apps/delivery/src/descriptionTemplates.ts')});
-const {listingDraft}=load('apps/delivery/src/listingDraft.ts',{'@bussan/shared':{...seller,...model},'./description':description});
+const {listingDraft}=load('apps/delivery/src/listingDraft.ts',{'@bussan/shared':{...seller,...model,...load('packages/shared/src/productCategory.ts')},'./description':description});
 const base={id:'test',sku:'2407b-AAMM-20261012-1000',lot_seq:2407,title:'ブルーレイレコーダー',model_no:'DBR-W508',marketplace:'ヤフオク',sales_channel:'メルカリ',planned_price:15981,condition:'非常に良い',deliverer_name:'株式会社吉光',status:'商品登録前',inspected:true,cleaned:true};
 for(const channel of ['メルカリ','ヤフオク']){
  const draft=listingDraft({...base,sales_channel:channel},'東芝',[base.sku,'2407b-AAMM-20261012-1001']);
@@ -23,6 +23,7 @@ for(const saved of [null,'商品名（メルカリ）\n【2410】BDP-S6700 SONY\
  assert.equal(draft.category,'ブルーレイレコーダー');assert.equal(draft.listingCategory,'ブルーレイレコーダー');assert.equal(draft.size,'100');
  if(saved)assert.equal(draft.description,'保存済み本文');
 }
+const ubp=listingDraft({...base,title:'UBP-X700',model_no:'UBP-X700',description_template:'小物',description:'商品名（メルカリ）\n保存済み名\n\n説明文\n保存済み本文'},'SONY');assert.equal(ubp.category,'ブルーレイレコーダー');assert.equal(ubp.listingCategory,'ブルーレイレコーダー');assert.equal(ubp.description,'保存済み本文');
 const jsx=(type,props)=>({type,props}),react={useState:v=>[v,()=>{}],useRef:v=>({current:v})};
 const Controls=load('apps/delivery/src/components/WorkflowControls.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':workflow}).default;
 function all(n){return !n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(typeof n.type==='function'?n.type(n.props):n.props?.children)];}
