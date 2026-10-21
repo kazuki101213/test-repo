@@ -103,7 +103,7 @@ export default function Products() {
             {rows.map((p) => (
               <tr key={p.id}>
                 <td className="num">{cell(p, 'product_no', String(p.product_no ?? '—'))}</td>
-                <td>{cell(p, 'asin', p.asin)}<a href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}>↗</a></td>
+                <td><span className="reference-value">{cell(p, 'asin', p.asin)}<a className="inline-reference-link" href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}>↗</a></span></td>
                 <td>{cell(p, 'model_no', p.model_no ?? '—')}</td>
                 <td>{cell(p, 'maker', p.maker ?? '—')}</td>
                 <td>{cell(p, 'genre', p.genre ?? '—')}</td>

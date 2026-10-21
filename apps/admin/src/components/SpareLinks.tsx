@@ -4,14 +4,14 @@ import { noticeProductUrl } from '@bussan/shared';
 import { findInventoryForSpare } from '../api';
 import { deliveryAppUrl } from '../appUrls';
 
-const icon = <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5" /></svg>;
+const icon = <span aria-hidden="true">↗</span>;
 
 export default function SpareLinks({ row, kind }: { row: SpareAccessory; kind: 'product' | 'usage' }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   if (kind === 'product') {
     const url = noticeProductUrl(row.marketplace, row.marketplace_item_id, null);
-    return url ? <a className="btn spare-reference-link" href={url} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先の商品ページを開く">{icon}</a> : null;
+    return url ? <a className="inline-reference-link" href={url} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先の商品ページを開く">{icon}</a> : null;
   }
   const serial = row.usage_note?.trim();
   if (!serial || !/^\d+[a-z]*$/i.test(serial)) return null;
@@ -28,5 +28,5 @@ export default function SpareLinks({ row, kind }: { row: SpareAccessory; kind: '
       setError(cause instanceof Error ? cause.message : '商品を開けませんでした。');
     } finally { setBusy(false); }
   }
-  return <><button type="button" className="btn spare-reference-link" aria-label="利用記録の納品管理商品を開く" title="利用記録の納品管理商品を開く" disabled={busy} onClick={() => void openUsage()}>{icon}</button>{error && <span className="error" role="alert">{error}</span>}</>;
+  return <><button type="button" className="inline-reference-link" aria-label="利用記録の納品管理商品を開く" title="利用記録の納品管理商品を開く" disabled={busy} onClick={() => void openUsage()}>{icon}</button>{error && <span className="error" role="alert">{error}</span>}</>;
 }

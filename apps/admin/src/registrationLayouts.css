@@ -10,7 +10,11 @@
 .layout .spare-entry .registration-date { width:0; max-width:none; flex:1 1 0; box-sizing:border-box; }
 .layout .spare-entry .field > span:last-child > button { box-sizing:border-box; }
 .layout .spare-search.spare-toolbar { grid-template-columns:132px minmax(0,260px); justify-content:start; }
-.layout .spare-reference-link { display:inline-flex; align-items:center; justify-content:center; padding:4px; margin-inline-start:4px; vertical-align:middle; }
+.layout .reference-value { display:inline-flex; align-items:center; gap:4px; max-width:100%; vertical-align:middle; }
+.layout .reference-value > :is(.expense-edit,.inventory-cell-edit) { display:inline-block; width:auto; min-width:0; flex:0 1 auto; }
+.layout .inline-reference-link { display:inline-flex; flex:none; align-items:center; justify-content:center; padding:2px; border:0; background:transparent; color:var(--accent); font:inherit; line-height:inherit; text-decoration:none; cursor:pointer; }
+.layout .inline-reference-link:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.layout .inline-reference-link:disabled { opacity:.6; cursor:progress; }
 .layout .toolbar.registration-actions { display:flex; justify-content:flex-end; }
 .layout .expense-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .layout .expense-submit { grid-column:1 / -1; justify-self:end; }
