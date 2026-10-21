@@ -1,0 +1,29 @@
+/* The marketplace listing form uses one grid across description and seller controls. */
+@media screen {
+ .app .seller-listing-layout { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 10px; align-items:start; }
+ .app .seller-listing-layout > .description-editor,
+ .app .seller-listing-layout > .description-editor > fieldset,
+ .app .seller-listing-layout .description-options,
+ .app .seller-listing-layout > .seller-form { display:contents; }
+ .app .seller-listing-layout .marketplace-listing-fields,
+ .app .seller-listing-layout .description-editor .row,
+ .app .seller-listing-layout .description-editor > fieldset > .btn,
+ .app .seller-listing-layout .description-editor > :is(p,.error),
+ .app .seller-listing-layout > :is(p,.error,.seller-history,.seller-photos,.btn) { grid-column:1 / -1; min-width:0; }
+ .app .seller-listing-layout .description-editor > fieldset > .btn { justify-self:start; }
+ .app .seller-listing-layout .description-options > label,
+ .app .seller-listing-layout > .seller-form > label { grid-column:auto; min-width:0; display:flex; flex-direction:column; gap:6px; }
+ .app .seller-listing-layout .description-options :is(input,select,.colored-select),
+ .app .seller-listing-layout > .seller-form :is(input:not([type=checkbox]),select) { width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
+ .app .seller-listing-layout > .seller-form > label:has(input[type=checkbox]) { flex-direction:row; align-items:center; align-self:center; }
+ .app .seller-listing-layout > .seller-form input[type=checkbox] { width:auto; flex:none; }
+ .app .seller-listing-layout > .btn { justify-self:start; }
+ .app .seller-listing-layout > .seller-photos { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 8px; overflow:visible; }
+ .app .seller-listing-layout .seller-photos img { width:100%; height:auto; aspect-ratio:1; object-fit:contain; }
+ .app .seller-listing-layout .seller-photo-order { width:100%; justify-content:center; gap:4px; }
+ .app .seller-listing-layout .seller-photo-order .btn { min-width:0; width:calc((100% - 4px)/2); max-width:44px; padding:4px; }
+}
+@media screen and (min-width:1024px) {
+ .app .seller-listing-layout { grid-template-columns:repeat(6,minmax(0,1fr)); }
+ .app .seller-listing-layout > .seller-photos { grid-template-columns:repeat(10,minmax(0,1fr)); }
+}

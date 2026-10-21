@@ -58,7 +58,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const tradePayload={trade_key:trade,size:draft?.size,dropoff:draft?.dropoff,shippingMethod:draft?.shippingMethod,category:draft?.category};
  const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key)?.result.messages;
  if(mode==='listing'&&task.status!=='商品登録前')return <section className="task-detail-inline seller-panel"><p>現在の状態：{task.status}</p>{context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}</section>;
- return <section className="task-detail-inline seller-panel" aria-label={`${task.sku}の${mode==='listing'?'出品':mode==='shipping'?'発送':'取引メッセージ'}`}>
+ return <section className={`task-detail-inline seller-panel${mode==='listing'&&!amazonListing?' seller-listing-layout':''}`} aria-label={`${task.sku}の${mode==='listing'?'出品':mode==='shipping'?'発送':'取引メッセージ'}`}>
   {mode!=='listing'&&<button type="button" className="btn ghost" onClick={onClose}>閉じる</button>}
   {error&&<p className="error" role="alert">{error}</p>}
   {mode==='listing'&&context&&context.photo_review_approved!==true&&<p role="status">管理アプリで商品写真の承認が必要です。</p>}

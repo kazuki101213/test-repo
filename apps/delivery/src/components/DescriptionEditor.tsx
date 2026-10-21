@@ -124,10 +124,8 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
     finally { setBusy(false); embedded?.onSaving(false); }
   }
 
-  return <form className="card description-editor" onSubmit={e => void save(e)}>
-    {!embedded&&<h2>商品説明文</h2>}
-    <fieldset disabled={busy||embedded?.disabled}>
-      <div className="description-options">
+  const listingLayout = !!embedded && target !== 'amazon';
+  const options = (<div className="description-options">
         {!embedded&&<label>販売先<ColoredSelect value={target} onChange={e => {
           const nextTarget = e.target.value as DescriptionTarget;
           setTarget(nextTarget);
@@ -138,7 +136,12 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
         <label>コンディション<ColoredSelect value={condition} onChange={e => { setCondition(e.target.value); updateSelection(); }}><option value="">選択してください</option>{CONDITIONS_BY_TARGET[target].map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
         {target !== 'amazon' && <label>メーカー<input value={manufacturer} onChange={e => { setManufacturer(e.target.value); updateSelection(); }} placeholder="商品リストから取得・必要に応じて修正" /></label>}
         {target === 'amazon' && <label>製造年（任意）<input type="number" min={1900} max={2100} step={1} value={year} onChange={e => { setYear(e.target.value); updateSelection(); }} placeholder="例：2020" /></label>}
-      </div>
+      </div>);
+
+  return <form className="card description-editor" onSubmit={e => void save(e)}>
+    {!embedded&&<h2>商品説明文</h2>}
+    <fieldset disabled={busy||embedded?.disabled}>
+      {!listingLayout && options}
       {target === 'amazon' && <>
         <fieldset className="accessory-options"><legend>付属品</legend>{accessoryOptions(product).map(value => <label key={value}><input type="checkbox" checked={selected.includes(value)} onChange={() => toggleAccessory(value)} />{value}</label>)}</fieldset>
         <label>付属品<textarea maxLength={2000} value={accessories} onChange={e => { setAccessories(e.target.value); updateSelection(); }} placeholder="手入力" /></label>
@@ -152,6 +155,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
         : <p className="muted">販売先・商品・コンディションを選ぶと、商品名と説明文を生成します。</p>}
       {manual !== null && description && <div className="row"><span className="muted">手入力の文章を表示しています。</span><button type="button" className="btn" disabled={!generated} onClick={updateSelection}>選択内容から再生成</button></div>}
       <button className="btn primary" type="submit">{busy ? '保存中…' : saved ? '上書き保存' : '説明文を保存'}</button>
+      {listingLayout && options}
     </fieldset>
     {notice && <p role="status">{notice}</p>}{error && <div className="error" role="alert">{error}</div>}
   </form>;
