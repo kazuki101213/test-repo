@@ -24,3 +24,12 @@ export function sellerDefaults(task:DeliveryTask):SellerDraft{
  condition:!task.condition?'':yahoo?task.condition==='可'?'傷や汚れあり':'やや傷や汚れあり':task.condition==='可'?'全体的に状態が悪い':task.condition==='良い'?'やや傷や汚れあり':'目立った傷や汚れなし',
  shippingMethod:yahoo?(postal?'おてがる配送（日本郵便）':'おてがる配送（ヤマト運輸）'):postal?'ゆうゆうメルカリ便':'らくらくメルカリ便',shippingPayer:yahoo?'購入者負担':'出品者負担',dispatchDays:'2〜3日',origin,category,listingCategory,weightKg:yahoo?(category==='小物'?'2':'5'):undefined,size:category==='ブルーレイレコーダー'?'100':category==='テレビ'||category==='モニター'?'140':'',dropoff,auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false};
 }
+
+/** A saved shipping method must never inherit a drop-off from another carrier. */
+export function sellerShippingPlaces(method:string):string[]{
+ return /日本郵便|ゆうゆう/.test(method)?['ローソン','郵便局']:['ヤマト営業所','セブンイレブン'];
+}
+export function sellerShippingDraft(defaults:SellerDraft,saved:Partial<SellerDraft>|null={}):SellerDraft{
+ const draft={...defaults,...(saved??{})},places=sellerShippingPlaces(draft.shippingMethod);
+ return {...draft,dropoff:places.includes(draft.dropoff)?draft.dropoff:places.includes(defaults.dropoff)?defaults.dropoff:places[0]!};
+}
