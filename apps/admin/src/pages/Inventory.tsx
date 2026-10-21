@@ -168,7 +168,7 @@ export default function Inventory({ me }: { me: Staff }) {
       <details className="card purchase-draft-panel">
         <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
         <div className="toolbar" style={{ marginTop: 12 }}>
-          <button type="button" className="btn" disabled={draftsLoading} onClick={() => void loadPurchaseDrafts(true)}>{draftsLoading ? '更新中…' : 'リストを更新'}</button>
+          <button type="button" className="btn" disabled={draftsLoading} onClick={() => void loadPurchaseDrafts(true)}>{draftsLoading ? '更新中…' : '更新'}</button>
           <span className="sub" role="status" aria-live="polite">{draftsLoading ? '仕入れリストを読み込んでいます…' : draftsUpdated ? `${draftsUpdated.at} 更新しました（未反映 ${draftsUpdated.count}件）` : ''}</span>
         </div>
         {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
