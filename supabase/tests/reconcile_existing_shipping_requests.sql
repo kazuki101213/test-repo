@@ -25,7 +25,7 @@ delete from app.delivery_shipping_tasks where item_id=(select id from app.items 
 do $$begin
  if exists(select 1 from app.items where lot_seq in(998671,998675) and shipped_on is not null) then raise exception 'Legacy date not cleared';end if;
  if (select count(*) from app.delivery_shipping_tasks t join app.items i on i.id=t.item_id where i.lot_seq in(998671,998675) and t.resolved_at is null)<>2 then raise exception 'Existing trades not reconciled';end if;
- if (select count(*) from app.delivery_push_events e join app.items i on i.id=e.item_id where i.lot_seq in(998671,998675) and e.kind='shipping')<>2 then raise exception 'Shipping push missing';end if;
+ if (select count(*) from app.delivery_push_events e join app.items i on i.id=e.item_id where i.lot_seq in(998671,998675) and e.kind='shipping' and e.staff_id=(select id from app.staff where code='DD'))<>2 then raise exception 'Shipping push missing';end if;
  if not exists(select 1 from app.items where lot_seq=998672 and shipped_on=current_date-1) then raise exception 'Same-day shipment cleared';end if;
  if (select count(*) from app.items where lot_seq in(998673,998674,998676) and shipped_on=current_date-7)<>3 then raise exception 'Unknown/completed/inactive history changed';end if;
  if exists(select 1 from app.delivery_shipping_tasks t join app.items i on i.id=t.item_id where i.lot_seq in(998672,998673,998674,998676) and t.resolved_at is null) then raise exception 'Unrelated shipping request created';end if;
@@ -37,7 +37,7 @@ end $$;
 update app.items set status=status where lot_seq in(998671,998675);
 do $$begin
  if (select count(*) from app.delivery_shipping_tasks t join app.items i on i.id=t.item_id where i.lot_seq in(998671,998675))<>2 then raise exception 'Repeated reconciliation duplicated request';end if;
- if (select count(*) from app.delivery_push_events e join app.items i on i.id=e.item_id where i.lot_seq in(998671,998675) and e.kind='shipping')<>2 then raise exception 'Repeated reconciliation duplicated push';end if;
+ if (select count(*) from app.delivery_push_events e join app.items i on i.id=e.item_id where i.lot_seq in(998671,998675) and e.kind='shipping' and e.staff_id=(select id from app.staff where code='DD'))<>2 then raise exception 'Repeated reconciliation duplicated push';end if;
 end $$;
 -- An import/edit of just shipped_on cannot reintroduce a pre-purchase date.
 update app.items set shipped_on=current_date-7 where lot_seq=998672;
