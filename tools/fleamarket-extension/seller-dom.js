@@ -79,8 +79,10 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const uploaded=url=>{try{const u=new URL(url);return u.protocol==='https:'&&/(^|[.])(?:yahoo[.]co[.]jp|yimg[.]jp)$/.test(u.hostname)&&!/\/(?:load|loading)[.](?:gif|png)(?:$|[?#])/i.test(u.pathname);}catch{return false;}};
   if(!Number.isInteger(count)||count<1||count>10)return null;
   const rows=Array.from({length:10},(_,i)=>({url:value('ImageFullPath'+(i+1)),width:value('ImageWidth'+(i+1)),height:value('ImageHeight'+(i+1))}));
-  if(rows.slice(0,count).some(row=>!uploaded(row.url)||!/^\d+$/.test(row.width)||Number(row.width)<1||!/^\d+$/.test(row.height)||Number(row.height)<1)||rows.slice(count).some(row=>row.url)||new Set(rows.slice(0,count).map(row=>row.url)).size!==count||!uploaded(value('thumbNail')))return null;
-  return JSON.stringify({photos:rows.slice(0,count),thumbnail:value('thumbNail')});
+  // Yahoo can leave thumbNail empty after every photo slot has uploaded.
+  const thumbnail=value('thumbNail');
+  if(rows.slice(0,count).some(row=>!uploaded(row.url)||!/^\d+$/.test(row.width)||Number(row.width)<1||!/^\d+$/.test(row.height)||Number(row.height)<1)||rows.slice(count).some(row=>row.url)||new Set(rows.slice(0,count).map(row=>row.url)).size!==count||(thumbnail&&!uploaded(thumbnail)))return null;
+  return JSON.stringify({photos:rows.slice(0,count),thumbnail});
  };
  const current=()=>globalThis.__bussanSellerOperation;
  function reserve(){if(current()?.id===job.id&&current()?.submitted)throw Error('この操作は送信を試行済みです。自動再送しません');globalThis.__bussanSellerOperation={...current(),id:job.id,submitted:true};}
@@ -147,6 +149,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(!photoZone)throw Error('出品写真の表示領域を確認できません');
   if([...photoZone.querySelectorAll('img')].some(image=>visible(image)&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)))throw Error('既存の出品写真があるため上書きしません');
   if(!files.length||files.length>10)throw Error('出品写真を確認してください');const transfer=new DataTransfer();for(const file of files)transfer.items.add(new File([new Uint8Array(file.bytes)],file.name,{type:file.type}));inputs[0].files=transfer.files;inputs[0].dispatchEvent(new Event('change',{bubbles:true}));
+
   await waitFor(()=>{const images=[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&image.complete&&image.naturalWidth>0&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)&&!/削除|回転|拡大/.test(image.alt));const count=job.channel==='ヤフオク'?new Set(images.map(image=>image.closest('li')).filter(Boolean)).size:images.length;return !root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&count===files.length&&(job.channel!=='ヤフオク'||yahooPhotoSignature(files.length)!==null);},'写真のアップロード完了を確認できません',job.channel==='ヤフオク'?90000:20000);
   if(title.value!==payload.title||descriptionField().value!==payload.description||Number(price.value)!==payload.price||descriptionEditor()&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('出品内容が入力値と一致しません');
   globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),photoZone,photos:imageSignature(photoZone),photoCount:files.length,uploadedPhotos:yahooPhotoSignature(files.length),expected:expectedValues(),title,description:descriptionField(),price,auctionOptionsConfirmed};return {prepared:true};
@@ -165,7 +168,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const button=oneButton(['出品する','出品']);reserve();button.click();return {submitted:true};
  }
  if(phase==='publish_confirmation'||phase==='check_listing_confirmation'){
-  if(job.channel==='ヤフオク'&&/^\/sell\/jp\/show\/preview$/.test(location.pathname))root=document.body;
+  if(job.channel==='ヤフオク'&&/^\/(?:sell\/)?jp\/show\/preview$/.test(location.pathname))root=document.body;
   if(!/確認|出品/.test(text()))throw Error('出品の確認画面ではありません');
   const frames=[...root.querySelectorAll('iframe')].flatMap(frame=>{try{return [frame.contentDocument?.body?.innerText||''];}catch{return [];}}).join(' ');
   const rendered=[],walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){const parent=node.parentElement;if(parent&&!/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(parent.tagName)&&exposedTextElement(parent)&&norm(node.textContent))rendered.push(node.textContent);}
