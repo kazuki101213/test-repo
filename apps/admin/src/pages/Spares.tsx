@@ -131,8 +131,9 @@ export default function Spares({ me }: { me: Staff }) {
   const deleteButton = (row: SpareAccessory) => me.role === 'admin' && <button type="button" className="btn danger spare-row-delete" disabled={deletingId !== null || confirmation.pending} onClick={() => confirmation.ask(`予備の削除：${row.title}${row.source_sku ? `（${row.source_sku}）` : ''}`, () => remove(row), 'この操作は取り消せません。')}>{deletingId === row.id ? '削除中…' : '削除'}</button>;
 
 
-  return <section className="card spare-workspace with-spare-entry">
+  return <section className="dashboard-workspace with-expense registration-workspace spare-workspace">
     {confirmation.confirmation}
+    <div className="card dashboard-content spare-list">
     <div className="spare-search spare-toolbar" role="group" aria-label="予備検索">
       <select aria-label="予備の検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as SpareSearchField); setQuery(''); setOwnerId(''); }}>
         {spareSearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
@@ -141,34 +142,8 @@ export default function Spares({ me }: { me: Staff }) {
         ? <select aria-label="保管担当者で検索" value={ownerId} onChange={event => setOwnerId(event.target.value)}><option value="">全員</option>{deliveryStaffOptions(staff).map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select>
         : <input type="search" aria-label="予備を検索" value={query} onChange={event => setQuery(event.target.value)} placeholder="検索" />}
     </div>
-    {<form className="card spare-entry registration-entry registration-sidebar" onSubmit={event => void add(event)}>
-      <h3>予備登録</h3>
-      <div className="grid cols2">
-        <label className="field"><span>利用記録（通番号）</span><input value={form.usage_note ?? ''} onChange={event => { setSourceItemId(null); setReferenceFound(false); setForm(current => ({ ...current, usage_note: event.target.value || null })); }} onBlur={event => void autofillFromUsageSerial(event.target.value)} /></label>
-        <label className="field"><span>購入日</span><DateInput className="registration-date" value={form.purchased_at ?? ''} onChange={event => setForm(current => ({ ...current, purchased_at: event.target.value || null }))} /></label>
-        <fieldset className="field registration-wide spare-reference-choices" style={{ border: 0, padding: 0, margin: 0 }}><legend>登録情報参照元</legend>
-          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'remote'} onChange={() => { setReferenceMode('remote'); void autofillFromUsageSerial(form.usage_note ?? '', 'remote'); }} />リモコン情報参照</label>
-          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
-        </fieldset>
-        {me.role === 'admin' ? <label className="field registration-wide"><span>保管担当者</span>
-          <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff).map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
-        </label> : <label className="field registration-wide"><span>保管担当者</span><input value={staffDisplayName(me)} readOnly /></label>}
-        <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>
-        <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
-        <label className="field"><span>ASIN</span><input value={form.asin ?? ''} onChange={event => setForm(current => ({ ...current, asin: event.target.value || null }))} /></label>
-        <label className="field"><span>仕入金額</span><input type="number" min={0} step={1} value={form.cost_amount} onChange={event => setForm(current => ({ ...current, cost_amount: Number(event.target.value) }))} /></label>
-        <label className="field"><span>仕入先</span><ColoredSelect value={form.marketplace ?? ''} onChange={event => setForm(current => ({ ...current, marketplace: event.target.value || null }))}><option value="">未設定</option>{MARKETPLACES.map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
-        <label className="field"><span>商品ID</span><input value={form.marketplace_item_id ?? ''} onChange={event => setForm(current => ({ ...current, marketplace_item_id: event.target.value || null }))} /></label>
-        <label className="field"><span>追跡番号</span><input value={form.tracking_no ?? ''} onChange={event => setForm(current => ({ ...current, tracking_no: event.target.value || null }))} /></label>
-        <label className="field"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
-        {autofillBusy && <p className="muted">通番号の商品情報を読み込み中…</p>}
-        {referenceMessage && <p className="muted" role="status" style={{ gridColumn: '1 / -1' }}>{referenceMessage}</p>}
-      </div>
-      {error && <p className="error" role="alert">{error}</p>}
-      <div className="toolbar registration-actions"><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '予備登録'}</button></div>
-    </form>}
 
-    <div className="spare-list">
+
     {loading ? <p>読み込み中…</p> : <><div className="management-spare-mobile-list">{filtered.map(row => <div className="management-spare-card" key={row.id}>
       <div className="management-spare-heading"><strong><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></strong> <span className="badge">{spareState(row)}</span></div>
       <div>保管担当者：<EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{staffDisplayName(row.owner_name) || '未設定'}</EditableSpare></div>
@@ -196,6 +171,32 @@ export default function Spares({ me }: { me: Staff }) {
       {me.role === 'admin' && <td>{deleteButton(row)}</td>}
     </tr>)}</tbody></table></div></>}
     </div>
+    {<form className="card spare-entry registration-entry registration-sidebar registration-form" onSubmit={event => void add(event)}>
+      <div className="toolbar"><h2>予備登録</h2></div>
+      <div className="grid cols2 registration-fields">
+        <label className="field"><span>利用記録（通番号）</span><input value={form.usage_note ?? ''} onChange={event => { setSourceItemId(null); setReferenceFound(false); setForm(current => ({ ...current, usage_note: event.target.value || null })); }} onBlur={event => void autofillFromUsageSerial(event.target.value)} /></label>
+        <label className="field"><span>購入日</span><DateInput className="registration-date" value={form.purchased_at ?? ''} onChange={event => setForm(current => ({ ...current, purchased_at: event.target.value || null }))} /></label>
+        <fieldset className="field registration-wide spare-reference-choices" style={{ border: 0, padding: 0, margin: 0 }}><legend>登録情報参照元</legend>
+          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'remote'} onChange={() => { setReferenceMode('remote'); void autofillFromUsageSerial(form.usage_note ?? '', 'remote'); }} />リモコン情報参照</label>
+          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
+        </fieldset>
+        {me.role === 'admin' ? <label className="field registration-wide"><span>保管担当者</span>
+          <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff).map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
+        </label> : <label className="field registration-wide"><span>保管担当者</span><input value={staffDisplayName(me)} readOnly /></label>}
+        <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>
+        <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
+        <label className="field"><span>ASIN</span><input value={form.asin ?? ''} onChange={event => setForm(current => ({ ...current, asin: event.target.value || null }))} /></label>
+        <label className="field"><span>仕入金額</span><input type="number" min={0} step={1} value={form.cost_amount} onChange={event => setForm(current => ({ ...current, cost_amount: Number(event.target.value) }))} /></label>
+        <label className="field"><span>仕入先</span><ColoredSelect value={form.marketplace ?? ''} onChange={event => setForm(current => ({ ...current, marketplace: event.target.value || null }))}><option value="">未設定</option>{MARKETPLACES.map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
+        <label className="field"><span>商品ID</span><input value={form.marketplace_item_id ?? ''} onChange={event => setForm(current => ({ ...current, marketplace_item_id: event.target.value || null }))} /></label>
+        <label className="field"><span>追跡番号</span><input value={form.tracking_no ?? ''} onChange={event => setForm(current => ({ ...current, tracking_no: event.target.value || null }))} /></label>
+        <label className="field"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
+        {autofillBusy && <p className="muted">通番号の商品情報を読み込み中…</p>}
+        {referenceMessage && <p className="muted" role="status" style={{ gridColumn: '1 / -1' }}>{referenceMessage}</p>}
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="toolbar registration-actions"><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '予備登録'}</button></div>
+    </form>}
     {editFor && <SpareFieldDialog row={editFor.row} field={editFor.field} onClose={() => setEditFor(null)} onSaved={async () => { setEditFor(null); await reload(); }} />}
   </section>;
 }

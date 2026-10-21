@@ -45,7 +45,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const filtered = rows.filter(row => !query.trim() || row.name.toLowerCase().includes(query.trim().toLowerCase()));
   const pending = drafts.filter(d => !rows.some(row => row.id === d.id || (expenseCategoryLabel(row.category) === d.category && row.incurred_on.slice(0, 7) === d.target_month.slice(0, 7) && row.name === d.name))
     && (!query.trim() || d.name.toLowerCase().includes(query.trim().toLowerCase())));
-  return <div className="dashboard-workspace with-expense">
+  return <div className="dashboard-workspace with-expense registration-workspace">
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費">
     <div className="toolbar expense-search-toolbar">
       <input aria-label="経費を検索" placeholder="検索" type="search" value={query} onChange={e => setQuery(e.target.value)} />

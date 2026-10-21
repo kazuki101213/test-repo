@@ -52,12 +52,12 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
     finally { saving.current = false; setBusy(false); onBusyChange(false); }
   }
 
-  return <aside ref={panel} id="expense-panel" className="expense-panel card" aria-label="経費登録パネル">
+  return <aside ref={panel} id="expense-panel" className="expense-panel card registration-form" aria-label="経費登録パネル">
     <div className="toolbar"><h2>{original ? '経費編集' : '経費登録'}</h2>{onClose && <button type="button" className="btn expense-panel-close" disabled={busy} onClick={onClose}>閉じる</button>}</div>
     {error && <div className="error" role="alert">{error}</div>}
     {done && <div className="ok" role="status">{done}</div>}
     <form onSubmit={submit}>
-      <fieldset disabled={busy} className="expense-fields">
+      <fieldset disabled={busy} className="expense-fields registration-fields">
         <label className="field"><span>区分</span><select value={category} onChange={e => setCategory(e.target.value as ExpenseInput['category'])}>{expenseCategories.map(c => <option key={c}>{c}</option>)}</select></label>
         <label className="field expense-date-field"><span>日付</span><DateInput className="expense-date-input" required value={date} onChange={e => setDate(e.target.value)} /></label>
         <label className="field expense-wide"><span>内容</span><input type="text" required maxLength={200} value={name} onChange={e => setName(e.target.value)} placeholder="梱包資材、家賃など" /></label>

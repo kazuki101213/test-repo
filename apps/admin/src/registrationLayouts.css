@@ -60,3 +60,16 @@
 @media screen and (max-width:767px) {
  .layout .toolbar.product-search-toolbar { grid-template-columns:minmax(0,1fr) max-content; }
 }
+
+/* Match the expense layout across all three permanent registration panels. */
+.layout .registration-workspace.with-expense { grid-template-columns:minmax(0,1fr) minmax(280px,360px); gap:18px; overflow:visible; }
+.layout .registration-workspace > .registration-form { grid-row:auto; margin:0; min-width:0; position:sticky; top:16px; max-height:none; overflow:visible; }
+.layout .registration-form .registration-actions { margin:10px 0 0; }
+.layout .registration-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; min-width:0; }
+.layout .registration-fields .field { min-width:0; }
+.layout .registration-fields .field > :is(input,select,textarea,.colored-select),
+.layout .registration-fields .colored-select select { width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
+@media screen and (max-width:1279px) {
+ .layout .registration-workspace.with-expense { grid-template-columns:minmax(0,1fr); }
+ .layout .registration-workspace > .registration-form { grid-row:1; position:static; }
+}
