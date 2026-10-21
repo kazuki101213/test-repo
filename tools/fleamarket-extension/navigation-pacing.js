@@ -18,9 +18,13 @@ export function createNavigationPacer({storage,now=Date.now,sleep=ms=>new Promis
 }
 let shared;
 const wrappers=new WeakMap();
+export function paceNavigation(action){
+ const pace=shared||(shared=createNavigationPacer({storage:globalThis.chrome?.storage?.local}));
+ return pace(action);
+}
 export function pacedTabs(tabs){
  if(wrappers.has(tabs))return wrappers.get(tabs);
- const pace=shared||(shared=createNavigationPacer({storage:globalThis.chrome?.storage?.local}));
+ const pace=paceNavigation;
  const wrapped=new Proxy(tabs,{get(target,key){
   if(key==='update')return async(id,changes)=>{
    if(!changes?.url||!siteFor(changes.url))return target.update(id,changes);
