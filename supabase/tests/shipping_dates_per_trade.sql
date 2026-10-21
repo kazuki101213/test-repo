@@ -10,11 +10,12 @@ set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 do $$declare v_id uuid:=(select id from trade_shipping_probe where lot_seq=998661);result text;begin
  result:=app.sync_seller_observation('mercari-2',jsonb_build_object('serial','998661','external_id','m998661','status','取引中','trade_key','m998661:'||to_char(current_date-1,'YYYY-MM-DD')||'T13:35','observed_at',clock_timestamp()));
  if result<>'updated' then raise exception 'Trade sync failed: %',result;end if;
- if not exists(select 1 from app.items where id=v_id and shipped_on is null and status='取引中') then raise exception 'Previous shipping date blocked the new trade';end if;
- if (select count(*) from app.delivery_shipping_tasks where item_id=v_id and resolved_at is null)<>1 then raise exception 'New trade request missing';end if;
- if not exists(select 1 from app.audit_log where row_id=v_id and old_data->>'shipped_on'=to_char(current_date-7,'YYYY-MM-DD') and new_data->>'shipped_on' is null) then raise exception 'Previous shipping date not preserved in audit';end if;
+ if not exists(select 1 from app.items where id=v_id and shipped_on=current_date-7 and status='取引中') then raise exception 'Observation erased shipping date without confirmation';end if;
+ if exists(select 1 from app.delivery_shipping_tasks where item_id=v_id and resolved_at is null) then raise exception 'Old date inferred an unshipped request';end if;
 end $$;
 set local role postgres;
+-- Only an explicit shipping-date correction can restore an unshipped request.
+update app.items set shipped_on=null where id=(select id from trade_shipping_probe where lot_seq=998661);
 update app.items set status='取引中',seller_trade_key='m998662:'||to_char(current_date-7,'YYYY-MM-DD')||'T12:00' where id=(select id from trade_shipping_probe where lot_seq=998662);
 update app.items set status='取引中',seller_trade_key='m998663:unknown' where id=(select id from trade_shipping_probe where lot_seq=998663);
 do $$begin
