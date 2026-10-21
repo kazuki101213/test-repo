@@ -76,7 +76,7 @@ export default function Products() {
   return (
     <>
 
-      <div className="product-workspace"><section className="product-list">
+      <div className="dashboard-workspace with-expense product-workspace registration-workspace"><section className="card dashboard-content product-list">
       <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
       <div className="toolbar product-search-toolbar">
@@ -127,9 +127,9 @@ export default function Products() {
         </table>
       </div>
       </section>
-      <form className="card product-entry registration-sidebar" aria-label="商品登録" onSubmit={event => { event.preventDefault(); if (!busy) void addProduct(); }}>
-        <h3>商品登録</h3>
-        <fieldset className="product-registration-fields" disabled={busy}>
+      <form className="card product-entry registration-sidebar registration-form" aria-label="商品登録" onSubmit={event => { event.preventDefault(); if (!busy) void addProduct(); }}>
+        <div className="toolbar"><h2>商品登録</h2></div>
+        <fieldset className="product-registration-fields registration-fields" disabled={busy}>
           {(['asin', 'model_no', 'maker', 'product_no'] as const).map(field => <label className="field" key={field}><span>{{ asin: 'ASIN', model_no: '型番', maker: 'メーカー', product_no: '品番' }[field]}</span><input value={newProduct[field]} onChange={e => setNewProduct(current => ({ ...current, [field]: e.target.value }))} /></label>)}
         </fieldset>
         <div className="toolbar registration-actions"><button type="submit" className="btn primary" disabled={busy}>{busy ? '登録中…' : '商品登録'}</button></div>
