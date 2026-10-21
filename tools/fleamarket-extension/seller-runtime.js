@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.140';
-import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.140';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.143';
+import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.143';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.140';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.143';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -49,7 +49,7 @@ export function sellerChoiceReady(kind){
   if(kind==='condition')return [...document.querySelectorAll('[data-testid^="condition-"]')].some(visible);
   if(kind==='shipping-details')return location.pathname.startsWith('/transaction/')&&[...document.querySelectorAll('[role=dialog],select,input[type=radio]')].some(visible);
   if(kind==='shipping-place')return /^\/transaction\/m[0-9]+\/shipping_facilities$/.test(location.pathname)&&[...document.querySelectorAll('input[type=radio]')].some(visible)&&[...document.querySelectorAll('button')].some(e=>visible(e)&&e.innerText.trim()==='選択して完了する');
-  if(kind==='shipping-code-ready')return /^\/transaction\/m[0-9]+$/.test(location.pathname)&&[...document.querySelectorAll('button')].some(e=>visible(e)&&['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行'].includes(e.innerText.trim()));
+  if(kind==='shipping-code-ready')return /^\/transaction\/m[0-9]+$/.test(location.pathname)&&[...document.querySelectorAll('button')].some(e=>visible(e)&&['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行'].includes(e.innerText.trim()));
   if(kind==='shipping')return [...document.querySelectorAll('input[name="selectedShippingMethod"]')].some(visible);
  }else if(location.hostname==='auctions.yahoo.co.jp'){
   if(kind==='category')return /\/show\/topsubmit$/.test(location.pathname)&&[...document.querySelectorAll('a')].some(e=>visible(e)&&/キーワードから選択する/.test(e.innerText));

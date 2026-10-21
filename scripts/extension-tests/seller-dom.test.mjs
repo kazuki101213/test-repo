@@ -206,3 +206,14 @@ test('発送場所の候補が複数なら具体的なエラーを返し操作�
  const p=await page('<label><input type="radio" value="LAWSON">ローソン</label><label><input type="radio" value="OTHER">ローソン で発送</label><button onclick="document.body.dataset.done=1">選択して完了する</button>','https://jp.mercari.com/transaction/m89610866040/shipping_facilities');
  const result=await p.evaluate(advanceMercariShippingPlace,{itemId:'m89610866040',dropoff:'ローソン'});assert.match(result.__error,/発送場所の選択肢/);assert.equal(await p.evaluate(()=>document.body.dataset.done),undefined);await p.close();
 });
+
+test('ローソンの発送用2次元コードを発行を認識し品名を入れて一度だけ発行する',async()=>{
+ const p=await page('<h1>取引画面</h1><p>ゆうゆうメルカリ便 発送してください</p><button>ローソンからの発送方法</button><label>商品名<input name="itemName"></label><button id="issue">発送用2次元コードを発行</button><button onclick="document.body.dataset.shipped=1">発送通知をする</button>','https://jp.mercari.com/transaction/m20550299336');
+ await p.evaluate(()=>document.getElementById('issue').onclick=()=>{document.body.dataset.issued=String(Number(document.body.dataset.issued||0)+1);const c=document.createElement('canvas');c.id='QR';document.querySelector('main').append(c);});
+ const job={id:'postal-qr',external_id:'m20550299336',trade_key:'trade',channel:'メルカリ',payload:{shippingMethod:'ゆうゆうメルカリ便',dropoff:'ローソン',size:'140',category:'ブルーレイレコーダー'}};
+ assert.deepEqual(await p.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'}),{needsEditor:false,readyForCode:true,configuredDropoff:'ローソン'});
+ const result=await p.evaluate(sellerDomOperation,{job,phase:'shipping_code',shippingPrepared:true});assert.equal(result.code_requested,true);await p.waitForSelector('canvas#QR');
+ assert.equal(await p.locator('input[name=itemName]').inputValue(),'ブルーレイレコーダー');
+ assert.match((await p.evaluate(sellerDomOperation,{job,phase:'shipping_code',shippingPrepared:true})).qr_code,/^data:image\/png;base64,/);
+ assert.equal(await p.evaluate(()=>document.body.dataset.issued),'1');assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+});

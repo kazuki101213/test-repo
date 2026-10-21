@@ -191,14 +191,14 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  // A completed document can still contain Mercari's loading shell. Wait for the exact trade's shipping controls before its first guard; never click while waiting.
  if(phase==='shipping_preflight'&&job.channel==='メルカリ'){
   if(location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送画面ではありません');
-  await waitFor(()=>{root=document.querySelector('main')||document.body;return /取引画面|取引情報|発送|配送/.test(text())&&controls().some(e=>['商品サイズと発送場所を選択する','配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行'].includes(buttonLabel(e)));},'取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません');
+  await waitFor(()=>{root=document.querySelector('main')||document.body;return /取引画面|取引情報|発送|配送/.test(text())&&controls().some(e=>['商品サイズと発送場所を選択する','配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行'].includes(buttonLabel(e)));},'取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません');
  }
  tradeGuard();
  if(phase==='read_shipping_code'){try{return {qr_code:waitForShippingCode?await waitFor(qrPng,'配送コードの画像を確認できません。再発行しません'):await qrPng()};}catch(error){return {__error:error.message};}}
  if(phase==='shipping_preflight'){
   if(job.channel==='メルカリ'&&payload.dropoff){const postal=/ゆうゆう/.test(payload.shippingMethod||'');if(!(postal?['ローソン','郵便局']:['セブンイレブン','ヤマト営業所']).includes(payload.dropoff))throw Error('配送方法と発送場所が一致しません。ゆうゆうメルカリ便はローソン・郵便局、らくらくメルカリ便はセブンイレブン・ヤマト営業所を選択してください');}
   const entries=controls().filter(e=>buttonLabel(e)==='商品サイズと発送場所を選択する'),edit=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&e.origin===location.origin&&e.pathname==='/transaction/'+job.external_id+'/shipping_class');if(entries.length+edit.length>1)throw Error('配送設定の入口が曖昧です');if(payload.shippingMethod&&!text().includes(norm(payload.shippingMethod)))throw Error('サイトの配送方法がアプリの設定と一致しません');
-  const codes=controls().filter(e=>['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行'].includes(buttonLabel(e)));if(codes.length>1)throw Error('配送QRの発行ボタンが曖昧です');const place=controls().map(buttonLabel).map(t=>t.replace(/[\s\-−–]/g,''));const configuredDropoff=place.includes('ヤマト運輸営業所からの発送方法')?'ヤマト営業所':place.includes('セブンイレブンからの発送方法')?'セブンイレブン':place.includes('ローソンからの発送方法')?'ローソン':null;return {needsEditor:entries.length+edit.length===1,readyForCode:codes.length===1,configuredDropoff};
+  const codes=controls().filter(e=>['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行'].includes(buttonLabel(e)));if(codes.length>1)throw Error('配送QRの発行ボタンが曖昧です');const place=controls().map(buttonLabel).map(t=>t.replace(/[\s\-−–]/g,''));const configuredDropoff=place.includes('ヤマト運輸営業所からの発送方法')?'ヤマト営業所':place.includes('セブンイレブンからの発送方法')?'セブンイレブン':place.includes('ローソンからの発送方法')?'ローソン':null;return {needsEditor:entries.length+edit.length===1,readyForCode:codes.length===1,configuredDropoff};
  }
  if(phase==='message_sync'){
   const nodes=[...root.querySelectorAll('[data-testid*="message" i],[class*="message" i]')].filter(e=>visible(e)&&!e.matches('textarea,input,button,form')&&norm(e.innerText)&&![...e.querySelectorAll('[data-testid*="message" i],[class*="message" i]')].some(child=>visible(child)&&norm(child.innerText).length>10));
@@ -214,7 +214,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const existing=await qrPng();if(existing)return {qr_code:existing};
   if(shippingPrepared){if(job.channel!=='メルカリ'||location.pathname!=='/transaction/'+job.external_id)throw Error('配送設定後の取引画面ではありません');const name=field(['品名','商品名'],['itemName']);if(name.readOnly||name.disabled)throw Error('配送用の商品名を入力できません');await choose(['品名','商品名'],payload.category,['itemName']);}
   else{await choose(['サイズ','配送サイズ'],payload.size);await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);}
-  const button=oneButton(['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行']);reserve();setTimeout(()=>button.click(),100);return {code_requested:true};
+  const button=oneButton(['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行']);reserve();setTimeout(()=>button.click(),100);return {code_requested:true};
  }
  if(phase==='register_package'){
   if(!/ゆうパケットポスト/.test(text()))throw Error('専用資材を使用する発送画面ではありません');

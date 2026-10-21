@@ -19,7 +19,7 @@ test('状態が一覧にない場合も実際の取引リンクを1件だけ読�
 });
 
 test('既に写真欄がある実フォームではヘッダーの別の出品リンクへ移動しない',async()=>{const data={},visited=[];await runSellerReadOnlyInspection({settings:{accounts:[{id:'auctions-1',enabled:true,site:'auctions'}]},profileId:profile,storage:{get:async()=>data,set:async value=>Object.assign(data,value)},fetchRequest:async()=>request,openSession:async()=>({structure:async()=>({fileInputs:[{multiple:true}]}),links:async()=>[{text:'出品',url:'https://auctions.yahoo.co.jp/jp/show/submit'},{text:'出品する',url:'https://auctions.yahoo.co.jp/sell/jp/show/submit'}],go:async url=>visited.push(url),close:async()=>{}}),log:async()=>{}});assert.equal(visited.includes('https://auctions.yahoo.co.jp/sell/jp/show/submit'),false);assert.equal(data.sellerInspectionEvidence.status,'completed');});
-test('写真入力と配送変更の一時診断は要求が残っていても実行しない',()=>{for(const flag of ['listingPreview','readListingShippingOnly','advanceShippingSize','issueShippingQr'])assert.equal(sellerInspectionApplies({...request,[flag]:true},profile,null),false);});
+test('写真入力と配送変更の一時診断は要求が残っていても実行しない',()=>{for(const flag of ['inspectShippingPreparation','listingPreview','readListingShippingOnly','advanceShippingSize','issueShippingQr'])assert.equal(sellerInspectionApplies({...request,[flag]:true},profile,null),false);});
 
 test('販売一覧だけの診断はDefault限定で出品フォームや書込を呼ばない',async()=>{
  const q={...request,sellerListsOnly:true};assert.equal(sellerInspectionApplies(q,profile,null,now),true);assert.equal(sellerInspectionApplies({...q,profiles:['f29f12b6-35f2-4e9f-8312-a8321ddf3c12']},'f29f12b6-35f2-4e9f-8312-a8321ddf3c12',null,now),false);
