@@ -3,7 +3,7 @@
 .layout .registration-sidebar .grid > * { min-width:0; }
 .layout .registration-sidebar .registration-wide { grid-column:1 / -1; }
 .layout .registration-sidebar .registration-entry > .card > .grid.cols2 { grid-template-columns:minmax(0,1fr); }
-.layout .spare-entry > .grid.cols2 { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 0; }
+.layout .spare-entry > .grid.cols2 { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .layout .spare-entry .field > :is(input,select,.colored-select),
 .layout .spare-entry .colored-select select { width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
 .layout .spare-entry .field > span:last-child { width:100%; min-width:0; }
@@ -14,7 +14,6 @@
 .layout .registration-actions { justify-content:flex-end; }
 .layout .expense-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .layout .expense-submit { grid-column:1 / -1; justify-self:end; }
-.layout .expense-date-field { grid-column:1 / -1; }
 .layout .expense-date-field > span:last-child { display:flex; width:100%; min-width:0; }
 .layout .expense-fields .expense-date-input { width:0; max-width:none; min-width:0; flex:1 1 0; box-sizing:border-box; }
 .layout .expense-fields input[type=number], .layout .expense-fields select { width:100%; min-width:0; box-sizing:border-box; }
@@ -36,9 +35,6 @@
 @media screen and (max-width:1279px) {
  .layout .inventory-workspace.with-purchase { grid-template-columns:minmax(0,1fr); overflow:visible; }
  .layout .inventory-purchase-panel { margin-block:16px; }
-}
-@media screen and (max-width:359px) {
- .layout .expense-date-field { grid-column:1 / -1; }
 }
 @media screen and (max-width:767px) {
  .layout .spare-search.spare-toolbar { grid-template-columns:108px minmax(0,1fr); }
