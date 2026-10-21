@@ -2,6 +2,8 @@ import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} f
 import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.143';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
 import {sellerDomOperation} from './seller-dom.js?v=0.1.143';
+import {processSellerFeedback,mercariSellerFeedback} from './seller-feedback.js';
+import {yahooSellerFeedback,yahooSellerRating} from './seller-yahoo-feedback.js';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -101,7 +103,7 @@ export function advanceMercariShippingPlace({itemId,dropoff}){
  const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('発送場所の選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
  }catch(error){return {__error:error.message};}
 }
-export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log,repair=null,hourly=false,now=Date.now()}){
+export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log,repair=null,hourly=false,now=Date.now(),feedbackSites=[]}){
  if(hourly&&!sellerHourlyReady(settings,records,now))return;
  if(hourly&&repair)throw Error('4時間ごと確認と修復は同時実行できません');
  if(!hourly&&!repair&&(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day)))return;
@@ -123,7 +125,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
   const remember=row=>{if(['出品中','取引中','支払い待ち'].includes(row.status))cache[row.external_id]={fingerprint:sellerObservationFingerprint(row),checkedAt:now};};
   try{
    session=await openSession(account);
-   const queue=[],seen=new Set(),processed=new Set(),pending=[],fullScan=baselines[account.id]!=='serial-case-v2';
+   const queue=[],seen=new Set(),processed=new Set(),pending=[],feedbackRows=new Map(),fullScan=baselines[account.id]!=='serial-case-v2';
    let registeredRun=0,salesStopped=false,salesSeen=false,batches=0;const auctionSaleIds=new Set();
    const salePhase=phase=>phase==='売却済み'||phase==='売上金管理';
    const enqueue=links=>{for(const link of links){let phase=link.text;if(phase==='出品した商品'||phase==='出品一覧')phase=null;if(![null,'出品中','取引中','売却済み','出品終了分','売上金管理'].includes(phase))continue;if((salesStopped||hourly)&&salePhase(phase))continue;const url=sellerUrl(account,link.url);if(!seen.has(url)&&!queue.some(v=>v.url===url))queue.push({url,phase});}queue.sort((a,b)=>(salePhase(a.phase)?1:0)-(salePhase(b.phase)?1:0));};
@@ -136,6 +138,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
      if(++batches>200)throw Error('一覧の確認上限に達しました。初回照合は完了扱いにしません');
      let data=await session.read(page.phase);
      if(!data.rows.length&&!data.empty&&page.phase&&session.selectTab){if(await session.selectTab(page.phase))data=await session.read(page.phase);}
+     for(const row of data.rows)if(row.feedback_pending===true&&!row.attention)feedbackRows.set(row.external_id,row);
      if(page.phase&&!data.rows.length&&!data.empty&&!data.itemCount)throw Error('商品一覧を確認できません：'+page.phase+' ('+new URL(page.url).pathname+')');
      if(salePhase(page.phase))salesSeen=true;
      // Count all visible sale-management products, including unpaid/unsettled rows.
@@ -190,6 +193,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
     if(result==='updated'||result==='registered'){updated++;remember(row);}else if(result==='unmatched')unmatched++;else if(result==='conflict')conflicts++;
     }catch(error){throw Error('商品ID '+row.external_id+'：'+error.message);}
    }
+   if(!hourly&&feedbackSites.includes(account.site)&&feedbackRows.size)await processSellerFeedback({account,rows:[...feedbackRows.values()],session,rpc,storage,log,now});
    if(fullScan&&salesSeen){baselines[account.id]='serial-case-v2';await storage.set({sellerSaleBackfills:{...baselines}});}
   }catch(error){errors++;failures.push({accountId:account.id,error:error.message});await log('error',account.label+(hourly?'の4時間ごと販売確認を停止しました。次回の定期確認まで再実行しません：':'の販売確認を停止しました。自動再試行はしません：')+error.message);}
   finally{observationCache[account.id]=Object.fromEntries(Object.entries(cache).slice(-2000));await session?.close();}
@@ -332,7 +336,7 @@ export function clickSellerListTab(label){
  setTimeout(()=>button.click(),0);return {changing:true};
 }
 export async function openSellerSession(account,{tabs,scripting,windows,identity,executionTimeoutMs=30000}){
- const borrowed=await borrowSiteTab(tabs,account.site);let last=borrowed.originalUrl,categoryResolution=null,listingChoices=null;
+ const borrowed=await borrowSiteTab(tabs,account.site);let last=borrowed.originalUrl,categoryResolution=null,listingChoices=null,preserveFeedback=false;
  async function loaded(){for(let n=0;n<60;n++){const tab=await tabs.get(borrowed.id);if(tab.status==='complete'){await pause(800);const settled=await tabs.get(borrowed.id);if(settled.status==='complete'&&settled.url===tab.url){sellerUrl(account,settled.url);last=settled.url;borrowed.lastUrl=last;return;}}await pause(300);}throw Error('販売画面の読み込みが時間切れになりました');}
  async function go(url){sellerUrl(account,url);const current=await tabs.get(borrowed.id);if(current.url!==last)throw Error('画面のURLが変更されたため停止しました');const arrived=await tabs.update(borrowed.id,{url,active:account.site==='mercari'});last=url;borrowed.lastUrl=url;if(account.site==='mercari'&&windows&&Number.isInteger(arrived.windowId)){const w=await windows.get(arrived.windowId);if(w.state==='minimized')await windows.update(w.id,{state:'normal'});if(w.state!=='maximized'&&(w.width<1000||w.height<700))await windows.update(w.id,{width:1200,height:900});await windows.update(w.id,{focused:true});}await loaded();}
  async function execute(func,args){
@@ -352,6 +356,11 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
  return {go,loaded,advanceList:()=>execute(advanceSellerList,null),structure:()=>execute(readSellerStructure,null),
+  feedback:args=>execute(account.site==='mercari'?mercariSellerFeedback:yahooSellerFeedback,args),
+  feedbackGo:async url=>{if(last!==url)await go(url);},
+  preserveForReview:()=>{preserveFeedback=true;},
+  feedbackStructure:async({itemId,url})=>{await go(url);return execute(yahooSellerRating,{itemId,action:'inspect'});},
+  feedbackWorkflow:async args=>{const {beforePublish,...pageArgs}=args;const proof=await execute(yahooSellerFeedback,pageArgs);if(!proof.ready)throw Error('落札者評価の受取完了を確認できません');await go(proof.ratingUrl);const prepared=await execute(yahooSellerRating,{...pageArgs,action:'prepare'});if(!prepared.prepared)throw Error('新規の落札者評価ではありません');await pause(350);await loaded();const check=await execute(yahooSellerRating,{...pageArgs,action:'preflight',comment:prepared.comment});if(!check.ready)throw Error('評価内容を確認できません');await beforePublish();const notBefore=Date.now(),sent=await execute(yahooSellerRating,{...pageArgs,beforePublish:undefined,action:'submit',comment:prepared.comment});if(!sent.submitRequested)throw Error('評価送信を確認できません');await pause(350);await loaded();await go(proof.ratingUrl);const result=await execute(yahooSellerRating,{...pageArgs,beforePublish:undefined,action:'verify',comment:prepared.comment,notBefore});if(!result.success)throw Error('公開済み評価を確認できません');return result;},
   inspectAuctionOptions:async()=>{const selected=await execute(function(){if(location.hostname!=='auctions.yahoo.co.jp'||!/\/show\/submit$/.test(location.pathname))throw Error('出品入力画面ではありません');const radio=document.querySelector('input[name="salesmode"][value="auction"]');if(!radio||radio.disabled)throw Error('オークション形式を確認できません');if(!radio.checked)radio.click();return radio.checked;},null);if(!selected)throw Error('オークション形式を確認できません');await pause(500);return true;},
   categoryFormFromResults:categoryForm,
   prepareCategory:async target=>{
@@ -375,6 +384,6 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   auctionDetail:async id=>{if(account.site!=='auctions'||!/^[a-z][0-9]+$/i.test(id))throw Error('対象の商品IDを確認できません');await go('https://page.auctions.yahoo.co.jp/jp/auction/'+id);let page=await raw();if(!/(?:終了日時|落札日時|終了日)\s*[:：]?\s*20[0-9]{2}/.test(page.text)){const links=page.links.filter(link=>{try{const u=new URL(link.url);return u.protocol==='https:'&&!u.username&&!u.password&&u.hostname==='contact.auctions.yahoo.co.jp'&&u.pathname==='/seller/top'&&[...u.searchParams.values()].includes(id)&&/取引ナビ/.test(link.text);}catch{return false;}});if(links.length===1){await go(links[0].url);page=await raw();}}return page;},
   detail:async(url,id)=>{if(account.site==='mercari'&&!/^m[0-9]+$/.test(id))throw Error('対象の商品IDを確認できません');await go(account.site==='mercari'?'https://jp.mercari.com/transaction/'+id:url);let page=account.site==='mercari'?await execute(readMercariTransactionPage,{id}):await raw();if(!/取引画面|取引情報|受け取り明細/.test(page.text)){const options=page.links.filter(link=>/取引画面|取引ナビ|取引情報|詳細/.test(link.text)&&link.url.includes(id));if(options.length!==1)throw Error('販売明細へのリンクを特定できません');await go(options[0].url);page=await raw();}if(!page.text.includes(id))throw Error('取引の商品IDを確認できません');return page;},
   operation:(job,phase,extra={})=>execute(sellerDomOperation,{job,phase,...extra,reportErrors:true,choicesResolved:listingChoices?.id===job.id&&listingChoices?.values===JSON.stringify([job.payload?.listingCategory||job.payload?.category,job.payload?.condition,job.payload?.shippingMethod])&&listingChoices?.url===last,categoryResolved:categoryResolution?.target===(job.payload?.listingCategory||job.payload?.category)&&categoryResolution?.url===last}),
-  close:()=>restoreSiteTab(tabs,borrowed).catch(()=>{}),
+  close:()=>preserveFeedback?Promise.resolve():restoreSiteTab(tabs,borrowed).catch(()=>{}),
  };
 }
