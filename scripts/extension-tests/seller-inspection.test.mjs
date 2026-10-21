@@ -45,3 +45,10 @@ test('複数明細診断は40件以内で最初の不一致まで、書込や再
  assert.deepEqual(details,rows.slice(0,2).map(r=>r.external_id));assert.equal(state.sellerInspectionEvidence.saleEvidenceRows.length,2);assert(state.sellerInspectionEvidence.saleEvidenceRows[1].parseError);
 });
 test('販売日の診断は日付と既知の項目名だけで、ページ本文を保存しない',()=>{const e=saleDetailEvidence('auctions',{external_id:'p1234567890'},{url:'https://aucpay.yahoo.co.jp/detail-front/ReceiveDetailItem?token=SECRET',text:'商品ID p1234567890 決済金額 15000 受取金額 12650 落札日時 2026年 10月 15日 23:10 名前住所SECRET',links:[]});assert(e.dateFields.some(f=>f.label==='落札日時'&&f.date==='2026-10-15'));assert(!JSON.stringify(e).includes('SECRET'));});
+
+test('指定取引の発送場所はGETと構造読取だけで確認し選択・コード発行しない',async()=>{
+ const p='51502a66-28a6-4af0-81ea-660e63d8b66c',q={...request,profiles:[p],targetSerial:'2392',targetItemId:'m89610866040',readShippingPlaceOnly:true},visited=[],data={};
+ assert.equal(sellerInspectionApplies(q,p,null),true);assert.equal(sellerInspectionApplies({...q,targetItemId:null},p,null),false);
+ await runSellerReadOnlyInspection({settings:{accounts:[{id:'mercari-2',enabled:true,site:'mercari'}]},profileId:p,storage:{get:async()=>data,set:async v=>Object.assign(data,v)},fetchRequest:async()=>q,openSession:async()=>({go:async url=>visited.push(url),structure:async()=>({controls:[]}),inspectionShippingTarget:async()=>({serialMatches:true,sellerShipping:true}),inspectChoice:async()=>{throw Error('No click');},operation:async()=>{throw Error('No code');},close:async()=>{}}),log:async()=>{}});
+ assert.equal(data.sellerInspectionEvidence.status,'completed');assert.equal(data.sellerInspectionEvidence.readOnly,true);assert.deepEqual(visited,['https://jp.mercari.com/transaction/m89610866040','https://jp.mercari.com/transaction/m89610866040/shipping_facilities']);
+});
