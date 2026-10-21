@@ -15,7 +15,6 @@ export default function Products() {
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
-  const [adding, setAdding] = useState(false);
   const [newProduct, setNewProduct] = useState({ asin: '', model_no: '', maker: '', product_no: '' });
   const [editing, setEditing] = useState<{ product: Product; field: ProductField; value: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,7 +56,7 @@ export default function Products() {
 
   async function addProduct() {
     setBusy(true); setError(null);
-    try { await createProduct(newProduct); setNewProduct({ asin: '', model_no: '', maker: '', product_no: '' }); setAdding(false); setRevision(n => n + 1); }
+    try { await createProduct(newProduct); setNewProduct({ asin: '', model_no: '', maker: '', product_no: '' }); setRevision(n => n + 1); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -77,18 +76,16 @@ export default function Products() {
   return (
     <>
 
+      <div className="product-workspace"><section className="product-list">
       <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
       <div className="toolbar product-search-toolbar">
-        <button className="btn primary" aria-expanded={adding} onClick={() => setAdding(open => !open)}>{adding ? '商品登録を閉じる' : '商品登録'}</button>
         <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} onChange={event => setQuery(event.target.value)} />
         <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
       </div>
       <p className="sub">{rows.length} 件</p>
 
-      {adding && <div className="card product-entry"><h3>商品登録</h3><div className="grid cols2">
-        {(['asin', 'model_no', 'maker', 'product_no'] as const).map(field => <label className="field" key={field}><span>{{ asin: 'ASIN', model_no: '型番', maker: 'メーカー', product_no: '品番' }[field]}</span><input value={newProduct[field]} onChange={e => setNewProduct(current => ({ ...current, [field]: e.target.value }))} /></label>)}
-      </div><button className="btn primary" disabled={busy} onClick={() => void addProduct()}>保存</button></div>}
+
 
       {error && <div className="error">{error}</div>}
 
@@ -128,6 +125,16 @@ export default function Products() {
             ))}
           </tbody>
         </table>
+      </div>
+      </section>
+      <form className="card product-entry registration-sidebar" aria-label="商品登録" onSubmit={event => { event.preventDefault(); if (!busy) void addProduct(); }}>
+        <h3>商品登録</h3>
+        <fieldset className="product-registration-fields" disabled={busy}>
+          {(['asin', 'model_no', 'maker', 'product_no'] as const).map(field => <label className="field" key={field}><span>{{ asin: 'ASIN', model_no: '型番', maker: 'メーカー', product_no: '品番' }[field]}</span><input value={newProduct[field]} onChange={e => setNewProduct(current => ({ ...current, [field]: e.target.value }))} /></label>)}
+        </fieldset>
+        <div className="toolbar registration-actions"><button type="submit" className="btn primary" disabled={busy}>{busy ? '登録中…' : '商品登録'}</button></div>
+        {error && <div className="error" role="alert">{error}</div>}
+      </form>
       </div>
       {editing && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品リストの項目を編集"><div className="card inventory-comment-panel">
         <h3>{fieldLabels[editing.field]}を編集</h3>
