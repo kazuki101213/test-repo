@@ -55,7 +55,7 @@ function InvoiceReview({ task,onClose,onApproved }:{task:Task;onClose:()=>void;o
  return <dialog ref={dialog} className="monthly-detail invoice-review" aria-labelledby="invoice-review-title" onCancel={e=>{if(busy)e.preventDefault();else onClose();}}>
  <div className="toolbar"><h2 id="invoice-review-title">{staffDisplayName(task.name)} · {task.month.slice(0,7)}</h2><span style={{flex:1}}/><button className="btn" disabled={busy} onClick={onClose} autoFocus>閉じる</button></div>
  <div className="document-review-columns"><section><h3>請求書</h3>
- {invoice?<><p>請求日：{invoice.issued_on}　請求金額：<strong>{yen(invoice.total)}</strong>　{approved?'承認済み':'承認待ち'}</p>
+ {invoice?<><p>作成日：{invoice.issued_on}　請求金額：<strong>{yen(invoice.total)}</strong>　{approved?'承認済み':'承認待ち'}</p>
  <div className="scroll" style={{maxHeight:'55vh'}}><table><thead><tr><th>購入日／日付</th><th>内容</th><th>数量</th><th>単価</th><th>金額</th></tr></thead><tbody>{lines.map((line,i)=><tr key={i}><td>{line.date??'—'}</td><td>{line.description}{line.lot_seq!=null&&'（'+line.lot_seq+'）'}</td><td>{line.quantity}</td><td>{yen(line.unit_price)}</td><td>{yen(line.quantity*line.unit_price)}</td></tr>)}</tbody></table></div>
  {invoice.note&&<p style={{whiteSpace:'pre-wrap'}}>{invoice.note}</p>}
  {p&&<details><summary>請求者・振込先</summary><p style={{whiteSpace:'pre-line'}}>{p.issuer_name}<br/>{p.postal} {p.address}<br/>{p.phone} / {p.email}<br/>{p.bank}（{p.bank_code}） {p.branch}（{p.branch_code}）<br/>{p.account_type} {p.account_number}<br/>{p.holder}<br/>{p.holder_kana}</p></details>}
