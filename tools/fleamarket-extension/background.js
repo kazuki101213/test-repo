@@ -1,3 +1,4 @@
+import {runPurchaseRefresh} from './purchase-refresh.js';
 import {runSellerReadOnlyInspection} from './seller-inspection.js?v=0.1.143';
 import {supplierQueuedOperations} from './supplier-runtime.js';
 import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair} from './seller-runtime.js?v=0.1.143';
@@ -15,7 +16,7 @@ import {SITES,API,PUBLIC_KEY,assertSiteUrl,siteFor,eligible,jstDay,dueTime,nextT
 import {rpc,connectSession} from './api.js';
 import {checkPackageUpdate,LOADED_BUILD} from './updates.js';
 const STORE=chrome.storage.local;
-let sellerBusy=false;let busy=false;let focusRestore=null;let dailyStarting=false;let launcherChain=Promise.resolve();const readyLaunchTabs=new Set();
+let purchaseRefreshBusy=false;let sellerBusy=false;let busy=false;let focusRestore=null;let dailyStarting=false;let launcherChain=Promise.resolve();const readyLaunchTabs=new Set();
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 async function getSettings(){const {settings}=await STORE.get('settings');return settings||settingsDefault();}
 async function log(kind,text,extra={}){const {events=[]}=await STORE.get('events');events.unshift({at:new Date().toISOString(),kind,text,...extra});await STORE.set({events:events.slice(0,200)});await chrome.action.setBadgeText({text:kind==='error'?'!':''});}
@@ -93,7 +94,7 @@ async function flushOutbox(){const {outbox=[]}=await STORE.get('outbox');if(!out
 function prepareAccount(a){const copy=structuredClone(a);if(copy.site==='auctions'&&copy.listUrl==='https://auctions.yahoo.co.jp/my/won'&&copy.identity)copy.identity.pageUrl=copy.listUrl;if(copy.site==='flea'&&copy.listUrl==='https://paypayfleamarket.yahoo.co.jp/my/purchase'&&copy.identity)copy.identity.pageUrl=copy.listUrl;return copy;}
 async function diagnosticReport(force=false){if((await getSettings()).openNewTabs===false)return;if(force||(await getSettings()).mode==='diagnostic')await chrome.tabs.create({url:chrome.runtime.getURL('report.html'),active:false}).catch(()=>{});}
 async function capturePage(job,a,stage){if(job.settings.mode!=='diagnostic'&&job.kind!=='purchases')return;try{const d=await content(job.tabId,'diagnostic');const {pages=[]}=await STORE.get('pages');pages.push({at:new Date().toISOString(),account:a.label,stage,...d});await STORE.set({pages:pages.slice(-60)});}catch{}}
-async function start(kind,manual=false){if(sellerBusy)throw Error('販売サイトの確認中です。完了後に操作してください');if(!['tracking','receipt','messages','purchases'].includes(kind))throw new Error('処理種別が不正です');const {job,operationPolicy}=await STORE.get(['job','operationPolicy']);if(operationPolicy&&!operationPolicy.includes(kind))throw new Error('この運用では発送・メッセージ・購入などは実行しません');if(job)throw new Error('別の巡回を実行中です');const s=await getSettings();const accounts=s.accounts.filter(a=>a.enabled).map(prepareAccount);if(!accounts.length)throw new Error('このChromeプロファイルのアカウントを登録してください');
+async function start(kind,manual=false,accountIds=null){if(sellerBusy)throw Error('販売サイトの確認中です。完了後に操作してください');if(!['tracking','receipt','messages','purchases'].includes(kind))throw new Error('処理種別が不正です');const {job,operationPolicy}=await STORE.get(['job','operationPolicy']);if(operationPolicy&&!operationPolicy.includes(kind))throw new Error('この運用では発送・メッセージ・購入などは実行しません');if(job)throw new Error('別の巡回を実行中です');const s=await getSettings();const accounts=s.accounts.filter(a=>a.enabled&&(!accountIds||accountIds.includes(a.id))).map(prepareAccount);if(!accounts.length)throw new Error('このChromeプロファイルのアカウントを登録してください');
   if(kind==='purchases'&&s.mode==='diagnostic')throw new Error('診断モードでは仕入れリストへ追加しません');if(kind==='receipt'&&s.mode!=='full')throw new Error('受け取り評価は実画面検証と切り替え後に有効になります');
   // 診断モードにはSupabaseの読み取り照合も含むが、登録・評価送信は行わない。
   if(await rpc('is_admin')!==true)throw new Error('管理アプリとの連携を確認してください');
@@ -310,7 +311,7 @@ chrome.runtime.onMessage.addListener((m,sender,respond)=>{
 });
 chrome.runtime.onInstalled.addListener(()=>void initialize());
 chrome.runtime.onStartup.addListener(()=>void initialize().then(resumeLauncherRecovery).then(due).then(step).catch(e=>log('error',e.message)));
-chrome.alarms.onAlarm.addListener(a=>{if(a.name==='fm:update'){void processDesktopLaunchRequest().then(()=>checkPackageUpdate({runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy||sellerBusy,record:log})).catch(e=>log('error','更新確認: '+e.message));return;}if(a.name.startsWith('fm:'))void (async()=>{if(initializationPending)await initialization.catch(()=>{});if(a.name!=='fm:pulse')await schedule(a.name);await runPendingDiagnostic();if(!busy&&await recoverConnection())await applyProductionPlan();await resumeLauncherRecovery();await repairImportedTitles();await retryYahooTrackingRepair();await retryRakumaRepair();await due();await step();await runSellerWork();})().catch(e=>log('error',e.message));});
+chrome.alarms.onAlarm.addListener(a=>{if(a.name==='fm:update'){void processPurchaseRefreshRequest().then(()=>processDesktopLaunchRequest()).then(()=>checkPackageUpdate({runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy||sellerBusy,record:log})).catch(e=>log('error','更新確認: '+e.message));return;}if(a.name.startsWith('fm:'))void (async()=>{if(initializationPending)await initialization.catch(()=>{});if(a.name!=='fm:pulse')await schedule(a.name);await runPendingDiagnostic();if(!busy&&await recoverConnection())await applyProductionPlan();await resumeLauncherRecovery();await repairImportedTitles();await retryYahooTrackingRepair();await retryRakumaRepair();await due();await step();await runSellerWork();})().catch(e=>log('error',e.message));});
 void initialize().catch(e=>log('error',e.message));
 
 async function retryRakumaRepair(){
@@ -394,4 +395,14 @@ async function runSellerWork(){
   const hourlyRecords={...records,...await STORE.get(['job','authProblem','sellerDailyAttempt','sellerHourlyAttempt','sellerObservationCache'])};
   await sellerDaily({...dependencies,records:hourlyRecords,day:jstDay(),profileId:records.diagnosticInstance,hourly:true});
  }finally{sellerBusy=false;}
+}
+
+async function processPurchaseRefreshRequest(){
+ if(initializationPending||busy||sellerBusy||dailyStarting||purchaseRefreshBusy)return;
+ purchaseRefreshBusy=true;try{
+ let request;try{const r=await fetch(chrome.runtime.getURL('purchase-refresh-request.json'),{cache:'no-store'});if(!r.ok)return;request=await r.json();}catch{return;}
+ const {diagnosticInstance,operationPolicy}=await STORE.get(['diagnosticInstance','operationPolicy']);
+ if(!PRODUCTION_PLAN.profiles[diagnosticInstance]||operationPolicy&&!operationPolicy.includes('purchases'))return;
+ await runPurchaseRefresh({request,profileId:diagnosticInstance,storage:STORE,settings:await getSettings(),busy:busy||sellerBusy||dailyStarting,start,log});
+ }finally{purchaseRefreshBusy=false;}
 }
