@@ -163,3 +163,13 @@ test('落札者なしの切替は画面遷移で実行結果が消える前に�
  const p=await page('<h1>出品終了分</h1><button onclick="location.href=\'/my/closed?hasWinner=0\'">落札者なし</button><button onclick="document.body.dataset.relisted=1">再出品</button>','https://auctions.yahoo.co.jp/my/closed?hasWinner=1');
  const result=await p.evaluate(clickSellerListTab,'落札者なし');assert.deepEqual(result,{changing:true});await p.waitForURL('https://auctions.yahoo.co.jp/my/closed?hasWinner=0');assert.equal(await p.evaluate(()=>document.body.dataset.relisted),undefined);await p.close();
 });
+test('セブンイレブンのバーコード発行を一度だけ要求し、横長SVGを画像として読む',async()=>{
+ const p=await page('<h1>取引画面</h1><p>らくらくメルカリ便 発送してください</p><label>商品名<input name="itemName"></label><button>セブン-イレブンからの発送方法</button><button id="issue">発送用バーコードを発行</button><div id="code"></div><button id="notice">発送通知をする</button>','https://jp.mercari.com/transaction/m72106976118');
+ await p.evaluate(()=>{document.getElementById('issue').onclick=()=>{document.body.dataset.issued=String(Number(document.body.dataset.issued||0)+1);document.getElementById('code').innerHTML='<svg data-testid="shipping-barcode" width="300" height="48" viewBox="0 0 300 48"><rect width="300" height="48" fill="white"/><path d="M10 0h4v48h-4z"/></svg>';};document.getElementById('notice').onclick=()=>{document.body.dataset.shipped='1';};});
+ const job={id:'barcode',external_id:'m72106976118',trade_key:'trade',channel:'メルカリ',payload:{category:'ブルーレイレコーダー',shippingMethod:'らくらくメルカリ便',dropoff:'セブンイレブン'}};
+ assert.deepEqual(await p.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'}),{needsEditor:false,readyForCode:true,configuredDropoff:'セブンイレブン'});
+ assert.deepEqual(await p.evaluate(sellerDomOperation,{job,phase:'shipping_code',shippingPrepared:true}),{code_requested:true});await p.waitForSelector('svg[data-testid=shipping-barcode]');
+ for(const phase of ['read_shipping_code','shipping_code']){const r=await p.evaluate(sellerDomOperation,{job,phase,shippingPrepared:true});assert.match(r.qr_code,/^data:image\/png;base64,/);}
+ assert.equal(await p.evaluate(()=>document.body.dataset.issued),'1');assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+});
+test('小さなバーコードアイコンとバーコード対応の商品写真を取得しない',async()=>{const p=await page('<h1>取引画面</h1><p>発送してください</p><svg data-testid="barcode-icon" width="20" height="20"></svg><img alt="バーコード対応商品写真" width="300" height="60">','https://jp.mercari.com/transaction/m72106976118');const job={external_id:'m72106976118',trade_key:'trade',channel:'メルカリ',payload:{}};assert.deepEqual(await p.evaluate(sellerDomOperation,{job,phase:'read_shipping_code'}),{qr_code:null});await p.close();});

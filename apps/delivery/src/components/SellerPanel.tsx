@@ -89,7 +89,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     <button type="button" className="btn" disabled={disabled} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
     {proof?.kind==='register_package'&&<label><input type="checkbox" checked={posted} onChange={event=>setPosted(event.target.checked)}/>投函しました</label>}
-   </>:<><button type="button" className="btn" disabled={disabled||!draft.size||!draft.dropoff} onClick={()=>void submit('shipping_code',tradePayload)}>配送QRコードを表示</button>{qr&&<img src={qr} className="seller-qr" alt="対象取引の配送QRコード"/>}<button type="button" className="btn" disabled={disabled||!latestCode} onClick={()=>void submit('verify_shipping',tradePayload)}>店舗での受付を確認</button></>}
+   </>:<><button type="button" className="btn" disabled={disabled||!draft.size||!draft.dropoff} onClick={()=>void submit('shipping_code',tradePayload)}>配送コードを表示</button>{qr&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}<button type="button" className="btn" disabled={disabled||!latestCode} onClick={()=>void submit('verify_shipping',tradePayload)}>店舗での受付を確認</button></>}
    <button type="button" className="btn primary" disabled={disabled||!proof||proof.kind==='register_package'&&!posted} onClick={()=>setConfirming('ship_notice')}>発送通知</button>
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>

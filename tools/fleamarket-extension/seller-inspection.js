@@ -1,4 +1,4 @@
-import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.135';
+import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.137';
 const PROFILE_ACCOUNTS={
  'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':'auctions-1',
  'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1',
