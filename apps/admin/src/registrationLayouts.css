@@ -73,3 +73,5 @@
  .layout .registration-workspace.with-expense { grid-template-columns:minmax(0,1fr); }
  .layout .registration-workspace > .registration-form { grid-row:1; position:static; }
 }
+html:has(.registration-workspace) { scrollbar-gutter:stable; }
+.layout:has(.registration-workspace) { align-content:start; }
