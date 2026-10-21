@@ -16,3 +16,5 @@ createRoot(document.getElementById('root')!).render(
   </React.StrictMode>,
 );
 import './inventoryLayout.css';
+
+import './listingLayout.css';
