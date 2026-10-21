@@ -1,6 +1,8 @@
+import {pacedTabs} from './navigation-pacing.js';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
 import {siteFor,assertSiteUrl,itemId} from './core.js';
 export async function supplierQueuedOperations({settings,rpc,tabs,content,log}){
+ tabs=pacedTabs(tabs);
  const accounts=settings.accounts.filter(account=>account.enabled);if(settings.mode==='diagnostic'||!accounts.length)return;
  const rows=await rpc('extension_supplier_queue',{p_account_ids:accounts.map(account=>account.id)});if(!Array.isArray(rows)||!rows.length)return;
  const job=rows[0],account=accounts.find(value=>value.id===job.account_id);if(!account||!await rpc('extension_claim_supplier_operation',{p_id:job.id,p_account_id:account.id}))return;
