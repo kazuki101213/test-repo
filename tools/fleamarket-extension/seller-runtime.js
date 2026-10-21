@@ -1,7 +1,7 @@
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.139';
-import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.139';
+import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.140';
+import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.140';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
-import {sellerDomOperation} from './seller-dom.js?v=0.1.139';
+import {sellerDomOperation} from './seller-dom.js?v=0.1.140';
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 export async function normalizeSellerPhoto({file,site}){
  if(site!=='auctions'||file.type==='image/jpeg')return file;
@@ -90,13 +90,16 @@ export function advanceMercariShippingSize({itemId,size,shippingMethod='らく�
 }
 /** Called only for an app-requested shipping operation, not a display inspection. */
 export function advanceMercariShippingPlace({itemId,dropoff}){
+ try{
  if(location.hostname!=='jp.mercari.com'||location.pathname!=='/transaction/'+itemId+'/shipping_facilities'||!/^m[0-9]{8,14}$/.test(itemId))throw Error('対象取引の発送場所選択画面ではありません');
  const visible=e=>e.getClientRects().length>0,norm=s=>String(s||'').replace(/[\s\-−–]/g,'');
  const values={'セブンイレブン':'SEVEN_ELEVEN','ヤマト営業所':'YAMATO_OFFICE'},postal={'ローソン':'ローソン','郵便局':'郵便局'};
  const wanted=values[dropoff],label=postal[dropoff];if(!wanted&&!label)throw Error('発送場所を確認できません');
- const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&(wanted?e.value===wanted:norm([...e.labels].map(l=>l.innerText).join(''))===label));
+ const radioLabel=e=>norm([e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText)].filter(Boolean).join(' '));
+ const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&(wanted?e.value===wanted:radioLabel(e).startsWith(label)||norm(e.value)===label));
  const buttons=[...document.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled&&e.innerText.trim()==='選択して完了する');if(radios.length!==1||buttons.length!==1)throw Error('発送場所の選択肢を1件に確認できません');
  const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('発送場所の選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
+ }catch(error){return {__error:error.message};}
 }
 export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log,repair=null,hourly=false,now=Date.now()}){
  if(hourly&&!sellerHourlyReady(settings,records,now))return;

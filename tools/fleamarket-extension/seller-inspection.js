@@ -1,4 +1,4 @@
-import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.139';
+import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.140';
 const PROFILE_ACCOUNTS={
  'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':'auctions-1',
  'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1',
@@ -12,6 +12,7 @@ export function sellerInspectionApplies(request,profileId,previous,now=Date.now(
  if(request.saleEvidence!=null&&(request.saleEvidence!==true||request.sellerListsOnly!==true||!request.accountId))return false;
  if(request.accountId!=null&&(!request.sellerListsOnly||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
  if(request.sellerListsOnly!=null&&(request.sellerListsOnly!==true||!request.accountId&&profileId!=='ba92b386-e0bc-48be-b3b6-ca9550fa1a2d'))return false;
+ if(request.readShippingPlaceOnly!=null&&(request.readShippingPlaceOnly!==true||!request.targetSerial||!request.targetItemId))return false;
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
  if(request.readShippingQrOnly!=null&&(request.readShippingQrOnly!==true||profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||request.targetSerial!=='1805a'||request.targetItemId!=='m99125688368'))return false;
  return request.kind==='seller-readonly-structure'&&(profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||!!request.targetItemId||request.sellerListsOnly===true)&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&['f29f12b6-35f2-4e9f-8312-a8321ddf3c12','51502a66-28a6-4af0-81ea-660e63d8b66c'].includes(profileId))&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
@@ -87,6 +88,9 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
    evidence.pages.push({kind:'target-shipping',...await session.structure()});
    if(evidence.target.serialMatches!==true||!evidence.target.sellerShipping||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定商品に発送待ちの出品者画面を確認できません');
+   if(request.readShippingPlaceOnly===true){
+    await session.go('https://jp.mercari.com/transaction/'+request.targetItemId+'/shipping_facilities');evidence.pages.push({kind:'shipping-place-structure',...await session.structure()});evidence.status='completed';return true;
+   }
    if(request.readShippingQrOnly===true){
     const job={external_id:request.targetItemId,trade_key:'inspection:'+request.id,channel:'メルカリ',payload:{}};
     const result=await session.operation(job,'read_shipping_code',{waitForShippingCode:true});evidence.qr={captured:typeof result.qr_code==='string'&&result.qr_code.startsWith('data:image/png;base64,'),format:result.qr_code?'image/png':null,dataLength:result.qr_code?.length||0};evidence.pages.push({kind:'existing-shipping-qr',...await session.structure()});evidence.status=evidence.qr.captured?'completed':'stopped';return true;
