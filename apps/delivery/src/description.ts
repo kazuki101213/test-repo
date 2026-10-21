@@ -46,7 +46,10 @@ function listingTitle(input: { target: DescriptionTarget; product: string; itemN
   const { target, product, itemNumber, modelNo, manufacturer } = input;
   const model = modelNo.trim() || product;
   const maker = manufacturer.trim();
-  if (target === 'mercari') return `【${itemNumber}】${model}${maker ? `　${maker}` : ''}`;
+  if (target === 'mercari') {
+    const category = product === 'ブルーレイレコーダー' && !model.includes(product) ? `　${product}` : '';
+    return `【${itemNumber}】${model}${maker ? `　${maker}` : ''}${category}`;
+  }
   if (target === 'yahoo-auction') {
     const category = product === 'ブルーレイレコーダー' ? '　ブルーレイレコーダー' : '';
     return `${model}${maker ? `　${maker}` : ''}${category}【${itemNumber}】`;
