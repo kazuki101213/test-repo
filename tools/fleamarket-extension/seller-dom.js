@@ -152,18 +152,19 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
 
   await waitFor(()=>{const images=[...photoZone.querySelectorAll('img')].filter(image=>visible(image)&&image.complete&&image.naturalWidth>0&&/blob:|data:image|photo|image|mercari|yahoo/i.test(image.src)&&!/削除|回転|拡大/.test(image.alt));const count=job.channel==='ヤフオク'?new Set(images.map(image=>image.closest('li')).filter(Boolean)).size:images.length;return !root.querySelector('[aria-busy="true"]')&&!/アップロード中|画像を処理中/.test(text())&&count===files.length&&(job.channel!=='ヤフオク'||yahooPhotoSignature(files.length)!==null);},'写真のアップロード完了を確認できません',job.channel==='ヤフオク'?90000:20000);
   if(title.value!==payload.title||descriptionField().value!==payload.description||Number(price.value)!==payload.price||descriptionEditor()&&norm(descriptionEditor().innerText)!==norm(payload.description))throw Error('出品内容が入力値と一致しません');
+  if(job.channel==='ヤフオク'&&controls().some(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e))))await waitFor(()=>{const buttons=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));return buttons.length===1&&!buttons[0].disabled;},'出品内容の確認ボタンが有効になりません',20000);
   globalThis.__bussanSellerOperation={id:job.id,submitted:false,signature:formSignature(),photoZone,photos:imageSignature(photoZone),photoCount:files.length,uploadedPhotos:yahooPhotoSignature(files.length),expected:expectedValues(),title,description:descriptionField(),price,auctionOptionsConfirmed};return {prepared:true};
  }
  if(phase==='preview_listing'){
   const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||!prepared.photoZone?.isConnected||prepared.photos!==imageSignature(prepared.photoZone)||job.channel==='ヤフオク'&&prepared.uploadedPhotos!==yahooPhotoSignature(prepared.photoCount))throw Error('出品確認前の入力内容が変更されています');
-  const confirm=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));if(confirm.length>1)throw Error('確認画面への入口が曖昧です');if(confirm.length===1){setTimeout(()=>confirm[0].click(),100);return {confirmation_requested:true};}
+  const confirm=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));if(confirm.length>1)throw Error('確認画面への入口が曖昧です');if(confirm.length===1){if(confirm[0].disabled)throw Error('出品内容の確認ボタンが無効です');setTimeout(()=>confirm[0].click(),100);return {confirmation_requested:true};}
   return {prepared:true,stoppedBeforePublish:true,photoCount:files.length||prepared.photoZone.querySelectorAll('img').length};
  }
  if(phase==='publish'){
   const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||!prepared.photoZone?.isConnected||prepared.photos!==imageSignature(prepared.photoZone)||job.channel==='ヤフオク'&&prepared.uploadedPhotos!==yahooPhotoSignature(prepared.photoCount)||prepared.title.value!==payload.title||prepared.description.value!==payload.description||Number(prepared.price.value)!==payload.price)throw Error('出品直前の内容を確認できません');
   const forms=[...root.querySelectorAll('form')].filter(visible);if(forms.some(form=>!form.checkValidity()))throw Error('出品に必要な項目が不足しています');
   const confirm=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));
-  if(confirm.length===1){confirm[0].click();return {confirmation:true};}
+  if(confirm.length===1){if(confirm[0].disabled)throw Error('出品内容の確認ボタンが無効です');confirm[0].click();return {confirmation:true};}
   if(job.channel==='ヤフオク'&&!prepared.auctionOptionsConfirmed)throw Error('自動延長・再出品の設定を確認できません。出品は送信しません');
   const button=oneButton(['出品する','出品']);reserve();button.click();return {submitted:true};
  }
