@@ -71,6 +71,28 @@ export default function Inventory({ me }: { me: Staff }) {
   const items=inventory.rows,count=inventory.total,loading=inventory.loading;
   const viewItems=useMemo(()=>filterInventoryColumns(items.filter(item=>matchesInventoryFilters(item,inventoryFilters)),columnFilters),[items,columnFilters,inventoryFilters]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const purchasePanel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!purchaseOpen) return;
+    const panel = purchasePanel.current;
+    if (!panel) return;
+    let frame = 0;
+    const fit = () => {
+      panel.style.setProperty('--purchase-panel-top', `${Math.ceil(Math.max(16, panel.getBoundingClientRect().top))}px`);
+    };
+    const scheduleFit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    };
+    fit();
+    window.addEventListener('resize', scheduleFit);
+    window.addEventListener('scroll', scheduleFit, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', scheduleFit);
+      window.removeEventListener('scroll', scheduleFit);
+    };
+  }, [purchaseOpen]);
   const { rows: purchaseDrafts, setRows: setPurchaseDrafts, loading: draftsLoading, error: draftError, setError: setDraftError, updated: draftsUpdated, refresh: loadPurchaseDrafts } = usePurchaseDrafts(fetchPurchaseDrafts);
   const [selectedPurchaseDraft, setSelectedPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [dismissingDraft, setDismissingDraft] = useState<string | null>(null);
@@ -159,8 +181,7 @@ export default function Inventory({ me }: { me: Staff }) {
       </div>
       </div>
 
-      {purchaseOpen && <section id="inventory-purchase-panel" className="inventory-purchase-panel registration-sidebar" aria-label="在庫登録" style={{ minWidth: 0 }}>
-        {selectedPurchaseDraft && <p>仕入れリストから登録: {selectedPurchaseDraft.title}</p>}
+      {purchaseOpen && <section ref={purchasePanel} id="inventory-purchase-panel" className="card inventory-purchase-panel registration-sidebar" aria-label="在庫登録" style={{ minWidth: 0 }}>
         <NewPurchase key={selectedPurchaseDraft?.id ?? 'new'} me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
       </section>}
 
