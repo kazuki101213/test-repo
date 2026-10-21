@@ -237,7 +237,12 @@ export async function checkExistingListing(session,job,account){
   if(owned){await session.go(target);const proof=await session.operation({...job,external_id:targetId},'listing_ended');return {...proof,account_id:account.id,ownership_source:'seller_closed_list'};}
  }
  if(matches.size!==1)throw Error('出品済み商品を1件に確認できません。商品URLを入力して確認してください');
- const row=[...matches.values()][0];await session.go(sellerUrl(account,row.url));
+ const row=[...matches.values()][0];
+ // A seller row may end with statistics/edit/trade links for the same ID.
+ // Confirm ownership above, then read the public item page rather than that auxiliary URL.
+ if(!(account.site==='mercari'?/^m[0-9]+$/:/^[a-z][0-9]+$/i).test(row.external_id||''))throw Error('出品済み商品のIDを確認できません');
+ const publicUrl=account.site==='mercari'?'https://jp.mercari.com/item/'+row.external_id:'https://auctions.yahoo.co.jp/jp/auction/'+row.external_id;
+ await session.go(sellerUrl(account,publicUrl));
  const result=await session.operation(job,'listing_result');if(result.external_id!==row.external_id)throw Error('出品済み商品の照合結果が一致しません');return result;
 }
 /** A claimed write is never reclaimed after failure, suspension, or an uncertain outcome. */
