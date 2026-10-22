@@ -73,6 +73,13 @@ function mercariDescription(product: string, skuText: string) {
   return `${intro[product]}\n\nAI生成による検索用\n${searchTerms[product]}${skuText ? `　${skuText}` : ''}`;
 }
 
+export function withReportedDamage(value:string,hasDamage:boolean):string {
+  if (!hasDamage || !value.trim() || value.includes('はそんがあります。')) return value;
+  const marker='AI生成による検索用';
+  if (value.includes(marker)) return value.replace(marker,`はそんがあります。\n${marker}`);
+  return `${value}\nはそんがあります。`;
+}
+
 function yahooAuctionDescription(product: string, condition: string, skuText: string, hasPhysicalDamage = false) {
   const damaged = condition === '傷や汚れあり' || condition === '全体的に状態が悪い';
   const recorder = [

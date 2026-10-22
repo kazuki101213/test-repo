@@ -3,7 +3,7 @@ import { useListingKeywords } from '../useListingKeywords';
 import { useEffect, useState, type FormEvent } from 'react';
 import { productModelText, type DeliveryTask, type SellerDraft } from '@bussan/shared';
 import { fetchProductMaker, saveDeliveryDescription } from '../api';
-import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, type DescriptionTarget } from '../description';
+import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, withReportedDamage, type DescriptionTarget } from '../description';
 
 function initialTarget(task: DeliveryTask): DescriptionTarget {
   if (task.sales_channel === 'メルカリ') return 'mercari';
@@ -45,7 +45,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
   const [manufacturer, setManufacturer] = useState(embedded?.manufacturer??'');
   const savedChannel=task.description?.match(/^商品名（(メルカリ|ヤフオク)）/)?.[1];
   const savedForOtherChannel=!!savedChannel&&['メルカリ','ヤフオク'].includes(task.sales_channel??'')&&savedChannel!==task.sales_channel;
-  const [manual, setManual] = useState<string | null>(savedForOtherChannel?null:task.description || null);
+  const [manual, setManual] = useState<string | null>(savedForOtherChannel?null:withReportedDamage(task.description??'',task.sales_channel==='ヤフオク'&&task.has_physical_damage===true)||null);
   const [saved, setSaved] = useState(Boolean(task.description)&&!savedForOtherChannel);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');

@@ -1,9 +1,9 @@
 import {catalogProductCategory,productModelText,sellerDefaults,type DeliveryTask} from '@bussan/shared';
-import {buildDescription,conditionForTarget,PRODUCT_TYPES} from './description';
+import {buildDescription,conditionForTarget,PRODUCT_TYPES,withReportedDamage} from './description';
 
 /** Use the same templates as the description editor; saved edits always win. */
 export function listingDraft(task:DeliveryTask,manufacturer:string,listingSkus:string[]=[]){
- const defaults=sellerDefaults(task);
+ const defaults=sellerDefaults({...task,description:withReportedDamage(task.description??'',task.sales_channel==='ヤフオク'&&task.has_physical_damage===true)});
  const template=task.description_template;
  const product=catalogProductCategory(task)??PRODUCT_TYPES.find(value=>value===template)??defaults.category;
  const target=task.sales_channel==='ヤフオク'?'yahoo-auction':task.sales_channel==='メルカリ'?'mercari':'amazon';
