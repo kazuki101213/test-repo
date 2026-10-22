@@ -20,7 +20,7 @@ begin
    if not exists(select 1 from app.items where id=item and condition=expected and sales_channel='ヤフオク' and status='商品登録前' and sku=original_sku and planned_price=30000 and workflow_previous_sales_channel='メルカリ' and workflow_decision='yahoo' and malfunction_resolved_at is not null) then
     raise exception 'Condition/identity/transition mismatch for % / %',kind,grade;
    end if;
-   if (select count(*) from app.spare_accessories where usage_note=seq::text)<>case when kind='ヤフオク その他' then 0 else 1 end then raise exception 'Bundled remote separation mismatch';end if;
+   if (select count(*) from app.spare_accessories where usage_note=seq::text)<>(case when kind='ヤフオク その他' then 0 else 1 end) then raise exception 'Bundled remote separation mismatch';end if;
    if (select count(*) from app.item_comments where id=reply)<>1 then raise exception 'Duplicate reply';end if;
   end loop;
  end loop;
