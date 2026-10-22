@@ -10,7 +10,7 @@ import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
   PurchaseDraft, SpareAccessory,
 } from '@bussan/shared';
-import { createItem, fetchCards, findInventoryForAmazonReturn, fetchProducts, fetchStaff, nextLotSeq } from '../api';
+import { createItem, fetchCards, findInventoryForAmazonReturn, fetchProduct, fetchProducts, fetchStaff, nextLotSeq } from '../api';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -135,7 +135,9 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setPlannedPrice(draft.planned_price ?? '');
     setPlannedPayout(draft.planned_payout ?? '');
     setProductId(draft.product_id ?? '');
-    if (draft.product_id) fetchProducts().then(setProducts).catch(() => undefined);
+    let active=true;
+    if (draft.product_id) fetchProduct(draft.product_id).then(product=>{if(active && product)setProducts(current=>current.some(row=>row.id===product.id)?current:[...current,product]);}).catch(()=>undefined);
+    return()=>{active=false;};
   }, [draft?.id]);
 
   useEffect(() => {

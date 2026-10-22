@@ -1,3 +1,5 @@
+import {invalidateReadCache} from './readCache';
+import {clearPhotoUrlCache} from './photoUrlCache';
 import { createClient, type User } from '@supabase/supabase-js';
 import type { Staff } from './types';
 
@@ -30,6 +32,9 @@ export function getSupabase(): AppClient {
   }
 
   client = createAppClient(url, key);
+  client.auth.onAuthStateChange(event=>{
+    if(['SIGNED_OUT','SIGNED_IN','USER_UPDATED'].includes(event)){invalidateReadCache();clearPhotoUrlCache();}
+  });
   return client;
 }
 
@@ -95,6 +100,7 @@ export async function signIn(email: string): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  invalidateReadCache();clearPhotoUrlCache();
   // 管理画面のログアウトで、独立したChrome拡張機能の認証を失効させない。
   await getSupabase().auth.signOut({ scope: 'local' });
 }

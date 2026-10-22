@@ -1,3 +1,4 @@
+import {sessionRead,stablePhotoUrls,invalidateReadCache,clearPhotoUrlCache} from '@bussan/shared';
 import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition, ItemStatus } from '@bussan/shared';
 
@@ -269,6 +270,8 @@ export async function requestMarketplaceMessageSync(itemId: string): Promise<str
 }
 
 export async function uploadPhoto(sku: string, itemId: string, staffId: string, originalFile: File, purpose: 'product'|'packing' = 'product') {
+  invalidatePhotoReads();
+  try {
   const sb = getSupabase();
   const file = await preparePhotoForUpload(originalFile);
   const path = `${sku}/${crypto.randomUUID()}.jpg`;
@@ -293,7 +296,9 @@ export async function uploadPhoto(sku: string, itemId: string, staffId: string, 
     throw error;
   }
   return path;
+  } finally {invalidatePhotoReads();}
 }
+function invalidatePhotoReads(){invalidateReadCache('photo-list:');clearPhotoUrlCache();}
 export interface ItemPhoto {
   id: string;
   url: string;
@@ -301,25 +306,32 @@ export interface ItemPhoto {
 }
 
 export async function fetchPhotoUrls(itemId: string, purpose: 'product'|'packing' = 'product'): Promise<ItemPhoto[]> {
+ return sessionRead('photo-list:'+itemId+':'+purpose,0,async user=>{
   const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, action: 'list', purpose } });
   if (error) {
     const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
     throw new Error(message || error.message);
   }
   if (!Array.isArray(data?.photos)) throw new Error('同じ通番号の写真を取得できませんでした。');
-  return data.photos as ItemPhoto[];
+  return stablePhotoUrls(user,data.photos as ItemPhoto[]);
+ });
 }
 
 export async function deletePhoto(photoId: string): Promise<void> {
+  invalidatePhotoReads();
+  try {
   const { data, error } = await getSupabase().functions.invoke('delivery-photo-delete', { body: { photoId } });
   if (error) {
     const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
     throw new Error(message || error.message);
   }
   if (data?.deleted !== true) throw new Error('写真の削除結果を確認できません。');
+  } finally {invalidatePhotoReads();}
 }
 
 export async function reflectOriginalProductPhotos(itemId: string): Promise<{ added: number; total: number; sourceSerial: string }> {
+  invalidatePhotoReads();
+  try {
   const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, action: 'reflect', purpose: 'product' } });
   if (error) {
     const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
@@ -327,6 +339,7 @@ export async function reflectOriginalProductPhotos(itemId: string): Promise<{ ad
   }
   if (!data || typeof data.added !== 'number' || typeof data.total !== 'number' || typeof data.sourceSerial !== 'string') throw new Error('写真の反映結果を確認できません。');
   return data;
+  } finally {invalidatePhotoReads();}
 }
 
 export interface PhotoReviewState {
@@ -353,6 +366,8 @@ export async function fetchPhotoReviewPolicy(): Promise<boolean> {
 function announceReturnTaskChange(){if(typeof window!=='undefined'&&typeof window.dispatchEvent==='function')window.dispatchEvent(new Event('delivery-return-tasks-changed'));}
 
 export async function addPhotosToDrive(itemId: string, purpose: 'product'|'packing' = 'product'): Promise<{ added: number; total: number }> {
+  invalidatePhotoReads();
+  try {
   const { data, error } = await getSupabase().functions.invoke('delivery-photo-drive', { body: { itemId, purpose } });
   if (error) {
     const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
@@ -361,6 +376,7 @@ export async function addPhotosToDrive(itemId: string, purpose: 'product'|'packi
   if (!data || typeof data.total !== 'number') throw new Error('Googleドライブの保存結果を確認できません。');
   announceReturnTaskChange();
   return data;
+  } finally {invalidatePhotoReads();}
 }
 
 export async function fetchDeliveryStaff(): Promise<{ id: string; name: string }[]> {
