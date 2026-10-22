@@ -1,3 +1,5 @@
+import {yahooTrackingPage,yahooTrackingFallback} from './yahoo-tracking-fallback.js';
+import {paceNavigation} from './navigation-pacing.js';
 import {pacedTabs} from './navigation-pacing.js';
 import {runPurchaseRefresh} from './purchase-refresh.js';
 import {runSellerReadOnlyInspection} from './seller-inspection.js?v=0.1.143';
@@ -117,7 +119,7 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
   const a=prepareAccount(job.accounts[job.accountIndex]),r=job.settings.recipes[a.site]||{};
   if(job.stage==='sending'){await recoverSend(job,a);return;}
   try{
-    if(job.strategy==='purchase-import'){await purchaseImportStep(job,a,{rpc,navigate,read:content,save:async job=>STORE.set({job}),nextAccount,task,log,lease:async(job,a,action)=>rpc('marketplace_purchase_lease',{p_marketplace:SITES[a.site].db[0],p_owner:job.id,p_action:action}),dbSite:SITES[a.site].db[0],verifyAccount:async(job,a)=>{await navigate(job,a,a.identity.pageUrl||a.listUrl);const x=await content(job.tabId,'identity',{account:a});if(x.auth)throw new Error(x.auth);if(x.confirmed!==true)throw new Error('名前不一致: 登録名を確認できません');}});return;}if(job.strategy==='inventory-first'){if(await rpc('marketplace_purchase_lease',{p_marketplace:SITES[a.site].db[0],p_owner:job.id,p_action:'acquire'})!==true)return;await inventoryFirstStep(job,a,{rpc,navigate,read:content,save:async job=>STORE.set({job}),nextAccount,log,verifyAccount:async(job,a)=>{await navigate(job,a,a.identity.pageUrl||a.listUrl);const x=await content(job.tabId,'identity',{account:a});if(x.auth)throw new Error(x.auth);if(x.confirmed!==true)throw new Error('名前不一致: 登録名を確認できません');},dbSite:SITES[a.site].db[0]});return;}
+    if(job.strategy==='purchase-import'){await purchaseImportStep(job,a,{rpc,navigate,read:content,save:async job=>STORE.set({job}),nextAccount,task,log,lease:async(job,a,action)=>rpc('marketplace_purchase_lease',{p_marketplace:SITES[a.site].db[0],p_owner:job.id,p_action:action}),dbSite:SITES[a.site].db[0],verifyAccount:async(job,a)=>{await navigate(job,a,a.identity.pageUrl||a.listUrl);const x=await content(job.tabId,'identity',{account:a});if(x.auth)throw new Error(x.auth);if(x.confirmed!==true)throw new Error('名前不一致: 登録名を確認できません');}});return;}if(job.strategy==='inventory-first'){if(await rpc('marketplace_purchase_lease',{p_marketplace:SITES[a.site].db[0],p_owner:job.id,p_action:'acquire'})!==true)return;await inventoryFirstStep(job,a,{rpc,navigate,read:content,readTrackingFallback:PRODUCTION_PLAN.trackingMessageFallback===true&&a.site==='auctions'?readYahooTracking:null,save:async job=>STORE.set({job}),nextAccount,log,verifyAccount:async(job,a)=>{await navigate(job,a,a.identity.pageUrl||a.listUrl);const x=await content(job.tabId,'identity',{account:a});if(x.auth)throw new Error(x.auth);if(x.confirmed!==true)throw new Error('名前不一致: 登録名を確認できません');},dbSite:SITES[a.site].db[0]});return;}
     if(job.stage==='list'){
       if(job.seenPages.includes(job.pageUrl)||job.seenPages.length>=20)throw new Error('取引一覧のページ数または巡回重複を確認してください');
       const listRecipe=['messages','purchases'].includes(job.kind)?{...r,includeCompleted:true}:r;
@@ -325,11 +327,11 @@ async function retryRakumaRepair(){
  const repairId=state.job.id;for(let n=0;n<50;n++){const current=await STORE.get('job');if(current.job?.id!==repairId||busy)break;await step();await wait(500);}
 }
 async function retryYahooTrackingRepair(){
- const request='2026-10-22-user-requested-tracking-refresh-v1';const {job,diagnosticInstance,lastYahooTrackingRepair}=await STORE.get(['job','diagnosticInstance','lastYahooTrackingRepair']);
+ const request='2026-10-22-tracking-message-fallback-verify-v1';const {job,diagnosticInstance,lastYahooTrackingRepair}=await STORE.get(['job','diagnosticInstance','lastYahooTrackingRepair']);
  if(busy||job||lastYahooTrackingRepair===request||diagnosticInstance!=='ba92b386-e0bc-48be-b3b6-ca9550fa1a2d')return;
  const s=await getSettings();if(s.mode!=='tracking'||s.trackingPolicy!=='inventory-first'||!s.accounts.some(a=>a.enabled&&a.id==='auctions-1'))return;
  await start('tracking',true);const state=await STORE.get('job');state.job.accounts=state.job.accounts.filter(a=>a.id==='auctions-1');state.job.pageUrl=state.job.accounts[0].listUrl;await STORE.set({job:state.job,lastYahooTrackingRepair:request});
- await log('info','利用者の更新依頼により、ヤフオク1の追跡番号だけ一度再確認します');
+ await log('info','メッセージと同梱対応の確認のため、ヤフオク1の未登録番号だけ一度再確認します');
  const repairId=state.job.id;for(let n=0;n<50;n++){const current=await STORE.get('job');if(current.job?.id!==repairId||busy)break;await step();await wait(500);}
 }
 
@@ -407,4 +409,23 @@ async function processPurchaseRefreshRequest(){
  if(!PRODUCTION_PLAN.profiles[diagnosticInstance]||operationPolicy&&!operationPolicy.includes('purchases'))return;
  await runPurchaseRefresh({request,profileId:diagnosticInstance,storage:STORE,settings:await getSettings(),busy:busy||sellerBusy||dailyStarting,start,log});
  }finally{purchaseRefreshBusy=false;}
+}
+
+async function readYahooTracking(job,account,row){
+ if(account.site!=='auctions')return null;
+ const execute=async(expectedItemId,phase='inspect')=>{
+  const before=await chrome.tabs.get(job.tabId);if(job.borrowedTab&&before.url!==job.borrowedTab.lastUrl)throw Error('画面確認待ち: 利用者がタブを変更しました');
+  const result=await chrome.scripting.executeScript({target:{tabId:job.tabId},func:yahooTrackingPage,args:[{expectedItemId,phase}]});
+  if(!result[0]?.result)throw Error(result[0]?.error?.message||'取引メッセージの読み取り結果がありません');if(result[0].result.__error)throw Error(result[0].result.__error);return result[0].result;
+ };
+ const fallback=await yahooTrackingFallback({itemId:row.itemId,navigate:url=>navigate(job,account,url),inspect:id=>execute(id),
+  openMessages:id=>paceNavigation(()=>execute(id,'open-messages')),
+  settle:async(id,beforeUrl)=>{
+   await wait(1500);await loaded(job.tabId,'auctions');const tab=await chrome.tabs.get(job.tabId),u=new URL(tab.url);
+   if(u.origin!=='https://contact.auctions.yahoo.co.jp'||!/^\/trade\/(?:top|message|messages)\/?$/.test(u.pathname)||receiptItemId('auctions',tab.url)!==id)throw Error('画面確認待ち: メッセージ切替後の取引IDが一致しません');
+   if(job.borrowedTab){if(job.borrowedTab.lastUrl!==beforeUrl)throw Error('画面確認待ち: 切替前のURLが一致しません');job.borrowedTab.lastUrl=tab.url;}
+   await wait(3500);
+  }
+ });
+ const {trackingFallbackEvidence=[]}=await STORE.get('trackingFallbackEvidence');await STORE.set({trackingFallbackEvidence:[...trackingFallbackEvidence,{at:new Date().toISOString(),accountId:account.id,itemId:row.itemId,result:fallback}].slice(-20)});return fallback;
 }
