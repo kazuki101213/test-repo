@@ -88,9 +88,11 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリのみです');
    await session.go('https://jp.mercari.com/transaction/'+request.targetItemId);
    evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
+   if(evidence.target.serialMatches!==true||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定の出品者取引を確認できません');
    if(evidence.target.serialMatches===true&&session.outboundReceipt)evidence.target.shippingReceipt=await session.outboundReceipt({channel:'メルカリ',external_id:request.targetItemId});
    if(request.inspectCarrierReceipt&&evidence.target.shippingReceipt?.trade_key){const proofs=await fetchCarrierReceipts({receipts:[evidence.target.shippingReceipt],parse:args=>session.parseCarrierReceipts(args)});evidence.target.carrierReceipt=[...proofs.values()][0]||null;}
    evidence.pages.push({kind:'target-shipping',...await session.structure()});
+   if(request.inspectCarrierReceipt){evidence.status='completed';return true;}
    if(evidence.target.serialMatches!==true||!evidence.target.sellerShipping||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定商品に発送待ちの出品者画面を確認できません');
    if(request.readShippingPlaceOnly===true){
     await session.go('https://jp.mercari.com/transaction/'+request.targetItemId+'/shipping_facilities');evidence.pages.push({kind:'shipping-place-structure',...await session.structure()});evidence.status='completed';return true;

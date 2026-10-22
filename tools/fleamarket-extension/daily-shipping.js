@@ -40,10 +40,15 @@ export function parseCarrierReceipts({html,carrier,receipts,now=Date.now()}){
   }else if(carrier==='japanpost'){
    // A number heading and its own history must share one result block.
    const headings=[...doc.querySelectorAll('h2,h3,h4,caption')].filter(e=>plain(e).replace(/\D/g,'')===r.tracking_number);
-   if(headings.length!==1)continue;let block=headings[0].parentElement;
-   for(let n=0;block&&n<3&&!block.querySelector('tr');n++)block=block.parentElement;
-   if(!block||block===doc.body)continue;
-   for(const row of block.querySelectorAll('tr')){const cells=[...row.querySelectorAll('td')].map(plain),idx=cells.findIndex(s=>s==='引受');if(idx<0)continue;const m=cells.join(' ').match(/(20\d{2})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);if(m)acceptance=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}T${m[4].padStart(2,'0')}:${m[5]}:00+09:00`;}
+   if(headings.length===1){let block=headings[0].parentElement;
+    for(let n=0;block&&n<3&&!block.querySelector('tr');n++)block=block.parentElement;
+    if(block&&block!==doc.body)for(const row of block.querySelectorAll('tr')){const cells=[...row.querySelectorAll('td')].map(plain),idx=cells.findIndex(s=>s==='引受');if(idx<0)continue;const m=cells.join(' ').match(/(20\d{2})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);if(m)acceptance=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}T${m[4].padStart(2,'0')}:${m[5]}:00+09:00`;}
+   }
+   // The official ten-number summary also proves a physical handling scan.
+   // Date-only scans use midnight, conservatively excluding scans before this trade.
+   if(!acceptance){const rows=[...doc.querySelectorAll('tr')].filter(row=>{const cells=[...row.querySelectorAll('td')];return cells.length>=4&&plain(cells[0]).replace(/\D/g,'')===r.tracking_number;});
+    if(rows.length===1){const cells=[...rows[0].querySelectorAll('td')].map(plain);if(/^(引受|中継|到着|持ち出し中|お届け先にお届け済み|配達完了|お届け済み)$/.test(cells[3])){const m=cells[2].match(/^(20\d{2})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?$/);if(m)acceptance=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}T${(m[4]||'00').padStart(2,'0')}:${m[5]||'00'}:00+09:00`;}}
+   }
   }
   const time=Date.parse(acceptance||''),part=String(r.trade_key||'').slice(String(r.trade_key||'').indexOf(':')+1),trade=Date.parse(part+(part.includes('T')?'':'T00:00')+'+09:00');
   if(!Number.isFinite(time)||!Number.isFinite(trade)||time<trade||time>now||now-time>90*86400000)continue;

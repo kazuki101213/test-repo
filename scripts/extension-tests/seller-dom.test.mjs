@@ -351,3 +351,20 @@ test('現在の出品者画面の送り状だけを読み、取引メッセー�
  await assert.rejects(p.evaluate(readOutboundReceipt,{channel:'メルカリ',external_id:'m888888888888'}));await p.close();
 });
 
+
+test('自動発送通知は今の送り状にだけ1回送り、メッセージ中の別番号や古い確認では送らない',async()=>{
+ for(const scenario of ['current','message-only','stale']){
+  const p=await page('<h1>取引画面</h1><p>らくらくメルカリ便</p><p>送り状番号：'+(scenario==='message-only'?'888888888888':'999999999999')+'</p><p id="state">発送してください</p><button id="notice">商品を発送したので、発送通知をする</button><h2>メッセージ</h2><p>送り状番号：999999999999</p>','https://jp.mercari.com/transaction/m999999999999');
+  await p.evaluate(()=>document.querySelector('#notice').onclick=()=>{document.body.dataset.sent=String(Number(document.body.dataset.sent||0)+1);document.querySelector('#state').textContent='発送通知が完了しました';document.querySelector('#notice').disabled=true;});
+  const job={id:'auto-'+scenario,channel:'メルカリ',external_id:'m999999999999',trade_key:'fixture',payload:{automatic_receipt:{accepted:true,tracking_number:'999999999999',observed_at:new Date(Date.now()-(scenario==='stale'?600000:0)).toISOString()}}};
+  const result=await p.evaluate(sellerDomOperation,{job,phase:'ship_notice',reportErrors:true});
+  if(scenario==='current'){assert.equal(result.notified,true);assert.equal(await p.evaluate(()=>document.body.dataset.sent),'1');}else{assert(result.__error);assert.equal(await p.evaluate(()=>document.body.dataset.sent),undefined);}await p.close();
+ }
+});
+
+test('郵便の10件照会は番号ごとの実取扱状態だけを使い、未登録や別荷物を混ぜない',async()=>{
+ const p=await page('<h1>fixture</h1>');const args={carrier:'japanpost',receipts:[{tracking_number:'999999999999',trade_key:'m999:2026-10-21T13:00'}],now:Date.UTC(2026,9,22,2),html:'<table><tr><td>999999999999</td><td>ゆうパック</td><td>2026/10/22</td><td>中継</td></tr><tr><td>888888888888</td><td>ゆうパック</td><td>2026/10/22</td><td>引受</td></tr></table>'};
+ assert.equal((await p.evaluate(parseCarrierReceipts,args)).length,1);
+ assert.equal((await p.evaluate(parseCarrierReceipts,{...args,html:args.html.replace('<td>中継</td>','<td>番号が見つかりません</td>')})).length,0);
+ assert.equal((await p.evaluate(parseCarrierReceipts,{...args,html:args.html.replace('2026/10/22','2026/10/19')})).length,0);await p.close();
+});
