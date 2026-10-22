@@ -308,3 +308,9 @@ test('ヤフオクの二段階確認では入力確認だけ進め、最終設�
  await p.evaluate(()=>{document.querySelector('button').remove();document.body.insertAdjacentHTML('beforeend','<table><tr><th>自動延長</th><td>あり</td></tr><tr><th>自動再出品</th><td>0回</td></tr></table><button onclick="document.body.dataset.published=1">出品する</button>');});
  assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'publish_confirmation',confirmationSteps:[step.confirmationStep]})).submitted,true);assert.equal(await p.evaluate(()=>document.body.dataset.published),'1');await p.close();
 });
+
+test('発送通知済みは配送情報と受取評価依頼の表示で確認し再送せず、進捗ラベルだけでは完了にしない',async()=>{
+ const p=await page('<h1>取引画面</h1><p>受取評価を依頼できます</p><h2>配送状況</h2><span>発送済み</span><span>輸送中</span><h2>配送情報</h2><h2>メッセージ</h2><button onclick="document.body.dataset.sent=1">発送済みの連絡をする</button>','https://jp.mercari.com/transaction/m123456789');
+ const job={id:'already-notified',channel:'メルカリ',external_id:'m123456789',trade_key:'fixture',payload:{}};
+ assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'ship_notice_preflight'})).alreadyNotified,true);assert.equal(await p.evaluate(()=>document.body.dataset.sent),undefined);await p.close();
+});

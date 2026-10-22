@@ -288,10 +288,14 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
    if(!job.url)throw Error('取引URLを取得できません');await session.go(job.url);
    let shippingPrepared=false;
    if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor){mutating=true;await session.prepareShipping(job);shippingPrepared=true;}else if(preflight.readyForCode){if(preflight.configuredDropoff!==job.payload.dropoff)throw Error('サイトの発送場所がアプリ設定と一致しません');shippingPrepared=true;}}
-   if(job.kind==='ship_notice'){phase='ship_notice_preflight';await session.operation(job,phase);}
-   mutating=['register_package','ship_notice','message_send','shipping_code'].includes(job.kind);phase=job.kind;
-   result=await session.operation(job,job.kind,{shippingPrepared});
-   if(job.kind==='shipping_code'&&result.code_requested){await session.loaded();result=await session.operation(job,'read_shipping_code',{waitForShippingCode:true});}
+   let notice;
+   if(job.kind==='ship_notice'){phase='ship_notice_preflight';notice=await session.operation(job,phase);}
+   if(notice?.alreadyNotified){result={notified:true,already_notified:true,observed_at:notice.observed_at,note:'サイトで発送通知済みを確認しました。再送していません'};}
+   else{
+    mutating=['register_package','ship_notice','message_send','shipping_code'].includes(job.kind);phase=job.kind;
+    result=await session.operation(job,job.kind,{shippingPrepared});
+    if(job.kind==='shipping_code'&&result.code_requested){await session.loaded();result=await session.operation(job,'read_shipping_code',{waitForShippingCode:true});}
+   }
   }
   status='succeeded';
  }catch(error){status=mutating&&!error.stoppedBeforePublish?'uncertain':'failed';result={note:error.message,phase,...(error.stoppedBeforePublish?{stopped_before_publish:true,confirmation_evidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shipping_evidence:error.shippingEvidence}:{})};

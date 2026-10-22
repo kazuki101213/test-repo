@@ -148,3 +148,9 @@ test('二段階の確認を待ち最終公開は一度だけ、確認の循環�
  assert.equal(publishes,loop?0:1);assert.equal(finished.p_status,loop?'failed':'succeeded');assert(checks<=3);
  }
 });
+
+test('サイトで通知済みなら状態確認だけで完了し通知ボタンは押さない',async()=>{
+ const phases=[];let finished;const job={id:'notice-completed',account_id:'mercari-2',channel:'メルカリ',kind:'ship_notice',url:'https://jp.mercari.com/transaction/m123',payload:{}};
+ await sellerQueuedOperations({settings,log:async()=>{},rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:(finished=args),openSession:async()=>({go:async()=>{},operation:async(_,phase)=>{phases.push(phase);return {ready:true,alreadyNotified:true,observed_at:'2026-01-01T00:00:00Z'};},close:async()=>{}})});
+ assert.deepEqual(phases,['ship_notice_preflight']);assert.equal(finished.p_status,'succeeded');assert.equal(finished.p_result.already_notified,true);
+});
