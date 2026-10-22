@@ -187,8 +187,26 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
      if(!after.rows.some(row=>!processed.has(row.external_id+'/'+row.status)))throw Error('追加の一覧を確認できません。再試行しません');
     }
    }
+   if(!hourly&&!repair&&shippingJobs.some(j=>j.account_id===account.id))await processDailyShipping({jobs:shippingJobs.filter(j=>j.account_id===account.id),session,rpc,log});
+   // Final financial reconciliation follows buyer feedback; reuse the harvested lists.
+   let feedbackChecks={};
+   if(!hourly&&feedbackSites.includes(account.site)&&feedbackRows.size){
+    const feedback=await processSellerFeedback({account,rows:[...feedbackRows.values()],session,rpc,storage,log,now});
+    if(feedback.errors)throw Error('購入者評価の結果確認が必要なため、このアカウントの販売反映を保留しました');
+    feedbackChecks=(await storage.get('sellerFeedbackChecks')).sellerFeedbackChecks||{};
+    if(account.site==='mercari')for(const row of feedbackRows.values()){
+     if(feedbackChecks[account.id+':'+row.external_id]?.state==='succeeded'&&!pending.some(v=>v.row.external_id===row.external_id))pending.push({row,action:'detail'});
+    }
+   }
    // Details are opened after harvesting lists so returning from a detail cannot reset infinite-scroll progress.
-   for(const {row,action} of pending){
+   for(const observation of pending){
+    let {row,action}=observation;
+    // Do not apply a transaction row collected before a successful evaluation.
+    const feedbackState=feedbackChecks[account.id+':'+row.external_id]?.state;
+    if(feedbackState==='unknown')continue;
+    if(account.site==='mercari'&&feedbackState==='succeeded'&&row.status==='取引中'){
+     row={...row,status:'販売済'};action='detail';
+    }
     try{
     let extra={};if(action==='detail'){
      const detail=await session.detail(row.detail_url,row.external_id);
@@ -200,8 +218,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
     if(result==='updated'||result==='registered'){updated++;remember(row);}else if(result==='unmatched')unmatched++;else if(result==='conflict')conflicts++;
     }catch(error){throw Error('商品ID '+row.external_id+'：'+error.message);}
    }
-   if(!hourly&&!repair&&shippingJobs.some(j=>j.account_id===account.id))await processDailyShipping({jobs:shippingJobs.filter(j=>j.account_id===account.id),session,rpc,log});
-   if(!hourly&&feedbackSites.includes(account.site)&&feedbackRows.size){const feedback=await processSellerFeedback({account,rows:[...feedbackRows.values()],session,rpc,storage,log,now});errors+=feedback.errors;}
+
    if(fullScan&&salesSeen){baselines[account.id]='serial-case-v2';await storage.set({sellerSaleBackfills:{...baselines}});}
   }catch(error){errors++;failures.push({accountId:account.id,error:error.message});await log('error',account.label+(hourly?'の4時間ごと販売確認を停止しました。次回の定期確認まで再実行しません：':'の販売確認を停止しました。自動再試行はしません：')+error.message);}
   finally{observationCache[account.id]=Object.fromEntries(Object.entries(cache).slice(-2000));await session?.close();}
