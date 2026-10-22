@@ -325,11 +325,11 @@ async function retryRakumaRepair(){
  const repairId=state.job.id;for(let n=0;n<50;n++){const current=await STORE.get('job');if(current.job?.id!==repairId||busy)break;await step();await wait(500);}
 }
 async function retryYahooTrackingRepair(){
- const request='2026-10-09-yahoo-redirect-v5';const {job,diagnosticInstance,lastYahooTrackingRepair}=await STORE.get(['job','diagnosticInstance','lastYahooTrackingRepair']);
+ const request='2026-10-22-user-requested-tracking-refresh-v1';const {job,diagnosticInstance,lastYahooTrackingRepair}=await STORE.get(['job','diagnosticInstance','lastYahooTrackingRepair']);
  if(busy||job||lastYahooTrackingRepair===request||diagnosticInstance!=='ba92b386-e0bc-48be-b3b6-ca9550fa1a2d')return;
  const s=await getSettings();if(s.mode!=='tracking'||s.trackingPolicy!=='inventory-first'||!s.accounts.some(a=>a.enabled&&a.id==='auctions-1'))return;
  await start('tracking',true);const state=await STORE.get('job');state.job.accounts=state.job.accounts.filter(a=>a.id==='auctions-1');state.job.pageUrl=state.job.accounts[0].listUrl;await STORE.set({job:state.job,lastYahooTrackingRepair:request});
- await log('info','ヤフオクの正常な画面移動の修正を確認するため、ヤフオク1の追跡番号だけ一度再確認します');
+ await log('info','利用者の更新依頼により、ヤフオク1の追跡番号だけ一度再確認します');
  const repairId=state.job.id;for(let n=0;n<50;n++){const current=await STORE.get('job');if(current.job?.id!==repairId||busy)break;await step();await wait(500);}
 }
 
