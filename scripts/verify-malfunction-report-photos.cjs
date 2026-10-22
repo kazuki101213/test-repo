@@ -4,22 +4,24 @@ const all=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...al
 const jsx=(type,props)=>({type,props});
 async function apiTest(){
  let uploads=[],reports=[],fail=false;
- const sb={functions:{invoke:async(name,{body})=>{assert.equal(name,'malfunction-report-photos');uploads.push({id:body.get('photoId'),order:body.get('sortOrder'),request:body.get('requestId')});return fail&&uploads.length===2?{error:{message:'Drive failure'}}:{data:{id:body.get('photoId')},error:null};}},rpc:async(name,args)=>{assert.equal(name,'submit_malfunction_report');reports.push(args);return{error:null};}};
+ const sb={functions:{invoke:async(name,{body})=>{assert.equal(name,'malfunction-report-photos');uploads.push({id:body.get('photoId'),order:body.get('sortOrder'),request:body.get('requestId')});return fail&&uploads.length===2?{error:{message:'Drive failure'}}:{data:{id:body.get('photoId')},error:null};}},rpc:async(name,args)=>{assert(['submit_malfunction_report','report_item_with_damage'].includes(name));reports.push(args);return{error:null};}};
  const context={exports:{},require:()=>({getSupabase:()=>sb}),File,Blob,FormData,createImageBitmap:async()=>({width:1,height:1,close(){}}),document:{createElement:()=>({getContext:()=>({fillRect(){},drawImage(){}}),toBlob:fn=>fn(new Blob([new Uint8Array([255,216,255])],{type:'image/jpeg'}))})}};
  vm.runInNewContext(compile('apps/delivery/src/api.ts'),context);
  const photos=[{id:'p1',file:new File(['1'],'front.png',{type:'image/png'})},{id:'p2',file:new File(['2'],'back.png',{type:'image/png'})}];
  await context.exports.submitMalfunctionReport({id:'item',status:'検品中'},'報告本文','request',photos);
  assert.equal(uploads.length,2);assert.equal(reports.length,1);assert.deepEqual(Array.from(reports[0].p_photo_ids),['p1','p2']);assert.deepEqual(uploads.map(p=>p.order),['0','1']);assert(uploads.every(p=>p.request==='request'));
+ uploads=[];reports=[];await context.exports.submitMalfunctionReport({id:'item',status:'検品中'},'録画不可。','damage-request',[],true);assert.equal(reports[0].p_has_physical_damage,true);assert.equal(reports[0].p_note,'録画不可。\nはそんがあります。');assert.equal(uploads.length,0);
  uploads=[];reports=[];fail=true;await assert.rejects(context.exports.submitMalfunctionReport({id:'item',status:'検品中'},'報告本文','request',photos),/Drive failure/);assert.equal(reports.length,0,'Partial upload cannot submit the report');
 }
 async function workflowTest(){
  let cursor=0,hooks=[],tree,sends=0,changed=0,error=null,fail=true;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;}];},useRef:initial=>hooks[cursor++]??={current:initial}};
  const shared={exports:{}};vm.runInNewContext(compile('packages/shared/src/workflow.ts'),shared);
- const ctx={exports:{},crypto:require('node:crypto').webcrypto,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared.exports:id==='./WorkflowConfirmation'?{default:'confirm'}:{performInventoryAction:async()=>{throw Error('Photos must use the atomic report API');},submitMalfunctionReport:async(task,note,request,photos)=>{sends++;assert.equal(note,'写真付き報告');assert.equal(photos.length,1);if(fail)throw Error('Drive failure');}}};
+ const ctx={exports:{},crypto:require('node:crypto').webcrypto,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared.exports:id==='./WorkflowConfirmation'?{default:'confirm'}:{performInventoryAction:async()=>{throw Error('Photos must use the atomic report API');},submitMalfunctionReport:async(task,note,request,photos,damage)=>{sends++;assert.equal(note,'写真付き報告');assert.equal(photos.length,1);assert.equal(damage,true);if(fail)throw Error('Drive failure');}}};
  vm.runInNewContext(compile('apps/delivery/src/components/WorkflowControls.tsx'),ctx);
  const render=()=>{cursor=0;tree=ctx.exports.default({task:{id:'item',sku:'1-test',status:'検品中',marketplace:'メルカリ'},onChanged:async()=>{changed++;},onError:e=>error=e});};
  render();all(tree).find(n=>n.props?.['data-action']==='report').props.onClick();render();all(tree).find(n=>n.type==='textarea').props.onChange({target:{value:'写真付き報告'}});render();
+ all(tree).find(n=>n.type==='input'&&n.props.type==='checkbox').props.onChange({target:{checked:true}});render();
  all(tree).find(n=>n.props?.['aria-label']==='報告写真を選択').props.onChange({target:{files:[{name:'front.jpg',type:'image/jpeg'}],value:'selected'}});render();
  const actions=all(tree).find(n=>n.props?.className==='workflow-report-actions');const buttons=all(actions).filter(n=>n.type==='button');assert.equal(buttons[0].props['aria-label'],'写真を追加（1枚）');assert.equal(buttons[1].props.children,'仕入担当者に報告');
  buttons[1].props.onClick();render();all(tree).find(n=>n.type==='confirm').props.onCancel();render();assert.equal(sends,0);

@@ -73,7 +73,7 @@ function mercariDescription(product: string, skuText: string) {
   return `${intro[product]}\n\nAI生成による検索用\n${searchTerms[product]}${skuText ? `　${skuText}` : ''}`;
 }
 
-function yahooAuctionDescription(product: string, condition: string, skuText: string) {
+function yahooAuctionDescription(product: string, condition: string, skuText: string, hasPhysicalDamage = false) {
   const damaged = condition === '傷や汚れあり' || condition === '全体的に状態が悪い';
   const recorder = [
     '知人宅で通常通り使用してました。',
@@ -82,7 +82,6 @@ function yahooAuctionDescription(product: string, condition: string, skuText: st
     '素人保管ですので、ご了承の程よろしくお願いいたします。',
     '素人のため、詳しいことは分かりません。',
     'ご覧いただきありがとうございます。',
-    ...(damaged ? ['破損あります。'] : []),
     'タイトルや説明文に誤りがある可能性がありますので、写真を優先してください。',
     'ノークレームノーリターンでお願いします。',
     'AI生成による検索用',
@@ -114,12 +113,15 @@ function yahooAuctionDescription(product: string, condition: string, skuText: st
     'AI生成による検索用',
     'テレビ　モニター　TV　21インチ　24インチ　27インチ　32インチ　フルHD　WQHD　4K　IPS　144Hz　165Hz　電源ケーブル　2ピンケーブル　3ピンケーブル　HDMIケーブル　同軸ケーブル　アンテナケーブル　ブルーレイレコーダー　ブルーレイプレーヤー　ブルーレイ・ディスク　BD　SONY　ソニー Panasonic　パナソニック　DIGA　ディーガ　SHARP　シャープ　AQUOS　アクオス　TOSHIBA　東芝　とうしば　REGZA　レグザ　B-casカード　mini B-casカード　リモコン　同時録画',
   ];
-  const text = (product === 'ブルーレイレコーダー' ? recorder : product === '小物' ? small : monitor).join('\n');
+  const lines = product === 'ブルーレイレコーダー' ? recorder : product === '小物' ? small : monitor;
+  if (hasPhysicalDamage) lines.splice(lines.indexOf('AI生成による検索用'), 0, 'はそんがあります。');
+  const text = lines.join('\n');
   return skuText ? `${text}\n${skuText}` : text;
 }
 
 export function buildDescription(input: {
   product: string; condition: string; accessories: string; year: string; sku?: string; listingSkus?: string[]; itemNumber?: string; modelNo?: string; manufacturer?: string;
+  hasPhysicalDamage?: boolean;
   target?: DescriptionTarget; inspected: boolean; cleaned: boolean; salesChannel: string | null;
 }): string {
   const { product, condition, accessories, year, target = 'amazon', inspected, cleaned, salesChannel } = input;
@@ -129,7 +131,7 @@ export function buildDescription(input: {
     const title = listingTitle({ target, product, itemNumber, modelNo: input.modelNo || '', manufacturer: input.manufacturer || '' });
     const listingSkus = Array.from(new Set((input.listingSkus?.length ? input.listingSkus : [input.sku || '']).map(value => value.trim()).filter(Boolean)));
     const skuText = listingSkus.map(value => `【${value}】`).join(' ');
-    const body = target === 'mercari' ? mercariDescription(product, skuText) : yahooAuctionDescription(product, condition, skuText);
+    const body = target === 'mercari' ? mercariDescription(product, skuText) : yahooAuctionDescription(product, condition, skuText, input.hasPhysicalDamage);
     return `商品名（${target === 'mercari' ? 'メルカリ' : 'ヤフオク'}）\n${title}\n\n説明文\n${body}`;
   }
   if (!accessories.trim()) return '';

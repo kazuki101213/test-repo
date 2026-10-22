@@ -7,6 +7,20 @@ assert.equal(next,'手入力の本文\n\nAI生成による検索用\nブルー�
 assert.equal(append(next,'BD レコーダー 録画機',['BD レコーダー 録画機'],'2500-test'),next);
 assert.equal(append('原文 AI旧語\n【sku】','AI新語',['AI旧語'],'sku'),'原文 AI旧語 AI新語\n【sku】');
 assert.equal(append('内容\n\nAI生成による検索用\n既存語　【sku】','追加語',[],'sku'),'内容\n\nAI生成による検索用\n既存語 追加語　【sku】');
+const description=load('apps/delivery/src/description.ts',{'./descriptionTemplates':load('apps/delivery/src/descriptionTemplates.ts')});
+for(const condition of description.CONDITIONS_BY_TARGET['yahoo-auction']){
+ const output=description.buildDescription({product:'ブルーレイレコーダー',condition,accessories:'',year:'',target:'yahoo-auction',inspected:false,cleaned:false,salesChannel:'ヤフオク',sku:'2403-test',modelNo:'DBR-T1009',manufacturer:'TOSHIBA'});
+ assert(!output.includes('破損あります'),'A condition rating is not evidence of physical damage');
+ assert(output.includes('知人宅で通常通り使用してました。'));
+}
+for(const product of ['ブルーレイレコーダー','モニター','テレビ','小物']){
+ const damaged=description.buildDescription({product,condition:'傷や汚れあり',accessories:'',year:'',target:'yahoo-auction',inspected:false,cleaned:false,salesChannel:'ヤフオク',hasPhysicalDamage:true});
+ assert.equal(damaged.split('はそんがあります。').length-1,1,'Explicit report adds hiragana once');
+ assert(!damaged.includes('破損あります。'));
+ const normal=description.buildDescription({product,condition:'傷や汚れあり',accessories:'',year:'',target:'yahoo-auction',inspected:false,cleaned:false,salesChannel:'ヤフオク',hasPhysicalDamage:false});
+ assert(!normal.includes('はそんがあります。'),'Rating alone never reports damage');
+}
+assert.equal(description.conditionForTarget('yahoo-auction','可'),'傷や汚れあり','Condition mapping is preserved');
 async function hooks(){
  let state=[],index=0,effects=[],timer,apiCalls=0,resolve,applied=[];
  const react={useRef(value){const i=index++;state[i]??={current:value};return state[i];},useState(value){const i=index++;if(!(i in state))state[i]=value;return[state[i],v=>{state[i]=typeof v==='function'?v(state[i]):v;}];},useEffect(fn,deps){const i=index++;if(!state[i]||deps.some((v,n)=>v!==state[i].deps[n])){state[i]?.cleanup?.();state[i]={deps};effects.push(()=>state[i].cleanup=fn());}}};

@@ -395,8 +395,10 @@ export async function completeDeliveryCompensation(itemId:string,requestId:strin
  if(error)throw error;announceReturnTaskChange();
 }
 export type ReportAttachment={id:string;file:File};
-export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'status'>,note:string,requestId:string,photos:ReportAttachment[]):Promise<void>{
- if(photos.length<1||photos.length>10)throw new Error('写真は1〜10枚で指定してください。');
+export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'status'>,note:string,requestId:string,photos:ReportAttachment[],hasPhysicalDamage?:boolean):Promise<void>{
+ if((photos.length<1&&hasPhysicalDamage===undefined)||photos.length>10)throw new Error('写真は1〜10枚で指定してください。');
+ const reportNote=hasPhysicalDamage?[note.trim(),'はそんがあります。'].filter(Boolean).join('\n'):note;
+ if(reportNote.length>2000)throw new Error('報告内容を短くしてください。');
  const sb=getSupabase();
  for(let index=0;index<photos.length;index++){
   const photo=photos[index]!;const file=await preparePhotoForUpload(photo.file);
@@ -406,7 +408,7 @@ export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'statu
   if(error||data?.error)throw new Error(data?.error||error?.message||'報告写真を保存できませんでした。');
   if(data?.id!==photo.id)throw new Error('報告写真の保存結果を確認できませんでした。');
  }
- const {error}=await sb.rpc('submit_malfunction_report',{p_item_id:task.id,p_expected_status:task.status,p_note:note,p_request_id:requestId,p_photo_ids:photos.map(photo=>photo.id)});
+ const {error}=await sb.rpc(hasPhysicalDamage===undefined?'submit_malfunction_report':'report_item_with_damage',{p_item_id:task.id,p_expected_status:task.status,p_note:reportNote,p_request_id:requestId,p_photo_ids:photos.map(photo=>photo.id),...(hasPhysicalDamage===undefined?{}:{p_has_physical_damage:hasPhysicalDamage})});
  if(error)throw error;
  announceReturnTaskChange();
 }

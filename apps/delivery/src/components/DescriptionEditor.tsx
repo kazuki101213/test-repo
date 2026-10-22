@@ -63,7 +63,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
   const serial = task.sku.match(/^(\d+[a-z]*)-/i)?.[1]?.toLowerCase() || String(task.lot_seq);
   const generated = buildDescription({
     product, condition, accessories, year, target, salesChannel: task.sales_channel,
-    inspected: task.inspected, cleaned: task.cleaned, sku: task.sku, listingSkus,
+    hasPhysicalDamage: task.has_physical_damage===true, inspected: task.inspected, cleaned: task.cleaned, sku: task.sku, listingSkus,
     itemNumber: serial, modelNo: productModelText(task), manufacturer,
   });
   const description = embedded?(target==='amazon'?embedded.value.description:joinMarketplaceListing(target,embedded.value.title,embedded.value.description)):manual ?? generated;
