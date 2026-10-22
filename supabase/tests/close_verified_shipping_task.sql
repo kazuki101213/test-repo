@@ -37,4 +37,3 @@ begin
  if (select shipped_on from app.items where id=item)<>current_date-30 then raise exception 'Historical dispatch date changed';end if;
 end $$;
 rollback;
-

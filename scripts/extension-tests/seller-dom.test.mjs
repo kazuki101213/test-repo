@@ -315,3 +315,9 @@ test('発送通知済みは配送情報と受取評価依頼の表示で確認�
  assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'ship_notice_preflight'})).alreadyNotified,true);assert.equal(await p.evaluate(()=>document.body.dataset.sent),undefined);await p.close();
 });
 
+
+test('出品入力の小文字エラーと必須入力の不備を診断に残す',async()=>{
+ const p=await page('<h1>出品</h1><p class="field-error">配送方法を選択してください</p><label>配送方法<input name="shipping-fixture" required></label>','https://auctions.yahoo.co.jp/sell/jp/show/preview');
+ const result=await p.evaluate(readSellerStructure);
+ assert(result.validationErrors.includes('配送方法を選択してください'));assert.equal(result.invalidFields[0].name,'shipping-fixture');await p.close();
+});
