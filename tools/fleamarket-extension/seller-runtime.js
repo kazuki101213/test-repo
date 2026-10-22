@@ -277,7 +277,12 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
    phase='prepare_listing';await session.operation(job,phase,{files});
    // Persisting the claim precedes the only publish attempt. A timeout is uncertain, never retried.
    mutating=true;phase='publish';let sent=await session.operation(job,'publish');
-   if(sent.confirmation){await session.loaded();phase='publish_confirmation';sent=await session.operation(job,'publish_confirmation');}
+   const confirmationSteps=[];let confirmations=0;
+   while(sent.confirmation){
+    if(++confirmations>3)throw Object.assign(Error('出品確認の画面遷移が多いため確定前に停止しました'),{stoppedBeforePublish:true});
+    if(sent.confirmationStep)confirmationSteps.push(sent.confirmationStep);
+    await session.loaded();phase='publish_confirmation';sent=await session.operation(job,'publish_confirmation',{confirmationSteps});
+   }
    await session.loaded();phase='listing_result';const listingResult=await session.operation(job,'listing_result');result=listingResult;
   }else{
    if(!job.url)throw Error('取引URLを取得できません');await session.go(job.url);

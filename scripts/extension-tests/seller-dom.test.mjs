@@ -298,3 +298,13 @@ test('配送情報の遅延表示が安定してから読み、メッセージ�
  const result=await p.evaluate(readShippingInspectionTarget,{serial:'2323',itemId:'m123456789'});
  assert(result.statusDetails.some(v=>v.text==='配達完了'&&v.heading==='配送状況'));assert(result.statusDetails.some(v=>v.text==='発送済み'&&v.heading==='メッセージ'));assert.equal(result.serialMatches,true);await p.close();
 });
+
+test('ヤフオクの二段階確認では入力確認だけ進め、最終設定が一致するまで公開しない',async()=>{
+ const job={id:'two-confirmations',channel:'ヤフオク',payload:{...listing.payload,condition:'やや傷や汚れあり',shippingPayer:'購入者負担',shippingMethod:'おてがる配送（ヤマト運輸）',autoExtend:true,autoRelist:false}};
+ const p=await page('<h1>出品</h1><p>'+[job.payload.title,job.payload.description,job.payload.price,job.payload.condition,'落札者','宅急便',job.payload.origin,job.payload.dispatchDays,job.payload.category].join(' ')+'</p><button onclick="document.body.dataset.confirmed=Number(document.body.dataset.confirmed||0)+1">確認する</button>','https://auctions.yahoo.co.jp/sell/jp/show/preview');
+ assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'check_listing_confirmation'})).intermediateConfirmation,true);assert.equal(await p.evaluate(()=>document.body.dataset.confirmed),undefined);
+ const step=await p.evaluate(sellerDomOperation,{job,phase:'publish_confirmation'});assert.equal(step.confirmation,true);assert.equal(await p.evaluate(()=>document.body.dataset.confirmed),'1');
+ const stopped=await p.evaluate(sellerDomOperation,{job,phase:'publish_confirmation',confirmationSteps:[step.confirmationStep],reportErrors:true});assert.equal(stopped.stoppedBeforePublish,true);assert.equal(await p.evaluate(()=>document.body.dataset.confirmed),'1');
+ await p.evaluate(()=>{document.querySelector('button').remove();document.body.insertAdjacentHTML('beforeend','<table><tr><th>自動延長</th><td>あり</td></tr><tr><th>自動再出品</th><td>0回</td></tr></table><button onclick="document.body.dataset.published=1">出品する</button>');});
+ assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'publish_confirmation',confirmationSteps:[step.confirmationStep]})).submitted,true);assert.equal(await p.evaluate(()=>document.body.dataset.published),'1');await p.close();
+});

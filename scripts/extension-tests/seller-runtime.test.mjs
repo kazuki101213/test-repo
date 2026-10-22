@@ -140,3 +140,11 @@ test('発送通知ボタンの準備失敗は未送信として失敗を返し�
  await sellerQueuedOperations({settings,log:async()=>{},rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:(finished=args),openSession:async()=>({go:async()=>{},operation:async(_,phase)=>{phases.push(phase);throw Error('通知は送信していません');},close:async()=>{}})});
  assert.deepEqual(phases,['ship_notice_preflight']);assert.equal(finished.p_status,'failed');assert.equal(finished.p_result.phase,'ship_notice_preflight');
 });
+
+test('二段階の確認を待ち最終公開は一度だけ、確認の循環は公開せず停止',async()=>{
+ for(const loop of [false,true]){
+ let finished,publishes=0,checks=0;const job={id:'two-stage',account_id:'mercari-2',kind:'listing',channel:'メルカリ',payload:{photos:[]}};
+ await sellerQueuedOperations({settings,log:async()=>{},rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:(finished=args),openSession:async()=>({go:async()=>{},links:async()=>[{text:'出品',url:'https://jp.mercari.com/sell/create'}],structure:async()=>({fileInputs:[{}]}),loaded:async()=>{},operation:async(_,phase,extra)=>{if(phase==='publish')return {confirmation:true};if(phase==='publish_confirmation'){checks++;if(loop||checks===1)return {confirmation:true,confirmationStep:'preview-fixture'};publishes++;return {submitted:true};}return phase==='listing_result'?{external_id:'m111',url:'https://jp.mercari.com/item/m111'}:{};},close:async()=>{}})});
+ assert.equal(publishes,loop?0:1);assert.equal(finished.p_status,loop?'failed':'succeeded');assert(checks<=3);
+ }
+});
