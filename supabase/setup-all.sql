@@ -13820,12 +13820,13 @@ begin
   begin accepted:=(p_proof->>'accepted_at')::timestamptz;trade_day:=substring(p_trade_key from ':([0-9]{4}-[0-9]{2}-[0-9]{2})')::date;exception when others then return null;end;
   if accepted is null or trade_day is null or (accepted at time zone 'Asia/Tokyo')::date<trade_day or accepted>clock_timestamp() or accepted<clock_timestamp()-interval '90 days' then return null;end if;
  end if;
- insert into app.seller_operations(item_id,actor_id,kind,channel,account_id,expected_status,expected_updated_at,payload,status,claimed_at)
- values(i.id,app.current_staff_id(),'ship_notice',l.channel,l.account_id,i.status,i.updated_at,
+ insert into app.seller_operations(id,item_id,actor_id,kind,channel,account_id,expected_status,expected_updated_at,payload,status,claimed_at)
+ values(gen_random_uuid(),i.id,app.current_staff_id(),'ship_notice',l.channel,l.account_id,i.status,i.updated_at,
  jsonb_build_object('trade_key',p_trade_key,'automatic_day',day,'automatic_receipt',p_proof),'running',clock_timestamp()) returning * into o;
  return to_jsonb(o)||jsonb_build_object('external_id',l.external_id,'trade_key',l.trade_key,'url',coalesce(l.trade_url,l.url));
 end $$;
 revoke all on function app.extension_daily_shipping_candidates(text[]),app.extension_claim_daily_shipping_notice(uuid,text,timestamptz,jsonb) from public,anon;
 grant execute on function app.extension_daily_shipping_candidates(text[]),app.extension_claim_daily_shipping_notice(uuid,text,timestamptz,jsonb) to authenticated;
+
 
 
