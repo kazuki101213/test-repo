@@ -6,7 +6,7 @@ const staff=[...codes,'FF','GG','JJ','NN'].reverse().map(code=>({id:code,code,na
 assert.deepEqual(Array.from(names.exports.deliveryStaffOptions(staff),s=>s.code),codes);
 assert.equal(names.exports.staffDisplayName({name:'old',code:'AA',display_name:'old'}),'AA 長部 一輝');
 const spare={id:'spare',title:'リモコン',cost_amount:1230,purchased_at:'2026-09-01',marketplace:'ヤフオク',marketplace_item_id:'spare-id',tracking_no:'spare-track',owner_staff_id:'AA'};
-let cursor=0, dirty=true, tree, pending=[], saved;const hooks=[];
+let cursor=0, dirty=true, tree, pending=[], saved, selectedDraft;const hooks=[];
 const react={
  useState(initial){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof initial==='function'?initial():initial};return[hooks[i].value,value=>{hooks[i].value=typeof value==='function'?value(hooks[i].value):value;dirty=true;}];},
  useLayoutEffect(){},
@@ -19,7 +19,7 @@ let currentSpares=[spare];
 const api={fetchStaff:async()=>staff,fetchCards:async()=>[{id:'amex',name:'アメックスカード'}],nextLotSeq:async()=>5000,fetchProducts:async()=>[],createItem:async(payload,id)=>{saved={payload,id};return{id:'created',sku:'body-sku',accessory_sku:'accessory-sku'};}};
 const context={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../purchaseUrl'?{buildPurchaseUrl:()=>null,parsePurchaseUrl:()=>null}:{default:'select'},setTimeout:fn=>{fn();return 1;},clearTimeout(){},Date,URL,window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
 vm.runInNewContext(compile('apps/admin/src/pages/NewPurchase.tsx'),context);
-function render(){cursor=0;dirty=false;tree=context.exports.default({me:staff.find(s=>s.code==='AA')});for(const fn of pending.splice(0))fn();}
+function render(){cursor=0;dirty=false;tree=context.exports.default({me:staff.find(s=>s.code==='AA'),draft:selectedDraft});for(const fn of pending.splice(0))fn();}
 async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.resolve();}}
 function all(node,output=[]){if(!node||typeof node!=='object')return output;if(Array.isArray(node)){node.forEach(n=>all(n,output));return output;}output.push(node);all(node.props?.children,output);return output;}
 function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props.children).some(c=>c.type==='span'&&c.props.children===label));assert(node,label);return all(node.props.children).find(n=>n.type==='input'||n.type==='select'||n.type==='textarea'||n.type==='default');}
@@ -42,6 +42,12 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
  api.createItem=async()=>{throw{message:'登録できません',details:'具体的な原因',hint:'再度確認してください'};};
  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
  assert(JSON.stringify(tree).includes('登録できません 具体的な原因 再度確認してください'));assert(!JSON.stringify(tree).includes('[object Object]'));assert.equal(field('型番').props.value,'維持する本体');
+ // A selected import product fetches exactly its ID, never the whole product catalog.
+ hooks.splice(0);cursor=0;pending=[];dirty=true;let lookups=[];
+ api.fetchProduct=async id=>{lookups.push(id);return{id,asin:'B000000003',model_no:'SELECTED',maker:'SONY'};};
+ api.fetchProducts=async()=>{throw Error('Full catalog must not be read for a selected product');};
+ selectedDraft={id:'draft',product_id:'selected-product',asin:'B000000003',model_no:'SELECTED',title:'SELECTED',marketplace:'ヤフオク',marketplace_item_id:'sample',purchased_at:'2026-10-01',cost_amount:1230};
+ await settle();assert.deepEqual(lookups,['selected-product']);assert.equal(field('ASIN').props.value,'B000000003');
  console.log('Stale reserve prevented before save, input preservation and plain database error display passed');
  console.log('Main form preserved on spare selection; one atomic save; exact eight ordered assignee options passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

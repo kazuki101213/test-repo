@@ -104,3 +104,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/explicit_damage_and_shipping_acti
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/close_verified_shipping_task.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/daily_shipping_notice.sql"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/daily_sales_summary.sql"

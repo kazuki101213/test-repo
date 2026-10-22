@@ -1,3 +1,4 @@
+import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
 import { workloadPeriod } from './workloadPeriod';
 import { getSupabase, usageRecordText, HELD_STATUSES } from '@bussan/shared';
@@ -11,10 +12,12 @@ import type {
 } from '@bussan/shared';
 
 export async function fetchStaff(): Promise<Staff[]> {
+ return sessionRead('master:staff',30000,async()=>{
   const { data, error } = await getSupabase()
     .from('staff').select('*').eq('is_active', true).order('code');
   if (error) throw error;
   return (data ?? []) as Staff[];
+ });
 }
 
 export type SpareAccessoryInput = Pick<SpareAccessory,
@@ -95,6 +98,7 @@ export async function updateSpareAccessory(id: string, field: SpareAccessoryFiel
 }
 
 export async function fetchCards(): Promise<{ id: string; name: string }[]> {
+ return sessionRead('master:cards',30000,async()=>{
   const { data, error } = await getSupabase()
     .from('payment_cards').select('id, name').eq('is_active', true).order('name');
   if (error) throw error;
@@ -103,6 +107,7 @@ export async function fetchCards(): Promise<{ id: string; name: string }[]> {
     const rank = (name: string) => { const index = paymentOrder.indexOf(name); return index < 0 ? paymentOrder.length : index; };
     return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ja');
   });
+ });
 }
 
 export async function fetchStockSummary(): Promise<StockSummary | null> {
@@ -592,6 +597,18 @@ export async function createProduct(input: { asin: string; model_no: string; mak
   if (productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
   const { error } = await getSupabase().from('products').insert({ asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null, product_no: productNo });
   if (error) throw error;
+}
+
+/** A draft already identifies its product; do not download the catalog to display it. */
+export async function fetchProduct(id:string):Promise<Product|null>{
+ const {data,error}=await getSupabase().from('products').select('*').eq('id',id).eq('is_active',true).maybeSingle();
+ if(error)throw error;return data as Product|null;
+}
+
+export type DailySalesSummary={days:{date:string;amount:number;count:number}[];conflicts:string[]};
+export async function fetchDailySalesSummary(from:string,to:string):Promise<DailySalesSummary>{
+ const {data,error}=await getSupabase().rpc('read_daily_sales_summary',{p_from:from,p_to:to});
+ if(error)throw error;return data as DailySalesSummary;
 }
 
 export async function fetchProducts(query?: string): Promise<Product[]> {

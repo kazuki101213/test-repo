@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { yen } from '@bussan/shared';
-import { fetchSaleRows } from '../api';
-import { dailySalesRange, groupProducts } from '../sales';
+import { fetchDailySalesSummary, type DailySalesSummary } from '../api';
+import { dailySalesRange } from '../sales';
 import DateInput from './DateInput';
-import type { ProductGroup } from '../sales';
 
 export default function DailySalesChart() {
   const [today, setToday] = useState(() => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10));
-  const [groups, setGroups] = useState<Map<string, ProductGroup>>(new Map());
+  const [snapshot,setSnapshot]=useState<{key:string;value:DailySalesSummary}|null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<number | null>(null);
@@ -19,17 +18,20 @@ export default function DailySalesChart() {
     const timer = window.setInterval(refreshDate, 60000);
     return () => window.clearInterval(timer);
   }, []);
+  const key=from+':'+to;
+  const rangeError=useMemo(()=>{
+    try{dailySalesRange([],from,to);return '';}catch(e){return e instanceof Error?e.message:String(e);}
+  },[from,to]);
   useEffect(() => {
-    let active = true;
-    fetchSaleRows().then(rows => { if (active) setGroups(groupProducts(rows)); })
-      .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
-  const { days, conflicts, rangeError } = useMemo(() => {
-    try { return { ...dailySalesRange(groups.values(), from, to), rangeError: '' }; }
-    catch (e) { return { days: [], conflicts: [], rangeError: e instanceof Error ? e.message : String(e) }; }
-  }, [groups, from, to]);
+    if(rangeError)return;
+    let active=true;setLoading(true);setError('');
+    const timer=setTimeout(()=>{void fetchDailySalesSummary(from,to)
+      .then(value=>{if(active)setSnapshot({key,value});})
+      .catch(e=>{if(active)setError(e instanceof Error?e.message:String(e));})
+      .finally(()=>{if(active)setLoading(false);});},200);
+    return()=>{active=false;clearTimeout(timer);};
+  },[from,to,key,rangeError]);
+  const {days,conflicts}=snapshot?.key===key?snapshot.value:{days:[],conflicts:[]};
   const period = `${from} 〜 ${to}`;
   const total = days.reduce((sum, d) => sum + d.amount, 0);
   const peak = Math.max(1, ...days.map(d => d.amount));
@@ -46,7 +48,7 @@ export default function DailySalesChart() {
       <label className="field"><span>終了日</span><DateInput value={to} min={from || undefined} onChange={e => { setRange({ from, to: e.target.value }); setSelected(null); }} /></label>
       <button className="btn" onClick={() => { setRange(null); setSelected(null); }}>直近7日間</button>
     </div>
-    {loading ? <p role="status">売上を読み込み中…</p> : error || rangeError ? <div className="error" role="alert">{error || rangeError}</div> : <>
+    {!rangeError&&loading ? <p role="status">売上を読み込み中…</p> : error || rangeError ? <div className="error" role="alert">{error || rangeError}</div> : <>
       <div className="sales-summary"><strong>{yen(total)}</strong><span>{days.reduce((n, d) => n + d.count, 0)}商品</span></div>
       <p className="sub">{period}</p>
       {conflicts.length > 0 && <div className="error">同じ通番号で販売記録が異なる{conflicts.length}商品は集計に含めていません。元の記録は保持しています。<details><summary>確認が必要な通番号</summary>{conflicts.join('、')}</details></div>}
