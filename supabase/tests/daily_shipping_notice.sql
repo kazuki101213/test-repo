@@ -4,8 +4,8 @@ values(998982,(select id from app.staff where code='AA'),(select id from app.sta
 update app.items set status='取引中',seller_trade_key='m99998200001:'||(current_date-2)::text where lot_seq=998982;
 insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade_url,trade_key)
 select id,'メルカリ','mercari-2','m99998200001','https://jp.mercari.com/item/m99998200001','https://jp.mercari.com/transaction/m99998200001',seller_trade_key from app.items where lot_seq=998982;
-insert into app.seller_operations(item_id,actor_id,kind,channel,account_id,expected_status,expected_updated_at,payload,status,result)
-select id,purchaser_id,'shipping_code','メルカリ','mercari-2',status,updated_at,jsonb_build_object('trade_key',seller_trade_key),'succeeded','{"qr_code":"fixture"}' from app.items where lot_seq=998982;
+insert into app.seller_operations(id,item_id,actor_id,kind,channel,account_id,expected_status,expected_updated_at,payload,status,result)
+select gen_random_uuid(),id,purchaser_id,'shipping_code','メルカリ','mercari-2',status,updated_at,jsonb_build_object('trade_key',seller_trade_key),'succeeded','{"qr_code":"fixture"}' from app.items where lot_seq=998982;
 set local role authenticated;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$begin
@@ -32,3 +32,4 @@ begin
  if (select shipped_on from app.items where app.items.id=i.id) is not null then raise exception 'Shipping date inferred';end if;
 end $$;
 rollback;
+

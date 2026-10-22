@@ -9,11 +9,12 @@ export function readOutboundReceipt({external_id,channel}){
  if(channel==='メルカリ'&&(location.hostname!=='jp.mercari.com'||location.pathname!=='/transaction/'+external_id))throw Error('対象取引が一致しません');
  if(channel==='ヤフオク'&&(!['contact.auctions.yahoo.co.jp','buy.auctions.yahoo.co.jp'].includes(location.hostname)||![...new URL(location.href).searchParams.values()].includes(external_id)))throw Error('対象取引が一致しません');
  const root=document.querySelector('main')||document.body;
- const nodes=[...root.querySelectorAll('p,span,dt,dd,td,th,div')].filter(e=>visible(e)&&!e.children.length&&!e.closest('textarea,button'));
+ const inMessages=e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return h&&/メッセージ|コメント/.test(normalize(h.innerText));};
+ const nodes=[...root.querySelectorAll('p,span,dt,dd,td,th,div')].filter(e=>visible(e)&&!inMessages(e)&&!e.children.length&&!e.closest('textarea,button'));
  const text=normalize(root.innerText.split(/メッセージ|取引メッセージ/)[0]);
  const numbers=new Set([...text.matchAll(/(?:送り状番号|お問い合わせ番号|お問合せ番号|追跡番号|伝票番号)\s*[:：]?\s*([0-9][0-9 -]{9,18}[0-9])/g)].map(m=>m[1].replace(/\D/g,'')));
  for(const n of nodes){if(!/^(送り状番号|お問い合わせ番号|お問合せ番号|追跡番号|伝票番号)[：:]?$/.test(normalize(n.innerText)))continue;const next=n.nextElementSibling||n.parentElement?.nextElementSibling;if(next&&visible(next)){const s=normalize(next.innerText);if(/^[0-9 -]{11,18}$/.test(s))numbers.add(s.replace(/\D/g,''));}}
- const links=[...root.querySelectorAll('a[href]')].filter(visible).flatMap(a=>{try{const u=new URL(a.href);if(u.protocol!=='https:')return [];const carrier=u.hostname==='toi.kuronekoyamato.co.jp'?'yamato':u.hostname==='trackings.post.japanpost.jp'?'japanpost':null;if(!carrier)return [];const values=[...u.searchParams.entries()].filter(([k])=>/^(number\d+|reqCodeNo\d+|requestNo\d+)$/i.test(k)).map(([,v])=>v.replace(/\D/g,''));return values.map(tracking_number=>({carrier,tracking_number}));}catch{return [];}});
+ const links=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&!inMessages(e)).flatMap(a=>{try{const u=new URL(a.href);if(u.protocol!=='https:')return [];const carrier=u.hostname==='toi.kuronekoyamato.co.jp'?'yamato':u.hostname==='trackings.post.japanpost.jp'?'japanpost':null;if(!carrier)return [];const values=[...u.searchParams.entries()].filter(([k])=>/^(number\d+|reqCodeNo\d+|requestNo\d+)$/i.test(k)).map(([,v])=>v.replace(/\D/g,''));return values.map(tracking_number=>({carrier,tracking_number}));}catch{return [];}});
  const carriers=new Set(links.map(l=>l.carrier));
  if(/らくらくメルカリ便|ヤマト運輸|宅急便/.test(text))carriers.add('yamato');
  if(/ゆうゆうメルカリ便|日本郵便|ゆうパック|ゆうパケット/.test(text))carriers.add('japanpost');
