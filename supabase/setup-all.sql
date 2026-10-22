@@ -13733,7 +13733,7 @@ revoke all on function app.report_item_with_damage(uuid,app.item_status,text,uui
 grant execute on function app.report_item_with_damage(uuid,app.item_status,text,uuid,uuid[],boolean) to authenticated;
 
 do $$declare d text;begin
- select pg_get_viewdef('app.v_delivery_tasks'::regclass,true) into d;
+ select regexp_replace(pg_get_viewdef('app.v_delivery_tasks'::regclass,true),';\s*$','') into d;
  execute 'create or replace view app.v_delivery_tasks with(security_invoker=true) as select v.*,i.has_physical_damage from ('||d||') v join app.items i on i.id=v.id';
 end $$;
 
