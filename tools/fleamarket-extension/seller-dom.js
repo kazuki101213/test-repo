@@ -8,6 +8,14 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  const controls=()=>[...root.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')].filter(visible);
  const buttonLabel=e=>norm(e.innerText||e.getAttribute('aria-label')||e.value);
+ const noticeNames=['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する','商品を発送したので、発送通知をする','商品を発送したので発送通知をする'];
+ function noticeButtons(){return controls().filter(e=>{
+  if(!noticeNames.includes(buttonLabel(e)))return false;
+  if(e.closest('form')?.querySelector('textarea'))return false;
+  const heading=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);
+  return !heading||!/メッセージ|コメント/.test(norm(heading.innerText));
+ });}
+
  function oneButton(names,scope=root){const values=[...scope.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')].filter(e=>visible(e)&&names.includes(buttonLabel(e)));if(values.length!==1||values[0].disabled)throw Error('操作ボタンを1件に確認できません：'+names[0]);return values[0];}
  const fields=()=>[...root.querySelectorAll('input:not([type="hidden"]):not([type="file"]),textarea,select')].filter(visible);
  function label(field){return norm([field.getAttribute('aria-label'),...(field.labels?[...field.labels].map(e=>e.innerText):[]),field.getAttribute('placeholder')].filter(Boolean).join(' '));}
@@ -110,7 +118,16 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  const postalMethod=()=>['ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].includes(payload.size)?payload.size:'ゆうパック';
  const expectedValues=()=>[payload.title,payload.description,String(payload.price),payload.condition,job.channel==='ヤフオク'&&/購入者/.test(payload.shippingPayer)?'落札者':payload.shippingPayer,job.channel==='ヤフオク'?/日本郵便/.test(payload.shippingMethod)?postalMethod():payload.size==='宅急便コンパクト'?'宅急便コンパクト':'宅急便':payload.shippingMethod,payload.origin,payload.dispatchDays,...String(payload.listingCategory||payload.category).split(/\s*[>＞]\s*/)];
  function exposedTextElement(element){if(!element||getComputedStyle(element).visibility!=='visible')return false;for(let current=element;current;current=current.parentElement){const style=getComputedStyle(current);if(current.hidden||current.getAttribute('aria-hidden')==='true'||style.display==='none'||style.contentVisibility==='hidden'||style.opacity==='0')return false;}return true;}
- function confirmationSetting(name){const values=[];for(const row of root.querySelectorAll('tr')){if(!exposedTextElement(row))continue;const cells=[...row.children];if(cells.length>=2&&norm(cells[0].innerText).replace(/[（(]無料[）)]/g,'')===name)values.push(norm(cells.slice(1).map(e=>e.innerText).join(' ')));}for(const label of root.querySelectorAll('dt'))if(exposedTextElement(label)&&norm(label.innerText)===name&&label.nextElementSibling?.tagName==='DD')values.push(norm(label.nextElementSibling.innerText));for(const marker of root.querySelectorAll('div,span,p,li,dt,th')){if(!exposedTextElement(marker)||norm(marker.textContent).replace(/[：:]$/,'')!==name)continue;const next=marker.nextElementSibling;if(next&&exposedTextElement(next)&&norm(next.textContent).length<60)values.push(norm(next.textContent));const group=marker.parentElement;if(group&&exposedTextElement(group)&&norm(group.textContent).length<100){const value=norm(group.textContent).replace(new RegExp('^'+name+'[：:]?\\s*'),'');if(value)values.push(value);}}if(name==='自動再出品'){const fixed=[...root.querySelectorAll('input[type=hidden][name=numResubmit]')];if(fixed.length>1||fixed.length===1&&!/^[0-9]+$/.test(fixed[0].value))return null;if(fixed.length===1)values.push(fixed[0].value+'回');}const unique=[...new Set(values.map(value=>norm(value).replace(/^[：:]\s*/,'' )).filter(value=>/^[0-9]+回$/.test(value)||['あり','する','有効','なし','しない','設定しない'].includes(value)))];if(unique.length!==1)return null;return unique[0];}
+ function confirmationSetting(name){const values=[];
+  if(job.channel==='ヤフオク'&&/^\/(?:sell\/)?jp\/show\/preview$/.test(location.pathname)){
+   const shown=candidates([name]).filter(exposedTextElement);
+   if(shown.length>1)return null;
+   if(shown.length===1){const control=shown[0];
+    if(control.type==='checkbox')values.push(name==='自動再出品'?(control.checked?'1回':'0回'):(control.checked?'あり':'なし'));
+    else if(control.tagName==='SELECT')values.push(norm(control.selectedOptions[0]?.text));
+   }
+  }
+  for(const row of root.querySelectorAll('tr')){if(!exposedTextElement(row))continue;const cells=[...row.children];if(cells.length>=2&&norm(cells[0].innerText).replace(/[（(]無料[）)]/g,'')===name)values.push(norm(cells.slice(1).map(e=>e.innerText).join(' ')));}for(const label of root.querySelectorAll('dt'))if(exposedTextElement(label)&&norm(label.innerText)===name&&label.nextElementSibling?.tagName==='DD')values.push(norm(label.nextElementSibling.innerText));for(const marker of root.querySelectorAll('div,span,p,li,dt,th')){if(!exposedTextElement(marker)||norm(marker.textContent).replace(/[：:]$/,'')!==name)continue;const next=marker.nextElementSibling;if(next&&exposedTextElement(next)&&norm(next.textContent).length<60)values.push(norm(next.textContent));const group=marker.parentElement;if(group&&exposedTextElement(group)&&norm(group.textContent).length<100){const value=norm(group.textContent).replace(new RegExp('^'+name+'[：:]?\\s*'),'');if(value)values.push(value);}}if(name==='自動再出品'){const fixed=[...root.querySelectorAll('input[type=hidden][name=numResubmit]')];if(fixed.length>1||fixed.length===1&&!/^[0-9]+$/.test(fixed[0].value))return null;if(fixed.length===1)values.push(fixed[0].value+'回');}const unique=[...new Set(values.map(value=>norm(value).replace(/^[：:]\s*/,'' )).filter(value=>/^[0-9]+回$/.test(value)||['あり','する','有効','なし','しない','設定しない'].includes(value)))];if(unique.length!==1)return null;return unique[0];}
  if(phase==='prepare_listing_payer'){await choose(['送料の負担','送料負担'],payload.shippingPayer);return {ready:true};}
  if(phase==='listing_preflight'){
   const title=field(['商品名','タイトル'],['name','Title','title']),description=descriptionField();
@@ -202,7 +219,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
     prices:[...document.body.innerText.matchAll(/[0-9０-９][0-9０-９,，]*\s*円/g)].slice(0,12).map(m=>m[0])};
    throw error;
   }
-  if(job.channel==='ヤフオク'&&(!['あり','する','有効'].includes(confirmationSetting('自動延長'))||!['なし','しない','0回','設定しない'].includes(confirmationSetting('自動再出品'))))throw Error('確認画面で自動延長あり・自動再出品なしを確認できません。出品は送信しません');
+  if(job.channel==='ヤフオク'&&(!['あり','する','有効'].includes(confirmationSetting('自動延長'))||!['なし','しない','0回','設定しない'].includes(confirmationSetting('自動再出品')))){const error=new Error('確認画面で自動延長あり・自動再出品なしを確認できません。出品は送信しません');error.stoppedBeforePublish=true;error.confirmationEvidence={path:location.pathname,autoExtend:confirmationSetting('自動延長'),autoRelist:confirmationSetting('自動再出品'),controls:['自動延長','自動再出品'].flatMap(name=>candidates([name]).map(e=>({label:name,type:e.type,checked:e.type==='checkbox'?e.checked:undefined,selected:e.tagName==='SELECT'?e.selectedOptions[0]?.text:undefined})))};throw error;}
   if(phase==='check_listing_confirmation')return {verified:true,stoppedBeforePublish:true};
   const button=oneButton(['出品する','ガイドラインに同意して出品する','上記のガイドライン、規約、情報提供等に同意して 出品する']);reserve();button.click();return {submitted:true};
  }
@@ -227,7 +244,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  }
  if(phase==='ship_notice_preflight'){
   if(job.channel==='メルカリ'&&location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送通知画面ではありません');
-  await waitFor(()=>{root=document.querySelector('main')||document.body;return controls().some(e=>!e.disabled&&['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する','発送済みの連絡をする'].includes(buttonLabel(e)));},'発送通知ボタンの表示を確認できません。通知は送信していません');
+  await waitFor(()=>{root=document.querySelector('main')||document.body;return noticeButtons().some(e=>!e.disabled);},'発送通知ボタンの表示を確認できません。通知は送信していません');
   tradeGuard();return {ready:true};
  }
  tradeGuard();
@@ -258,8 +275,23 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const input=field(['発送用コード','2次元コード','専用資材コード','ポスト発送確認用番号']);setValue(input,payload.code);const button=oneButton(['登録する','コードを登録','読み取り内容を登録']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(登録完了|読み取り完了|登録が完了しました|読み取りが完了しました)$/.test(value)),'専用資材の登録結果を確認できません');return {registered:true,note:'専用資材を対象取引へ登録しました'};
  }
  if(phase==='ship_notice'){
-  const button=oneButton(['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する','発送済みの連絡をする']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(発送通知をしました|発送通知が完了しました|商品の発送を通知しました|発送済み|配送中)$/.test(value))&&(!button.isConnected||button.disabled),'発送通知の結果を確認できません。再送しません');return {notified:true,note:'発送通知を送信しました'};
+  const buttons=noticeButtons();if(buttons.length!==1||buttons[0].disabled)throw Error('発送通知ボタンを1件に確認できません');const button=buttons[0];reserve();button.click();let confirmed=false;
+  const sentValues=()=>[...root.querySelectorAll('[role=status],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')&&!e.closest('button,a')).filter(e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return !h||!/メッセージ|コメント/.test(norm(h.innerText));}).map(e=>norm(e.innerText));
+
+  try{await waitFor(()=>{
+   root=document.querySelector('main')||document.body;
+   const completed=sentValues().some(value=>/^(発送通知をしました|発送通知が完了しました|商品の発送を通知しました|発送を通知しました|発送通知を送信しました|発送済み|配送中)$/.test(value)||/^(?:購入者(?:から|の)?の?)?受取評価(?:を|が|の)?(?:お待ちください|待ち|待っています)[。.]?$/.test(value));
+   if(completed&&(!button.isConnected||button.disabled))return true;
+   const dialogs=[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].filter(e=>visible(e)&&exposedTextElement(e)&&/発送/.test(e.innerText)&&!e.querySelector('textarea'));
+   if(!confirmed&&dialogs.length===1){
+    const matches=[...dialogs[0].querySelectorAll('button,input[type=submit]')].filter(e=>visible(e)&&!e.disabled&&['発送を通知する','発送通知をする','発送したことを通知する','商品を発送したので、発送通知をする','発送しました','通知する','はい'].includes(buttonLabel(e)));
+    if(matches.length===1){tradeGuard();confirmed=true;matches[0].click();}
+   }
+   return false;
+  },'発送通知の結果を確認できません。再送しません');}
+  catch(error){error.shippingEvidence={confirmationClicked:confirmed,dialogButtons:[...document.querySelectorAll('[role=dialog] button,[aria-modal=true] button')].filter(visible).map(buttonLabel).slice(0,8),status:sentValues().filter(v=>v.length<160&&/発送|配送|受取評価/.test(v)).slice(0,8)};throw error;}
+  return {notified:true,note:'発送通知を送信しました'};
  }
  throw Error('未対応の販売サイト操作です');
- }catch(error){if(reportErrors)return {__error:error.message,...(error.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:error.confirmationEvidence}:{})};throw error;}
+ }catch(error){if(reportErrors)return {__error:error.message,...(error.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shippingEvidence:error.shippingEvidence}:{})};throw error;}
 }
