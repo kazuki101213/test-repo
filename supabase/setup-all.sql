@@ -13670,7 +13670,7 @@ create index listing_ai_attempts_time on app.listing_ai_attempts(attempted_at);
 -- Only the Edge Function may claim; it validates Auth.getUser and item assignment first.
 -- A global advisory lock makes the quota and per-input claim atomic across instances.
 create function app.claim_listing_ai_keywords(p_item uuid,p_fingerprint text,p_actor uuid,p_force boolean default false)
-returns jsonb language plpgsql security definer set search_path=app,pg_temp as $$
+returns jsonb language plpgsql security invoker set search_path=app,pg_temp as $$
 declare row app.listing_ai_keywords; token uuid; history jsonb;
 begin
  perform pg_advisory_xact_lock(hashtext('app.listing_ai_keywords'));
