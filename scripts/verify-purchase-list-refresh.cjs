@@ -26,7 +26,7 @@ async function settle() { for (let n = 0; n < 12; n++) { if (dirty) { cursor = 0
   const retry = view.refresh(true); requests[3].resolve([]); await retry; await settle();
   assert.equal(view.rows.length, 0); assert.equal(view.error, null); assert.equal(view.updated.count, 0);
   const page = fs.readFileSync('apps/admin/src/pages/Inventory.tsx', 'utf8');
-  assert(page.includes('disabled={draftsLoading}')); assert(page.includes('loadPurchaseDrafts(true)'));
+  assert(page.includes('disabled={draftsLoading || purchaseSync.syncing')); assert(page.includes('purchaseSync.startSync()'));assert(!page.includes('onClick={() => void loadPurchaseDrafts(true)}'));
   assert(!page.includes('フリマの購入・落札履歴から取得した下書きです。'));
   console.log('PASS: purchase refresh loading, duplicate prevention, new rows/count/time, failure preservation and successful retry');
 })().catch(error => { console.error(error); process.exitCode = 1; });
