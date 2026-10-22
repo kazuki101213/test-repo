@@ -245,7 +245,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryField: InventoryField = i.is_accessory || (!i.model_no && i.marketplace !== '動作品Amazon返品') ? 'title' : 'model_no';
                 return (
                 <tr key={i.id} className={rowTone} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
-                  <td><button type="button" className="inventory-photo" onClick={() => setFullEditFor(sharedSaleItem)} title="クリックして商品情報を編集" aria-label={`${i.sku}の商品情報を編集`}>
+                  <td><button type="button" className="inventory-photo" onClick={() => setFullEditFor(sharedSaleItem)} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>
                     {i.amazon_image_url ? <img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /> : <span className="inventory-photo-empty">—</span>}
                   </button></td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
@@ -272,7 +272,7 @@ export default function Inventory({ me }: { me: Staff }) {
                   <td>{attachedAccessory ? <div className="inventory-cell-stack"><span>—</span><span>—</span></div> : stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
                   <td>{stacked(yen(i.inventory_refund_amount), 'inventory_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
                   <td><button type="button" className="inventory-cell-edit" onClick={() => edit('amazon_refund_amount')} title="Amazon返金金額をクリックして編集">{yen(i.amazon_refund_amount)}</button></td>
-                  <td>{i.memo ? (() => { const chars = Array.from(i.memo); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment({ sku: i.sku, label: '仕入担当者からのコメント', text: i.memo! })} title="仕入担当者からのコメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
+                  <td><button type="button" className="inventory-comment" onClick={() => edit('memo')} title="仕入担当者からのコメントを編集" aria-label={`${i.sku}の仕入担当者からのコメントを編集`}><span>{Array.from(i.memo ?? '').slice(0, 10).join('') || '—'}</span><span>{Array.from(i.memo ?? '').slice(10, 20).join('')}{Array.from(i.memo ?? '').length > 20 ? '…' : ''}</span></button></td>
                   <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment({ sku: i.sku, label: '納品担当者からのコメント', text: i.latest_comment! })} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
                   <td><div className="inventory-cell-stack inventory-sale-status"><span>{i.status || '—'}</span><span className="muted">{i.is_accessory ? '付属品' : '本体'}</span></div></td>
                 </tr>
@@ -380,13 +380,13 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     try { await deleteInventoryItem(item); onSaved(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : '削除できませんでした。'); setBusy(false); }
   }
-  return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報を編集">
-    <div className="card inventory-full-edit-panel"><h3>商品情報を編集</h3><p className="sku">{item.sku}</p>
+  return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報編集">
+    <div className="card inventory-full-edit-panel"><h3>商品情報編集</h3><p className="sku">{item.sku}</p>
       <div className="grid cols2">
         <label className="field"><span>通番号</span><input type="number" min={1} step={1} value={identity.lot_seq} onChange={event => setIdentity(current => ({ ...current, lot_seq: Number(event.target.value) }))} /></label>
-        <label className="field"><span>SKU</span><input value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
+        <label className="field"><span>SKU</span><input type="text" value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
         <label className="field"><span>品番</span><input type="number" min={1} step={1} value={identity.product_no ?? ''} onChange={event => setIdentity(current => ({ ...current, product_no: event.target.value ? Number(event.target.value) : null }))} /></label>
-        <label className="field"><span>型番</span><input value={identity.model_no ?? ''} onChange={event => setIdentity(current => ({ ...current, model_no: event.target.value || null }))} /></label>
+        <label className="field"><span>型番</span><input type="text" value={identity.model_no ?? ''} onChange={event => setIdentity(current => ({ ...current, model_no: event.target.value || null }))} /></label>
         <label className="field"><span>支払い方法</span><select value={cardId} disabled={!paymentReady || busy} onChange={event => setCardId(event.target.value)}>
           <option value="">{paymentReady ? '未設定' : '読み込み中…'}</option>
           {cards.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}
@@ -412,7 +412,7 @@ const fieldLabels: Record<InventoryField, string> = {
   is_accessory: '登録区分',
   title: '商品名', asin: 'ASIN', tracking_no: '追跡番号', purchased_at: '仕入日',
   cost_amount: '仕入金額', planned_price: '販売予定金額', planned_payout: '振込予定金額',
-  packed_on: '作業完了日', shipped_on: '出荷日', status: '作業状態', memo: 'メモ',
+  packed_on: '作業完了日', shipped_on: '出荷日', status: '作業状態', memo: '仕入担当者からのコメント',
   purchaser_id: '仕入担当者', deliverer_id: '納品担当者', marketplace: '仕入先',
   condition: '商品状態', sales_channel: '販売先', sold_on: '販売日',
   sold_price: '販売金額', payout_amount: '振込金額', amazon_refund_amount: 'Amazon返金金額',

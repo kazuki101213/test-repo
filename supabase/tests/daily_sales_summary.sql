@@ -1,4 +1,6 @@
 begin;
+-- Represent legacy conflicting sale rows; production guards remain unchanged.
+alter table app.items disable trigger items_single_product_sale;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 set local role authenticated;
 do $$
@@ -22,6 +24,9 @@ begin
  if (select prosecdef from pg_proc where oid='app.read_daily_sales_summary(date,date)'::regprocedure) then raise exception 'Aggregation must respect caller RLS';end if;
  if has_function_privilege('anon','app.read_daily_sales_summary(date,date)','execute') then raise exception 'Anonymous aggregation access';end if;
 end $$;
+reset role;
+alter table app.items enable trigger items_single_product_sale;
+set local role authenticated;
 -- Deliverer sees no other staff's financial rows through the aggregation.
 set local request.jwt.claim.sub='33333333-3333-3333-3333-333333333333';
 do $$begin

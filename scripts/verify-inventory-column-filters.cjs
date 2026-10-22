@@ -6,7 +6,7 @@ const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/sr
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
 const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);
 const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',memo:'購入者コメント\n続き',latest_comment:'納品者コメント',status:'受取前',marketplace:'Amazon返品',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
-const rows=[row,{...row,id:'2',sku:'2204c-AAII-20260901-123',is_accessory:true,title:'remote',cost_amount:1230,sold_price:200,payout_amount:150,product_sold_price:9999,product_payout_amount:8888},{...row,id:'3',sku:'2277b-AAII-20261007-100',lot_seq:2277,cost_amount:2000,amazon_refund_amount:0,purchased_at:null}];
+const rows=[row,{...row,id:'2',sku:'2204c-AAII-20260901-123',is_accessory:true,title:'remote',cost_amount:1230,sold_price:200,payout_amount:150,product_sold_price:9999,product_payout_amount:8888},{...row,id:'3',sku:'2277b-AAII-20261007-100',lot_seq:2277,cost_amount:2000,amazon_refund_amount:0,purchased_at:null,memo:null}];
 const f=(values=null,from='',to='')=>({values,from,to});const apply=filters.exports.filterInventoryColumns;
 assert.equal(apply(rows,{amazon_refund:f(null,'-2000','-1')}).length,2);
 assert.equal(apply(rows,{cost:f(null,'1000','1230'),registration:f(['本体'])}).length,1);
@@ -49,8 +49,8 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  initialRead=false;dirty=true;await settle();
  const commentHeadings=all(tree).filter(n=>n.type==='button'&&['仕入担当者からのコメントのフィルター','納品担当者からのコメントのフィルター'].includes(n.props['aria-label']));assert.equal(commentHeadings[0].props['aria-label'],'仕入担当者からのコメントのフィルター');
  const commentButtons=all(tree).filter(n=>n.type==='button'&&n.props.className==='inventory-comment');assert.equal(commentButtons.length,6);
- commentButtons[0].props.onClick();await settle();assert(all(tree).some(n=>n.type==='p'&&n.props.children===row.memo));
- all(tree).find(n=>n.type==='button'&&n.props.children==='閉じる').props.onClick();await settle();
+ commentButtons[0].props.onClick();await settle();let memoEditor=all(tree).find(n=>n.props?.field==='memo');assert.equal(memoEditor.props.item.memo,row.memo);memoEditor.props.onClose();await settle();
+ commentButtons[4].props.onClick();await settle();memoEditor=all(tree).find(n=>n.props?.field==='memo');assert.equal(memoEditor.props.item.memo,null);memoEditor.props.onClose();await settle();
  commentButtons[1].props.onClick();await settle();assert(all(tree).some(n=>n.type==='p'&&n.props.children===row.latest_comment));
  all(tree).find(n=>n.type==='button'&&n.props.children==='閉じる').props.onClick();await settle();
  const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');

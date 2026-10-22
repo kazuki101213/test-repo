@@ -136,7 +136,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setPlannedPayout(draft.planned_payout ?? '');
     setProductId(draft.product_id ?? '');
     let active=true;
-    if (draft.product_id) fetchProduct(draft.product_id).then(product=>{if(active)setProducts(product?[product]:[]);}).catch(()=>undefined);
+    if (draft.product_id) fetchProduct(draft.product_id).then(product=>{if(active && product)setProducts(current=>current.some(row=>row.id===product.id)?current:[...current,product]);}).catch(()=>undefined);
     return()=>{active=false;};
   }, [draft?.id]);
 
