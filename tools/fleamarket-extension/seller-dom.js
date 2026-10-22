@@ -184,7 +184,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const prepared=current();if(prepared?.id!==job.id||prepared.submitted||prepared.signature!==formSignature()||!prepared.photoZone?.isConnected||prepared.photos!==imageSignature(prepared.photoZone)||job.channel==='ヤフオク'&&prepared.uploadedPhotos!==yahooPhotoSignature(prepared.photoCount)||prepared.title.value!==payload.title||prepared.description.value!==payload.description||Number(prepared.price.value)!==payload.price)throw Error('出品直前の内容を確認できません');
   const forms=[...root.querySelectorAll('form')].filter(visible);if(forms.some(form=>!form.checkValidity()))throw Error('出品に必要な項目が不足しています');
   const confirm=controls().filter(e=>['確認画面へ','確認する','出品内容を確認する'].includes(buttonLabel(e)));
-  if(confirm.length===1){if(confirm[0].disabled)throw Error('出品内容の確認ボタンが無効です');confirm[0].click();return {confirmation:true};}
+  if(confirm.length===1){if(confirm[0].disabled)throw Error('出品内容の確認ボタンが無効です');setTimeout(()=>confirm[0].click(),100);return {confirmation:true,confirmationStep:location.pathname+'|initial'};}
   if(job.channel==='ヤフオク'&&!prepared.auctionOptionsConfirmed)throw Error('自動延長・再出品の設定を確認できません。出品は送信しません');
   const button=oneButton(['出品する','出品']);reserve();button.click();return {submitted:true};
  }
@@ -228,7 +228,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
    const step=location.pathname+'|'+root.querySelectorAll('input,select,textarea').length+'|'+text().length;
    if(phase==='check_listing_confirmation')return {verified:false,stoppedBeforePublish:true,intermediateConfirmation:true};
    if(intermediate[0].disabled||confirmationSteps.includes(step)){const error=new Error('出品の入力確認画面が進まないため確定前に停止しました');error.stoppedBeforePublish=true;throw error;}
-   intermediate[0].click();return {confirmation:true,confirmationStep:step};
+   setTimeout(()=>intermediate[0].click(),100);return {confirmation:true,confirmationStep:step};
   }
   if(job.channel==='ヤフオク'&&(!['あり','する','有効'].includes(confirmationSetting('自動延長'))||!['なし','しない','0回','設定しない'].includes(confirmationSetting('自動再出品')))){const error=new Error('確認画面で自動延長あり・自動再出品なしを確認できません。出品は送信しません');error.stoppedBeforePublish=true;error.confirmationEvidence={path:location.pathname,autoExtend:confirmationSetting('自動延長'),autoRelist:confirmationSetting('自動再出品'),controls:['自動延長','自動再出品'].flatMap(name=>candidates([name]).map(e=>({label:name,type:e.type,checked:e.type==='checkbox'?e.checked:undefined,selected:e.tagName==='SELECT'?e.selectedOptions[0]?.text:undefined})))};throw error;}
   if(phase==='check_listing_confirmation')return {verified:true,stoppedBeforePublish:true};
@@ -307,3 +307,4 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  throw Error('未対応の販売サイト操作です');
  }catch(error){if(reportErrors)return {__error:error.message,...(error.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shippingEvidence:error.shippingEvidence}:{})};throw error;}
 }
+
