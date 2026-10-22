@@ -1,4 +1,5 @@
 export const PRODUCTION_PLAN={
+  "trackingMessageFallback": true,
   "sellerFeedbackSites": ["mercari", "auctions"],
   "id": "2026-10-07-purchase-two-weeks",
   "mode": "tracking",

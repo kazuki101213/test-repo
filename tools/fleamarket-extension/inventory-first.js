@@ -41,14 +41,18 @@ export async function inventoryFirstStep(job,a,services){
   const row=job.matchRows[job.index];await navigate(job,a,row.url);
   let tx;try{tx=await read(job.tabId,'detail',{account:a,recipe:{scope:'main'}});}catch(e){
    if(!/^(取引の商品IDを1件に確定できません|対象要素が1件に限定できません: main)$/.test(e.message||''))throw e;
-   job.counts.errors++;await task(row.inventory,'画面確認待ち',e.message);job.index++;return save(job);
+   if(services.readTrackingFallback){tx=await services.readTrackingFallback(job,a,row);}
+   else{job.counts.errors++;await task(row.inventory,'画面確認待ち',e.message);job.index++;return save(job);}
   }
   if(tx.auth)throw new Error(tx.auth);
+  if(tx.itemId===row.itemId&&tx.role!=='seller'&&!tx.trackingNo&&!tx.trackingAmbiguous&&services.readTrackingFallback&&!tx.trackingSource){
+   tx=await services.readTrackingFallback(job,a,row);if(tx.auth)throw new Error(tx.auth);
+  }
   job.counts.checked++;
   if(tx.itemId!==row.itemId||tx.role==='seller'){await task(row.inventory,'画面確認待ち','商品IDまたは購入者側の詳細を確認できません');}
   else if(!tx.trackingNo||tx.trackingAmbiguous){await task(row.inventory,'追跡番号記載なし',tx.trackingAmbiguous?'番号を1件に確定できません':'');}
   else{
-   const result=await rpc('reconcile_marketplace_tracking',{p_marketplace:dbSite,p_account_label:a.label,p_marketplace_item_id:row.itemId,p_site_tracking_no:tx.trackingNo,p_confirmation_status:null,p_details:JSON.stringify({inventory_id:row.inventory.id,reason:'追跡番号登録',note:'名前='+a.identity.text+'; 購入一覧の商品ID一致を確認'})});
+   const result=await rpc('reconcile_marketplace_tracking',{p_marketplace:dbSite,p_account_label:a.label,p_marketplace_item_id:row.itemId,p_site_tracking_no:tx.trackingNo,p_confirmation_status:null,p_details:JSON.stringify({inventory_id:row.inventory.id,reason:'追跡番号登録',note:'名前='+a.identity.text+'; 購入一覧の商品ID一致を確認; 取得元='+(tx.trackingSource||'transaction')+'; 同梱ID='+(tx.bundleIds||[]).join(',')})});
    if(result.result==='updated')job.counts.updated++;await log('info',result.status||result.result,{account:a.label,sku:row.inventory.sku,itemId:row.itemId});
   }
   job.index++;return save(job);
