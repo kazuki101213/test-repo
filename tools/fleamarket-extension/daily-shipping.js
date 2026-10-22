@@ -11,7 +11,7 @@ export function readOutboundReceipt({external_id,channel}){
  const root=document.querySelector('main')||document.body;
  const inMessages=e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return h&&/メッセージ|コメント/.test(normalize(h.innerText));};
  const nodes=[...root.querySelectorAll('p,span,dt,dd,td,th,div')].filter(e=>visible(e)&&!inMessages(e)&&!e.children.length&&!e.closest('textarea,button'));
- const text=normalize(root.innerText.split(/メッセージ|取引メッセージ/)[0]);
+ const text=normalize(nodes.map(n=>n.innerText).join(' '));
  const numbers=new Set([...text.matchAll(/(?:送り状番号|お問い合わせ番号|お問合せ番号|追跡番号|伝票番号)\s*[:：]?\s*([0-9][0-9 -]{9,18}[0-9])/g)].map(m=>m[1].replace(/\D/g,'')));
  for(const n of nodes){if(!/^(送り状番号|お問い合わせ番号|お問合せ番号|追跡番号|伝票番号)[：:]?$/.test(normalize(n.innerText)))continue;const next=n.nextElementSibling||n.parentElement?.nextElementSibling;if(next&&visible(next)){const s=normalize(next.innerText);if(/^[0-9 -]{11,18}$/.test(s))numbers.add(s.replace(/\D/g,''));}}
  const links=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&!inMessages(e)).flatMap(a=>{try{const u=new URL(a.href);if(u.protocol!=='https:')return [];const carrier=u.hostname==='toi.kuronekoyamato.co.jp'?'yamato':u.hostname==='trackings.post.japanpost.jp'?'japanpost':null;if(!carrier)return [];const values=[...u.searchParams.entries()].filter(([k])=>/^(number\d+|reqCodeNo\d+|requestNo\d+)$/i.test(k)).map(([,v])=>v.replace(/\D/g,''));return values.map(tracking_number=>({carrier,tracking_number}));}catch{return [];}});
@@ -19,8 +19,8 @@ export function readOutboundReceipt({external_id,channel}){
  if(/らくらくメルカリ便|ヤマト運輸|宅急便/.test(text))carriers.add('yamato');
  if(/ゆうゆうメルカリ便|日本郵便|ゆうパック|ゆうパケット/.test(text))carriers.add('japanpost');
  for(const l of links)numbers.add(l.tracking_number);
- if(numbers.size!==1||carriers.size!==1)return null;
- const tracking_number=[...numbers][0];if(!/^[0-9]{11,13}$/.test(tracking_number))return null;
+ if(numbers.size!==1||carriers.size!==1)return {unavailable:true,numberCount:numbers.size,carriers:[...carriers],labels:nodes.map(n=>normalize(n.innerText)).filter(t=>t.length<90&&/送り状|追跡番号|お問い合わせ番号|お問合せ番号|伝票番号|らくらく|ゆうゆう/.test(t)).slice(0,12)};
+ const tracking_number=[...numbers][0];if(!/^[0-9]{11,13}$/.test(tracking_number))return {unavailable:true};
  const purchase=text.match(/購入日時\s*[:：]?\s*(20\d{2})[年/.-](\d{1,2})[月/.-](\d{1,2})(?:日)?\s+(\d{1,2})[:：](\d{2})/);
  return {carrier:[...carriers][0],tracking_number,...(purchase?{trade_key:external_id+':'+purchase[1]+'-'+purchase[2].padStart(2,'0')+'-'+purchase[3].padStart(2,'0')+'T'+purchase[4].padStart(2,'0')+':'+purchase[5]}:{})};
 }

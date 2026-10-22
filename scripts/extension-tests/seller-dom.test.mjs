@@ -346,7 +346,8 @@ test('郵便引受も番号と現取引日を照合し、案内にある引受�
 });
 
 test('現在の出品者画面の送り状だけを読み、取引メッセージの番号を混ぜない',async()=>{
- const p=await page('<h1>取引画面</h1><p>らくらくメルカリ便</p><p>送り状番号：9999-9999-9999</p><h2>メッセージ</h2><p>追跡番号：8888-8888-8888</p>','https://jp.mercari.com/transaction/m999999999999');
+ const p=await page('<h1>取引画面</h1><p>取引メッセージを確認</p><p>らくらくメルカリ便</p><p>送り状番号：9999-9999-9999</p><h2>メッセージ</h2><p>追跡番号：8888-8888-8888</p>','https://jp.mercari.com/transaction/m999999999999');
  assert.deepEqual(await p.evaluate(readOutboundReceipt,{channel:'メルカリ',external_id:'m999999999999'}),{carrier:'yamato',tracking_number:'999999999999'});
  await assert.rejects(p.evaluate(readOutboundReceipt,{channel:'メルカリ',external_id:'m888888888888'}));await p.close();
 });
+
