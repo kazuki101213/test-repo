@@ -126,3 +126,17 @@ test('実ヤフオクの落札者なしボタンを切り替え、終了商品ID
 });
 
 test('ヤフオク出品一覧の補助リンクを開かず所有確認後に公開商品URLで結果を読む',async()=>{const {checkExistingListing}=await import('../../tools/fleamarket-extension/seller-runtime.js');const navigations=[],phases=[];const session={links:async()=>[{text:'出品中',url:'https://auctions.yahoo.co.jp/my/selling'}],go:async url=>navigations.push(url),read:async()=>({rows:[{external_id:'p1249204792',serial:'2398',status:'出品中',url:'https://auctions.yahoo.co.jp/jp/show/bid_hist?aID=p1249204792'}],navigation:[]}),operation:async(job,phase)=>{phases.push(phase);assert.equal(navigations.at(-1),'https://auctions.yahoo.co.jp/jp/auction/p1249204792');return{external_id:'p1249204792',url:'https://page.auctions.yahoo.co.jp/jp/auction/p1249204792'};}};const result=await checkExistingListing(session,{inventory_sku:'2398-EEMM-20261004-1350'},{id:'auctions-1',site:'auctions'});assert.equal(result.external_id,'p1249204792');assert.deepEqual(phases,['listing_result']);assert.equal(navigations.some(url=>url.includes('bid_hist')),false);});
+
+test('確認画面の照合不一致は出品確定前の失敗として記録し、結果不明扱いで再照会しない',async()=>{
+ const phases=[];let finished;
+ const job={id:'confirm-mismatch',account_id:'mercari-2',kind:'listing',channel:'メルカリ',payload:{photos:[]}};
+ await sellerQueuedOperations({settings,rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:(finished=args),log:async()=>{},openSession:async()=>({links:async()=>[{text:'出品',url:'https://jp.mercari.com/sell/create'}],go:async()=>{},structure:async()=>({fileInputs:[{}]}),loaded:async()=>{},operation:async(_,phase)=>{phases.push(phase);if(phase==='publish')return {confirmation:true};if(phase==='publish_confirmation')throw Object.assign(Error('確認画面で出品内容が一致しません：商品名・価格'),{stoppedBeforePublish:true,confirmationEvidence:{missing:['商品名','価格']}});return {};},close:async()=>{}})});
+ assert.equal(finished.p_status,'failed');assert.equal(finished.p_result.stopped_before_publish,true);assert.deepEqual(finished.p_result.confirmation_evidence.missing,['商品名','価格']);assert(!phases.includes('listing_result'));
+});
+
+test('発送通知ボタンの準備失敗は未送信として失敗を返し通知を呼ばない',async()=>{
+ const phases=[];let finished;
+ const job={id:'notice-not-ready',account_id:'mercari-2',channel:'メルカリ',external_id:'m123456789',trade_key:'fixture',kind:'ship_notice',url:'https://jp.mercari.com/transaction/m123456789',payload:{posted:true}};
+ await sellerQueuedOperations({settings,log:async()=>{},rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:(finished=args),openSession:async()=>({go:async()=>{},operation:async(_,phase)=>{phases.push(phase);throw Error('通知は送信していません');},close:async()=>{}})});
+ assert.deepEqual(phases,['ship_notice_preflight']);assert.equal(finished.p_status,'failed');assert.equal(finished.p_result.phase,'ship_notice_preflight');
+});

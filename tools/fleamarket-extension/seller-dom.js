@@ -173,7 +173,35 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(!/確認|出品/.test(text()))throw Error('出品の確認画面ではありません');
   const frames=[...root.querySelectorAll('iframe')].flatMap(frame=>{try{return [frame.contentDocument?.body?.innerText||''];}catch{return [];}}).join(' ');
   const rendered=[],walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){const parent=node.parentElement;if(parent&&!/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(parent.tagName)&&exposedTextElement(parent)&&norm(node.textContent))rendered.push(node.textContent);}
-  const normalized=choiceText(rendered.join(' ')+' '+frames).replaceAll(',','');const missing=expectedValues().flatMap((value,index)=>normalized.includes(choiceText(value).replaceAll(',',''))?[]:[['商品名','説明文','価格','商品状態','送料負担','配送方法','発送元','発送日数'][index]||'カテゴリ']);if(missing.length)throw Error('確認画面で出品内容が一致しません：'+missing.join('・'));
+  const normalized=choiceText(rendered.join(' ')+' '+frames).replaceAll(',','');
+  const editablePreview=job.channel==='ヤフオク'&&/^\/(?:sell\/)?jp\/show\/preview$/.test(location.pathname);
+  function matchesConfirmation(value,index){
+   // Yahoo's preview retains visible Title/StartPrice inputs. Their values are
+   // not text nodes. Hidden backing fields cannot prove what the user sees.
+   if(editablePreview&&(index===0||index===2)){
+    const selector=index===0?'input[name=Title],input[name=title]':'input[name=StartPrice]';
+    const inputs=[...root.querySelectorAll(selector)].filter(e=>visible(e)&&exposedTextElement(e)&&e.type!=='hidden');
+    if(inputs.length){
+     if(inputs.length!==1)return false;
+     const actual=inputs[0].value;
+     return index===0?norm(actual)===norm(value):/^[0-9]+(?:,[0-9]{3})*$/.test(actual)&&actual.replaceAll(',','')===String(value);
+    }
+   }
+   return normalized.includes(choiceText(value).replaceAll(',',''));
+  }
+  const missing=expectedValues().flatMap((value,index)=>matchesConfirmation(value,index)?[]:[['商品名','説明文','価格','商品状態','送料負担','配送方法','発送元','発送日数'][index]||'カテゴリ']);if(missing.length){
+   const error=new Error('確認画面で出品内容が一致しません：'+missing.join('・'));
+   const pageText=choiceText(document.body.innerText).replaceAll(',','');
+   error.stoppedBeforePublish=true;
+   error.confirmationEvidence={path:location.pathname,root:root.tagName,missing,
+    expectedTitle:payload.title,expectedPrice:String(payload.price),
+    pageTitleMatches:pageText.includes(choiceText(payload.title)),pagePriceMatches:pageText.includes(String(payload.price)),
+    titleFields:[...document.querySelectorAll('input[name=Title],input[name=title],input[name=name]')].filter(visible).map(e=>norm(e.value).slice(0,180)).slice(0,3),
+    priceFields:[...document.querySelectorAll('input[name=StartPrice],input[name=price]')].filter(visible).map(e=>norm(e.value).slice(0,20)).slice(0,3),
+    headings:[...document.querySelectorAll('h1,h2,h3')].filter(visible).map(e=>norm(e.innerText).slice(0,180)).slice(0,8),
+    prices:[...document.body.innerText.matchAll(/[0-9０-９][0-9０-９,，]*\s*円/g)].slice(0,12).map(m=>m[0])};
+   throw error;
+  }
   if(job.channel==='ヤフオク'&&(!['あり','する','有効'].includes(confirmationSetting('自動延長'))||!['なし','しない','0回','設定しない'].includes(confirmationSetting('自動再出品'))))throw Error('確認画面で自動延長あり・自動再出品なしを確認できません。出品は送信しません');
   if(phase==='check_listing_confirmation')return {verified:true,stoppedBeforePublish:true};
   const button=oneButton(['出品する','ガイドラインに同意して出品する','上記のガイドライン、規約、情報提供等に同意して 出品する']);reserve();button.click();return {submitted:true};
@@ -196,6 +224,11 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  if(phase==='shipping_preflight'&&job.channel==='メルカリ'){
   if(location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送画面ではありません');
   await waitFor(()=>{root=document.querySelector('main')||document.body;return /取引画面|取引情報|発送|配送/.test(text())&&controls().some(e=>['商品サイズと発送場所を選択する','配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行'].includes(buttonLabel(e)));},'取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません');
+ }
+ if(phase==='ship_notice_preflight'){
+  if(job.channel==='メルカリ'&&location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送通知画面ではありません');
+  await waitFor(()=>{root=document.querySelector('main')||document.body;return controls().some(e=>!e.disabled&&['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する','発送済みの連絡をする'].includes(buttonLabel(e)));},'発送通知ボタンの表示を確認できません。通知は送信していません');
+  tradeGuard();return {ready:true};
  }
  tradeGuard();
  if(phase==='read_shipping_code'){try{return {qr_code:waitForShippingCode?await waitFor(qrPng,'配送コードの画像を確認できません。再発行しません'):await qrPng()};}catch(error){return {__error:error.message};}}
@@ -225,8 +258,8 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const input=field(['発送用コード','2次元コード','専用資材コード','ポスト発送確認用番号']);setValue(input,payload.code);const button=oneButton(['登録する','コードを登録','読み取り内容を登録']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(登録完了|読み取り完了|登録が完了しました|読み取りが完了しました)$/.test(value)),'専用資材の登録結果を確認できません');return {registered:true,note:'専用資材を対象取引へ登録しました'};
  }
  if(phase==='ship_notice'){
-  const button=oneButton(['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(発送通知をしました|発送通知が完了しました|商品の発送を通知しました|発送済み|配送中)$/.test(value))&&(!button.isConnected||button.disabled),'発送通知の結果を確認できません。再送しません');return {notified:true,note:'発送通知を送信しました'};
+  const button=oneButton(['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する','発送済みの連絡をする']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(発送通知をしました|発送通知が完了しました|商品の発送を通知しました|発送済み|配送中)$/.test(value))&&(!button.isConnected||button.disabled),'発送通知の結果を確認できません。再送しません');return {notified:true,note:'発送通知を送信しました'};
  }
  throw Error('未対応の販売サイト操作です');
- }catch(error){if(reportErrors)return {__error:error.message};throw error;}
+ }catch(error){if(reportErrors)return {__error:error.message,...(error.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:error.confirmationEvidence}:{})};throw error;}
 }

@@ -238,3 +238,33 @@ test('ヤフオク説明文はHTMLに保存されても改行・空行を維持�
  assert.equal(await p.locator('#counter').innerText(),'0');
  await p.close();
 });
+
+test('出品確定前の照合失敗は公開情報の診断だけ返し、ボタンを押さない',async()=>{
+ const p=await page('<h1>出品の確認</h1><h2>Different public title</h2><p>999円</p><button onclick="document.body.dataset.published=1">出品する</button>','https://auctions.yahoo.co.jp/jp/show/preview');
+ const result=await p.evaluate(sellerDomOperation,{job:{...listing,channel:'ヤフオク'},phase:'check_listing_confirmation',reportErrors:true});
+ assert.equal(result.stoppedBeforePublish,true);assert(result.confirmationEvidence.missing.includes('商品名'));assert.equal(result.confirmationEvidence.path,'/jp/show/preview');assert(result.confirmationEvidence.prices.includes('999円'));assert.equal(result.confirmationEvidence.description,undefined);assert.equal(await p.evaluate(()=>document.body.dataset.published),undefined);await p.close();
+});
+
+test('実メルカリの発送済みの連絡をするを認識し、表示待ちでは押さず通知時に一度だけ押す',async()=>{
+ const p=await page('<h1>取引画面</h1><p>配送情報</p><div id="action"></div>','https://jp.mercari.com/transaction/m123456789');
+ await p.evaluate(()=>setTimeout(()=>{document.querySelector('#action').innerHTML='<button onclick="this.disabled=true;document.querySelector(\'p\').textContent=\'発送通知をしました\';document.body.dataset.sent=Number(document.body.dataset.sent||0)+1">発送済みの連絡をする</button>';},300));
+ const job={id:'notice-new-label',channel:'メルカリ',external_id:'m123456789',trade_key:'m123456789:fixture',payload:{}};
+ assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'ship_notice_preflight'})).ready,true);assert.equal(await p.evaluate(()=>document.body.dataset.sent),undefined);
+ assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'ship_notice'})).notified,true);assert.equal(await p.evaluate(()=>document.body.dataset.sent),'1');
+ await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'ship_notice'}),/1件に確認|送信を試行済み/);assert.equal(await p.evaluate(()=>document.body.dataset.sent),'1');await p.close();
+});
+
+for(const scenario of ['correct','wrong-title','wrong-price','duplicate-title','hidden-title'])test('ヤフオク確認画面の表示入力欄を厳密に照合 '+scenario,async()=>{
+ const job={id:'visible-confirmation-fields',channel:'ヤフオク',payload:{...listing.payload,condition:'やや傷や汚れあり',shippingPayer:'購入者負担',shippingMethod:'おてがる配送（ヤマト運輸）',autoExtend:true,autoRelist:false}};
+ const title=job.payload.title,price=String(job.payload.price);
+ const p=await page('<h1>出品の確認</h1><label>商品名<input name="Title"></label><label>開始価格<input name="StartPrice"></label><p>'+[job.payload.description,job.payload.condition,'落札者','宅急便',job.payload.origin,job.payload.dispatchDays,job.payload.category].join(' ')+'</p><table><tr><th>自動延長</th><td>あり</td></tr><tr><th>自動再出品</th><td>なし</td></tr></table><button onclick="document.body.dataset.published=1">出品する</button>','https://auctions.yahoo.co.jp/sell/jp/show/preview');
+ await p.evaluate(({title,price,scenario})=>{
+  document.querySelector('[name=Title]').value=scenario==='wrong-title'?'wrong title':title;
+  document.querySelector('[name=StartPrice]').value=scenario==='wrong-price'?'99999':price;
+  if(scenario==='duplicate-title')document.body.append(document.querySelector('[name=Title]').cloneNode());
+  if(scenario==='hidden-title')document.querySelector('[name=Title]').type='hidden';
+ },{title,price,scenario});
+ const result=await p.evaluate(sellerDomOperation,{job,phase:'check_listing_confirmation',reportErrors:true});
+ if(scenario==='correct')assert.equal(result.verified,true);else {assert(result.__error);assert.equal(result.stoppedBeforePublish,true);}
+ assert.equal(await p.evaluate(()=>document.body.dataset.published),undefined);await p.close();
+});

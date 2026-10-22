@@ -283,14 +283,15 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
    if(!job.url)throw Error('取引URLを取得できません');await session.go(job.url);
    let shippingPrepared=false;
    if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor){mutating=true;await session.prepareShipping(job);shippingPrepared=true;}else if(preflight.readyForCode){if(preflight.configuredDropoff!==job.payload.dropoff)throw Error('サイトの発送場所がアプリ設定と一致しません');shippingPrepared=true;}}
-   mutating=['register_package','ship_notice','message_send','shipping_code'].includes(job.kind);
+   if(job.kind==='ship_notice'){phase='ship_notice_preflight';await session.operation(job,phase);}
+   mutating=['register_package','ship_notice','message_send','shipping_code'].includes(job.kind);phase=job.kind;
    result=await session.operation(job,job.kind,{shippingPrepared});
    if(job.kind==='shipping_code'&&result.code_requested){await session.loaded();result=await session.operation(job,'read_shipping_code',{waitForShippingCode:true});}
   }
   status='succeeded';
- }catch(error){status=mutating?'uncertain':'failed';result={note:error.message,phase};
+ }catch(error){status=mutating&&!error.stoppedBeforePublish?'uncertain':'failed';result={note:error.message,phase,...(error.stoppedBeforePublish?{stopped_before_publish:true,confirmation_evidence:error.confirmationEvidence}:{})};
   // Navigation can destroy the submit frame. Read its settled result, never submit twice.
-  if(mutating&&job.kind==='listing'&&session){try{await session.loaded();result={...await session.operation(job,'listing_result'),recovered_after_navigation:true};status='succeeded';}catch(checkError){result={...result,result_check_note:checkError.message};
+  if(mutating&&!error.stoppedBeforePublish&&job.kind==='listing'&&session){try{await session.loaded();result={...await session.operation(job,'listing_result'),recovered_after_navigation:true};status='succeeded';}catch(checkError){result={...result,result_check_note:checkError.message};
    // Read the original account's existing listings once. Never reopen the publish form.
    try{await session.go(sellerUrl(account,account.identity?.pageUrl||account.listUrl));result={...await checkExistingListing(session,job,account),recovered_from_listing_list:true};status='succeeded';}
    catch(listError){result={...result,list_check_note:listError.message};}
@@ -346,7 +347,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   try{
    const timeout=args?.phase==='prepare_listing'?Math.max(executionTimeoutMs,120000):func===readSellerPage&&executionTimeoutMs===30000?60000:executionTimeoutMs;
    const results=await Promise.race([scripting.executeScript({target:{tabId:borrowed.id},func,args:[args]}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('販売画面の確認が時間切れになりました：'+(args?.phase||func.name||'page')+'。自動再試行しません')),timeout);})]);
-   if(results[0]?.error)throw Error('販売画面の読み取りに失敗しました');if(results[0]?.result==null)throw Error('販売画面から結果を取得できません：'+(func.name||'page')+' ('+new URL(last).hostname+new URL(last).pathname+')');if(results[0]?.result?.__error)throw Error(results[0].result.__error);return results[0]?.result;
+   if(results[0]?.error)throw Error('販売画面の読み取りに失敗しました');if(results[0]?.result==null)throw Error('販売画面から結果を取得できません：'+(func.name||'page')+' ('+new URL(last).hostname+new URL(last).pathname+')');if(results[0]?.result?.__error){const value=results[0].result;throw Object.assign(Error(value.__error),value.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:value.confirmationEvidence}:{});}return results[0]?.result;
   }finally{clearTimeout(timer);}
  }
  try{await go(account.identity.pageUrl||account.listUrl);const verified=await identity(borrowed.id,account);if(verified?.confirmed!==true)throw Error('出品アカウントを確認できません');}catch(error){await restoreSiteTab(tabs,borrowed).catch(()=>{});throw error;}
