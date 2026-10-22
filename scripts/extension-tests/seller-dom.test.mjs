@@ -1,3 +1,4 @@
+import {parseCarrierReceipts,readOutboundReceipt} from '../../tools/fleamarket-extension/daily-shipping.js';
 import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from '../../tools/fleamarket-extension/seller-inspection.js';
 import {clickSellerListTab,advanceSellerList,clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
 import test,{before,after} from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
@@ -326,4 +327,26 @@ test('重複出品のサイトエラーは確認ボタンを再び押さず結�
  const p=await page('<h1>出品</h1><p class="error">すでに同じタイトルのオークションが出品されています。</p><button onclick="document.body.dataset.clicked=1">確認する</button>','https://auctions.yahoo.co.jp/sell/jp/show/preview');
  const result=await p.evaluate(sellerDomOperation,{job:{id:'duplicate-fixture',channel:'ヤフオク',payload:{}},phase:'publish_confirmation',reportErrors:true});
  assert.equal(result.existingListing,true);assert.equal(result.stoppedBeforePublish,true);assert.equal(await p.evaluate(()=>document.body.dataset.clicked),undefined);await p.close();
+});
+
+test('荷物受付は現在の番号と取引日を照合し、古い履歴や説明文を根拠にしない',async()=>{
+ const p=await page('<h1>fixture</h1>');const now=Date.UTC(2026,9,22,2),number='999999999999';
+ const html='<div class="parts-tracking-invoice-block"><h3>1件目：9999-9999-9999</h3><div class="tracking-invoice-block-detail"><li><div class="item">荷物受付</div><div class="date">10月22日 09:24</div></li></div></div>';
+ const args={html,carrier:'yamato',receipts:[{tracking_number:number,trade_key:'m999:2026-10-21T13:35'}],now};
+ const result=await p.evaluate(parseCarrierReceipts,args);assert.equal(result.length,1);assert.equal(result[0].accepted,true);assert.equal(result[0].accepted_at,'2026-10-22T09:24:00+09:00');
+ assert.equal((await p.evaluate(parseCarrierReceipts,{...args,html:html.replaceAll('9999-9999-9999','8888-8888-8888')})).length,0);
+ assert.equal((await p.evaluate(parseCarrierReceipts,{...args,html:html.replace('10月22日','10月19日')})).length,0);
+ assert.equal((await p.evaluate(parseCarrierReceipts,{...args,html:'<p>荷物受付</p>'+html.replace('荷物受付','伝票番号未登録')})).length,0);await p.close();
+});
+
+test('郵便引受も番号と現取引日を照合し、案内にある引受の文字は使わない',async()=>{
+ const p=await page('<h1>fixture</h1>'),now=Date.UTC(2026,9,22,2);
+ const args={carrier:'japanpost',receipts:[{tracking_number:'999999999999',trade_key:'m999:2026-10-21'}],now,html:'<section><h3>9999-9999-9999</h3><table><tr><td>2026/10/22 09:24</td><td>引受</td></tr></table></section>'};
+ assert.equal((await p.evaluate(parseCarrierReceipts,args)).length,1);assert.equal((await p.evaluate(parseCarrierReceipts,{...args,html:args.html.replace('<td>引受</td>','<td>引受情報が反映されるまでお待ちください</td>')})).length,0);await p.close();
+});
+
+test('現在の出品者画面の送り状だけを読み、取引メッセージの番号を混ぜない',async()=>{
+ const p=await page('<h1>取引画面</h1><p>らくらくメルカリ便</p><p>送り状番号：9999-9999-9999</p><h2>メッセージ</h2><p>追跡番号：8888-8888-8888</p>','https://jp.mercari.com/transaction/m999999999999');
+ assert.deepEqual(await p.evaluate(readOutboundReceipt,{channel:'メルカリ',external_id:'m999999999999'}),{carrier:'yamato',tracking_number:'999999999999'});
+ await assert.rejects(p.evaluate(readOutboundReceipt,{channel:'メルカリ',external_id:'m888888888888'}));await p.close();
 });

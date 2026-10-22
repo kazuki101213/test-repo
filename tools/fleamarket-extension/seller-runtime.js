@@ -1,4 +1,5 @@
 import {pacedTabs,paceNavigation} from './navigation-pacing.js';
+import {processDailyShipping,readOutboundReceipt,parseCarrierReceipts} from './daily-shipping.js';
 import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.143';
 import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.143';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
@@ -104,7 +105,7 @@ export function advanceMercariShippingPlace({itemId,dropoff}){
  const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('発送場所の選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
  }catch(error){return {__error:error.message};}
 }
-export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log,repair=null,hourly=false,now=Date.now(),feedbackSites=[]}){
+export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log,repair=null,hourly=false,now=Date.now(),feedbackSites=[],automaticShipping=false}){
  if(hourly&&!sellerHourlyReady(settings,records,now))return;
  if(hourly&&repair)throw Error('4時間ごと確認と修復は同時実行できません');
  if(!hourly&&!repair&&(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day)))return;
@@ -120,6 +121,11 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
  const observationCache={...(records.sellerObservationCache?.version===1?records.sellerObservationCache.accounts:{})};
  rpc=async(...args)=>{const value=await baseRpc(...args);rpcCalls++;responseBytes+=new TextEncoder().encode(JSON.stringify(value)??'null').length;return value;};
  await storage.set({[attemptKey]:{...metadata,day,status:'running',at:new Date().toISOString()}});
+ let shippingJobs=[];
+ if(automaticShipping&&!hourly&&!repair&&new Date(now+9*3600000).getUTCHours()>=1){
+  try{shippingJobs=await rpc('extension_daily_shipping_candidates',{p_account_ids:accounts.map(a=>a.id)});if(!Array.isArray(shippingJobs))throw Error('自動発送通知の対象を確認できません');}
+  catch(e){await log('error','自動発送通知の対象確認を翌日に回します：'+e.message);}
+ }
  const baselines={...(records.sellerSaleBackfills||{})};let updated=0,errors=0,unmatched=0,conflicts=0;const failures=[];
  for(const account of accounts){let session;
   const cache=Object.fromEntries(Object.entries(observationCache[account.id]||{}).filter(([,v])=>Number.isFinite(v?.checkedAt)&&now-v.checkedAt>=0&&now-v.checkedAt<24*60*60000));
@@ -194,6 +200,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
     if(result==='updated'||result==='registered'){updated++;remember(row);}else if(result==='unmatched')unmatched++;else if(result==='conflict')conflicts++;
     }catch(error){throw Error('商品ID '+row.external_id+'：'+error.message);}
    }
+   if(!hourly&&!repair&&shippingJobs.some(j=>j.account_id===account.id))await processDailyShipping({jobs:shippingJobs.filter(j=>j.account_id===account.id),session,rpc,log});
    if(!hourly&&feedbackSites.includes(account.site)&&feedbackRows.size){const feedback=await processSellerFeedback({account,rows:[...feedbackRows.values()],session,rpc,storage,log,now});errors+=feedback.errors;}
    if(fullScan&&salesSeen){baselines[account.id]='serial-case-v2';await storage.set({sellerSaleBackfills:{...baselines}});}
   }catch(error){errors++;failures.push({accountId:account.id,error:error.message});await log('error',account.label+(hourly?'の4時間ごと販売確認を停止しました。次回の定期確認まで再実行しません：':'の販売確認を停止しました。自動再試行はしません：')+error.message);}
@@ -397,7 +404,9 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   selectTab:async label=>{const result=await paceNavigation(()=>execute(clickSellerListTab,label));if(!result)return false;if(result.changing){await pause(350);await loaded();}return true;},
   auctionDetail:async id=>{if(account.site!=='auctions'||!/^[a-z][0-9]+$/i.test(id))throw Error('対象の商品IDを確認できません');await go('https://page.auctions.yahoo.co.jp/jp/auction/'+id);let page=await raw();if(!/(?:終了日時|落札日時|終了日)\s*[:：]?\s*20[0-9]{2}/.test(page.text)){const links=page.links.filter(link=>{try{const u=new URL(link.url);return u.protocol==='https:'&&!u.username&&!u.password&&u.hostname==='contact.auctions.yahoo.co.jp'&&u.pathname==='/seller/top'&&[...u.searchParams.values()].includes(id)&&/取引ナビ/.test(link.text);}catch{return false;}});if(links.length===1){await go(links[0].url);page=await raw();}}return page;},
   detail:async(url,id)=>{if(account.site==='mercari'&&!/^m[0-9]+$/.test(id))throw Error('対象の商品IDを確認できません');await go(account.site==='mercari'?'https://jp.mercari.com/transaction/'+id:url);let page=account.site==='mercari'?await execute(readMercariTransactionPage,{id}):await raw();if(!/取引画面|取引情報|受け取り明細/.test(page.text)){const options=page.links.filter(link=>/取引画面|取引ナビ|取引情報|詳細/.test(link.text)&&link.url.includes(id));if(options.length!==1)throw Error('販売明細へのリンクを特定できません');await go(options[0].url);page=await raw();}if(!page.text.includes(id))throw Error('取引の商品IDを確認できません');return page;},
-  operation:(job,phase,extra={})=>(['publish','publish_confirmation'].includes(phase)?paceNavigation:action=>action())(async()=>{await loaded();return execute(sellerDomOperation,{job,phase,...extra,reportErrors:true,choicesResolved:listingChoices?.id===job.id&&listingChoices?.values===JSON.stringify([job.payload?.listingCategory||job.payload?.category,job.payload?.condition,job.payload?.shippingMethod])&&listingChoices?.url===last,categoryResolved:categoryResolution?.target===(job.payload?.listingCategory||job.payload?.category)&&categoryResolution?.url===last});}),
+  outboundReceipt:job=>execute(readOutboundReceipt,job),
+  parseCarrierReceipts:args=>execute(parseCarrierReceipts,args),
+  operation:(job,phase,extra={})=>(['publish','publish_confirmation'].includes(phase)?paceNavigation:action=>action())(async()=>{await loaded();const result=await execute(sellerDomOperation,{job,phase,...extra,reportErrors:true,choicesResolved:listingChoices?.id===job.id&&listingChoices?.values===JSON.stringify([job.payload?.listingCategory||job.payload?.category,job.payload?.condition,job.payload?.shippingMethod])&&listingChoices?.url===last,categoryResolved:categoryResolution?.target===(job.payload?.listingCategory||job.payload?.category)&&categoryResolution?.url===last});if(phase==='read_shipping_code'&&result.qr_code){try{result.shipping_receipt=await execute(readOutboundReceipt,job);}catch{}}return result;}),
   close:()=>preserveFeedback?Promise.resolve():restoreSiteTab(tabs,borrowed).catch(()=>{}),
  };
 }

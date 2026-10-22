@@ -86,6 +86,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリのみです');
    await session.go('https://jp.mercari.com/transaction/'+request.targetItemId);
    evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
+   if(evidence.target.serialMatches===true&&session.outboundReceipt)evidence.target.shippingReceipt=await session.outboundReceipt({channel:'メルカリ',external_id:request.targetItemId});
    evidence.pages.push({kind:'target-shipping',...await session.structure()});
    if(evidence.target.serialMatches!==true||!evidence.target.sellerShipping||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定商品に発送待ちの出品者画面を確認できません');
    if(request.readShippingPlaceOnly===true){
