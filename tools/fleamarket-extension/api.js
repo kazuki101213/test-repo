@@ -3,10 +3,21 @@ import {API,PUBLIC_KEY} from './core.js';
 let refreshPromise;
 export const AUTH_BLOCKED='管理アプリとの連携認証が切れています。管理アプリにログインして再連携してください';
 async function jsonRequest(path,options={}) {
-  const r=await fetch(API+path,{...options,signal:AbortSignal.timeout(20000),headers:{apikey:PUBLIC_KEY,'Content-Type':'application/json',...options.headers}});
-  const body=await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error(body.message||body.msg||body.error_description||body.error||`Supabase HTTP ${r.status}`);
-  return body;
+  const started=Date.now();let status=null;
+  try{
+    const r=await fetch(API+path,{...options,signal:AbortSignal.timeout(20000),headers:{apikey:PUBLIC_KEY,'Content-Type':'application/json',...options.headers}});
+    status=Number.isInteger(r.status)?r.status:null;
+    if(r.status===204)return null;
+    let body;try{body=await r.json();}catch{const error=new Error('Supabaseの応答形式を確認できません');error.responseInvalid=true;throw error;}
+    if(!r.ok)throw new Error(body.message||body.msg||body.error_description||body.error||`Supabase HTTP ${r.status}`);
+    return body;
+  }catch(error){
+    const failure=status!==null&&!error.responseInvalid?'http':error.responseInvalid?'invalid_response':error.name==='TimeoutError'?'timeout':error.name==='AbortError'?'aborted':'network';
+    error.requestDiagnostic={failure,status,elapsedMs:Date.now()-started};
+    if(path.startsWith('/rest/v1/rpc/'))error.rpcName=path.split('/').at(-1);
+    else error.rpcName='auth_refresh';
+    throw error;
+  }
 }
 async function getToken(){
   const {session,authProblem}=await chrome.storage.local.get(['session','authProblem']);
