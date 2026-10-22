@@ -3,6 +3,10 @@ function load(file,imports){const c={exports:{},require:id=>imports?.[id]??{}};v
 const model=load('packages/shared/src/productModel.ts'),seller=load('packages/shared/src/seller.ts',{'./productCategory':load('packages/shared/src/productCategory.ts')});
 const description=load('apps/delivery/src/description.ts',{'./descriptionTemplates':load('apps/delivery/src/descriptionTemplates.ts')});
 const {listingDraft}=load('apps/delivery/src/listingDraft.ts',{'@bussan/shared':{...seller,...model,...load('packages/shared/src/productCategory.ts')},'./description':description});
+const damagedSaved={id:'damage',sku:'2403-test',lot_seq:2403,title:'DBR-T1009',model_no:'DBR-T1009',marketplace:'ヤフオク',sales_channel:'ヤフオク',condition:'可',description:'商品名（ヤフオク）\n保存した商品名\n\n説明文\n手編集の本文',has_physical_damage:true};
+const damagedDraft=listingDraft(damagedSaved,'TOSHIBA');assert.equal(damagedDraft.description,'手編集の本文\nはそんがあります。');assert.equal(damagedDraft.title,'保存した商品名');
+assert.equal(description.withReportedDamage(damagedDraft.description,true),damagedDraft.description);
+assert.equal(description.withReportedDamage('手編集の本文',false),'手編集の本文');
 function all(n){return !n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(n.props?.children)];}
 const jsx=(type,props)=>({type,props});
 async function check(channel){
