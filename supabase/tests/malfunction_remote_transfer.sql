@@ -33,5 +33,18 @@ begin
    end if;
   end if;
  end loop;
+ -- The instruction itself separates the bundled remote even without a report mentioning it.
+ foreach kind in array array['リモコンが作動しない。電源の接触が悪い。','リモコン付属','電源の接触が悪い。'] loop
+  seq:=seq+1;
+  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,status,malfunction_reported,malfunction_comment,condition)
+  values(seq,buyer,holder,current_date,'bundled fixture',8250,'ヤフオク','メルカリ','動作不良',true,kind,'非常に良い') returning id into body;
+  reply:=gen_random_uuid();
+  perform app.send_malfunction_reply(reply,body,'fixture only','SONY◯ヤフオク','{}');
+  perform app.send_malfunction_reply(reply,body,'fixture only','SONY◯ヤフオク','{}');
+  select count(*) into existing_count from app.spare_accessories where usage_note=seq::text;
+   if existing_count<>1 or not exists(select 1 from app.spare_accessories where usage_note=seq::text and source_sku is null and cost_amount=0 and owner_staff_id=holder and used_for_item_id is null) then raise exception 'Bundled remote missing, duplicated or billed twice';end if;
+   if kind like '%作動しない%' and not exists(select 1 from app.spare_accessories where usage_note=seq::text and title like '%作動しないとの報告あり%') then raise exception 'Remote fault lost';end if;
+  if not exists(select 1 from app.items where id=body and cost_amount=8250 and sales_channel='ヤフオク' and workflow_previous_sales_channel='メルカリ') then raise exception 'Body information changed';end if;
+ end loop;
 end $$;
 rollback;
