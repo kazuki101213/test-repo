@@ -13,6 +13,13 @@ for(const condition of description.CONDITIONS_BY_TARGET['yahoo-auction']){
  assert(!output.includes('破損あります'),'A condition rating is not evidence of physical damage');
  assert(output.includes('知人宅で通常通り使用してました。'));
 }
+for(const product of ['ブルーレイレコーダー','モニター','テレビ','小物']){
+ const damaged=description.buildDescription({product,condition:'傷や汚れあり',accessories:'',year:'',target:'yahoo-auction',inspected:false,cleaned:false,salesChannel:'ヤフオク',hasPhysicalDamage:true});
+ assert.equal(damaged.split('はそんがあります。').length-1,1,'Explicit report adds hiragana once');
+ assert(!damaged.includes('破損あります。'));
+ const normal=description.buildDescription({product,condition:'傷や汚れあり',accessories:'',year:'',target:'yahoo-auction',inspected:false,cleaned:false,salesChannel:'ヤフオク',hasPhysicalDamage:false});
+ assert(!normal.includes('はそんがあります。'),'Rating alone never reports damage');
+}
 assert.equal(description.conditionForTarget('yahoo-auction','可'),'傷や汚れあり','Condition mapping is preserved');
 async function hooks(){
  let state=[],index=0,effects=[],timer,apiCalls=0,resolve,applied=[];

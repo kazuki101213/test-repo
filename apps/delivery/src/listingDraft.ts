@@ -10,7 +10,7 @@ export function listingDraft(task:DeliveryTask,manufacturer:string,listingSkus:s
  const condition=target==='amazon'?conditionForTarget('amazon',task.condition):defaults.condition;
  const generated=buildDescription({product,target,condition,accessories:task.accessories??'',year:task.manufacture_year?.toString()??'',
   sku:task.sku,listingSkus,itemNumber:task.sku.match(/^(\d+[a-z]*)-/i)?.[1]?.toLowerCase()??String(task.lot_seq),
-  modelNo:productModelText(task),manufacturer,inspected:task.inspected,cleaned:task.cleaned,salesChannel:task.sales_channel});
+  modelNo:productModelText(task),manufacturer,hasPhysicalDamage:task.has_physical_damage===true,inspected:task.inspected,cleaned:task.cleaned,salesChannel:task.sales_channel});
  if(target==='amazon')return {...defaults,condition,description:task.description?.trim()?task.description:generated};
  const automatic=sellerDefaults({...task,description:generated});
  const savedChannel=task.description?.match(/^商品名（(メルカリ|ヤフオク)）/)?.[1];

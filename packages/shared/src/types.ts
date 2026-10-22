@@ -206,6 +206,7 @@ export interface DeliveryTask {
   last_comment_at: string | null;
   malfunction_reported: boolean;
   malfunction_comment: string | null;
+  has_physical_damage?: boolean;
   malfunction_reported_at: string | null;
   malfunction_resolved_at: string | null;
 }
