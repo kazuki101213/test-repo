@@ -14,8 +14,8 @@ begin
  ('997901-AADD-20980101-1',997901,'chart conflict',10,'ヤフオク','2098-01-01','2099-01-02',500,400,buyer,worker,'メルカリ'),
  ('997901-AADD-20980102-2',997901,'chart conflict outside range',20,'ヤフオク','2098-01-02','2099-02-01',600,500,buyer,worker,'メルカリ'),
  ('997902-AADD-20980101-0',997902,'chart unknown price',0,'ヤフオク','2098-01-01','2099-01-01',null,null,buyer,worker,'メルカリ');
- insert into app.items(sku,lot_seq,title,cost_amount,marketplace,purchased_at,sold_on,sold_price,payout_amount,purchaser_id,deliverer_id,sales_channel,is_accessory)
- values('997900c-AADD-20980101-0',997900,'chart independent zero accessory',0,'ヤフオク','2098-01-01','2099-01-01',0,0,buyer,worker,'メルカリ',true);
+ insert into app.items(sku,lot_seq,title,cost_amount,marketplace,purchased_at,sold_on,sold_price,payout_amount,purchaser_id,deliverer_id,sales_channel,is_accessory,parent_item_id)
+ values('997900c-AADD-20980101-0',997900,'chart independent zero accessory',0,'ヤフオク','2098-01-01','2099-01-01',0,0,buyer,worker,'メルカリ',true,(select id from app.items where sku='997900-AADD-20980101-100'));
  result:=app.read_daily_sales_summary('2099-01-01','2099-01-03');
  if result->'days' is distinct from '[{"date":"2099-01-01","amount":3000,"count":2},{"date":"2099-01-02","amount":3000,"count":1},{"date":"2099-01-03","amount":0,"count":0}]'::jsonb then raise exception 'Daily family aggregation differs: %',result;end if;
  if result->'conflicts' is distinct from '["997901","997902"]'::jsonb then raise exception 'Conflicts/unknown price lost: %',result;end if;
