@@ -191,6 +191,9 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  if(phase==='publish_confirmation'||phase==='check_listing_confirmation'){
   if(job.channel==='ヤフオク'&&/^\/(?:sell\/)?jp\/show\/preview$/.test(location.pathname))root=document.body;
   if(!/確認|出品/.test(text()))throw Error('出品の確認画面ではありません');
+  const validationErrors=[...root.querySelectorAll('[role=alert],[class*=error i]')].filter(visible).map(e=>norm(e.innerText)).filter(t=>t&&t.length<500);
+  const duplicate=validationErrors.find(t=>t.includes('すでに同じタイトルのオークションが出品されています'));
+  if(duplicate){const error=new Error('同じタイトルの出品があるため、出品結果を確認してください。再出品はしていません');error.stoppedBeforePublish=true;error.existingListing=true;throw error;}
   const frames=[...root.querySelectorAll('iframe')].flatMap(frame=>{try{return [frame.contentDocument?.body?.innerText||''];}catch{return [];}}).join(' ');
   const rendered=[],walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while((node=walker.nextNode())){const parent=node.parentElement;if(parent&&!/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(parent.tagName)&&exposedTextElement(parent)&&norm(node.textContent))rendered.push(node.textContent);}
   const normalized=choiceText(rendered.join(' ')+' '+frames).replaceAll(',','');
@@ -305,6 +308,5 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   return {notified:true,note:'発送通知を送信しました'};
  }
  throw Error('未対応の販売サイト操作です');
- }catch(error){if(reportErrors)return {__error:error.message,...(error.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shippingEvidence:error.shippingEvidence}:{})};throw error;}
+ }catch(error){if(reportErrors)return {__error:error.message,...(error.existingListing?{existingListing:true}:{}),...(error.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shippingEvidence:error.shippingEvidence}:{})};throw error;}
 }
-

@@ -321,3 +321,9 @@ test('出品入力の小文字エラーと必須入力の不備を診断に残�
  const result=await p.evaluate(readSellerStructure);
  assert(result.validationErrors.includes('配送方法を選択してください'));assert.equal(result.invalidFields[0].name,'shipping-fixture');await p.close();
 });
+
+test('重複出品のサイトエラーは確認ボタンを再び押さず結果照合へ進める',async()=>{
+ const p=await page('<h1>出品</h1><p class="error">すでに同じタイトルのオークションが出品されています。</p><button onclick="document.body.dataset.clicked=1">確認する</button>','https://auctions.yahoo.co.jp/sell/jp/show/preview');
+ const result=await p.evaluate(sellerDomOperation,{job:{id:'duplicate-fixture',channel:'ヤフオク',payload:{}},phase:'publish_confirmation',reportErrors:true});
+ assert.equal(result.existingListing,true);assert.equal(result.stoppedBeforePublish,true);assert.equal(await p.evaluate(()=>document.body.dataset.clicked),undefined);await p.close();
+});
