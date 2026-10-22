@@ -46,6 +46,9 @@ jobs:
       - name: Gemini検索語と手編集保護
         run: node --test supabase/functions/listing-ai-keywords/index_test.cjs && node scripts/verify-listing-keywords.cjs && node scripts/verify-shipping-actions.cjs
 
+      - name: 仕入れリストの購入履歴同期
+        run: node scripts/verify-purchase-list-refresh.cjs && node scripts/verify-purchase-sync-button.cjs && node --test scripts/extension-tests/purchase-sync.test.mjs
+
       - name: 移行スクリプトの文法チェック
         run: node --check scripts/import-sheets.mjs
 
