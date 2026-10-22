@@ -1,5 +1,5 @@
--- Transfer registered remotes, or a bundled remote explicitly documented on the body.
--- A template alone must not invent an accessory that was never reported.
+-- The eight vendor instructions always separate the remote.
+-- Move a separately registered accessory, otherwise register the bundled remote.
 create or replace function app.apply_malfunction_reply() returns trigger
 language plpgsql security definer set search_path=pg_catalog,app as $$
 declare previous_channel app.sales_channel; existing_spare boolean;
@@ -12,13 +12,7 @@ begin
  elsif new.task_kind like '%ヤフオク%' then
   if new.task_kind in ('Panasonic◯ヤフオク','Panasonic×ヤフオク','SONY◯ヤフオク','SONY×ヤフオク',
                        'SHARP◯ヤフオク','SHARP×ヤフオク','TOSHIBA◯ヤフオク','TOSHIBA×ヤフオク')
-   and exists(select 1 from app.items body where body.id=new.item_id and not body.is_accessory and (
-     exists(select 1 from app.items remote
-      where app.product_serial(remote.sku,remote.lot_seq)=app.product_serial(body.sku,body.lot_seq)
-       and remote.is_accessory and remote.title ilike '%リモコン%')
-     or (concat_ws(' ',body.accessories,body.malfunction_comment) ilike '%リモコン%'
-      and concat_ws(' ',body.accessories,body.malfunction_comment) !~ 'リモコン[がはの 、　]*(なし|無し|ない|無い|欠品|未付属)')
-   )) then
+   and exists(select 1 from app.items body where body.id=new.item_id and not body.is_accessory) then
    select exists(select 1 from app.spare_accessories s join app.items body on body.id=new.item_id
     where lower(btrim(s.usage_note))=lower(app.product_serial(body.sku,body.lot_seq)) and s.title ilike '%リモコン%') into existing_spare;
    -- Transfer before the body update can synchronize the accessory SKU.
