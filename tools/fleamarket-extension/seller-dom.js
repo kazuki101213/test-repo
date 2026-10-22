@@ -8,7 +8,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  const controls=()=>[...root.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')].filter(visible);
  const buttonLabel=e=>norm(e.innerText||e.getAttribute('aria-label')||e.value);
- const noticeNames=['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する','商品を発送したので、発送通知をする','商品を発送したので発送通知をする'];
+ const noticeNames=['発送したことを通知する','商品の発送を通知する','発送通知をする','発送通知','商品を発送したので発送連絡する','商品を発送したので、発送通知をする','商品を発送したので発送通知をする',...(job.channel==='ヤフオク'?['商品を発送したので発送連絡をする','発送連絡をする']:[])];
  function noticeButtons(){return controls().filter(e=>{
   if(!noticeNames.includes(buttonLabel(e)))return false;
   if(e.closest('form')?.querySelector('textarea'))return false;
@@ -17,6 +17,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  });}
 
  function shippingNoticeCompleted(){
+  if(job.channel==='ヤフオク')return noticeButtons().length===0&&[...root.querySelectorAll('[role=status],p,h2,h3')].filter(visible).some(e=>/^(商品の発送を連絡しました|発送連絡が完了しました|落札者の受け取り連絡をお待ちください)[。.]?$/.test(norm(e.innerText)));
   return /受取評価を依頼できます/.test(root.innerText)&&[...root.querySelectorAll('h2,h3')].some(e=>visible(e)&&/^(配送状況|配送情報)$/.test(norm(e.innerText)))&&noticeButtons().length===0;
  }
  function oneButton(names,scope=root){const values=[...scope.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')].filter(e=>visible(e)&&names.includes(buttonLabel(e)));if(values.length!==1||values[0].disabled)throw Error('操作ボタンを1件に確認できません：'+names[0]);return values[0];}
@@ -259,7 +260,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  if(phase==='ship_notice_preflight'){
   if(job.channel==='メルカリ'&&location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送通知画面ではありません');
   let completedSince=0;
-  await waitFor(()=>{root=document.body;if(noticeButtons().some(e=>!e.disabled))return true;if(!shippingNoticeCompleted()){completedSince=0;return false;}if(!completedSince)completedSince=Date.now();return Date.now()-completedSince>=1000;},'発送通知ボタンの表示を確認できません。通知は送信していません');
+  await waitFor(()=>{root=document.body;if(noticeButtons().some(e=>!e.disabled||job.channel==='ヤフオク'&&[...root.querySelectorAll('input[type=checkbox]')].some(c=>visible(c)&&/商品を発送しました/.test(label(c)))))return true;if(!shippingNoticeCompleted()){completedSince=0;return false;}if(!completedSince)completedSince=Date.now();return Date.now()-completedSince>=1000;},'発送通知ボタンの表示を確認できません。通知は送信していません');
   tradeGuard();return shippingNoticeCompleted()?{ready:true,alreadyNotified:true,observed_at:new Date().toISOString()}:{ready:true};
  }
  tradeGuard();
@@ -290,6 +291,12 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const input=field(['発送用コード','2次元コード','専用資材コード','ポスト発送確認用番号']);setValue(input,payload.code);const button=oneButton(['登録する','コードを登録','読み取り内容を登録']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(登録完了|読み取り完了|登録が完了しました|読み取りが完了しました)$/.test(value)),'専用資材の登録結果を確認できません');return {registered:true,note:'専用資材を対象取引へ登録しました'};
  }
  if(phase==='ship_notice'){
+  if(payload.automatic_receipt){const proof=payload.automatic_receipt;
+   const shown=[...root.querySelectorAll('p,span,div,dt,dd,td,th')].filter(e=>visible(e)&&!e.children.length&&!e.closest('button,textarea')).filter(e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return !h||!/メッセージ|コメント/.test(h.innerText);}).map(e=>norm(e.innerText)).join(' ').normalize('NFKC');
+   const numbers=new Set([...shown.matchAll(/(?:送り状番号|お問い合わせ番号|お問合せ番号|追跡番号|伝票番号)\s*[:：]?\s*([0-9][0-9 -]{9,18}[0-9])/g)].map(m=>m[1].replace(/\D/g,'')));
+   if(proof.accepted!==true||!/^\d{11,13}$/.test(proof.tracking_number||'')||!Number.isFinite(Date.parse(proof.observed_at))||Date.now()-Date.parse(proof.observed_at)>300000||Date.parse(proof.observed_at)>Date.now()+30000||numbers.size!==1||!numbers.has(proof.tracking_number))throw Error('現在の荷物の引受根拠を確認できません。通知していません');
+  }
+  if(job.channel==='ヤフオク'){const checks=fields().filter(e=>e.type==='checkbox'&&/商品を発送しました/.test(label(e)));if(checks.length>1)throw Error('発送確認のチェック欄を確定できません');if(checks.length===1&&!checks[0].checked)checks[0].click();}
   const buttons=noticeButtons();if(buttons.length!==1||buttons[0].disabled)throw Error('発送通知ボタンを1件に確認できません');const button=buttons[0];reserve();button.click();let confirmed=false;
   const sentValues=()=>[...root.querySelectorAll('[role=status],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')&&!e.closest('button,a')).filter(e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return !h||!/メッセージ|コメント/.test(norm(h.innerText));}).map(e=>norm(e.innerText));
 
@@ -310,3 +317,5 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  throw Error('未対応の販売サイト操作です');
  }catch(error){if(reportErrors)return {__error:error.message,...(error.existingListing?{existingListing:true}:{}),...(error.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shippingEvidence:error.shippingEvidence}:{})};throw error;}
 }
+
+

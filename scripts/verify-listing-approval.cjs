@@ -80,17 +80,3 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
 }
 (async()=>{await panelCheck(true,null,false,'ヤフオク');await panelCheck(true,null,true);await panelCheck(false,null);await panelCheck(true,null);await panelCheck(true,'商品名（メルカリ）\n保存済みタイトル\n\n説明文\n保存済み本文');console.log('PASS: four-channel approval gate, listing-panel generation, family SKUs and saved edits');})().catch(error=>{console.error(error);process.exitCode=1;});
 
-async function forwardPanelCheck(kind) {
- let cursor=0,hooks=[],effects=[],dirty=true,tree,writes=0,release;
- const react={useRef:v=>hooks[cursor++]??={current:v},useState(v){const n=cursor++;hooks[n]??={value:v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};effects.push(fn);}}};
- const task={...base,sales_channel:kind==='listing_complete'?'FBA':'メルカリ',status:kind==='listing_complete'?'商品登録前':'取引中',photo_review_approved:true};
- const info={revision:'one',photo_review_approved:true,listing:{trade_key:'trade'},operations:kind==='ship_notice'?[{id:'proof',kind:'shipping_code',status:'succeeded',trade_key:'trade',result:{qr_code:'data:image/png;base64,fixture'}}]:[]};
- const write=async()=>{writes++;await new Promise(r=>release=r);};
- const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,canViewDeliveryAssignee:()=>false},'../listingDraft':{listingDraft},'./DescriptionEditor':{default:()=>null},'../api':{fetchTask:async()=>task,fetchSellerContext:async()=>info,fetchPhotoUrls:async()=>[],fetchProductMaker:async()=>'',performDatedInventoryAction:write,queueSellerOperation:write}}).default;
- async function settle(){for(let n=0;n<25;n++){if(dirty){cursor=0;dirty=false;tree=Panel({mode:kind==='listing_complete'?'listing':'shipping',task,staff:{id:'MM'},onChanged(){},onClose(){}});effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
- const modal=()=>all(tree).find(n=>n.props?.button?.key===(kind==='ship_notice'?'shipping':kind));
- await settle();let button=all(tree).find(n=>n.type==='button'&&n.props.children===(kind==='ship_notice'?'発送通知':'出品'));assert(button&&!button.props.disabled);
- button.props.onClick();await settle();assert(modal());assert.equal(writes,0);modal().props.onCancel();await settle();assert(!modal());assert.equal(writes,0);
- button.props.onClick();await settle();const yes=modal().props.onConfirm;yes();yes();assert.equal(writes,1);release();await settle();assert(!modal());
-}
-(async()=>{await forwardPanelCheck('ship_notice');console.log('PASS: listing completion and shipment notice require confirmation and execute once');})().catch(e=>{console.error(e);process.exitCode=1;});

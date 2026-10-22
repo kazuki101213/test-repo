@@ -5,7 +5,6 @@ import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchPr
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
 import {listingDraft} from '../listingDraft';
 import DescriptionEditor from './DescriptionEditor';
-import WorkflowConfirmation from './WorkflowConfirmation';
 import WorkDateConfirmation from './WorkDateConfirmation';
 
 function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>void}){
@@ -26,8 +25,8 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const [draft,setDraft]=useState<SellerDraft|null>(null),[photos,setPhotos]=useState<ItemPhoto[]>([]),[selected,setSelected]=useState<string[]>([]),[context,setContext]=useState<SellerContext|null>(null);
  const [descriptionSource,setDescriptionSource]=useState<{task:DeliveryTask;maker:string}|null>(null);
  const [listingUrl,setListingUrl]=useState('');
- const [confirming,setConfirming]=useState<'listing'|'listing_complete'|'ship_notice'|null>(null);
- const [error,setError]=useState(''),[busy,setBusy]=useState(false),[camera,setCamera]=useState(false),[code,setCode]=useState(''),[posted,setPosted]=useState(false),[qr,setQr]=useState(''),[message,setMessage]=useState('');
+ const [confirming,setConfirming]=useState<'listing'|'listing_complete'|null>(null);
+ const [error,setError]=useState(''),[busy,setBusy]=useState(false),[camera,setCamera]=useState(false),[code,setCode]=useState(''),[qr,setQr]=useState(''),[message,setMessage]=useState('');
  const lock=useRef(false),request=useRef(crypto.randomUUID()),lastFinished=useRef(''),readCode=useRef<(code:string)=>void>(()=>{});
  readCode.current=value=>{setCode(value);setCamera(false);};
  const listingSkuKey=listingSkus.join('\n');
@@ -43,8 +42,8 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
   }
   const timer=window.setInterval(()=>void refresh(),15000);return()=>{active=false;window.clearInterval(timer);};
  },[watching?.id,watching?.result.read_check_state,watching?.result.read_check_requested_at,task.id,staff.role,staff.code,onChanged]);
- useEffect(()=>{setCode('');setPosted(false);setCamera(false);setMessage('');},[context?.listing?.trade_key]);
- const operations=context?.operations??[],latestCode=operations.find(op=>op.kind==='shipping_code'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key),proof=operations.find(op=>op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key&&(op.kind==='register_package'||op.kind==='verify_shipping'&&op.result.accepted===true));
+ useEffect(()=>{setCode('');setCamera(false);setMessage('');},[context?.listing?.trade_key]);
+ const operations=context?.operations??[],latestCode=operations.find(op=>op.kind==='shipping_code'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key);
  useEffect(()=>{let active=true;const value=latestCode?.result.qr_code;if(typeof value!=='string'){setQr('');return;}if(value.startsWith('data:image/png;base64,')){setQr(value);return;}void import('qrcode').then(module=>module.toDataURL(value,{width:260,margin:2})).then(url=>{if(active)setQr(url);}).catch(()=>{if(active)setError('配送コードを表示できません');});return()=>{active=false;};},[latestCode?.id]);
  async function submit(kind:string,payload:Record<string,unknown>){if(lock.current||pending)return;lock.current=true;setBusy(true);setError('');try{await queueSellerOperation(task.id,kind,{...payload,expected_revision:context?.revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));setMessage('');}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
  async function checkListing(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await requestListingResultCheck(task.id,listingUrl);setContext(await fetchSellerContext(task.id));}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
@@ -88,9 +87,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    {/ゆうパケットポストmini/.test(draft.size)?<>
     <button type="button" className="btn" disabled={disabled} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
-    {proof?.kind==='register_package'&&<label><input type="checkbox" checked={posted} onChange={event=>setPosted(event.target.checked)}/>投函しました</label>}
-   </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={disabled||!draft.size||!draft.dropoff} onClick={()=>void submit('shipping_code',tradePayload)}>発送コード表示</button><button type="button" className="btn primary" disabled={disabled||!latestCode} onClick={()=>setConfirming('ship_notice')}>発送通知</button></div>{qr&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
-   {/ゆうパケットポストmini/.test(draft.size)&&<button type="button" className="btn primary" disabled={disabled||!proof||!posted} onClick={()=>setConfirming('ship_notice')}>発送通知</button>}
+   </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={disabled||!draft.size||!draft.dropoff} onClick={()=>void submit('shipping_code',tradePayload)}>発送コード表示</button></div>{qr&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>
    {Array.isArray(latestMessages)&&latestMessages.map((entry,index)=><p key={index} className="seller-preview">{entry&&typeof entry==='object'&&typeof entry.body==='string'?entry.body:''}</p>)}
@@ -98,7 +95,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <button type="button" className="btn primary" disabled={disabled||!message.trim()} onClick={()=>{if(window.confirm('取引相手へ送信しますか？'))void submit('message_send',{...tradePayload,body:message.trim()});}}>送信</button>
   </>}
   {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<div><label>出品済み商品のURL（任意）<input type="url" value={listingUrl} disabled={busy||!!watching} onChange={event=>setListingUrl(event.target.value)}/></label><button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button></div>}
-  {confirming&&(confirming==='ship_notice'?<WorkflowConfirmation button={{key:'shipping',label:'発送通知',confirmation:'実際に荷物を発送しました。購入者へ発送通知を送信します。'}} busy={busy} onCancel={()=>setConfirming(null)} onConfirm={()=>{const shipmentProof=/ゆうパケットポストmini/.test(draft?.size??'')?proof:latestCode;if(lock.current||disabled||!shipmentProof||shipmentProof.kind==='register_package'&&!posted)return;void submit('ship_notice',{...tradePayload,proof_id:shipmentProof.id,posted:true}).finally(()=>setConfirming(null));}}/>:<WorkDateConfirmation title="出品しますか。" purchasedAt={task.purchased_at} savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onConfirm={async date=>{if(lock.current||disabled)return;if(!draft)throw new Error('出品内容を確認してください。');if(confirming==='listing_complete')await completeAmazonListing(date);else{lock.current=true;setBusy(true);try{const {expected_revision,...payload}={...draft,work_completed_on:date,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];}),expected_revision:context?.revision};await queueSellerOperation(task.id,'listing',{...payload,expected_revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));}finally{lock.current=false;setBusy(false);}}}}/>)}
+  {confirming&&<WorkDateConfirmation title="出品しますか。" purchasedAt={task.purchased_at} savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onConfirm={async date=>{if(lock.current||disabled)return;if(!draft)throw new Error('出品内容を確認してください。');if(confirming==='listing_complete')await completeAmazonListing(date);else{lock.current=true;setBusy(true);try{const {expected_revision,...payload}={...draft,work_completed_on:date,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];}),expected_revision:context?.revision};await queueSellerOperation(task.id,'listing',{...payload,expected_revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));}finally{lock.current=false;setBusy(false);}}}}/>}
   <div className="seller-history" aria-live="polite">{operations.map(op=><p key={op.id}>{statusText(op)}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
  </section>;
 }

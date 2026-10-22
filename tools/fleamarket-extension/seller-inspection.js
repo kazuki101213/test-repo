@@ -1,4 +1,5 @@
 import {parseSellerSaleDetail} from './seller-sync.js?v=0.1.143';
+import {fetchCarrierReceipts} from './daily-shipping.js';
 const PROFILE_ACCOUNTS={
  'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':'auctions-1',
  'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1',
@@ -8,6 +9,7 @@ const PROFILE_SALES={'ba92b386-e0bc-48be-b3b6-ca9550fa1a2d':['auctions-1'],'f29f
 export function sellerInspectionApplies(request,profileId,previous,now=Date.now()){
  if(!request||!PROFILE_ACCOUNTS[profileId]||request.id===previous||!/^[-0-9a-f]{36}$/i.test(request.id||''))return false;
  if(request.inspectShippingPreparation!=null||request.advanceShippingSize!=null||request.issueShippingQr!=null||request.listingPreview!=null||request.readListingShippingOnly!=null)return false;
+ if(request.inspectCarrierReceipt!=null&&(request.inspectCarrierReceipt!==true||!request.targetItemId||!request.targetSerial))return false;
  if(request.saleEvidenceLimit!=null&&(!request.saleEvidence||!Number.isInteger(request.saleEvidenceLimit)||request.saleEvidenceLimit<1||request.saleEvidenceLimit>40))return false;
  if(request.saleEvidence!=null&&(request.saleEvidence!==true||request.sellerListsOnly!==true||!request.accountId))return false;
  if(request.accountId!=null&&(!request.sellerListsOnly||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
@@ -86,7 +88,11 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリのみです');
    await session.go('https://jp.mercari.com/transaction/'+request.targetItemId);
    evidence.target=await session.inspectionShippingTarget({serial:request.targetSerial,itemId:request.targetItemId});
+   if(evidence.target.serialMatches!==true||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定の出品者取引を確認できません');
+   if(evidence.target.serialMatches===true&&session.outboundReceipt)evidence.target.shippingReceipt=await session.outboundReceipt({channel:'メルカリ',external_id:request.targetItemId});
+   if(request.inspectCarrierReceipt&&evidence.target.shippingReceipt?.trade_key){const proofs=await fetchCarrierReceipts({receipts:[evidence.target.shippingReceipt],parse:args=>session.parseCarrierReceipts(args)});evidence.target.carrierReceipt=[...proofs.values()][0]||null;}
    evidence.pages.push({kind:'target-shipping',...await session.structure()});
+   if(request.inspectCarrierReceipt){evidence.status='completed';return true;}
    if(evidence.target.serialMatches!==true||!evidence.target.sellerShipping||evidence.target.buyerControls||evidence.target.paymentWaiting)throw Error('指定商品に発送待ちの出品者画面を確認できません');
    if(request.readShippingPlaceOnly===true){
     await session.go('https://jp.mercari.com/transaction/'+request.targetItemId+'/shipping_facilities');evidence.pages.push({kind:'shipping-place-structure',...await session.structure()});evidence.status='completed';return true;
