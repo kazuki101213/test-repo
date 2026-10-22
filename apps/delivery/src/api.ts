@@ -433,3 +433,13 @@ export async function fetchSupplierOperation(id:string):Promise<{status:string;n
 export async function fetchSellerOperation(id:string):Promise<{status:string;note?:string|null}>{
  const {data,error}=await getSupabase().rpc('read_seller_operation',{p_id:id});if(error)throw error;return data;
 }
+
+export async function generateListingKeywords(input: { itemId:string; target:'mercari'|'yahoo-auction'; title:string; category:string; manufacturer:string; force?:boolean }): Promise<{keywords:string;previous:string[];cached:boolean}> {
+  const {data,error}=await getSupabase().functions.invoke('listing-ai-keywords',{body:input});
+  if(error){
+    const message=await error.context?.json?.().then((body:{error?:string})=>body.error).catch(()=>null);
+    throw new Error(message||'AI生成に接続できませんでした。説明文はそのまま保存できます。');
+  }
+  if(typeof data?.keywords!=='string'||!data.keywords.trim())throw new Error('生成結果を確認できません。');
+  return {keywords:data.keywords,previous:Array.isArray(data.previous)?data.previous.filter((v:unknown)=>typeof v==='string'):[],cached:data.cached===true};
+}
