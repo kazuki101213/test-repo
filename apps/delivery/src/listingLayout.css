@@ -30,3 +30,11 @@
  .app .seller-listing-layout { grid-template-columns:repeat(6,minmax(0,1fr)); }
  .app .seller-listing-layout > .seller-photos { grid-template-columns:repeat(10,minmax(0,1fr)); }
 }
+
+@media screen {
+ .description-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:8px; margin-top:8px; }
+ .app .seller-listing-layout .description-actions,
+ .app .seller-listing-layout .description-ai-message { grid-column:1/-1; min-width:0; }
+ .description-actions .btn { width:auto; min-width:0; }
+ @media(max-width:480px) { .description-actions { gap:6px; } .description-actions .btn { font-size:12px; padding-left:8px; padding-right:8px; } }
+}

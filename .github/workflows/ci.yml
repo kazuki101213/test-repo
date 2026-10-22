@@ -43,6 +43,9 @@ jobs:
       - name: 動作不良報告の写真添付
         run: node supabase/functions/malfunction-report-photos/index_test.cjs && node scripts/verify-malfunction-report-photos.cjs && node scripts/verify-admin-review-photos.cjs && node scripts/verify-return-tasks.cjs && node scripts/verify-packing-photo-tasks.cjs
 
+      - name: Gemini検索語と手編集保護
+        run: node --test supabase/functions/listing-ai-keywords/index_test.cjs && node scripts/verify-listing-keywords.cjs
+
       - name: 移行スクリプトの文法チェック
         run: node --check scripts/import-sheets.mjs
 

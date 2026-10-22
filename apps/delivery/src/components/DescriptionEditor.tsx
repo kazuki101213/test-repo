@@ -1,4 +1,5 @@
 import ColoredSelect from './ColoredSelect';
+import { useListingKeywords } from '../useListingKeywords';
 import { useEffect, useState, type FormEvent } from 'react';
 import { productModelText, type DeliveryTask, type SellerDraft } from '@bussan/shared';
 import { fetchProductMaker, saveDeliveryDescription } from '../api';
@@ -79,6 +80,8 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
     setManual(joinMarketplaceListing(target, title, body)); setSaved(false); setNotice('');
   }
 
+  const ai = useListingKeywords({itemId:task.id,target,title:listingTitle,body:listing.body,category:product,manufacturer,sku:task.sku,disabled:busy||!!embedded?.disabled,apply:body=>updateListing(listingTitle,body)});
+
   async function copyField(field: 'title' | 'body', value: string) {
     if (!value.trim()) return;
     let copied = false;
@@ -154,7 +157,11 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
       </div> : description ? <label>商品名・説明文（自動生成）<textarea className="description-text" maxLength={10000} value={description} onChange={e => { embedded?.onChange({description:e.target.value});setManual(e.target.value); setSaved(false); setNotice(''); }} /></label>
         : <p className="muted">販売先・商品・コンディションを選ぶと、商品名と説明文を生成します。</p>}
       {manual !== null && description && <div className="row"><span className="muted">手入力の文章を表示しています。</span><button type="button" className="btn" disabled={!generated} onClick={updateSelection}>選択内容から再生成</button></div>}
+      <div className="description-actions">
+      {target !== 'amazon' && <button className="btn primary" type="button" disabled={ai.busy||!listingTitle.trim()||!product} onClick={()=>void ai.generate(true)}>{ai.busy?'生成中…':'関連キーワードを生成'}</button>}
       <button className="btn primary" type="submit">{busy ? '保存中…' : saved ? '上書き保存' : '説明文を保存'}</button>
+      </div>
+      {target !== 'amazon' && ai.message && <p className="description-ai-message muted" role="status">{ai.message}</p>}
       {listingLayout && options}
     </fieldset>
     {notice && <p role="status">{notice}</p>}{error && <div className="error" role="alert">{error}</div>}
