@@ -11,7 +11,7 @@ export async function processPurchaseSync({storage,rpc,settings,profileId,busy,s
   await rpc('purchase_sync',{p_action:'finish',p_request_id:active.requestId,p_profile_id:profileId,p_claim_token:active.token,p_result:{imported:counts?.imported||0,errors:complete?(counts?.errors||0):1,note:complete?(counts?.errors?'一部のアカウントで停止しました。確認タスク・拡張機能の実行記録を確認してください':'購入履歴の同期が完了しました'):'同期が中断されたか開始できませんでした。再送していません'}});
   await storage.set({purchaseSyncActive:null});return;
  }
- if(busy||state.job||settings.mode==='diagnostic'||!settings.purchaseImportEnabled||state.operationPolicy&&!state.operationPolicy.includes('purchases'))return;
+ if(busy||state.job||settings.mode==='diagnostic'||state.operationPolicy&&!state.operationPolicy.includes('purchases'))return;
  if(now-(state.purchaseSyncPollAt||0)<55000)return;
  await storage.set({purchaseSyncPollAt:now});
  const request=await rpc('purchase_sync',{p_action:'claim',p_profile_id:profileId});if(!request)return;
