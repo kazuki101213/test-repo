@@ -291,7 +291,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const input=field(['発送用コード','2次元コード','専用資材コード','ポスト発送確認用番号']);setValue(input,payload.code);const button=oneButton(['登録する','コードを登録','読み取り内容を登録']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(登録完了|読み取り完了|登録が完了しました|読み取りが完了しました)$/.test(value)),'専用資材の登録結果を確認できません');return {registered:true,note:'専用資材を対象取引へ登録しました'};
  }
  if(phase==='ship_notice'){
-  if(payload.automatic_receipt){const proof=payload.automatic_receipt;if(proof.accepted!==true||!/^\d{11,13}$/.test(proof.tracking_number||'')||Date.now()-Date.parse(proof.observed_at)>300000||!norm(root.innerText.split(/メッセージ|取引メッセージ/)[0]).replace(/[\s-]/g,'').includes(proof.tracking_number))throw Error('現在の荷物の引受根拠を確認できません。通知していません');}
+  if(payload.automatic_receipt){const proof=payload.automatic_receipt;if(proof.accepted!==true||!/^\d{11,13}$/.test(proof.tracking_number||'')||!Number.isFinite(Date.parse(proof.observed_at))||Date.now()-Date.parse(proof.observed_at)>300000||Date.parse(proof.observed_at)>Date.now()+30000||!norm(root.innerText.split(/メッセージ|取引メッセージ/)[0]).replace(/[\s-]/g,'').includes(proof.tracking_number))throw Error('現在の荷物の引受根拠を確認できません。通知していません');}
   if(job.channel==='ヤフオク'){const checks=fields().filter(e=>e.type==='checkbox'&&/商品を発送しました/.test(label(e)));if(checks.length>1)throw Error('発送確認のチェック欄を確定できません');if(checks.length===1&&!checks[0].checked)checks[0].click();}
   const buttons=noticeButtons();if(buttons.length!==1||buttons[0].disabled)throw Error('発送通知ボタンを1件に確認できません');const button=buttons[0];reserve();button.click();let confirmed=false;
   const sentValues=()=>[...root.querySelectorAll('[role=status],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')&&!e.closest('button,a')).filter(e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return !h||!/メッセージ|コメント/.test(norm(h.innerText));}).map(e=>norm(e.innerText));
@@ -313,3 +313,4 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
  throw Error('未対応の販売サイト操作です');
  }catch(error){if(reportErrors)return {__error:error.message,...(error.existingListing?{existingListing:true}:{}),...(error.stoppedBeforePublish?{stoppedBeforePublish:true,confirmationEvidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shippingEvidence:error.shippingEvidence}:{})};throw error;}
 }
+

@@ -154,3 +154,12 @@ test('サイトで通知済みなら状態確認だけで完了し通知ボタ�
  await sellerQueuedOperations({settings,log:async()=>{},rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:(finished=args),openSession:async()=>({go:async()=>{},operation:async(_,phase)=>{phases.push(phase);return {ready:true,alreadyNotified:true,observed_at:'2026-01-01T00:00:00Z'};},close:async()=>{}})});
  assert.deepEqual(phases,['ship_notice_preflight']);assert.equal(finished.p_status,'succeeded');assert.equal(finished.p_result.already_notified,true);
 });
+
+test('自動発送通知の対象照会は1時の定期処理だけで一度、4時間ごとには行わない',async()=>{
+ for(const hourly of [false,true]){
+  const calls=[],data={};let opened=0;
+  const deps={settings:{...settings,accounts:[settings.accounts[0]]},records:records(),day,profileId:'profile',automaticShipping:true,hourly,now:Date.parse('2026-10-16T01:05:00+09:00'),storage:{set:async v=>Object.assign(data,v)},log:async()=>{},rpc:async name=>{calls.push(name);return name==='extension_seller_daily_barrier'?true:[];},openSession:async()=>{opened++;return{links:async()=>[{text:'取引中',url:'https://jp.mercari.com/mypage/listings/in_progress'}],go:async()=>{},read:async()=>({rows:[],empty:true,navigation:[],text:''}),close:async()=>{}};}};
+  await sellerDaily(deps);assert.equal(calls.filter(v=>v==='extension_daily_shipping_candidates').length,hourly?0:1);assert.equal(opened,1);
+  if(!hourly){await sellerDaily({...deps,records:{...records(),...data}});assert.equal(calls.filter(v=>v==='extension_daily_shipping_candidates').length,1);assert.equal(opened,1);}
+ }
+});

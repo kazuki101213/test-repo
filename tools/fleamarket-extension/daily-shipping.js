@@ -21,7 +21,8 @@ export function readOutboundReceipt({external_id,channel}){
  for(const l of links)numbers.add(l.tracking_number);
  if(numbers.size!==1||carriers.size!==1)return null;
  const tracking_number=[...numbers][0];if(!/^[0-9]{11,13}$/.test(tracking_number))return null;
- return {carrier:[...carriers][0],tracking_number};
+ const purchase=text.match(/購入日時\s*[:：]?\s*(20\d{2})[年/.-](\d{1,2})[月/.-](\d{1,2})(?:日)?\s+(\d{1,2})[:：](\d{2})/);
+ return {carrier:[...carriers][0],tracking_number,...(purchase?{trade_key:external_id+':'+purchase[1]+'-'+purchase[2].padStart(2,'0')+'-'+purchase[3].padStart(2,'0')+'T'+purchase[4].padStart(2,'0')+':'+purchase[5]}:{})};
 }
 
 /** Parse inert carrier HTML in the page world. Only acceptance history proves shipment. */
@@ -81,10 +82,10 @@ export async function processDailyShipping({jobs,session,rpc,log,fetchReceipts=f
   if(status!=='succeeded')await log('error','自動発送通知を停止しました：'+result.note);
  };
  for(const job of jobs){try{
-  if(shippingReceiptValid(job.receipt)){pending.push({...job,...job.receipt});continue;}
+  if(shippingReceiptValid(job.receipt)){pending.push({...job,...job.receipt,trade_key:job.trade_key});continue;}
   await session.go(job.url);const state=await session.operation(job,'ship_notice_preflight');
   if(state.alreadyNotified){await finish(job,{already_notified:true,observed_at:state.observed_at},true);continue;}
-  const receipt=await session.outboundReceipt(job);if(shippingReceiptValid(receipt))pending.push({...job,...receipt});
+  const receipt=await session.outboundReceipt(job);if(shippingReceiptValid(receipt))pending.push({...job,...receipt,trade_key:job.trade_key});
   else await log('info','自動発送通知：現在の送り状番号を確認できない商品は通知せず保留しました');
  }catch(e){await log('warning','自動発送通知の確認を保留しました：'+e.message);}}
  if(!pending.length)return;
