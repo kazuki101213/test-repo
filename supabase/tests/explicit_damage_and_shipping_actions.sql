@@ -27,6 +27,7 @@ set local role postgres;
 -- No live marketplace is contacted. These are disposable proof/queue fixtures.
 insert into app.items(id,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,status)
 select '99899300-0000-4000-8000-000000000001',998993,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'shipping confirmation fixture',1000,'ヤフオク','メルカリ','fixture','取引中';
+update app.items set inspected_at=now(),product_registered_at=now(),seller_trade_key='m998993:current',status='取引中' where lot_seq=998993;
 insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade_key)
 values('99899300-0000-4000-8000-000000000001','メルカリ','mercari-1','m998993','https://jp.mercari.com/item/m998993','m998993:current');
 insert into app.seller_operations(id,item_id,actor_id,kind,channel,account_id,expected_status,expected_updated_at,payload,status,result)
