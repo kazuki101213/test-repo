@@ -1,11 +1,12 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
-const shared={HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
+const notice={exports:{},URL};vm.runInNewContext(compile('packages/shared/src/noticeUrl.ts'),notice);
+const shared={...notice.exports,HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);Object.assign(shared,stateSearch.exports);
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
 const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);
-const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',memo:'購入者コメント\n続き',latest_comment:'納品者コメント',status:'受取前',marketplace:'Amazon返品',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
+const row={id:'1',sku:'2204-AAII-20261007-100',lot_seq:2204,is_accessory:false,title:'body',marketplace_item_id:'u123',marketplace_url:'https://auctions.yahoo.co.jp/jp/auction/u123',model_no:'MODEL',purchaser_name:'AA',deliverer_name:'II',asin:'B000000001',cost_amount:1000,amazon_refund_amount:-1234,non_amazon_refund_amount:0,inventory_refund_amount:0,purchased_at:'2026-10-07',memo:'購入者コメント\n続き',latest_comment:'納品者コメント',status:'受取前',marketplace:'Amazon返品',sales_channel:'FBA',planned_price:2000,expected_profit:400,product_sold_price:null,product_profit:null};
 const rows=[row,{...row,id:'2',sku:'2204c-AAII-20260901-123',is_accessory:true,title:'remote',cost_amount:1230,sold_price:200,payout_amount:150,product_sold_price:9999,product_payout_amount:8888},{...row,id:'3',sku:'2277b-AAII-20261007-100',lot_seq:2277,cost_amount:2000,amazon_refund_amount:0,purchased_at:null,memo:null}];
 const f=(values=null,from='',to='')=>({values,from,to});const apply=filters.exports.filterInventoryColumns;
 assert.equal(apply(rows,{amazon_refund:f(null,'-2000','-1')}).length,2);
@@ -45,6 +46,8 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
 (async()=>{
  await settle();
  assert(all(tree).some(n=>n.type==='table'&&n.props.className==='inventory-table'),'Show first batch while remaining rows load');
+ const purchaseLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.sku+'の仕入先の商品ページを開く');assert(purchaseLink);assert.equal(purchaseLink.props.href,row.marketplace_url);assert.equal(purchaseLink.props.className,'inline-reference-link');assert.equal(purchaseLink.props.target,'_blank');assert.equal(purchaseLink.props.rel,'noopener noreferrer');
+ all(tree).find(n=>n.type==='button'&&n.props.title==='商品IDをクリックして編集').props.onClick();await settle();const idEditor=all(tree).find(n=>n.props?.field==='marketplace_item_id');assert.equal(idEditor.props.item.id,row.id);idEditor.props.onClose();await settle();
  assert(!all(tree).some(n=>n.type==='button'&&['一覧をCSV','再読込'].includes(n.props.children)),'Requested inventory export and reload controls are absent');
  initialRead=false;dirty=true;await settle();
  const commentHeadings=all(tree).filter(n=>n.type==='button'&&['仕入担当者からのコメントのフィルター','納品担当者からのコメントのフィルター'].includes(n.props['aria-label']));assert.equal(commentHeadings[0].props['aria-label'],'仕入担当者からのコメントのフィルター');
