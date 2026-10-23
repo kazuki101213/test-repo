@@ -1,5 +1,5 @@
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
-import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES } from '@bussan/shared';
+import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES, noticeProductUrl } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
@@ -231,6 +231,7 @@ export default function Inventory({ me }: { me: Staff }) {
             <tbody>
               {viewItems.slice(0, visibleCount).map((i, index) => {
                 const serial = productSerial(i.sku, i.lot_seq);
+                const purchaseUrl = noticeProductUrl(i.marketplace, i.marketplace_item_id, i.marketplace_url);
                 const previous = viewItems[index - 1];
                 const next = viewItems[index + 1];
                 const previousSerial = previous ? productSerial(previous.sku, previous.lot_seq) : null;
@@ -256,13 +257,13 @@ export default function Inventory({ me }: { me: Staff }) {
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
-                    <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>
+                    <span className="reference-value"><button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>{i.asin && <a className="inline-reference-link" href={`https://www.amazon.co.jp/dp/${encodeURIComponent(i.asin)}`} target="_blank" rel="noopener noreferrer" aria-label={`${i.asin}をAmazonで開く`} title="Amazonの商品ページを開く"><span aria-hidden="true">↗</span></a>}</span>
                     <button type="button" className="inventory-cell-edit" onClick={() => edit(modelOrAccessoryField)} title={i.is_accessory ? i.title : 'クリックして編集'}>{modelOrAccessoryName}</button>
                   </div></td>
                   <td>{stacked(staffDisplayName(i.purchaser_name) || '—', 'purchaser_id', staffDisplayName(i.deliverer_name) || '—', 'deliverer_id')}</td>
                   <td><div className="inventory-cell-stack">
                     <button type="button" className="inventory-cell-edit inventory-marketplace-name" onClick={() => edit('marketplace')} title="仕入先を編集">{<ColoredLabel value={i.marketplace} />}</button>
-                    <button type="button" className="inventory-cell-edit inventory-marketplace-item-id" onClick={() => edit('marketplace_item_id')} title="商品IDをクリックして編集">{i.marketplace_item_id || '—'}</button>
+                    <span className="reference-value"><button type="button" className="inventory-cell-edit inventory-marketplace-item-id" onClick={() => edit('marketplace_item_id')} title="商品IDをクリックして編集">{i.marketplace_item_id || '—'}</button>{purchaseUrl && <a className="inline-reference-link" href={purchaseUrl} target="_blank" rel="noopener noreferrer" aria-label={`${i.sku}の仕入先の商品ページを開く`} title="仕入先の商品ページを開く"><span aria-hidden="true">↗</span></a>}</span>
                     <button type="button" className="inventory-cell-edit inventory-tracking-number" onClick={() => edit('tracking_no')} title="追跡番号をクリックして編集">{Array.from(i.tracking_no ?? '').slice(0, 20).join('') || '—'}</button>
                   </div></td>
                   <td>{stacked(jpDate(i.purchased_at), 'purchased_at', yen(i.cost_amount), 'cost_amount')}</td>
