@@ -12,7 +12,9 @@ export function sellerInspectionApplies(request,profileId,previous,now=Date.now(
  if(request.inspectCarrierReceipt!=null&&(request.inspectCarrierReceipt!==true||!request.targetItemId||!request.targetSerial))return false;
  if(request.saleEvidenceLimit!=null&&(!request.saleEvidence||!Number.isInteger(request.saleEvidenceLimit)||request.saleEvidenceLimit<1||request.saleEvidenceLimit>40))return false;
  if(request.saleEvidence!=null&&(request.saleEvidence!==true||request.sellerListsOnly!==true||!request.accountId))return false;
- if(request.accountId!=null&&(!request.sellerListsOnly||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
+ if(request.buyerReceiptIds!=null&&(!Array.isArray(request.buyerReceiptIds)||request.buyerReceiptIds.length<1||request.buyerReceiptIds.length>10||!request.buyerReceiptIds.every(id=>/^[a-z][0-9]{8,14}$/.test(id))||!['auctions-1','auctions-2'].includes(request.accountId)||request.sellerListsOnly||request.targetItemId||request.targetSerial||request.saleEvidence))return false;
+ if(request.listingSerials!=null&&(!request.sellerListsOnly||!Array.isArray(request.listingSerials)||request.listingSerials.length>20||!request.listingSerials.every(s=>/^[0-9]{1,8}[a-z]{0,3}$/.test(s))))return false;
+ if(request.accountId!=null&&(!(request.sellerListsOnly||request.buyerReceiptIds)||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
  if(request.sellerListsOnly!=null&&(request.sellerListsOnly!==true||!request.accountId&&profileId!=='ba92b386-e0bc-48be-b3b6-ca9550fa1a2d'))return false;
  if(request.readShippingPlaceOnly!=null&&(request.readShippingPlaceOnly!==true||!request.targetSerial||!request.targetItemId))return false;
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
@@ -84,6 +86,16 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  await storage.set({sellerInspectionRequest:request.id,sellerInspectionEvidence:{...evidence,status:'running'}});
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
+  if(request.buyerReceiptIds){
+   evidence.receipts=[];
+   for(const itemId of request.buyerReceiptIds){
+    if(Date.now()>Date.parse(request.expiresAt))throw Error('診断の有効期限を過ぎました');
+    const entry={itemId};evidence.receipts.push(entry);
+    try{await session.go('https://contact.auctions.yahoo.co.jp/trade/top?aID='+itemId);const {ratingUrl,...receipt}=await session.buyerTodo({itemId,stage:'receipt'});Object.assign(entry,receipt);if(ratingUrl){await session.go(ratingUrl);entry.rating=await session.buyerTodo({itemId,stage:'rating'});}}
+    catch(error){entry.error=error.message;}
+   }
+   evidence.status='completed';return true;
+  }
   if(request.targetItemId){
    if(account.site!=='mercari')throw Error('商品ID指定の診断はメルカリのみです');
    await session.go('https://jp.mercari.com/transaction/'+request.targetItemId);
@@ -112,7 +124,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    const menu=await session.links(),seen=new Set(),queue=[],saleRows=[];
    const enqueue=links=>{for(const link of links)if(['出品した商品','出品一覧','出品中','取引中','売却済み','出品終了分','売上金管理'].includes(link.text)&&!seen.has(link.url)&&!queue.some(x=>x.url===link.url))queue.push(link);};
    enqueue(menu);evidence.pages.push({kind:'seller-menu',...await session.structure()});
-   for(let n=0;queue.length&&n<7;n++){const link=queue.shift();seen.add(link.url);await session.go(link.url);const phase=['出品した商品','出品一覧'].includes(link.text)?null:link.text;const page=await session.read(phase);if(request.saleEvidence===true)for(const row of page.rows.slice(0,account.site==='auctions'?40:50))if(row.status==='販売済'&&!saleRows.some(old=>old.external_id===row.external_id))saleRows.push(row);const plans=rpc&&page.rows.length?await rpc('seller_observation_plan',{p_account_id:account.id,p_rows:page.rows.slice(0,100)}):[];evidence.pages.push({kind:'seller-list-only',phase:link.text,planCounts:plans.reduce((out,p)=>(out[p.action]=(out[p.action]||0)+1,out),{}),samples:page.rows.slice(0,8).map(({external_id,serial,status})=>({external_id,serial,status})),...await session.structure(),rowCount:page.rows.length,itemCount:page.itemCount,empty:page.empty,active:page.active,statuses:[...new Set(page.rows.map(row=>row.status))],emptyPhrases:[...page.text.matchAll(/[^。]{0,25}(?:ありません|ございません|見つかりません)[^。]{0,30}/g)].map(m=>m[0]).slice(0,5)});enqueue(page.navigation);}
+   for(let n=0;queue.length&&n<7;n++){const link=queue.shift();seen.add(link.url);await session.go(link.url);const phase=['出品した商品','出品一覧'].includes(link.text)?null:link.text;const page=await session.read(phase);if(request.saleEvidence===true)for(const row of page.rows.slice(0,account.site==='auctions'?40:50))if(row.status==='販売済'&&!saleRows.some(old=>old.external_id===row.external_id))saleRows.push(row);const plans=rpc&&page.rows.length?await rpc('seller_observation_plan',{p_account_id:account.id,p_rows:page.rows.slice(0,100)}):[];evidence.pages.push({kind:'seller-list-only',phase:link.text,planCounts:plans.reduce((out,p)=>(out[p.action]=(out[p.action]||0)+1,out),{}),...(request.listingSerials?{requestedMatches:page.rows.filter(row=>request.listingSerials.includes(row.serial)).map(({external_id,serial,status})=>({external_id,serial,status})),parsedRows:page.rows.length}:{}),samples:page.rows.slice(0,8).map(({external_id,serial,status})=>({external_id,serial,status})),...await session.structure(),rowCount:page.rows.length,itemCount:page.itemCount,empty:page.empty,active:page.active,statuses:[...new Set(page.rows.map(row=>row.status))],emptyPhrases:[...page.text.matchAll(/[^。]{0,25}(?:ありません|ございません|見つかりません)[^。]{0,30}/g)].map(m=>m[0]).slice(0,5)});enqueue(page.navigation);}
    if(request.saleEvidence===true){evidence.saleEvidenceRows=[];for(const row of saleRows.slice(0,request.saleEvidenceLimit||1)){if(Date.now()>Date.parse(request.expiresAt))throw Error('診断の有効期限を過ぎました');evidence.currentItem=row.external_id;const detail=await session.detail(row.detail_url,row.external_id),result=saleDetailEvidence(account.site,row,detail);evidence.saleEvidenceRows.push(result);if(result.parseError&&account.site==='auctions'&&session.auctionDetail){try{const auction=await session.auctionDetail(row.external_id);result.alternate=saleDetailEvidence(account.site,row,auction);result.parsed=parseSellerSaleDetail('ヤフオク',detail.text,row.external_id,detail.url,auction);delete result.parseError;}catch(error){result.alternateError=error.message;}}if(result.parseError)break;}evidence.saleEvidence=evidence.saleEvidenceRows[0]||{empty:true};}
    evidence.status='completed';return true;
   }
