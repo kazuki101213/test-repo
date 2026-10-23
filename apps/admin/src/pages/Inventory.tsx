@@ -194,7 +194,6 @@ export default function Inventory({ me }: { me: Staff }) {
           <button type="button" className="btn" disabled={draftsLoading || purchaseSync.syncing || me.role !== 'admin'} onClick={() => void purchaseSync.startSync()}>{purchaseSync.syncing ? '同期中…' : '更新'}</button>
           <span className="sub" role="status" aria-live="polite">{purchaseSync.message || (draftsLoading ? '仕入れリストを読み込んでいます…' : draftsUpdated ? `${draftsUpdated.at} 更新しました（未反映 ${draftsUpdated.count}件）` : '')}</span>
         </div>
-        <p className="sub">更新すると、別PCのChrome拡張機能で7アカウントの購入・落札履歴を取得します。</p>
         {purchaseSync.error && <div className="error">{purchaseSync.error}</div>}
         {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
         {purchaseDrafts.length > 0 ? <div className="scroll"><table className="purchase-draft-table"><thead><tr><th>購入日</th><th>商品情報</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>販売予定金額</th><th>振込予定金額</th><th>操作</th></tr></thead><tbody>
