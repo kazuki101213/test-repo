@@ -51,8 +51,11 @@ export default function PhotoReviewTasks() {
   const [saveRevision, setSaveRevision] = useState(0);
 
   useEffect(() => {
-    let active = true;
-    (async () => {
+    let active = true, reading = false, lastRead = -Infinity;
+    const refresh = async () => {
+      if (reading || document.visibilityState === 'hidden') return;
+      reading = true; lastRead = Date.now();
+      try {
       const [rows,nextListingTasks] = await Promise.all([
         readResourceSnapshot<Review & {id:string;item:Item}>('photo_reviews'),
         readResourceSnapshot<ListingTask>('listing_tasks'),
@@ -71,8 +74,13 @@ export default function PhotoReviewTasks() {
           else setNoticeMessage('通知の写真確認タスクはすでに完了したか、現在は確認できません。');
         }
       }
-    })().catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); });
-    return () => { active = false; };
+      } catch(cause) { if (active) setError(cause instanceof Error ? cause.message : String(cause)); }
+      finally { reading = false; }
+    };
+    const visible = () => { if (Date.now() - lastRead >= 30000) void refresh(); };
+    void refresh(); const timer = window.setInterval(visible, 300000);
+    window.addEventListener('focus', visible); document.addEventListener('visibilitychange', visible);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
   }, [revision]);
 
   useEffect(() => {
@@ -140,6 +148,7 @@ export default function PhotoReviewTasks() {
         .eq('id', task.id).eq('status','商品登録前').is('sold_on',null);
       if (updateError) throw updateError;
       setListingTasks(current => current.filter(row => row.id !== task.id));
+      setRevision(value => value + 1);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   }
