@@ -47,6 +47,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  await settle();
  assert(all(tree).some(n=>n.type==='table'&&n.props.className==='inventory-table'),'Show first batch while remaining rows load');
  const purchaseLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.sku+'の仕入先の商品ページを開く');assert(purchaseLink);assert.equal(purchaseLink.props.href,row.marketplace_url);assert.equal(purchaseLink.props.className,'inline-reference-link');assert.equal(purchaseLink.props.target,'_blank');assert.equal(purchaseLink.props.rel,'noopener noreferrer');
+ const amazonLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.asin+'をAmazonで開く');assert(amazonLink);assert.equal(amazonLink.props.href,'https://www.amazon.co.jp/dp/'+row.asin);assert.equal(amazonLink.props.className,'inline-reference-link');assert.equal(amazonLink.props.target,'_blank');
  all(tree).find(n=>n.type==='button'&&n.props.title==='商品IDをクリックして編集').props.onClick();await settle();const idEditor=all(tree).find(n=>n.props?.field==='marketplace_item_id');assert.equal(idEditor.props.item.id,row.id);idEditor.props.onClose();await settle();
  assert(!all(tree).some(n=>n.type==='button'&&['一覧をCSV','再読込'].includes(n.props.children)),'Requested inventory export and reload controls are absent');
  initialRead=false;dirty=true;await settle();

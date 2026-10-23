@@ -257,7 +257,7 @@ export default function Inventory({ me }: { me: Staff }) {
                     <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
                   </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
                   <td><div className="inventory-cell-stack">
-                    <button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>
+                    <span className="reference-value"><button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>{i.asin && <a className="inline-reference-link" href={`https://www.amazon.co.jp/dp/${encodeURIComponent(i.asin)}`} target="_blank" rel="noopener noreferrer" aria-label={`${i.asin}をAmazonで開く`} title="Amazonの商品ページを開く"><span aria-hidden="true">↗</span></a>}</span>
                     <button type="button" className="inventory-cell-edit" onClick={() => edit(modelOrAccessoryField)} title={i.is_accessory ? i.title : 'クリックして編集'}>{modelOrAccessoryName}</button>
                   </div></td>
                   <td>{stacked(staffDisplayName(i.purchaser_name) || '—', 'purchaser_id', staffDisplayName(i.deliverer_name) || '—', 'deliverer_id')}</td>
