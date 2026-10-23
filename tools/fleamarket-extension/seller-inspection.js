@@ -91,7 +91,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    for(const itemId of request.buyerReceiptIds){
     if(Date.now()>Date.parse(request.expiresAt))throw Error('診断の有効期限を過ぎました');
     const entry={itemId};evidence.receipts.push(entry);
-    try{await session.go('https://contact.auctions.yahoo.co.jp/trade/top?aID='+itemId);const {ratingUrl,...receipt}=await session.buyerTodo({itemId,stage:'receipt'});Object.assign(entry,receipt);if(ratingUrl){await session.go(ratingUrl);entry.rating=await session.buyerTodo({itemId,stage:'rating'});}}
+    try{await session.go('https://contact.auctions.yahoo.co.jp/buyer/top?aid='+itemId);const {ratingUrl,...receipt}=await session.buyerTodo({itemId,stage:'receipt'});Object.assign(entry,receipt);if(ratingUrl){await session.go(ratingUrl);entry.rating=await session.buyerTodo({itemId,stage:'rating'});}}
     catch(error){entry.error=error.message;}
    }
    evidence.status='completed';return true;
