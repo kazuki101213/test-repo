@@ -148,6 +148,7 @@ export default function PhotoReviewTasks() {
         .eq('id', task.id).eq('status','商品登録前').is('sold_on',null);
       if (updateError) throw updateError;
       setListingTasks(current => current.filter(row => row.id !== task.id));
+      setRevision(value => value + 1);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   }
