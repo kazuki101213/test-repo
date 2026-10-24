@@ -272,7 +272,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(tabs.length!==1)throw Error('発送操作のある取引タブを1件に確認できません');
   return {trade_tab_url:tabs[0].href};
  }
- if(phase==='read_shipping_code'){try{return {qr_code:waitForShippingCode?await waitFor(qrPng,'配送コードの画像を確認できません。再発行しません'):await qrPng()};}catch(error){return {__error:error.message};}}
+ if(phase==='read_shipping_code'){try{const read=()=>{if(current()?.id===job.id&&current()?.code_click_error)throw Error('配送コードの発行前に停止しました：'+current().code_click_error);return qrPng();};return {qr_code:waitForShippingCode?await waitFor(read,'配送コードの画像を確認できません。再発行しません'):await read()};}catch(error){const state=current()?.id===job.id?current():null;return {__error:error.message,shippingEvidence:{codeClick:state?{clicked:state.code_clicked===true,nameMatches:state.code_name_matches,connected:state.code_button_connected,error:state.code_click_error}:null}};}}
  if(phase==='shipping_preflight'){
   if(job.channel==='メルカリ'&&payload.dropoff){const postal=/ゆうゆう/.test(payload.shippingMethod||'');if(!(postal?['ローソン','郵便局']:['セブンイレブン','ヤマト営業所']).includes(payload.dropoff))throw Error('配送方法と発送場所が一致しません。ゆうゆうメルカリ便はローソン・郵便局、らくらくメルカリ便はセブンイレブン・ヤマト営業所を選択してください');}
   const entries=controls().filter(e=>buttonLabel(e)==='商品サイズと発送場所を選択する'),edit=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&e.origin===location.origin&&e.pathname==='/transaction/'+job.external_id+'/shipping_class');if(entries.length+edit.length>1)throw Error('配送設定の入口が曖昧です');if(payload.shippingMethod&&!text().includes(norm(payload.shippingMethod)))throw Error('サイトの配送方法がアプリの設定と一致しません');
@@ -309,7 +309,16 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
     setValue(inputs[0],payload.category);
    }else{await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);}
   }
-  const button=oneButton(['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行',...(job.channel==='ヤフオク'?['配送コードを発行する']:[])]);reserve();setTimeout(()=>button.click(),100);return {code_requested:true};
+  const codeNames=['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行',...(job.channel==='ヤフオク'?['配送コードを発行する']:[])];
+  oneButton(codeNames);reserve();setTimeout(()=>{
+   try{
+    root=document.querySelector('main')||document.body;tradeGuard();
+    if(current()?.id!==job.id||current()?.code_clicked)return;
+    if(job.channel==='ヤフオク'){const named=candidates(['品名','商品名'],['itemName']),names=named.length?named:fields().filter(e=>e.tagName==='INPUT'&&e.type==='text'&&/^例[：:]\s*家電製品→/.test(norm(e.getAttribute('placeholder'))));const matches=names.length===1&&names[0].value===String(payload.category);globalThis.__bussanSellerOperation={...current(),code_name_matches:matches};if(!matches)throw Error('描き直し後の品名入力を確認できません');}
+    const button=oneButton(codeNames);if(!button.isConnected)throw Error('配送コードの発行ボタンが画面から切り離されています');
+    globalThis.__bussanSellerOperation={...current(),code_clicked:true,code_button_connected:true};button.click();
+   }catch(error){globalThis.__bussanSellerOperation={...current(),code_click_error:error.message};}
+  },100);return {code_requested:true};
  }
  if(phase==='register_package'){
   if(!/ゆうパケットポスト/.test(text()))throw Error('専用資材を使用する発送画面ではありません');
