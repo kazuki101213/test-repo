@@ -293,8 +293,8 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   else{
    let fixedSize=false;
    if(job.channel==='ヤフオク'&&!candidates(['サイズ','配送サイズ']).length){
-    const summaries=[...root.querySelectorAll('table')].filter(table=>[...table.querySelectorAll('th')].some(e=>norm(e.innerText)==='落札者が選択した配送方法'));
-    const methods=summaries.flatMap(table=>[...table.querySelectorAll('td')].map(e=>norm(e.innerText)));
+    const summaries=[...root.querySelectorAll('table')].filter(table=>[...table.querySelectorAll('th')].some(e=>e.closest('table')===table&&norm(e.innerText)==='落札者が選択した配送方法'));
+    const methods=summaries.flatMap(table=>[...table.querySelectorAll('td')].filter(e=>e.closest('table')===table).map(e=>norm(e.innerText)));
     const expected=norm(payload.shippingMethod).replace(/\s/g,''),sizes=methods.filter(t=>t.replace(/\s/g,'').includes(expected)).flatMap(t=>[...t.matchAll(/(?:ゆうパック|宅急便(?:[（(]EAZY[）)])?)\s*([0-9]{2,3})\s*サイズ/g)].map(m=>m[1]));
     if(!/配送コードを発行してください/.test(text())||sizes.length!==1||sizes[0]!==String(payload.size))throw Error('落札者が選択した配送サイズとアプリ設定の一致を確認できません');
     fixedSize=true;
