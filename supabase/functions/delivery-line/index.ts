@@ -8,7 +8,16 @@ const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE
 const accessToken = () => Deno.env.get('LINE_CHANNEL_ACCESS_TOKEN');
 const channelSecret = () => Deno.env.get('LINE_CHANNEL_SECRET');
 const officialUrl = () => friendUrl(Deno.env.get('LINE_OFFICIAL_ACCOUNT_URL'));
-const ready = () => !!(accessToken() && channelSecret() && officialUrl());
+const ready = () => !!(accessToken() && channelSecret());
+async function botConnection() {
+  const configured = ready();
+  if (!configured) return { configured, verified: false, tokenConfigured: !!accessToken(), secretConfigured: !!channelSecret(), officialUrl: null, displayName: null };
+  const result = await fetch('https://api.line.me/v2/bot/info', { headers: { Authorization: `Bearer ${accessToken()}` }, signal: AbortSignal.timeout(8000) });
+  if (!result.ok) return { configured, verified: false, tokenConfigured: true, secretConfigured: true, officialUrl: null, displayName: null, status: result.status };
+  const info = await result.json();
+  const url = officialUrl() || (typeof info.basicId === 'string' && /^@[a-zA-Z0-9._-]+$/.test(info.basicId) ? `https://line.me/R/ti/p/${encodeURIComponent(info.basicId)}` : null);
+  return { configured, verified: !!url, tokenConfigured: true, secretConfigured: true, officialUrl: url, displayName: typeof info.displayName === 'string' ? info.displayName : null };
+}
 // Enable only after the three-image preparation pipeline has been verified.
 const shippingEnabled = () => ready() && Deno.env.get('LINE_SHIPPING_ENABLED') === 'true';
 function response(status: number, value: unknown, origin: string | null = null) {
@@ -60,9 +69,10 @@ Deno.serve(async req => {
     // This public route is authenticated using LINE's signature, not user JWTs.
     if (new URL(req.url).pathname.endsWith('/webhook')) return await webhook(req);
     const body = await req.json();
-    if (body.action === 'dispatch') {
+    if (body.action === 'dispatch' || body.action === 'connection') {
       const config = await rpc('delivery_push_config');
       if (!req.headers.get('x-delivery-dispatch') || req.headers.get('x-delivery-dispatch') !== config.delivery_push_dispatch_token) return response(401, {});
+      if (body.action === 'connection') return response(200, await botConnection());
       if (!shippingEnabled()) return response(200, { configured: false, processed: 0 });
       const rows = await rpc('claim_delivery_line');
       let sent = 0;
@@ -97,9 +107,10 @@ Deno.serve(async req => {
     if (!staff.data?.is_active || !['admin','deliverer'].includes(staff.data.role)) return response(403, {}, origin);
     const staffId = staff.data.id;
     if (body.action === 'status') {
+      const connection = await botConnection();
       const link = await admin.from('delivery_line_links').select('linked_at,blocked').eq('staff_id', staffId).maybeSingle();
       if (link.error) throw link.error;
-      return response(200, { configured: ready(), officialUrl: officialUrl(), linked: !!link.data, blocked: link.data?.blocked ?? false, shippingEnabled: shippingEnabled() }, origin);
+      return response(200, { configured: connection.verified, officialUrl: connection.officialUrl, linked: !!link.data, blocked: link.data?.blocked ?? false, shippingEnabled: shippingEnabled() }, origin);
     }
     if (body.action === 'issue') {
       if (!ready()) return response(503, { error: 'LINE公式アカウントの接続設定が必要です。' }, origin);

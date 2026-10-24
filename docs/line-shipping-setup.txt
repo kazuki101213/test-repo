@@ -8,7 +8,7 @@ LINE発送依頼連携：設定手順と現在の範囲
 4. Supabase → Edge Functions → Secretsへ次を保存。キーをチャットやGitに貼らない。
    LINE_CHANNEL_SECRET
    LINE_CHANNEL_ACCESS_TOKEN
-   LINE_OFFICIAL_ACCOUNT_URL （友だち追加用 https://lin.ee/... または https://line.me/...）
+   LINE_OFFICIAL_ACCOUNT_URL は任意。未設定の場合はLINE公式APIで確認したbasicIdから友だち追加URLを作成。
 5. 登録機能の本番反映後、Webhook URLを次へ設定し「検証」、Webhookの利用をON。
    https://xgoppuqoqeppckyunnvx.supabase.co/functions/v1/delivery-line/webhook
    署名検証はEdge Function内で実行。チャネルアクセストークンをURLに入れない。
