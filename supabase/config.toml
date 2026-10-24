@@ -55,6 +55,11 @@ verify_jwt = false
 [functions.delivery-push]
 verify_jwt = false
 
+# Auth.getUser + active staff for settings; raw-body LINE HMAC for webhook;
+# private Vault token for dispatch. All three routes enforce their own auth.
+[functions.delivery-line]
+verify_jwt = false
+
 # Auth.getUser plus assigned staff validation; Gemini credentials stay server-side.
 [functions.listing-ai-keywords]
 verify_jwt = false

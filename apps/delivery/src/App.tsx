@@ -7,6 +7,7 @@ import TaskList from './pages/TaskList';
 import Invoices from './pages/Invoices';
 import Spares from './pages/Spares';
 import PushSettings from './components/PushSettings';
+import LineSettings from './components/LineSettings';
 import { disableDevicePush } from './push';
 import { useCompactBidViewport } from './hooks/useCompactBidViewport';
 
@@ -88,6 +89,7 @@ export default function App() {
       </nav>
       {tab === 'notifications' && ['admin','deliverer'].includes(session.staff.role) && <div id="notification-settings">
         <PushSettings key={session.user.id} userId={session.user.id} />
+        <LineSettings key={`line-${session.user.id}`} userId={session.user.id} />
       </div>}
       {tab === 'notifications' ? null : tab === 'bid-calculator' ? (['admin','purchaser'].includes(session.staff.role) ? <Suspense fallback={<p>計算ツールを読み込み中…</p>}><BidCalculator /></Suspense> : <p className="error" role="alert">入札計算ツールは管理者・仕入担当者向けです。全在庫を確認できる権限が必要です。</p>) : tab === 'tasks' ? <TaskList staff={session.staff} /> : tab === 'spares' ? <Spares staff={session.staff} /> : <Invoices key={session.user.id} staff={session.staff} onNavigationChange={setInvoiceNavigation} />}
     </div>
