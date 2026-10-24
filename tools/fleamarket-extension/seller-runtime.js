@@ -193,7 +193,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
    // Lists above are shared preflight evidence; never add a second marketplace scan.
    if(!hourly&&!repair&&shippingJobs.some(j=>j.account_id===account.id))await processDailyShipping({jobs:shippingJobs.filter(j=>j.account_id===account.id),session,rpc,log});
    let feedbackChecks={};
-   if(!hourly&&feedbackSites.includes(account.site)&&feedbackRows.size){
+   if(!hourly&&!repair&&feedbackSites.includes(account.site)&&feedbackRows.size){
     const feedback=await processSellerFeedback({account,rows:[...feedbackRows.values()],session,rpc,storage,log,now});
     if(feedback.errors)throw Error('購入者評価の結果確認が必要なため、このアカウントの販売反映を保留しました');
     feedbackChecks=(await storage.get('sellerFeedbackChecks')).sellerFeedbackChecks||{};
