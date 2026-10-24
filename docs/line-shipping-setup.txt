@@ -1,0 +1,38 @@
+LINE発送依頼連携：設定手順と現在の範囲
+
+1. https://www.lycbiz.com/jp/service/line-official-account/account/ から公式アカウントを作成。
+2. WEB版LINE Official Account Manager → 設定 → Messaging API → 利用する。
+   プロバイダーは運用する会社/本人名で選択する。後から変更できない。
+3. LINE Developers → 対象Messaging APIチャネル。
+   基本設定のチャネルシークレット、Messaging API設定のチャネルアクセストークンを確認/発行。
+4. Supabase → Edge Functions → Secretsへ次を保存。キーをチャットやGitに貼らない。
+   LINE_CHANNEL_SECRET
+   LINE_CHANNEL_ACCESS_TOKEN
+   LINE_OFFICIAL_ACCOUNT_URL は任意。未設定の場合はLINE公式APIで確認したbasicIdから友だち追加URLを作成。
+5. 登録機能の本番反映後、Webhook URLを次へ設定し「検証」、Webhookの利用をON。
+   https://xgoppuqoqeppckyunnvx.supabase.co/functions/v1/delivery-line/webhook
+   署名検証はEdge Function内で実行。チャネルアクセストークンをURLに入れない。
+6. 納品担当者が納品アプリに本人としてログイン → 通知設定 → LINE通知。
+   友だち追加 → 連携コードを発行 → 表示文を公式アカウントの1対1トークへ送信。
+   「登録状況を確認」で登録済みになることを確認。コードは10分有効、1回限り。
+
+通知の指定
+発送お願いします。
+【通番号】
+SKU
+［仕入れ先］仕入れ先サイトリンク
+［納品アプリ］納品アプリの商品詳細リンク
+画像順: 全体写真、型番確認写真、現在の取引の発送バーコード/QRコード。
+
+現段階
+担当者登録と通知キュー/重複防止の実装を準備。公式アカウント設定、本人登録、実送信は未確認。
+写真選択・現在の取引のコード取得・画像配信URLの準備は次の実装/検証工程。
+これが完成するまではLINE_SHIPPING_ENABLEDを設定せず、DBのenabled=falseも維持する。
+文字だけの発送依頼や、古い取引のコードを代わりに送信しない。
+実配信の有効化は写真3枚の準備が確認できた後。遡及一斉配信は行わない。
+発送コードの取得は発送通知とは別操作。設定済みの配送サイズ・発送場所だけを使用する。
+
+公式資料
+https://developers.line.biz/ja/docs/messaging-api/getting-started/
+https://developers.line.biz/ja/docs/messaging-api/verify-webhook-signature/
+https://developers.line.biz/ja/docs/messaging-api/retrying-api-request/
