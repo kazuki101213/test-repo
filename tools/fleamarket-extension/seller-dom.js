@@ -300,9 +300,15 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
     fixedSize=true;
    }
    if(!fixedSize)await choose(['サイズ','配送サイズ'],payload.size);
-   await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);
+   const nativePostal=fixedSize&&payload.shippingMethod==='おてがる配送（日本郵便）'&&!candidates(['発送場所','発送する場所']).length;
+   if(nativePostal){
+    oneButton(['配送コードを発行する']);
+    const named=candidates(['品名','商品名']),inputs=named.length?named:fields().filter(e=>e.tagName==='INPUT'&&e.type==='text'&&/^例[：:]\s*家電製品→/.test(norm(e.getAttribute('placeholder'))));
+    if(inputs.length!==1||inputs[0].readOnly||inputs[0].disabled||!payload.category||[...String(payload.category)].length>17)throw Error('配送用の品名入力欄を1件に確認できません');
+    setValue(inputs[0],payload.category);
+   }else{await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);}
   }
-  const button=oneButton(['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行']);reserve();setTimeout(()=>button.click(),100);return {code_requested:true};
+  const button=oneButton(['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行',...(job.channel==='ヤフオク'?['配送コードを発行する']:[])]);reserve();setTimeout(()=>button.click(),100);return {code_requested:true};
  }
  if(phase==='register_package'){
   if(!/ゆうパケットポスト/.test(text()))throw Error('専用資材を使用する発送画面ではありません');
