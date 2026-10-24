@@ -47,7 +47,7 @@ jobs:
         run: node --test supabase/functions/listing-ai-keywords/index_test.cjs && node scripts/verify-listing-keywords.cjs && node scripts/verify-shipping-actions.cjs
 
       - name: LINE連携の署名と本人確認
-        run: node --test supabase/functions/delivery-push/index_test.cjs supabase/functions/delivery-line/index_test.cjs supabase/functions/delivery-line/media_test.cjs scripts/extension-tests/auth-schedule.test.mjs scripts/extension-tests/line-patrol.test.mjs
+        run: node scripts/verify-line-photo-order.cjs && node --test supabase/functions/delivery-push/index_test.cjs supabase/functions/delivery-line/index_test.cjs supabase/functions/delivery-line/media_test.cjs scripts/extension-tests/auth-schedule.test.mjs scripts/extension-tests/line-patrol.test.mjs
 
       - name: 仕入れリストの購入履歴同期
         run: node scripts/verify-purchase-list-refresh.cjs && node scripts/verify-purchase-sync-button.cjs && node --test scripts/extension-tests/purchase-sync.test.mjs

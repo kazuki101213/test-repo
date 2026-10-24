@@ -1,0 +1,13 @@
+const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
+const source=fs.readFileSync('apps/delivery/src/linePhotoOrder.ts','utf8');const context={exports:{}};
+vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,context);
+const photos=Array.from({length:9},(_,i)=>({id:String(i+1),url:'fresh-url-'+i}));
+const ordered=context.exports.linePhotoOrder(photos,['7','9','8','4','5','6','3','2','1']);
+assert.equal(ordered[0].id,'7');assert.equal(ordered[4].id,'5');assert.equal(photos[0].id,'1','source upload order must remain intact');
+assert.equal(ordered[0].url,photos[6].url,'must use current URLs, not expired publication URLs');
+assert.equal(context.exports.linePhotoOrder(photos,['missing','7','7']).length,9);
+assert.equal(context.exports.linePhotoOrder(photos,['7'])[1].id,'1');
+assert.equal(context.exports.linePhotoOrder(photos)[0].id,'1');
+const component=fs.readFileSync('apps/delivery/src/components/LineShippingSettings.tsx','utf8');
+assert(component.includes('linePhotoOrder(await fetchPhotoUrls(itemId),context.photoOrder)'));assert(component.includes('{index+1}枚目'));
+console.log('PASS LINE photo order: publication numbering, stable photo IDs, fresh URLs, omitted/deleted photos, upload fallback');
