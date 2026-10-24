@@ -426,7 +426,8 @@ async function runSellerWork({patrol=false}={}){
   await runOperationQueue({scope:'seller',storage:STORE,log,run:()=>sellerQueuedOperations(dependencies)});
   const daily=await sellerDaily({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,automaticShipping:true});
   const hourlyRecords={...records,...await STORE.get(['job','authProblem','sellerDailyAttempt','sellerHourlyAttempt','sellerObservationCache'])};
-  if(patrol)await sellerDaily({...dependencies,records:hourlyRecords,day:jstDay(),profileId:records.diagnosticInstance,hourly:true,scheduledPatrol:true});
+  const patrolRun=patrol&&!daily?.ran?await sellerDaily({...dependencies,records:hourlyRecords,day:jstDay(),profileId:records.diagnosticInstance,hourly:true,scheduledPatrol:true}):null;
+  if(patrol&&(daily?.ran||patrolRun?.ran))await chrome.alarms.clear('fm:seller-patrol-retry');
   if(patrol||daily?.ran)await processLineShipping(dependencies);
  }finally{sellerBusy=false;}
 }
