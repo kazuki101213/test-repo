@@ -368,3 +368,9 @@ test('郵便の10件照会は番号ごとの実取扱状態だけを使い、未
  assert.equal((await p.evaluate(parseCarrierReceipts,{...args,html:args.html.replace('<td>中継</td>','<td>番号が見つかりません</td>')})).length,0);
  assert.equal((await p.evaluate(parseCarrierReceipts,{...args,html:args.html.replace('2026/10/22','2026/10/19')})).length,0);await p.close();
 });
+
+// 2026-10-25 user-supplied sold-items screen: paid rows and contact-waiting row.
+test('ヤフオクの発送をしてくださいを認識し、落札者連絡待ちは発送対象にしない',async()=>{
+ const p=await page('<h1>出品終了分</h1><ul><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/x1249217300">DBR-T1009【2403】</a><span>落札者からの連絡待ちです</span></li><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/g1249218068">DBR-W1007【2397】</a><span>発送をしてください</span></li><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/p1249204792">4B-C20AT3【2398】</a><span>発送をしてください</span></li></ul>','https://auctions.yahoo.co.jp/my/closed');
+ const r=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品終了分'});assert.deepEqual(r.rows.map(x=>[x.external_id,x.serial,x.status]),[['g1249218068','2397','取引中'],['p1249204792','2398','取引中']]);await p.close();
+});
