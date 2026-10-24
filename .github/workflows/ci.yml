@@ -28,6 +28,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Daily price reduction guards
+        run: node --test scripts/extension-tests/daily-price.test.mjs scripts/extension-tests/daily-price-api.test.mjs
+
       - name: 型チェック
         run: pnpm -r typecheck
 

@@ -1,0 +1,4 @@
+import test from'node:test';import assert from'node:assert/strict';
+globalThis.chrome={storage:{local:{get:async()=>({session:{access_token:'fixture',expires_at:Date.now()/1000+3600}})}}};
+const {rpc}=await import('../../tools/fleamarket-extension/api.js');
+test('price read and ledger RPCs are allowed, arbitrary SQL is denied, writes are not retried',async()=>{const calls=[];globalThis.fetch=async url=>{calls.push(url);return{ok:true,json:async()=>[]}};await rpc('marketplace_price_candidates',{p_account_id:'mercari-2'});await rpc('marketplace_price_record',{p_action:'reserve'});assert.equal(calls.length,2);await assert.rejects(rpc('execute_sql'),/許可されていない/);assert.equal(calls.length,2);globalThis.fetch=async()=>{calls.push('failure');throw new TypeError('Failed to fetch')};await assert.rejects(rpc('marketplace_price_record',{p_action:'begin'}));assert.equal(calls.filter(c=>c==='failure').length,1);});

@@ -1,0 +1,1 @@
+create index marketplace_price_changes_item_idx on app.marketplace_price_changes(item_id);
