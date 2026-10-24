@@ -47,6 +47,7 @@ export function dueTime(hour,now=Date.now()) {return Date.parse(jstDay(now)+'T'+
 export function nextTime(hour,now=Date.now()) {const d=dueTime(hour,now); return d>now?d:d+86400000;}
 export function settingsDefault(){return {openNewTabs:false,mode:'diagnostic',trackingHour:1,receiptHour:2,accounts:structuredClone(SLOTS),recipes:{}};}
 export function validateSettings(s) {
+  if(s.receiptStartDay!==undefined&&(!/^\d{4}-\d{2}-\d{2}$/.test(s.receiptStartDay)||!Number.isFinite(Date.parse(s.receiptStartDay+'T00:00:00Z'))||new Date(s.receiptStartDay+'T00:00:00Z').toISOString().slice(0,10)!==s.receiptStartDay))throw new Error('受取評価の開始日が不正です');
   if(!['diagnostic','tracking','full'].includes(s.mode)) throw new Error('動作モードが不正です');
   for(const key of ['trackingHour','receiptHour']) if(!Number.isInteger(s[key])||s[key]<0||s[key]>23) throw new Error('時刻は0〜23時です');
   if(!Array.isArray(s.accounts)||s.accounts.length!==7) throw new Error('7アカウントの設定が必要です');
@@ -68,9 +69,14 @@ if(a.identity?.pageUrl){
   }
   for(const [site,r] of Object.entries(s.recipes||{})){if(!SITES[site]) throw new Error('サイト設定が不正です');
     if((r.verified||r.trackingEnabled)&&!r.scope) throw new Error('検証済みレシピには対象領域が必要です');
-    if(r.receiptVerified&&(!r.receiptScope||!r.positive||!r.submit||!r.submitText||!r.successText)) throw new Error('評価レシピの検証項目が不足しています');
+    if(r.receiptWorkflow&&(site!=='auctions'||r.receiptWorkflow!=='yahoo-buyer-contact-v1'||r.receiptScope!=='main'||r.receiptVerified!==true))throw new Error('受取評価の検証済み手順が一致しません');if(r.receiptVerified&&!r.receiptWorkflow&&(!r.receiptScope||!r.positive||!r.submit||!r.submitText||!r.successText)) throw new Error('評価レシピの検証項目が不足しています');
   }
   return s;
 }
 
 export function trackingEnabled(recipe){return recipe?.verified===true||recipe?.trackingEnabled===true;}
+
+export function receiptAccounts(settings){
+ if(settings.mode==='diagnostic')return [];
+ return (settings.accounts||[]).filter(a=>a.enabled&&((settings.mode==='full'&&settings.recipes?.[a.site]?.receiptVerified===true)||(settings.mode==='tracking'&&a.site==='auctions'&&settings.recipes?.auctions?.receiptEnabled===true&&settings.recipes.auctions.receiptVerified===true&&settings.recipes.auctions.receiptWorkflow==='yahoo-buyer-contact-v1')));
+}

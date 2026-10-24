@@ -1,6 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { deliveryOrigin, friendUrl, hashCode, linkCode, validSignature, shippingMessages, dispatchState } from './validation.ts';
 import type { ShippingPayload } from './validation.ts';
+import QRCode from 'npm:qrcode@1.5.4';
+import { prepareShippingMedia } from './media.ts';
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
   db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false },
@@ -19,7 +21,12 @@ async function botConnection() {
   return { configured, verified: !!url, tokenConfigured: true, secretConfigured: true, officialUrl: url, displayName: typeof info.displayName === 'string' ? info.displayName : null };
 }
 // Enable only after the three-image preparation pipeline has been verified.
-const shippingEnabled = () => ready() && Deno.env.get('LINE_SHIPPING_ENABLED') === 'true';
+const shippingEnabled = async () => {
+  if (!ready()) return false;
+  const { data, error } = await admin.from('delivery_line_settings').select('enabled').eq('singleton', true).maybeSingle();
+  if (error) throw error;
+  return data?.enabled === true;
+};
 function response(status: number, value: unknown, origin: string | null = null) {
   return new Response(status === 204 ? null : JSON.stringify(value), { status, headers: {
     'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Origin',
@@ -73,7 +80,7 @@ Deno.serve(async req => {
       const config = await rpc('delivery_push_config');
       if (!req.headers.get('x-delivery-dispatch') || req.headers.get('x-delivery-dispatch') !== config.delivery_push_dispatch_token) return response(401, {});
       if (body.action === 'connection') return response(200, await botConnection());
-      if (!shippingEnabled()) return response(200, { configured: false, processed: 0 });
+      if (!await shippingEnabled()) return response(200, { configured: false, processed: 0 });
       const rows = await rpc('claim_delivery_line');
       let sent = 0;
       for (const row of rows || []) {
@@ -81,7 +88,13 @@ Deno.serve(async req => {
         if (row.eligible) {
           // Refuse incomplete media rather than send text-only or an old code.
           try {
-            const messages = shippingMessages(row.payload as ShippingPayload);
+            const payload = row.payload.media ? await prepareShippingMedia({ admin, media: row.payload.media, deliveryId: row.id, QRCode }) : row.payload as ShippingPayload;
+            const messages = shippingMessages(payload);
+            // Recheck the current trade and assignee before the LINE request.
+            if (!await rpc('prepare_delivery_line_message', { p_id: row.id, p_lease: row.lease, p_messages: payload })) {
+              await rpc('finish_delivery_line', { p_id: row.id, p_lease: row.lease, p_state: 'cancelled', p_status: null });
+              continue;
+            }
             try {
               const result = await fetch('https://api.line.me/v2/bot/message/push', { method: 'POST', signal: AbortSignal.timeout(8000), headers: {
                 Authorization: `Bearer ${accessToken()}`, 'Content-Type': 'application/json', 'X-Line-Retry-Key': row.id,
@@ -93,6 +106,7 @@ Deno.serve(async req => {
         if (state === 'sent') sent++;
         await rpc('finish_delivery_line', { p_id: row.id, p_lease: row.lease, p_state: state, p_status: status });
       }
+      if (rows.length === 2) await rpc('kick_delivery_line');
       return response(200, { processed: rows.length, sent });
     }
     if (origin !== deliveryOrigin) return response(403, {});
@@ -110,7 +124,7 @@ Deno.serve(async req => {
       const connection = await botConnection();
       const link = await admin.from('delivery_line_links').select('linked_at,blocked').eq('staff_id', staffId).maybeSingle();
       if (link.error) throw link.error;
-      return response(200, { configured: connection.verified, officialUrl: connection.officialUrl, linked: !!link.data, blocked: link.data?.blocked ?? false, shippingEnabled: shippingEnabled() }, origin);
+      return response(200, { configured: connection.verified, officialUrl: connection.officialUrl, linked: !!link.data, blocked: link.data?.blocked ?? false, shippingEnabled: await shippingEnabled() }, origin);
     }
     if (body.action === 'issue') {
       if (!ready()) return response(503, { error: 'LINE公式アカウントの接続設定が必要です。' }, origin);

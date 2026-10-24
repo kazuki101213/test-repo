@@ -163,3 +163,14 @@ test('自動発送通知の対象照会は1時の定期処理だけで一度、4
   if(!hourly){await sellerDaily({...deps,records:{...records(),...data}});assert.equal(calls.filter(v=>v==='extension_daily_shipping_candidates').length,1);assert.equal(opened,1);}
  }
 });
+
+
+test('LINE準備は自動コードだけを実行し、手動の出品・メッセージ・発送通知を選ばない',async()=>{
+ const jobs=['listing','ship_notice','message_send','shipping_code'].map(kind=>({id:kind,kind,account_id:'mercari-2',payload:{}}));
+ const automatic={id:'automatic',kind:'shipping_code',account_id:'mercari-2',payload:{automatic_line:'fixture'},url:'https://jp.mercari.com/transaction/m123'};
+ const actions=[],claims=[];let result;
+ const deps={settings,onlyAutomaticLine:true,log:async()=>{},rpc:async(name,args)=>name==='extension_seller_queue'?jobs:name==='extension_claim_seller_operation'?(claims.push(args.p_id),true):(result=args),openSession:async()=>({go:async()=>{},operation:async(job,phase)=>{actions.push(phase);return {qr_code:'fixture-code'};},close:async()=>{}})};
+ await sellerQueuedOperations(deps);assert.equal(claims.length,0);
+ jobs.push(automatic);const processed=await sellerQueuedOperations(deps);
+ assert.deepEqual(claims,['automatic']);assert.deepEqual(actions,['shipping_code']);assert.equal(result.p_status,'succeeded');assert.equal(processed.processed,true);
+});

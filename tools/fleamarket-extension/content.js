@@ -267,10 +267,11 @@
     let until=Date.now()+limit;let result;let filterApplied=false;let purchasedTabApplied=false;
     do{
       const auth=authProblem();if(auth)return {auth};
-      if(a.site==='rakuma'&&recipe.purchaseImport&&!purchasedTabApplied){identity(a);const tabs=[...document.querySelectorAll('a,button')].filter(e=>visible(e)&&controlText(e)==='購入済');if(tabs.length!==1)throw new Error('ラクマの購入済一覧を1件に確認できません');tabs[0].click();purchasedTabApplied=true;until=Date.now()+limit;await new Promise(r=>setTimeout(r,500));continue;}if(a.site==='mercari'&&(!recipe.includeCompleted||recipe.purchaseImport)&&!filterApplied){
+      if(a.site==='rakuma'&&recipe.purchaseImport&&!purchasedTabApplied){identity(a);const tabs=[...document.querySelectorAll('a,button')].filter(e=>visible(e)&&controlText(e)==='購入済');if(tabs.length!==1)throw new Error('ラクマの購入済一覧を1件に確認できません');tabs[0].click();purchasedTabApplied=true;until=Date.now()+limit;await new Promise(r=>setTimeout(r,500));continue;}if(a.site==='mercari'&&!filterApplied){
         const filter=document.querySelector('[data-testid="user-listing-inTransactionItemsCheckbox"]');
         const box=filter?.matches('input[type="checkbox"]')?filter:filter?.querySelector('input[type="checkbox"]');
-        if(box&&visible(box)&&!box.disabled&&(recipe.purchaseImport?box.checked:!box.checked)){identity(a);box.click();filterApplied=true;until=Date.now()+limit;await new Promise(resolve=>setTimeout(resolve,350));continue;}
+        const checked=!recipe.purchaseImport&&!recipe.includeCompleted;
+        if(box&&visible(box)&&!box.disabled&&box.checked!==checked){identity(a);box.click();filterApplied=true;until=Date.now()+limit;await new Promise(resolve=>setTimeout(resolve,350));continue;}
       }
       if(a.site==='mercari'&&document.querySelector('[data-testid="items-skeleton"]')&&Date.now()<until){await new Promise(resolve=>setTimeout(resolve,350));continue;}
       result=list(a,recipe);if(result.auth||(recipe.purchaseImport?result.purchaseRows?.length:result.links.length||result.purchases?.length||result.inventoryRows?.length))return result;

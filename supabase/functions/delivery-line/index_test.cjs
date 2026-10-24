@@ -5,11 +5,11 @@ function load(source,extra={}) {
  return context.exports;
 }
 const validation=load(fs.readFileSync(__dirname+'/validation.ts','utf8'));
-function fixture({auth=true,active=true,role='deliverer',configured=true,linked=true,botStatus=200}={}) {
+function fixture({auth=true,active=true,role='deliverer',configured=true,linked=true,botStatus=200,rows=[],pushStatus=200,prepare=true,mediaFail=false,enabled=true}={}) {
  const state={rpc:[],calls:[]};let handler;
- const client={auth:{getUser:async()=>({data:{user:auth?{id:'self'}:null}})},from(table){const query={select(){return query;},eq(field,value){state.lastFilter={table,field,value};return query;},maybeSingle:async()=>({data:table==='profiles'?{staff_id:'own-staff'}:table==='staff'?{id:'own-staff',role,is_active:active}:linked?{linked_at:'2026-10-24',blocked:false}:null,error:null})};return query;},rpc:async(name,args)=>{state.rpc.push({name,args});return {data:name==='delivery_push_config'?{delivery_push_dispatch_token:'private-dispatch'}:name==='handle_delivery_line_event',error:null};}};
+ const client={auth:{getUser:async()=>({data:{user:auth?{id:'self'}:null}})},from(table){const query={select(){return query;},eq(field,value){state.lastFilter={table,field,value};return query;},maybeSingle:async()=>({data:table==='profiles'?{staff_id:'own-staff'}:table==='staff'?{id:'own-staff',role,is_active:active}:table==='delivery_line_settings'?{enabled}:linked?{linked_at:'2026-10-24',blocked:false}:null,error:null})};return query;},rpc:async(name,args)=>{state.rpc.push({name,args});return {data:name==='delivery_push_config'?{delivery_push_dispatch_token:'private-dispatch'}:name==='claim_delivery_line'?rows:name==='prepare_delivery_line_message'?prepare:name==='handle_delivery_line_event',error:null};}};
  const source=fs.readFileSync(__dirname+'/index.ts','utf8').replace(/^import .*\n/gm,'');
- load(source,{...validation,createClient:()=>client,fetch:async(url,init)=>{state.calls.push({url,init});return Response.json(url.endsWith('/info')?{basicId:'@fixture',displayName:'Fixture'}:{},{status:url.endsWith('/info')?botStatus:200});},Deno:{env:{get:name=>name==='LINE_CHANNEL_SECRET'?'fixture-secret':name==='LINE_CHANNEL_ACCESS_TOKEN'?(configured?'fixture-token':undefined):undefined},serve:fn=>handler=fn}});
+ load(source,{...validation,QRCode:{},prepareShippingMedia:async({media})=>{if(mediaFail)throw Error('fixture media unavailable');return media;},createClient:()=>client,fetch:async(url,init)=>{state.calls.push({url,init});if(url.endsWith('/push')&&pushStatus===0)throw Error('network response lost');return Response.json(url.endsWith('/info')?{basicId:'@fixture',displayName:'Fixture'}:{},{status:url.endsWith('/info')?botStatus:url.endsWith('/push')?pushStatus:200});},Deno:{env:{get:name=>name==='LINE_CHANNEL_SECRET'?'fixture-secret':name==='LINE_CHANNEL_ACCESS_TOKEN'?(configured?'fixture-token':undefined):undefined},serve:fn=>handler=fn}});
  const request=(action,headers={})=>handler(new Request('https://fixture.invalid/delivery-line',{method:'POST',headers:{Origin:validation.deliveryOrigin,Authorization:'Bearer fixture',...headers},body:JSON.stringify({action,staffId:'someone-else'})}));
  async function webhook(events,{sign=true,change=false}={}){let body=JSON.stringify({events});const signature=createHmac('sha256','fixture-secret').update(body).digest('base64');if(change)body+=' ';return handler(new Request('https://fixture.invalid/delivery-line/webhook',{method:'POST',headers:sign?{'x-line-signature':signature}:{},body}));}
  return{state,request,webhook};
@@ -45,4 +45,22 @@ test('Private connection check never sends messages or exposes credentials; inva
  const result=await (await f.request('connection',{'x-delivery-dispatch':'private-dispatch'})).json();
  assert(result.verified);assert.equal(result.displayName,'Fixture');assert(!JSON.stringify(result).includes('fixture-token'));assert(f.state.calls.every(x=>x.url.endsWith('/info')));
  const invalid=fixture({botStatus:401});const status=await (await invalid.request('status')).json();assert.equal(status.configured,false);assert.equal(status.officialUrl,null);
+});
+
+
+test('Dispatch preserves retry key/body, handles accepted duplicate and retries network/server limits only',async()=>{
+ const payload={itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2392',sku:'2392-EEMM-20261002-591',supplierUrl:'https://auctions.yahoo.co.jp/jp/auction/c1236938625',images:['front','model'].map(x=>'https://fixture.invalid/'+x+'.jpg'),withoutBarcode:'size_unset'};
+ const row={id:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload};
+ for(const [status,state]of[[200,'sent'],[409,'sent'],[429,'pending'],[503,'pending'],[400,'failed'],[0,'pending']]){
+  const f=fixture({rows:[row],pushStatus:status});const result=await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert.equal(result.status,200);
+  const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);assert.equal(push.init.headers['X-Line-Retry-Key'],row.id);assert.equal(JSON.parse(push.init.body).messages.length,3);
+  assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,state);
+  const before=push.init.body;await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert.equal(f.state.calls.filter(x=>x.url.endsWith('/push')).at(-1).init.body,before);
+ }
+});
+test('Dispatch stops after trade/assignee recheck, media failure or disabled setting without LINE push',async()=>{
+ const row={id:'fixture',lease:'fixture',eligible:true,recipient:'fixture',payload:{media:{}}};
+ for(const options of[{rows:[{...row,eligible:false}]},{rows:[row],prepare:false},{rows:[row],mediaFail:true},{rows:[row],enabled:false}]){
+  const f=fixture(options);assert.equal((await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'})).status,200);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
+ }
 });
