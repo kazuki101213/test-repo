@@ -1,0 +1,3 @@
+export const IDLE_CHECK_MINUTES=5;
+export const UPDATE_CHECK_MINUTES=60;
+export const ACTIVE_WORK_MINUTES=1;

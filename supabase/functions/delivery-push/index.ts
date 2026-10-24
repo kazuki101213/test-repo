@@ -65,6 +65,11 @@ Deno.serve(async req => {
         const result = await admin.rpc(row.app_kind === 'admin' ? 'finish_admin_push' : 'finish_delivery_push', { p_id: row.delivery_id, p_state: state, p_status: status });
         if (result.error) throw result.error;
       }
+      // Continue only after a full batch, never on empty periodic checks.
+      if ((delivery.data?.length || 0) === 20 || (management.data?.length || 0) === 20) {
+        const continuation = await admin.rpc('kick_delivery_push');
+        if (continuation.error) throw continuation.error;
+      }
       return respond(200, { processed: (rows || []).length, sent, cancelled, retry }, origin);
     }
     if (!origin || !origins.has(origin)) return respond(403, { error: 'Origin denied' }, origin);

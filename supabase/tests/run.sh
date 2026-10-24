@@ -111,3 +111,4 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/admin_task_completion_sync.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/delivery_line.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/automatic_line_shipping.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/idle_push_dispatch.sql"

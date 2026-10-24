@@ -1,3 +1,4 @@
+import {IDLE_CHECK_MINUTES} from './runtime-policy.js';
 /** Manual app requests reuse only the existing purchases engine. No new tabs or schedules. */
 export async function processPurchaseSync({storage,rpc,settings,profileId,busy,start,now=Date.now()}){
  const state=await storage.get(['purchaseSyncActive','job','lastRun','authProblem','session','operationPolicy','purchaseSyncPollAt']);
@@ -12,7 +13,7 @@ export async function processPurchaseSync({storage,rpc,settings,profileId,busy,s
   await storage.set({purchaseSyncActive:null});return;
  }
  if(busy||state.job||settings.mode==='diagnostic'||state.operationPolicy&&!state.operationPolicy.includes('purchases'))return;
- if(now-(state.purchaseSyncPollAt||0)<55000)return;
+ if(state.purchaseSyncPollAt!==undefined&&now-state.purchaseSyncPollAt<IDLE_CHECK_MINUTES*60000)return;
  await storage.set({purchaseSyncPollAt:now});
  const request=await rpc('purchase_sync',{p_action:'claim',p_profile_id:profileId});if(!request)return;
  const actual=settings.accounts.filter(a=>a.enabled).map(a=>a.id).sort(),wanted=[...(request.accounts||[])].sort();

@@ -5,10 +5,10 @@ import {runOperationQueue} from '../../tools/fleamarket-extension/operation-queu
 import {sellerQueuedOperations} from '../../tools/fleamarket-extension/seller-runtime.js';
 const memory=()=>{const data={};return {data,get:async key=>({[key]:data[key]}),set:async value=>Object.assign(data,value)};};
 const log=async()=>{};
-test('通信復旧確認は1・2・5・15分間隔、再起動後も期限を守り成功で解除する',async()=>{
+test('通信復旧確認は5・10・15・30分間隔、再起動後も期限を守り成功で解除する',async()=>{
  const storage=memory();let calls=0,now=1000000;
  const run=async()=>{calls++;throw Object.assign(new TypeError('Failed to fetch'),{rpcName:'extension_seller_queue',requestDiagnostic:{failure:'network',status:null,elapsedMs:5}});};
- for(const delay of [60000,120000,300000,900000,900000]){
+ for(const delay of [300000,600000,900000,1800000,1800000]){
   await runOperationQueue({scope:'seller',storage,run,log,now});
   assert.equal(storage.data.sellerQueueRecovery.nextAttemptAt,now+delay);
   const before=calls;
@@ -16,7 +16,7 @@ test('通信復旧確認は1・2・5・15分間隔、再起動後も期限を守
   now+=delay;
  }
  await runOperationQueue({scope:'seller',storage,run:async()=>calls++,log,now});
- assert.equal(storage.data.sellerQueueRecovery.failures,0);assert.equal(storage.data.sellerQueueRecovery.nextAttemptAt,0);
+ assert.equal(storage.data.sellerQueueRecovery.failures,0);assert.equal(storage.data.sellerQueueRecovery.nextAttemptAt,now+300000);
 });
 test('仕入先の通信エラーが販売キュー取得を止めない、診断に秘密情報を含めない',async()=>{
  const storage=memory(),events=[];
@@ -35,7 +35,7 @@ test('完了結果の通信消失後にキュー取得が復旧しても出品�
   throw Error(name);
  },openSession:async()=>({links:async()=>[{text:'出品',url:'https://jp.mercari.com/sell/create'}],go:async()=>{},structure:async()=>({fileInputs:[{}]}),loaded:async()=>{},operation:async(_,phase)=>{if(phase==='publish')publishes++;return phase==='listing_result'?{external_id:'m111'}:{};},close:async()=>{}})});
  await runOperationQueue({scope:'seller',storage,run,log,now:100});
- await runOperationQueue({scope:'seller',storage,run,log,now:60100});
+ await runOperationQueue({scope:'seller',storage,run,log,now:300100});
  assert.equal(publishes,1);assert.equal(finished,1);assert.equal(storage.data.sellerQueueRecovery.failures,0);
 });
 test('旧当日停止フラグは新しいキュー取得を妨げない',async()=>{
@@ -56,3 +56,5 @@ for(const [kind,response] of [
  ['invalid_response',async()=>({ok:true,status:200,json:async()=>{throw Error('invalid JSON');}})]
 ])test('API障害分類 '+kind,async()=>{const original=globalThis.fetch;globalThis.fetch=response;try{await assert.rejects(rpc('extension_seller_queue',{},'test-only-token'),e=>e.requestDiagnostic.failure===kind);}finally{globalThis.fetch=original;}});
 test('完了登録の204を通信エラー扱いしない',async()=>{const original=globalThis.fetch;globalThis.fetch=async()=>({ok:true,status:204});try{assert.equal(await rpc('extension_finish_seller_operation',{},'test-only-token'),null);}finally{globalThis.fetch=original;}});
+
+test('successful empty discovery is not repeated by another alarm within five minutes',async()=>{const storage=memory();let calls=0;const options={scope:'seller',storage,run:async()=>calls++,log,now:100};await runOperationQueue(options);await runOperationQueue({...options,now:300099});assert.equal(calls,1);await runOperationQueue({...options,now:300100});assert.equal(calls,2);});

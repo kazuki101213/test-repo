@@ -1,13 +1,14 @@
 // Retry queue discovery on later alarms, never replay a claimed operation.
 // The workers retain their atomic claim and uncertain-result guards.
-const delays=[60000,120000,300000,900000];
+import {IDLE_CHECK_MINUTES} from './runtime-policy.js';
+const delays=[300000,600000,900000,1800000];
 export async function runOperationQueue({scope,storage,run,log,now=Date.now()}){
  const key=scope==='supplier'?'supplierQueueRecovery':'sellerQueueRecovery';
  const previous=(await storage.get(key))[key];
  if(Number(previous?.nextAttemptAt)>now)return false;
  try{
   await run();
-  await storage.set({[key]:{failures:0,checkedAt:new Date(now).toISOString(),nextAttemptAt:0}});
+  await storage.set({[key]:{failures:0,checkedAt:new Date(now).toISOString(),nextAttemptAt:now+IDLE_CHECK_MINUTES*60000}});
   if(previous?.failures)await log('info',scope==='supplier'?'仕入先の操作取得が復旧しました':'販売操作の取得が復旧しました',{scope,previousFailures:previous.failures});
   return true;
  }catch(error){
