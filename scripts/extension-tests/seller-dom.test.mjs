@@ -51,6 +51,24 @@ test('ヤフオクの取引main外に表示された既存コードを読み、�
  assert.match((await p.evaluate(sellerDomOperation,{job,phase:'read_shipping_code'})).qr_code,/^data:image\/png;base64,/);assert.match((await p.evaluate(sellerDomOperation,{job,phase:'shipping_code'})).qr_code,/^data:image\/png;base64,/);
  const structure=await p.evaluate(readSellerStructure);assert.equal(structure.shippingCodeElements[0].id,'shippingQR');assert(structure.headings.includes('配送コード'));assert.equal(await p.evaluate(()=>document.body.dataset.issued),undefined);await p.close();
 });
+test('ヤフオクは発行後の確認ダイアログ内だけを一度押し、背景の発行と発送連絡を再送しない',async()=>{
+ const p=await page('<h1>取引ナビ</h1><p>g1249218068 配送コードを発行してください</p><table><tr><th>落札者が選択した配送方法</th></tr><tr><td>おてがる配送（日本郵便） ゆうパック 100サイズ 匿名配送</td></tr></table><input name="itemName" placeholder="例：家電製品→パソコン、テレビ、炊飯器など"><button id="issue">配送コードを発行する</button><button onclick="document.body.dataset.shipped=1">発送連絡をする</button>','https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068');
+ await p.evaluate(()=>{document.querySelector('#issue').onclick=()=>{document.body.dataset.started=Number(document.body.dataset.started||0)+1;const d=document.createElement('div');d.setAttribute('role','dialog');d.innerHTML='<h2>配送コード発行</h2><p>配送コードを発行します。</p><button>配送コードを発行する</button>';d.querySelector('button').onclick=()=>{document.body.dataset.confirmed=Number(document.body.dataset.confirmed||0)+1;d.remove();const c=document.createElement('canvas');c.id='shippingQR';c.width=c.height=160;document.body.append(c);};document.body.append(d);};});
+ const job={id:'confirm-code',channel:'ヤフオク',external_id:'g1249218068',trade_key:'g1249218068',payload:{size:'100',shippingMethod:'おてがる配送（日本郵便）',dropoff:'ローソン',category:'ブルーレイレコーダー'}};
+ assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'shipping_code'})).code_requested,true);
+ assert.equal((await p.evaluate(sellerDomOperation,{job,phase:'confirm_shipping_code'})).code_confirmed,true);
+ await p.waitForSelector('canvas#shippingQR');
+ assert.match((await p.evaluate(sellerDomOperation,{job,phase:'read_shipping_code'})).qr_code,/^data:image\/png;base64,/);
+ assert.deepEqual(await p.evaluate(()=>({...document.body.dataset})),{started:'1',confirmed:'1'});
+ assert.match((await p.evaluate(sellerDomOperation,{job,phase:'confirm_shipping_code'})).qr_code,/^data:image\/png;base64,/);
+ assert.equal(await p.evaluate(()=>document.body.dataset.confirmed),'1');await p.close();
+});
+test('配送コード確認は未実行ジョブから押さず、読取専用フェーズも確認ボタンを押さない',async()=>{
+ const p=await page('<h1>取引ナビ</h1><p>g1249218068</p><div role="dialog"><h2>配送コード発行</h2><button onclick="document.body.dataset.sent=1">配送コードを発行する</button></div>','https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068');
+ const job={id:'no-issued',channel:'ヤフオク',external_id:'g1249218068',trade_key:'g1249218068',payload:{}};
+ await assert.rejects(p.evaluate(sellerDomOperation,{job,phase:'confirm_shipping_code'}),/発行操作を確認できません/);
+ assert.deepEqual(await p.evaluate(sellerDomOperation,{job,phase:'read_shipping_code'}),{qr_code:null});assert.equal(await p.evaluate(()=>document.body.dataset.sent),undefined);await p.close();
+});
 test('品名入力後の描き直しで発行ボタンが差し替わっても最新のボタンを一度だけ押す',async()=>{
  const p=await page('<h1>取引ナビ</h1><p>g1249218068 配送コードを発行してください</p><table><tr><th>落札者が選択した配送方法</th></tr><tr><td>おてがる配送（日本郵便） ゆうパック 100サイズ 匿名配送</td></tr></table><input name="itemName" type="text" placeholder="例：家電製品→パソコン、テレビ、炊飯器など"><button data-issue>配送コードを発行する</button>','https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068');
  await p.evaluate(()=>{document.querySelector('input').addEventListener('input',()=>queueMicrotask(()=>{const button=document.querySelector('[data-issue]');button.replaceWith(button.cloneNode(true));}));document.querySelector('main').addEventListener('click',event=>{if(event.target.matches('[data-issue]')){document.body.dataset.issued=Number(document.body.dataset.issued||0)+1;const canvas=document.createElement('canvas');canvas.id='shippingQR';document.body.append(canvas);}});});

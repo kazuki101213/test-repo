@@ -272,7 +272,26 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(tabs.length!==1)throw Error('発送操作のある取引タブを1件に確認できません');
   return {trade_tab_url:tabs[0].href};
  }
- if(phase==='read_shipping_code'){try{const read=()=>{if(current()?.id===job.id&&current()?.code_click_error)throw Error('配送コードの発行前に停止しました：'+current().code_click_error);return qrPng();};return {qr_code:waitForShippingCode?await waitFor(read,'配送コードの画像を確認できません。再発行しません'):await read()};}catch(error){const state=current()?.id===job.id?current():null;return {__error:error.message,shippingEvidence:{codeClick:state?{clicked:state.code_clicked===true,nameMatches:state.code_name_matches,connected:state.code_button_connected,error:state.code_click_error}:null}};}}
+ if(phase==='confirm_shipping_code'){
+  if(job.channel!=='ヤフオク'||location.hostname!=='contact.auctions.yahoo.co.jp'||new URL(location.href).searchParams.get('aid')!==job.external_id)throw Error('対象の配送コード確認画面ではありません');
+  const state=current();if(state?.id!==job.id||!state.submitted)throw Error('配送コードの発行操作を確認できません');
+  const end=Date.now()+10000;
+  while(Date.now()<end){
+   if(current()?.code_click_error)throw Error('配送コードの発行前に停止しました：'+current().code_click_error);
+   const existing=await qrPng();if(existing)return {qr_code:existing};
+   const dialogs=[...document.querySelectorAll('[role="dialog"],[aria-modal="true"],dialog[open]')].filter(visible).filter(e=>[...e.querySelectorAll('h1,h2,h3,[role="heading"]')].some(h=>visible(h)&&norm(h.innerText)==='配送コード発行'));
+   if(dialogs.length){
+    if(dialogs.length!==1||current()?.code_confirmed)throw Error('配送コードの確認画面を1件に確認できません');
+    if(!current()?.code_clicked||current()?.code_name_matches!==true)throw Error('配送品名の確認済み操作ではありません');
+    if(dialogs[0].querySelector('input:not([type="hidden"]):not([type="button"]):not([type="submit"]),textarea,select'))throw Error('配送コードの確認画面に未確認の入力があります');
+    tradeGuard();const button=oneButton(['配送コードを発行する'],dialogs[0]);if(!button.isConnected)throw Error('配送コードの確認ボタンが切り離されています');
+    globalThis.__bussanSellerOperation={...current(),code_confirmed:true};setTimeout(()=>{if(button.isConnected)button.click();},100);return {code_confirmed:true};
+   }
+   await sleep(200);
+  }
+  throw Error('配送コードの画像または確認ダイアログを確認できません。再発行しません');
+ }
+ if(phase==='read_shipping_code'){try{const read=()=>{if(current()?.id===job.id&&current()?.code_click_error)throw Error('配送コードの発行前に停止しました：'+current().code_click_error);return qrPng();};return {qr_code:waitForShippingCode?await waitFor(read,'配送コードの画像を確認できません。再発行しません'):await read()};}catch(error){const state=current()?.id===job.id?current():null;return {__error:error.message,shippingEvidence:{codeClick:state?{clicked:state.code_clicked===true,confirmed:state.code_confirmed===true,nameMatches:state.code_name_matches,connected:state.code_button_connected,error:state.code_click_error}:null}};}}
  if(phase==='shipping_preflight'){
   if(job.channel==='メルカリ'&&payload.dropoff){const postal=/ゆうゆう/.test(payload.shippingMethod||'');if(!(postal?['ローソン','郵便局']:['セブンイレブン','ヤマト営業所']).includes(payload.dropoff))throw Error('配送方法と発送場所が一致しません。ゆうゆうメルカリ便はローソン・郵便局、らくらくメルカリ便はセブンイレブン・ヤマト営業所を選択してください');}
   const entries=controls().filter(e=>buttonLabel(e)==='商品サイズと発送場所を選択する'),edit=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&e.origin===location.origin&&e.pathname==='/transaction/'+job.external_id+'/shipping_class');if(entries.length+edit.length>1)throw Error('配送設定の入口が曖昧です');if(payload.shippingMethod&&!text().includes(norm(payload.shippingMethod)))throw Error('サイトの配送方法がアプリの設定と一致しません');
