@@ -24,7 +24,7 @@ export function itemId(site,url) {
   try {const u=new URL(url); if(siteFor(url)!==site) return null;
     const p=u.pathname;
     if(site==='mercari') return p.match(/\/(?:item|transaction)\/(m\d+)(?:\/|$)/)?.[1] || null;
-    if(site==='auctions') return p.match(/\/auction\/([a-zA-Z]\d+)(?:\/|$)/)?.[1] || ['aID','aid','auctionID','auctionId'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||'')) || null;
+    if(site==='auctions') return p.match(/\/auction\/((?:[a-zA-Z]\d+|\d{10}))(?:\/|$)/)?.[1] || ['aID','aid','auctionID','auctionId'].map(k=>u.searchParams.get(k)).find(v=>/^(?:[a-zA-Z]\d+|\d{10})$/.test(v||'')) || null;
     if(site==='flea') return p.match(/\/(?:item|transaction)\/([a-zA-Z]\d+)(?:\/|$)/)?.[1] || null;
     if(site==='rakuma') return p.match(/^\/([a-f0-9]{32})(?:\/|$)/)?.[1] || p.match(/\/(?:item|transaction|trade|deal)\/([a-f0-9]{32})(?:\/|$)/)?.[1] || (p==='/transaction'&&/^[a-f0-9]{32}$/.test(u.searchParams.get('item_id')||'')?u.searchParams.get('item_id'):null);
   } catch {return null;}

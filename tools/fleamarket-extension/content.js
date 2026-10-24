@@ -38,7 +38,7 @@
   function getId(site,url){
     const u=new URL(url,location.href);
     if(site==='mercari') return u.pathname.match(/\/(?:item|transaction)\/(m\d+)(?:\/|$)/)?.[1];
-    if(site==='auctions') return u.pathname.match(/\/auction\/([a-zA-Z]\d+)(?:\/|$)/)?.[1]||['aID','aid','auctionID','auctionId'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||''));
+    if(site==='auctions') return u.pathname.match(/\/auction\/((?:[a-zA-Z]\d+|\d{10}))(?:\/|$)/)?.[1]||['aID','aid','auctionID','auctionId'].map(k=>u.searchParams.get(k)).find(v=>/^(?:[a-zA-Z]\d+|\d{10})$/.test(v||''));
     if(site==='flea') return u.pathname.match(/\/(?:item|transaction)\/([a-zA-Z]\d+)(?:\/|$)/)?.[1];
     if(site==='rakuma') return u.pathname.match(/^\/([a-f0-9]{32})(?:\/|$)/)?.[1]||u.pathname.match(/\/(?:item|transaction|trade|deal)\/([a-f0-9]{32})(?:\/|$)/)?.[1] || (u.pathname==='/transaction'&&/^[a-f0-9]{32}$/.test(u.searchParams.get('item_id')||'')?u.searchParams.get('item_id'):null);
   }
@@ -162,7 +162,7 @@
     let title=null;
     if(a.site==='auctions'){
       // Only the same item's public product link supplies its title; message/feedback controls do not.
-      const productLinks=ownLinks.filter(e=>{try{const u=new URL(e.href);return ['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp'].includes(u.hostname)&&/^\/(?:jp\/)?auction\/[a-zA-Z][0-9]+\/?$/.test(u.pathname);}catch{return false;}});
+      const productLinks=ownLinks.filter(e=>{try{const u=new URL(e.href);return ['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp'].includes(u.hostname)&&/^\/(?:jp\/)?auction\/(?:[a-zA-Z][0-9]+|[0-9]{10})\/?$/.test(u.pathname);}catch{return false;}});
       const productTitles=[...productLinks.map(e=>e.innerText),...productLinks.flatMap(e=>[...e.querySelectorAll('img[alt]')].map(x=>x.alt)),...productLinks.map(e=>e.getAttribute('title')||e.getAttribute('aria-label'))].map(titleValue).filter(Boolean);
       title=productTitles[0]||null;
     }else{
@@ -233,7 +233,7 @@
         const stamp=row.querySelector('time[datetime]')?.getAttribute('datetime');
         const dateParts=stamp?.match(/^(\d{4})-(\d{2})-(\d{2})/)||(a.site!=='auctions'&&dates.length===1?dates[0]:null);
         let purchasedAt=dateParts?dateParts[1]+'-'+dateParts[2].padStart(2,'0')+'-'+dateParts[3].padStart(2,'0'):null;
-        if(a.site==='auctions'&&!purchasedAt){const current=recipe.referenceDay||new Date(Date.now()+9*3600000).toISOString().slice(0,10);const dateTexts=[...new Set([...row.querySelectorAll('*')].filter(visible).map(x=>norm(x.innerText)).filter(t=>/^\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}$/.test(t)))];if(dateTexts.length===1){const parts=dateTexts[0].match(/^(\d{1,2})\/(\d{1,2})/);const suffix=parts[1].padStart(2,'0')+'-'+parts[2].padStart(2,'0');let year=Number(current.slice(0,4));if(suffix>current.slice(5))year--;const value=year+'-'+suffix;const parsed=new Date(value+'T00:00:00Z');if(Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===value)purchasedAt=value;}}
+        if(a.site==='auctions'&&!purchasedAt){const current=recipe.referenceDay||new Date(Date.now()+9*3600000).toISOString().slice(0,10);purchasedAt=purchaseDate(row,a.site,current);if(!purchasedAt){const dateTexts=[...new Set([...row.querySelectorAll('*')].filter(visible).map(x=>norm(x.innerText)).filter(t=>/^\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2}$/.test(t)))];if(dateTexts.length===1){const parts=dateTexts[0].match(/^(\d{1,2})\/(\d{1,2})/);const suffix=parts[1].padStart(2,'0')+'-'+parts[2].padStart(2,'0');let year=Number(current.slice(0,4));if(suffix>current.slice(5))year--;const value=year+'-'+suffix;const parsed=new Date(value+'T00:00:00Z');if(Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===value)purchasedAt=value;}}}
 
         let detailUrl=url;
         if(a.site==='mercari'&&u.pathname.startsWith('/item/'))detailUrl='https://jp.mercari.com/transaction/'+id;

@@ -3,16 +3,16 @@ export function yahooTrackingPage({expectedItemId,phase='inspect'}){
  try{
  const norm=t=>(t||'').normalize('NFKC').replace(/\s+/g,' ').trim();
  const visible=e=>e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
- const idOf=value=>{try{const u=new URL(value,location.href);if(u.protocol!=='https:'||!['contact.auctions.yahoo.co.jp','auctions.yahoo.co.jp','page.auctions.yahoo.co.jp'].includes(u.hostname))return null;return u.pathname.match(/\/auction\/([a-zA-Z]\d+)/)?.[1]||['aid','aID','auctionID'].map(k=>u.searchParams.get(k)).find(v=>/^[a-zA-Z]\d+$/.test(v||''));}catch{return null;}};
+ const idOf=value=>{try{const u=new URL(value,location.href);if(u.protocol!=='https:'||!['contact.auctions.yahoo.co.jp','auctions.yahoo.co.jp','page.auctions.yahoo.co.jp'].includes(u.hostname))return null;return u.pathname.match(/\/auction\/((?:[a-zA-Z]\d+|\d{10}))/)?.[1]||['aid','aID','auctionID'].map(k=>u.searchParams.get(k)).find(v=>/^(?:[a-zA-Z]\d+|\d{10})$/.test(v||''));}catch{return null;}};
  const u=new URL(location.href);if(u.origin!=='https://contact.auctions.yahoo.co.jp'||!/^\/trade\/(?:top|bundle|message|messages)\/?$/.test(u.pathname)||idOf(u.href)!==expectedItemId)throw Error('追跡確認の取引URL・商品IDが一致しません');
  const scopes=[...document.querySelectorAll('main')].filter(visible);if(scopes.length!==1)throw Error('追跡確認の表示領域を1件に確定できません');const root=scopes[0],text=norm(root.innerText);
  if(document.querySelector('input[type=password],input[autocomplete=one-time-code]')||/認証コードを入力|ロボットではない|セキュリティチェック/.test(text))throw Error('追加認証が必要です');
  const links=[...root.querySelectorAll('a[href]')].filter(visible);
- const productLinks=links.filter(e=>/\/auction\/[a-zA-Z]\d+/.test(new URL(e.href).pathname));
+ const productLinks=links.filter(e=>/\/auction\/(?:[a-zA-Z]\d+|\d{10})/.test(new URL(e.href).pathname));
  const headerLinks=productLinks.filter(e=>e.closest('h1,h2,h3')||norm(e.innerText)==='商品ページ');
  const isBundle=u.pathname==='/trade/bundle';
  if(!isBundle&&headerLinks.some(e=>idOf(e.href)!==expectedItemId))throw Error('取引見出しに別商品のIDが含まれています');
- const declaredIds=[...new Set([...text.matchAll(/オークションID\s*[:：]\s*([a-zA-Z]\d+)/g)].map(m=>m[1]))];
+ const declaredIds=[...new Set([...text.matchAll(/オークションID\s*[:：]\s*((?:[a-zA-Z]\d+|\d{10}))/g)].map(m=>m[1]))];
  if(!isBundle&&declaredIds.some(id=>id!==expectedItemId))throw Error('取引の表示商品IDが一致しません');
  const declaredMatch=declaredIds.length===1&&declaredIds[0]===expectedItemId;
  if(!isBundle&&!headerLinks.some(e=>idOf(e.href)===expectedItemId)&&!declaredMatch)throw Error('取引見出しの商品IDを確認できません');
