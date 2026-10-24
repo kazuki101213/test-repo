@@ -1,7 +1,7 @@
 /** No requests: classify a row already read by the existing seller scan. */
 export function sellerFeedbackPending(site,text){
  const s=String(text||'').replace(/\s+/g,' ');
- if(/キャンセル|中止|返品|返金|トラブル|支払い待ち|発送してください/.test(s))return false;
+ if(/キャンセル|中止|返品|返金|トラブル|支払い待ち|発送してください|購入者の受取評価待ち|購入者からの(?:受取)?評価待ち|受取評価をお待ち/.test(s))return false;
  return site==='mercari'?/評価してください|購入者を評価|評価待ち/.test(s):site==='auctions'&&/落札者を評価|評価してください|評価待ち/.test(s)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(s);
 }
 
@@ -21,6 +21,7 @@ export async function mercariSellerFeedback(args){
   throw Error('購入者評価の完了表示を確認できません。再送しません');
  }
  if(completed())return {alreadyCompleted:true,ready:false};
+ if(buttons().length===0&&/購入者の受取評価待ち|購入者からの(?:受取)?評価待ち|受取評価をお待ち/.test(text))return {ready:false,waitingForBuyer:true};
  if(/商品が届いたら|受け取り評価をする|受取評価をする|発送してください|支払いをお待ち|返品申請|キャンセル申請/.test(text))throw Error('出品者の評価待ち画面ではありません');
  const candidates=buttons();if(candidates.length!==1||candidates[0].disabled)throw Error('購入者への評価ボタンを一意に確認できません');
  const good=[...root.querySelectorAll('input[type=radio][name=fame][value=good]')].filter(visible),bad=[...root.querySelectorAll('input[type=radio][name=fame][value=bad]')].filter(visible);
