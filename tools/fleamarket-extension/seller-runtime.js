@@ -2,7 +2,7 @@ import {yahooReceiptPage} from './yahoo-receipt.js';
 import {readBuyerTodoState} from './todo-audit.js';
 import {pacedTabs,paceNavigation} from './navigation-pacing.js';
 import {processDailyShipping,readOutboundReceipt,parseCarrierReceipts} from './daily-shipping.js';
-import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.143';
+import {readBuyerListDateEvidence,readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.143';
 import {sellerScheduleReady,sellerHourlyReady,sellerCachedObservation,sellerObservationFingerprint,sellerAccounts,sellerUrl,sellerTarget,readSellerPage,parseSellerSaleDetail} from './seller-sync.js?v=0.1.143';
 import {borrowSiteTab,restoreSiteTab} from './existing-tabs.js';
 import {sellerDomOperation} from './seller-dom.js?v=0.1.143';
@@ -395,7 +395,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const {categoryId}=await execute(resolveYahooCategory,target);const next=new URL(formUrl);next.searchParams.set('category',categoryId);await go(next.href);
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
- return {go,loaded,buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:()=>execute(readSellerStructure,null),
+ return {go,loaded,buyerListEvidence:()=>execute(readBuyerListDateEvidence,null),buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:()=>execute(readSellerStructure,null),
   feedback:args=>execute(account.site==='mercari'?mercariSellerFeedback:yahooSellerFeedback,args),
   feedbackGo:async url=>{if(last!==url)await go(url);},
   preserveForReview:()=>{preserveFeedback=true;},
@@ -419,10 +419,10 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   prepareShipping:async job=>{if(account.site!=='mercari'||!await finishChoice(await execute(clickSellerChoice,'shipping-details'),'shipping-details'))throw Error('配送サイズの選択画面を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.map(link=>{const u=new URL(link.url);return u.hostname==='salesmanagement.yahoo.co.jp'&&u.pathname==='/list'&&/^売上金管理(?:\s+Yahoo!かんたん決済)?$/.test(link.text)?{...link,text:'売上金管理'}:link;}).filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|落札者なし|出品|出品する|出品フォーム)$/.test(link.text)),
-  read:phase=>execute(readSellerPage,{site:account.site,phase,reportErrors:true}),
+  read:phase=>readSellerListWithRecovery({site:account.site,read:()=>execute(readSellerPage,{site:account.site,phase,reportErrors:true}),reload:()=>go(last)}),
   selectTab:async label=>{const result=await paceNavigation(()=>execute(clickSellerListTab,label));if(!result)return false;if(result.changing){await pause(350);await loaded();}return true;},
   auctionDetail:async id=>{if(account.site!=='auctions'||!/^[a-z][0-9]+$/i.test(id))throw Error('対象の商品IDを確認できません');await go('https://page.auctions.yahoo.co.jp/jp/auction/'+id);let page=await raw();if(!/(?:終了日時|落札日時|終了日)\s*[:：]?\s*20[0-9]{2}/.test(page.text)){const links=page.links.filter(link=>{try{const u=new URL(link.url);return u.protocol==='https:'&&!u.username&&!u.password&&u.hostname==='contact.auctions.yahoo.co.jp'&&u.pathname==='/seller/top'&&[...u.searchParams.values()].includes(id)&&/取引ナビ/.test(link.text);}catch{return false;}});if(links.length===1){await go(links[0].url);page=await raw();}}return page;},
-  detail:async(url,id)=>{if(account.site==='mercari'&&!/^m[0-9]+$/.test(id))throw Error('対象の商品IDを確認できません');await go(account.site==='mercari'?'https://jp.mercari.com/transaction/'+id:url);let page=account.site==='mercari'?await execute(readMercariTransactionPage,{id}):await raw();if(!/取引画面|取引情報|受け取り明細/.test(page.text)){const options=page.links.filter(link=>/取引画面|取引ナビ|取引情報|詳細/.test(link.text)&&link.url.includes(id));if(options.length!==1)throw Error('販売明細へのリンクを特定できません');await go(options[0].url);page=await raw();}if(!page.text.includes(id))throw Error('取引の商品IDを確認できません');return page;},
+  detail:async(url,id)=>{if(account.site==='mercari'&&!/^m[0-9]+$/.test(id))throw Error('対象の商品IDを確認できません');await go(account.site==='mercari'?'https://jp.mercari.com/transaction/'+id:url);let page=account.site==='mercari'?await readMercariDetailWithRecovery({read:()=>execute(readMercariTransactionPage,{id}),reload:()=>go(last)}):await raw();if(!/取引画面|取引情報|受け取り明細/.test(page.text)){const options=page.links.filter(link=>/取引画面|取引ナビ|取引情報|詳細/.test(link.text)&&link.url.includes(id));if(options.length!==1)throw Error('販売明細へのリンクを特定できません');await go(options[0].url);page=await raw();}if(!page.text.includes(id))throw Error('取引の商品IDを確認できません');return page;},
   outboundReceipt:job=>execute(readOutboundReceipt,job),
   parseCarrierReceipts:args=>execute(parseCarrierReceipts,args),
   operation:(job,phase,extra={})=>(['publish','publish_confirmation'].includes(phase)?paceNavigation:action=>action())(async()=>{await loaded();const result=await execute(sellerDomOperation,{job,phase,...extra,reportErrors:true,choicesResolved:listingChoices?.id===job.id&&listingChoices?.values===JSON.stringify([job.payload?.listingCategory||job.payload?.category,job.payload?.condition,job.payload?.shippingMethod])&&listingChoices?.url===last,categoryResolved:categoryResolution?.target===(job.payload?.listingCategory||job.payload?.category)&&categoryResolution?.url===last});if(phase==='read_shipping_code'&&result.qr_code){try{result.shipping_receipt=await execute(readOutboundReceipt,job);}catch{}}return result;}),
@@ -432,3 +432,5 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
 
 /** Retry a read-only list once after a paced delay, never auth errors or sends. */
 export async function readSellerListWithRecovery({site,read,reload,wait=pause}){try{return await read();}catch(error){if(site!=='mercari'||!error.message.includes('出品商品の読み込みが完了していません'))throw error;await wait(8000);await reload();return read();}}
+
+export async function readMercariDetailWithRecovery({read,reload,wait=pause}){try{return await read();}catch(error){if(!error.message.startsWith('取引明細の表示待ちが時間切れになりました'))throw error;await wait(8000);await reload();return read();}}
