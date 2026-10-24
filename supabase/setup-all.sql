@@ -14336,9 +14336,8 @@ do $patch$ declare original text;patched text;begin
  if patched=original then raise exception 'Shipping defaults anchor missing';end if;
  execute patched;
 end $patch$;
-grant execute on function app.seller_operation_context(uuid) to service_role;
 -- Server media preparation reads existing data, without granting any writes.
-grant select on app.seller_listings,app.seller_operations,app.delivery_shipping_tasks,app.delivery_notice_completions to service_role;
+grant select on app.items,app.products,app.staff,app.profiles,app.item_photos,app.seller_listings,app.seller_operations,app.delivery_shipping_tasks,app.delivery_notice_completions to service_role;
 
 create function app.line_shipping_eligible(p_id uuid) returns boolean
 language sql stable set search_path='' as $$
@@ -14360,12 +14359,16 @@ language sql stable set search_path='' as $$
  join app.delivery_line_preferences pref on pref.item_id=i.id
  join app.item_photos front on front.id=pref.overview_photo_id and coalesce(front.photo_kind,'product')='product'
  join app.item_photos model on model.id=pref.model_photo_id and coalesce(model.photo_kind,'product')='product'
+ join app.seller_listings listing on listing.item_id=i.id and listing.active and listing.trade_key=o.trade_key
+ left join lateral(select op.payload->>'size' size from app.seller_operations op
+  where op.item_id=i.id and op.account_id=listing.account_id and op.channel=listing.channel and op.kind='listing'
+   and op.status='succeeded' and op.result->>'external_id'=listing.external_id order by op.created_at desc limit 1) saved on true
  left join lateral(select op.id from app.seller_operations op join app.seller_listings sl on sl.item_id=i.id and sl.active and sl.trade_key=o.trade_key
   where op.item_id=i.id and op.account_id=sl.account_id and op.channel=sl.channel and op.kind in ('shipping_code','register_package')
    and op.status='succeeded' and op.payload->>'trade_key'=o.trade_key and op.created_at>=t.created_at-interval '5 minutes'
    and nullif(op.result->>'qr_code','') is not null order by op.created_at desc limit 1) code on true
  where o.id=p_id and app.line_shipping_eligible(o.id)
-  and (code.id is not null or nullif(coalesce(app.line_fixed_shipping_size(i.id),pref.shipping->>'size',app.seller_operation_context(i.id)->'shipping_defaults'->>'size'),'') is null);
+  and (code.id is not null or coalesce(app.line_fixed_shipping_size(i.id),nullif(pref.shipping->>'size',''),nullif(saved.size,''),app.line_learned_shipping_size(i.id)) is null);
 $$;
 
 create function app.line_shipping_context(p_item_id uuid) returns jsonb

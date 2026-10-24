@@ -31,9 +31,9 @@ do $$declare i uuid;front uuid;model uuid;foreign_photo uuid;prepared jsonb;begi
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);if prepared->>'queued'<>'0' then raise exception 'Code queued twice';end if;
  if exists(select 1 from app.seller_operations where item_id=i and kind<>'shipping_code') then raise exception 'Automatic flow queued a business action';end if;
 end $$;
--- Service dispatch can read the same shipping context through its explicit grant.
+-- Service dispatch reads only the media it needs, without opening the UI context.
 set local role service_role;
-select app.seller_operation_context((select id from app.items where lot_seq=998741));
+select app.line_shipping_media(o.id) from app.delivery_line_outbox o;
 reset role;
 -- The same persisted successful code is used by the app and by LINE.
 update app.seller_operations set status='succeeded',result='{"qr_code":"fixture-code"}' where item_id=(select id from line_probe where lot_seq=998741) and kind='shipping_code';
