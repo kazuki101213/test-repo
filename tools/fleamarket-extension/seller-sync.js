@@ -86,7 +86,7 @@ export async function readSellerPage({site,phase=null,reportErrors=false}={}){
   const body=norm(box.innerText+' '+labels.join(' ')),serial=body.match(/[【\[]([0-9]+[a-z]*)[】\]]/i)?.[1]?.toLowerCase();
   let status=null;
   if(site==='mercari')status=/キャンセルが成立|取引がキャンセルされました/.test(body)?'キャンセル':/支払い待ち|支払いをお待ち|お支払い待ち/.test(body)?'支払い待ち':effectivePhase==='売却済み'?'販売済':effectivePhase==='取引中'?'取引中':effectivePhase==='出品中'?'出品中':null;
-  else status=/チャージ完了/.test(body)?'販売済':/入金期限.*(?:過ぎ|切れ)|取引が中止されました/.test(body)?'キャンセル':/商品を発送して(?:下さい|ください)/.test(body)&&!/落札者なし|落札されませんでした/.test(body)?'取引中':effectivePhase==='出品中'?'出品中':null;
+  else status=/チャージ完了/.test(body)?'販売済':/入金期限.*(?:過ぎ|切れ)|取引が中止されました/.test(body)?'キャンセル':/(?:商品を)?発送(?:を)?して(?:下さい|ください)/.test(body)&&!/落札者なし|落札されませんでした/.test(body)?'取引中':effectivePhase==='出品中'?'出品中':null;
   if(!status&&site==='auctions'&&/落札者を評価|評価してください|評価待ち/.test(body)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(body)&&!/キャンセル|中止|返品|返金/.test(body))status='取引中';
   if(!status)continue;
   const detail=[...box.querySelectorAll('a[href]')].find(a=>allowed(a.href)&&/詳細|取引画面|取引情報|取引ナビ/.test(norm(a.innerText)));
