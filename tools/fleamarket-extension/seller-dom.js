@@ -264,6 +264,13 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   tradeGuard();return shippingNoticeCompleted()?{ready:true,alreadyNotified:true,observed_at:new Date().toISOString()}:{ready:true};
  }
  tradeGuard();
+ if(phase==='yahoo_shipping_preflight'){
+  if(job.channel!=='ヤフオク'||location.hostname!=='contact.auctions.yahoo.co.jp'||!location.pathname.startsWith('/trade/')||new URL(location.href).searchParams.get('aid')!==job.external_id)throw Error('対象のヤフオク出品者取引ではありません');
+  if(await qrPng()||/配送コードを発行してください/.test(text()))return {ready:true};
+  const tabs=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&buttonLabel(e)==='取引'&&e.origin===location.origin&&e.pathname.startsWith('/trade/')&&new URL(e.href).searchParams.get('aid')===job.external_id&&e.href!==location.href);
+  if(tabs.length!==1)throw Error('発送操作のある取引タブを1件に確認できません');
+  return {trade_tab_url:tabs[0].href};
+ }
  if(phase==='read_shipping_code'){try{return {qr_code:waitForShippingCode?await waitFor(qrPng,'配送コードの画像を確認できません。再発行しません'):await qrPng()};}catch(error){return {__error:error.message};}}
  if(phase==='shipping_preflight'){
   if(job.channel==='メルカリ'&&payload.dropoff){const postal=/ゆうゆう/.test(payload.shippingMethod||'');if(!(postal?['ローソン','郵便局']:['セブンイレブン','ヤマト営業所']).includes(payload.dropoff))throw Error('配送方法と発送場所が一致しません。ゆうゆうメルカリ便はローソン・郵便局、らくらくメルカリ便はセブンイレブン・ヤマト営業所を選択してください');}
@@ -283,7 +290,18 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if((/ローソン/.test(payload.dropoff)&&!/日本郵便|ゆうゆう/.test(payload.shippingMethod))||(/宅急便コンパクト/.test(payload.size)&&/日本郵便|ゆうゆう/.test(payload.shippingMethod)))throw Error('配送方法・サイズ・発送場所の組み合わせを確認してください');
   const existing=await qrPng();if(existing)return {qr_code:existing};
   if(shippingPrepared){if(job.channel!=='メルカリ'||location.pathname!=='/transaction/'+job.external_id)throw Error('配送設定後の取引画面ではありません');const name=field(['品名','商品名'],['itemName']);if(name.readOnly||name.disabled)throw Error('配送用の商品名を入力できません');await choose(['品名','商品名'],payload.category,['itemName']);}
-  else{await choose(['サイズ','配送サイズ'],payload.size);await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);}
+  else{
+   let fixedSize=false;
+   if(job.channel==='ヤフオク'&&!candidates(['サイズ','配送サイズ']).length){
+    const summaries=[...root.querySelectorAll('table')].filter(table=>[...table.querySelectorAll('th')].some(e=>norm(e.innerText)==='落札者が選択した配送方法'));
+    const methods=summaries.flatMap(table=>[...table.querySelectorAll('td')].map(e=>norm(e.innerText)));
+    const expected=norm(payload.shippingMethod).replace(/\s/g,''),sizes=methods.filter(t=>t.replace(/\s/g,'').includes(expected)).flatMap(t=>[...t.matchAll(/(?:ゆうパック|宅急便(?:[（(]EAZY[）)])?)\s*([0-9]{2,3})\s*サイズ/g)].map(m=>m[1]));
+    if(!/配送コードを発行してください/.test(text())||sizes.length!==1||sizes[0]!==String(payload.size))throw Error('落札者が選択した配送サイズとアプリ設定の一致を確認できません');
+    fixedSize=true;
+   }
+   if(!fixedSize)await choose(['サイズ','配送サイズ'],payload.size);
+   await choose(['発送場所','発送する場所'],payload.dropoff);await choose(['品名','商品名'],payload.category);
+  }
   const button=oneButton(['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行']);reserve();setTimeout(()=>button.click(),100);return {code_requested:true};
  }
  if(phase==='register_package'){
