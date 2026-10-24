@@ -21,6 +21,22 @@ test('メルカリの商品欄が読み込み中の間は古いリンクを集�
 test('対象配送診断は通番号を完全一致し、通常番号や別取引を混ぜない',async()=>{const p=await page('<h1>出品した商品</h1><ul><li><a href="/transaction/m123">【1805】通常</a></li><li><a href="/transaction/m124"><img alt="【1805a】BD-UT1200"></a><span>発送してください</span></li><li><a href="/transaction/m125">【1805aa】別</a></li></ul>');const r=await p.evaluate(readInspectionTarget,'1805a');assert.deepEqual(r.matches,[{url:'https://jp.mercari.com/transaction/m124',serial:'1805a',shippingPending:true}]);assert.equal(JSON.stringify(r).includes('BD-UT1200'),false);await assert.rejects(p.evaluate(readInspectionTarget,'1805a.*'));await p.close();});
 before(async()=>{browser=await chromium.launch({executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',headless:true});});after(async()=>{await browser?.close();});
 async function page(html,url='https://jp.mercari.com/mypage/listings'){const p=await browser.newPage();await p.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:'<!doctype html><html><body><main>'+html+'</main></body></html>'}));await p.goto(url);return p;}
+test('ヤフオクは情報タブのサイズ表示を入力欄とせず同一商品の取引タブへ進む',async()=>{
+ const p=await page('<h1>取引ナビ</h1><p>g1249218068</p><a href="/trade/top?aid=g1249218068&amp;tab=trade">取引</a><a href="/trade/top?aid=p1249204792">取引</a><p>情報 配送方法 ゆうパック100サイズ</p>','https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068&tab=info');
+ const job={channel:'ヤフオク',external_id:'g1249218068',trade_key:'g1249218068',payload:{}};
+ assert.deepEqual(await p.evaluate(sellerDomOperation,{job,phase:'yahoo_shipping_preflight'}),{trade_tab_url:'https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068&tab=trade'});await p.close();
+});
+test('ヤフオクの確定済み配送サイズは一致だけを検証し、サイズ変更や発送通知を行わない',async()=>{
+ for(const size of ['100','140']){
+  const p=await page('<h1>取引ナビ</h1><p>g1249218068 配送コードを発行してください</p><table><tr><th>落札者が選択した配送方法</th></tr><tr><td>おてがる配送（日本郵便） ゆうパック 100サイズ 匿名配送</td></tr></table><label>発送場所<select><option>ローソン</option><option>郵便局</option></select></label><label>品名<input></label><button onclick="document.body.dataset.code=1">配送用QRコードを表示</button><button onclick="document.body.dataset.shipped=1">発送連絡をする</button>','https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068');
+  const job={id:'fixed'+size,channel:'ヤフオク',external_id:'g1249218068',trade_key:'g1249218068',payload:{size,shippingMethod:'おてがる配送（日本郵便）',dropoff:'ローソン',category:'ブルーレイレコーダー'}};
+  assert.deepEqual(await p.evaluate(sellerDomOperation,{job,phase:'yahoo_shipping_preflight'}),{ready:true});
+  const result=await p.evaluate(sellerDomOperation,{job,phase:'shipping_code',reportErrors:true});
+  if(size==='100'){assert.equal(result.code_requested,true);await p.waitForFunction(()=>document.body.dataset.code==='1');assert.equal(await p.locator('input').inputValue(),'ブルーレイレコーダー');}
+  else{assert.match(result.__error,/配送サイズ/);assert.equal(await p.evaluate(()=>document.body.dataset.code),undefined);}
+  assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+ }
+});
 test('メルカリ支払い待ちは出品中、売却済みは販売済の明細確認対象',async()=>{const p=await page('<h1>出品した商品</h1><button aria-selected="true">取引中</button><ul><li><a href="/transaction/m123">【2398b】商品</a><span>支払い待ち</span></li><li><a href="/transaction/m124">【2399】商品</a></li></ul>');const result=await p.evaluate(readSellerPage,{site:'mercari'});assert.equal(result.rows.find(x=>x.external_id==='m123').status,'支払い待ち');assert.equal(result.rows.find(x=>x.external_id==='m124').status,'取引中');await p.close();});
 test('ヤフオクの落札終了だけでは取引中にしない',async()=>{const p=await page('<h1>出品終了分</h1><ul><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/u123">【2398b】商品</a><span>商品を発送して下さい</span></li><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/u124">【2399】商品</a><span>落札されませんでした</span></li></ul>','https://auctions.yahoo.co.jp/my/closed');const result=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品終了分'});assert.equal(result.rows.length,1);assert.equal(result.rows[0].external_id,'u123');assert.equal(result.rows[0].status,'取引中');await p.close();});
 test('購入一覧を出品一覧として取り込まず、ログインや文字認証では停止する',async()=>{for(const [html,url] of [['<h1>出品中</h1>','https://jp.mercari.com/mypage/purchases'],['<h1>出品した商品</h1><input type="password">','https://jp.mercari.com/mypage/listings'],['<h1>出品した商品</h1>文字認証','https://jp.mercari.com/mypage/listings']]){const p=await page(html,url);await assert.rejects(p.evaluate(readSellerPage,{site:'mercari',phase:'出品中'}));await p.close();}});

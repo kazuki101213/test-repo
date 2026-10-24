@@ -316,6 +316,11 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
   }else{
    if(!job.url)throw Error('取引URLを取得できません');await session.go(job.url);
    let shippingPrepared=false;
+   if(job.kind==='shipping_code'&&account.site==='auctions'){
+    phase='yahoo_shipping_preflight';let view=await session.operation(job,phase);
+    if(view.trade_tab_url){await session.go(sellerUrl(account,view.trade_tab_url));view=await session.operation(job,phase);}
+    if(view.ready!==true)throw Error('ヤフオクの配送コード発行画面を確認できません');
+   }
    if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor){mutating=true;await session.prepareShipping(job);shippingPrepared=true;}else if(preflight.readyForCode){if(preflight.configuredDropoff!==job.payload.dropoff)throw Error('サイトの発送場所がアプリ設定と一致しません');shippingPrepared=true;}}
    let notice;
    if(job.kind==='ship_notice'){phase='ship_notice_preflight';notice=await session.operation(job,phase);}
@@ -328,6 +333,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
   }
   status='succeeded';
  }catch(error){status=error.existingListing||mutating&&!error.stoppedBeforePublish?'uncertain':'failed';result={note:error.message,phase,...(confirmationTrace.length?{confirmation_trace:confirmationTrace}:{}),...(error.stoppedBeforePublish?{stopped_before_publish:true,confirmation_evidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shipping_evidence:error.shippingEvidence}:{})};
+  if(job.kind==='shipping_code'&&session?.structure){try{const view=await session.structure();result.shipping_structure={host:view.host,path:view.path,headings:view.headings,controls:view.controls?.filter(c=>/品名|商品名|配送|発送|サイズ|コード|ローソン|郵便局/.test(c.label||'')).map(({tag,type,name,id,label,options,disabled})=>({tag,type,name,id,label,options,disabled}))};}catch{}}
   if(error.stoppedBeforePublish&&session?.structure){try{const view=await session.structure();result.confirmation_structure={headings:view.headings,validationErrors:view.validationErrors,invalidFields:view.invalidFields,notices:view.notices,auctionOptionLabels:view.auctionOptionLabels,fixedAuctionSettings:view.fixedAuctionSettings,publicSettings:view.publicSettings,controls:view.controls?.filter(c=>/自動|確認|出品|設定|エラー/.test(c.label||''))};}catch{}}
   // Navigation can destroy the submit frame. Read its settled result, never submit twice.
   if(mutating&&!error.stoppedBeforePublish&&job.kind==='listing'&&session){try{await session.loaded();result={...await session.operation(job,'listing_result'),recovered_after_navigation:true};status='succeeded';}catch(checkError){result={...result,result_check_note:checkError.message};

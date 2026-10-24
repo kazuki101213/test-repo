@@ -3,6 +3,14 @@ import {sellerScheduleReady,sellerAccounts,sellerTarget,parseSellerSaleDetail,se
 import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair,readMercariTransactionPage} from '../../tools/fleamarket-extension/seller-runtime.js';
 const day='2026-10-16',settings={mode:'tracking',purchaseImportEnabled:true,accounts:[{id:'mercari-2',site:'mercari',label:'メルカリ2',enabled:true},{id:'mercari-1',site:'mercari',enabled:true},{id:'auctions-1',site:'auctions',label:'ヤフオク1',enabled:true}]};
 const records=()=>({scheduledRuns:{tracking:{day},purchases:{day}},lastRun:{tracking:{day},purchases:{day}}});
+test('ヤフオク配送コードは同一取引タブの事前確認後だけ発行し、停止時に入力値を含めず構造を残す',async()=>{
+ for(const fail of [false,true]){const actions=[];let finished;let checks=0;
+  const job={id:'yahoo-code',kind:'shipping_code',account_id:'auctions-1',url:'https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068'};
+  await sellerQueuedOperations({settings,rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:finished=args,log:async()=>{},openSession:async()=>({go:async url=>actions.push(url),operation:async(j,phase)=>{actions.push(phase);if(phase==='yahoo_shipping_preflight')return ++checks===1?{trade_tab_url:job.url+'&tab=trade'}:{ready:true};if(fail)throw Error('発送場所を確認できません');return {qr_code:'existing'};},structure:async()=>({host:'contact.auctions.yahoo.co.jp',path:'/trade/top',controls:[{tag:'INPUT',label:'品名',value:'private-value'},{tag:'INPUT',label:'住所',value:'private-address'}]}),close:async()=>{}})});
+  assert.deepEqual(actions,[job.url,'yahoo_shipping_preflight',job.url+'&tab=trade','yahoo_shipping_preflight','shipping_code']);
+  assert.equal(finished.p_status,fail?'uncertain':'succeeded');if(fail){assert.equal(finished.p_result.shipping_structure.controls.length,1);assert.doesNotMatch(JSON.stringify(finished.p_result),/private/);}
+ }
+});
 test('出品準備の停止段階を保持し、写真準備失敗後に出品を送信しない',async()=>{
  const phases=[];let finished;const job={id:'2398-stopped',kind:'listing',account_id:'auctions-1',channel:'ヤフオク',payload:{photos:[],listingCategory:'ブルーレイレコーダー > シャープ'}};
  await sellerQueuedOperations({settings,rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:finished=args,openSession:async()=>({links:async()=>[{text:'出品',url:'https://auctions.yahoo.co.jp/sell/jp/show/submit'}],go:async()=>{},structure:async()=>({fileInputs:[{}]}),prepareCategory:async()=>{},operation:async(j,phase)=>{phases.push(phase);if(phase==='prepare_listing')throw Error('写真待ち');return {};},close:async()=>{}}),log:async()=>{}});
