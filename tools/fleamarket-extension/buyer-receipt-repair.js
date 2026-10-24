@@ -5,7 +5,7 @@ export async function runBuyerReceiptRepair({request,profileId,storage,start,now
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt),ids=request.itemIds;
  if(!Number.isFinite(issued)||!Number.isFinite(expires)||issued>now||expires<=now||expires-issued>15*60000||!Array.isArray(ids)||!ids.length||ids.length>10||new Set(ids).size!==ids.length||!ids.every(id=>/^[a-z][0-9]{8,14}$/.test(id)))return false;
  const state=await storage.get(['job','authProblem','sellerInspectionEvidence','buyerReceiptRepairConsumed']),done=state.buyerReceiptRepairConsumed||[],proof=state.sellerInspectionEvidence;
- if(state.job||state.authProblem||done.includes(request.id)||proof?.requestId!==request.preflightRequestId||proof?.accountId!==request.accountId||proof?.readOnly!==true||proof?.status!=='completed'||now-Date.parse(proof.at)<0||now-Date.parse(proof.at)>15*60000)return false;
+ if(state.job||state.authProblem||done.includes(request.id)||proof?.requestId!==request.preflightRequestId||proof?.accountId!==request.accountId||proof?.readOnly!==true||proof?.status!=='completed'||!Number.isFinite(Date.parse(proof.at))||now-Date.parse(proof.at)<0||now-Date.parse(proof.at)>15*60000)return false;
  if(!ids.every(id=>proof.receipts?.some(p=>p.itemId===id&&p.pending===true&&!p.error&&p.preflight?.ready===true&&p.preflight.received===false)))return false;
  await storage.set({buyerReceiptRepairConsumed:[...done,request.id].slice(-32)});
  await start('receipt',true,[request.accountId],request.id);
