@@ -111,3 +111,7 @@ revoke all on function app.arm_delivery_push_retry(),app.retry_delivery_push(),a
 grant execute on function app.arm_delivery_push_retry(),app.retry_delivery_push() to service_role;
 select cron.unschedule(jobid) from cron.job where jobname='delivery-task-web-push';
 select app.arm_delivery_push_retry();
+
+-- Expired messages are already hidden by the read RPC. Physical cleanup is
+-- maintenance, not notification delivery: hourly is sufficient.
+select cron.schedule('marketplace-message-retention','17 * * * *','select app.purge_expired_marketplace_messages()');
