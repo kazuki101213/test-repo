@@ -12,6 +12,7 @@ export function sellerInspectionApplies(request,profileId,previous,now=Date.now(
  if(request.inspectCarrierReceipt!=null&&(request.inspectCarrierReceipt!==true||!request.targetItemId||!request.targetSerial))return false;
  if(request.saleEvidenceLimit!=null&&(!request.saleEvidence||!Number.isInteger(request.saleEvidenceLimit)||request.saleEvidenceLimit<1||request.saleEvidenceLimit>40))return false;
  if(request.saleEvidence!=null&&(request.saleEvidence!==true||request.sellerListsOnly!==true||!request.accountId))return false;
+ if(request.receiptPreflight!=null&&(request.receiptPreflight!==true||!request.buyerReceiptIds))return false;
  if(request.buyerReceiptIds!=null&&(!Array.isArray(request.buyerReceiptIds)||request.buyerReceiptIds.length<1||request.buyerReceiptIds.length>10||!request.buyerReceiptIds.every(id=>/^[a-z][0-9]{8,14}$/.test(id))||!['auctions-1','auctions-2'].includes(request.accountId)||request.sellerListsOnly||request.targetItemId||request.targetSerial||request.saleEvidence))return false;
  if(request.listingSerials!=null&&(!request.sellerListsOnly||!Array.isArray(request.listingSerials)||request.listingSerials.length>20||!request.listingSerials.every(s=>/^[0-9]{1,8}[a-z]{0,3}$/.test(s))))return false;
  if(request.accountId!=null&&(!(request.sellerListsOnly||request.buyerReceiptIds)||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
@@ -91,7 +92,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
    for(const itemId of request.buyerReceiptIds){
     if(Date.now()>Date.parse(request.expiresAt))throw Error('診断の有効期限を過ぎました');
     const entry={itemId};evidence.receipts.push(entry);
-    try{await session.go('https://contact.auctions.yahoo.co.jp/buyer/top?aid='+itemId);const {ratingUrl,...receipt}=await session.buyerTodo({itemId,stage:'receipt'});Object.assign(entry,receipt);if(ratingUrl){await session.go(ratingUrl);entry.rating=await session.buyerTodo({itemId,stage:'rating'});}}
+    try{await session.go('https://contact.auctions.yahoo.co.jp/buyer/top?aid='+itemId);const {ratingUrl,...receipt}=await session.buyerTodo({itemId,stage:'receipt'});Object.assign(entry,receipt);if(request.receiptPreflight&&receipt.pending)entry.preflight=await session.buyerReceiptPreflight({itemId});if(ratingUrl){await session.go(ratingUrl);entry.rating=await session.buyerTodo({itemId,stage:'rating'});}}
     catch(error){entry.error=error.message;}
    }
    evidence.status='completed';return true;

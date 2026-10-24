@@ -92,7 +92,7 @@ export async function readSellerPage({site,phase=null,reportErrors=false}={}){
   const detail=[...box.querySelectorAll('a[href]')].find(a=>allowed(a.href)&&/詳細|取引画面|取引情報|取引ナビ/.test(norm(a.innerText)));
   const trade=[...box.querySelectorAll('a[href]')].find(a=>allowed(a.href)&&/\/transaction\/|\/trade\/|\/seller\/top|\/order\//.test(a.href));
   const row={external_id,serial,status,trade_key:external_id,url:trade?.href||link.href,detail_url:detail?.href||trade?.href||link.href,attention:/キャンセル|中止/.test(body)};
-  if(!/キャンセル|中止|返品|返金|トラブル|支払い待ち|発送してください/.test(body)&&(site==='mercari'?/評価してください|購入者を評価|評価待ち/.test(body):/落札者を評価|評価してください|評価待ち/.test(body)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(body))){row.feedback_pending=true;if(trade)row.feedback_url=trade.href;}
+  if(!/キャンセル|中止|返品|返金|トラブル|支払い待ち|発送してください|購入者の受取評価待ち|購入者からの(?:受取)?評価待ち|受取評価をお待ち/.test(body)&&(site==='mercari'?/評価してください|購入者を評価|評価待ち/.test(body):/落札者を評価|評価してください|評価待ち/.test(body)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(body))){row.feedback_pending=true;if(trade)row.feedback_url=trade.href;}
   // Yahoo's settlement list may only say チャージ完了. This is a candidate,
   // never proof of receipt: the actual seller navigator must confirm it below.
   if(site==='auctions'&&status==='販売済'&&!row.attention)row.feedback_pending=true;

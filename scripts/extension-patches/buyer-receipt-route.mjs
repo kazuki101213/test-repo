@@ -1,0 +1,2 @@
+// Applies to the deployed canonical buyer workflow; reject unrelated legacy workers.
+export function repairBuyerReceiptRoute(source){const old="u.pathname!=='/trade/top'||receiptItemId",replacement="!['/trade/top','/buyer/top'].includes(u.pathname)||receiptItemId";if(!source.includes(old)&&!source.includes(replacement))throw Error('Canonical buyer receipt filter not found');return source.replace(old,replacement);}

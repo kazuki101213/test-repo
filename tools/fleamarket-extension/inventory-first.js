@@ -19,7 +19,7 @@ export async function inventoryFirstStep(job,a,services){
   if(data.auth)throw new Error(data.auth);if(data.incomplete||!Array.isArray(data.inventoryRows)||(!data.inventoryRows.length&&!data.emptyConfirmed))throw new Error('購入一覧の商品ID・購入日を確認できません');
   for(const row of data.inventoryRows){
    if(row.purchasedAt&&row.purchasedAt<job.cutoff){job.searchStop='month-cutoff';break;}
-   if(!row.purchasedAt){job.dateUnknown=true;continue;}
+   if(!row.purchasedAt)job.dateUnknown=true;
    for(const item of job.candidates.filter(i=>i.itemId===row.itemId)){
     if(job.foundIds.includes(item.id))continue;
     job.foundIds.push(item.id);job.matchRows.push({inventory:item,url:row.url,itemId:row.itemId});
@@ -33,11 +33,11 @@ export async function inventoryFirstStep(job,a,services){
    if(job.seenPages.includes(data.nextUrl)||job.seenPages.length>=20)throw new Error('購入一覧のページ重複・上限に達しました。未一致とは判定しません');
    job.pageUrl=data.nextUrl;return save(job);
   }
-  if(job.dateUnknown&&pending.length)throw new Error('購入日の表示を確認できないため検索範囲を確定できません');if(!job.searchStop)job.searchStop='end-of-list';
+  if(!job.searchStop)job.searchStop='end-of-list';
   job.stage='detail';return save(job);
  }
  if(job.stage==='detail'){
-  if(job.index>=job.matchRows.length)return complete();
+  if(job.index>=job.matchRows.length){if(job.dateUnknown&&job.candidates.some(i=>i.itemId?.trim()&&!job.foundIds.includes(i.id)))throw new Error('購入日の表示を確認できないため検索範囲を確定できません。一致済み商品の確認は実施しました');return complete();}
   const row=job.matchRows[job.index];await navigate(job,a,row.url);
   let tx;try{tx=await read(job.tabId,'detail',{account:a,recipe:{scope:'main'}});}catch(e){
    if(!/^(取引の商品IDを1件に確定できません|対象要素が1件に限定できません: main)$/.test(e.message||''))throw e;

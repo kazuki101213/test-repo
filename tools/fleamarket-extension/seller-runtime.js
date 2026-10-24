@@ -1,3 +1,4 @@
+import {yahooReceiptPage} from './yahoo-receipt.js';
 import {readBuyerTodoState} from './todo-audit.js';
 import {pacedTabs,paceNavigation} from './navigation-pacing.js';
 import {processDailyShipping,readOutboundReceipt,parseCarrierReceipts} from './daily-shipping.js';
@@ -188,10 +189,11 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
      if(!after.rows.some(row=>!processed.has(row.external_id+'/'+row.status)))throw Error('追加の一覧を確認できません。再試行しません');
     }
    }
+   // Daily lifecycle: shipping -> buyer feedback -> final sales reconciliation.
+   // Lists above are shared preflight evidence; never add a second marketplace scan.
    if(!hourly&&!repair&&shippingJobs.some(j=>j.account_id===account.id))await processDailyShipping({jobs:shippingJobs.filter(j=>j.account_id===account.id),session,rpc,log});
-   // Final financial reconciliation follows buyer feedback; reuse the harvested lists.
    let feedbackChecks={};
-   if(!hourly&&feedbackSites.includes(account.site)&&feedbackRows.size){
+   if(!hourly&&!repair&&feedbackSites.includes(account.site)&&feedbackRows.size){
     const feedback=await processSellerFeedback({account,rows:[...feedbackRows.values()],session,rpc,storage,log,now});
     if(feedback.errors)throw Error('購入者評価の結果確認が必要なため、このアカウントの販売反映を保留しました');
     feedbackChecks=(await storage.get('sellerFeedbackChecks')).sellerFeedbackChecks||{};
@@ -219,7 +221,6 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
     if(result==='updated'||result==='registered'){updated++;remember(row);}else if(result==='unmatched')unmatched++;else if(result==='conflict')conflicts++;
     }catch(error){throw Error('商品ID '+row.external_id+'：'+error.message);}
    }
-
    if(fullScan&&salesSeen){baselines[account.id]='serial-case-v2';await storage.set({sellerSaleBackfills:{...baselines}});}
   }catch(error){errors++;failures.push({accountId:account.id,error:error.message});await log('error',account.label+(hourly?'の4時間ごと販売確認を停止しました。次回の定期確認まで再実行しません：':'の販売確認を停止しました。自動再試行はしません：')+error.message);}
   finally{observationCache[account.id]=Object.fromEntries(Object.entries(cache).slice(-2000));await session?.close();}
@@ -394,7 +395,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const {categoryId}=await execute(resolveYahooCategory,target);const next=new URL(formUrl);next.searchParams.set('category',categoryId);await go(next.href);
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
- return {go,loaded,buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:()=>execute(readSellerStructure,null),
+ return {go,loaded,buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:()=>execute(readSellerStructure,null),
   feedback:args=>execute(account.site==='mercari'?mercariSellerFeedback:yahooSellerFeedback,args),
   feedbackGo:async url=>{if(last!==url)await go(url);},
   preserveForReview:()=>{preserveFeedback=true;},
@@ -428,3 +429,6 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   close:()=>preserveFeedback?Promise.resolve():restoreSiteTab(tabs,borrowed).catch(()=>{}),
  };
 }
+
+/** Retry a read-only list once after a paced delay, never auth errors or sends. */
+export async function readSellerListWithRecovery({site,read,reload,wait=pause}){try{return await read();}catch(error){if(site!=='mercari'||!error.message.includes('出品商品の読み込みが完了していません'))throw error;await wait(8000);await reload();return read();}}
