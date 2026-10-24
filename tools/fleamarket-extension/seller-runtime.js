@@ -107,8 +107,8 @@ export function advanceMercariShippingPlace({itemId,dropoff}){
  const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('発送場所の選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
  }catch(error){return {__error:error.message};}
 }
-export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log,repair=null,hourly=false,now=Date.now(),feedbackSites=[],automaticShipping=false}){
- if(hourly&&!sellerHourlyReady(settings,records,now))return;
+export async function sellerDaily({settings,records,day,profileId,storage,rpc,openSession,log,repair=null,hourly=false,scheduledPatrol=false,now=Date.now(),feedbackSites=[],automaticShipping=false}){
+ if(hourly&&(scheduledPatrol?(settings.mode==='diagnostic'||records.job||records.authProblem||!sellerAccounts(settings).length):!sellerHourlyReady(settings,records,now)))return;
  if(hourly&&repair)throw Error('4時間ごと確認と修復は同時実行できません');
  if(!hourly&&!repair&&(records.sellerBarrierError===day||!sellerScheduleReady(settings,records,day)))return;
  const accounts=sellerAccounts(settings).filter(account=>!repair||account.id===repair.accountId);if(!accounts.length&&records.sellerBarrierDay===day)return;
@@ -227,6 +227,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
  }
  if(unmatched||conflicts)await log('warning','販売情報の要確認：商品未一致 '+unmatched+'件、販売実績の不一致 '+conflicts+'件。自動上書きしていません');
  await storage.set({sellerObservationCache:{version:1,accounts:observationCache},[attemptKey]:{...metadata,day,status:errors?'failed':'completed',updated,errors,unmatched,conflicts,responseBytes,rpcCalls,cacheHits,...(repair?{failures}:{}),at:new Date().toISOString()}});
+ return {ran:true,updated,errors};
 }
 /** Explicit repair is consumed once; it never clears or rewrites the normal daily attempt. */
 export async function runSellerSaleRepair(dependencies){
@@ -277,10 +278,11 @@ export async function checkExistingListing(session,job,account){
  const result=await session.operation(job,'listing_result');if(result.external_id!==row.external_id)throw Error('出品済み商品の照合結果が一致しません');return result;
 }
 /** A claimed write is never reclaimed after failure, suspension, or an uncertain outcome. */
-export async function sellerQueuedOperations({settings,rpc,openSession,log}){
+export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyAutomaticLine=false}){
  const accounts=sellerAccounts(settings);if(settings.mode==='diagnostic'||!accounts.length)return;
  const queue=await rpc('extension_seller_queue',{p_account_ids:accounts.map(a=>a.id)});if(!Array.isArray(queue)||!queue.length)return;
- const job=queue[0],account=accounts.find(value=>value.id===job.account_id);if(!account)return;
+ const job=onlyAutomaticLine?queue.find(value=>value.kind==='shipping_code'&&value.payload?.automatic_line):queue[0];if(!job)return;
+ const account=accounts.find(value=>value.id===job.account_id);if(!account)return;
  if(job.read_only_listing_check){
   if(job.kind!=='listing'||!await rpc('extension_claim_listing_result_check',{p_id:job.id,p_account_id:account.id}))return;
   let session,result;try{session=await openSession(account);result=await checkExistingListing(session,job,account);}catch(error){result={note:error.message};await log('warning','出品済み商品の確認を停止しました：'+error.message);}finally{await session?.close();}
@@ -337,6 +339,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log}){
  }
  finally{await session?.close();}
  await rpc('extension_finish_seller_operation',{p_id:job.id,p_status:status,p_result:result});
+ return {processed:true,id:job.id,status};
 }
 /** Read-only list expansion. No retry, form submission, or business action. */
 export async function advanceSellerList(){

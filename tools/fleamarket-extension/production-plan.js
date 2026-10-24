@@ -1,7 +1,7 @@
 export const PRODUCTION_PLAN={
   "trackingMessageFallback": true,
   "sellerFeedbackSites": ["mercari", "auctions"],
-  "id": "2026-10-07-purchase-two-weeks",
+  "id": "2026-10-21-yahoo-receipt-after-tracking",
   "mode": "tracking",
   "cancelled": false,
   "inspectLists": false,
@@ -60,7 +60,11 @@ export const PRODUCTION_PLAN={
     },
     "auctions": {
       "scope": "main",
-      "verified": true
+      "verified": true,
+      "receiptEnabled": true,
+      "receiptVerified": true,
+      "receiptScope": "main",
+      "receiptWorkflow": "yahoo-buyer-contact-v1"
     },
     "flea": {
       "scope": "main",
@@ -86,5 +90,7 @@ export const PRODUCTION_PLAN={
     "timezone": "Asia/Tokyo",
     "month": "calendar",
     "receipt": false
-  }
+  },
+  "receiptHour": 1,
+  "receiptStartDay": "2026-10-22"
 };
