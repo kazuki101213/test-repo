@@ -14586,7 +14586,11 @@ begin
     where d.event_id=e.id and d.state in ('pending','sending') and e.created_at<=now()-interval '24 hours';
   update app.admin_push_deliveries d set state='cancelled' from app.admin_push_events e
     where d.event_id=e.id and d.state in ('pending','sending') and e.created_at<=now()-interval '24 hours';
-  request_id:=app.kick_delivery_push();
+  begin
+    request_id:=app.kick_delivery_push();
+  exception when others then
+    raise warning 'Push dispatch unavailable; pending events retained for retry';
+  end;
   perform app.arm_delivery_push_retry();
   return request_id;
 end;
@@ -14611,7 +14615,12 @@ end $$;
 create function app.wake_delivery_push() returns trigger
 language plpgsql security definer set search_path='' as $$
 begin
-  perform app.kick_delivery_push();
+  begin
+    perform app.kick_delivery_push();
+  exception when others then
+    -- Dispatch transport must not roll back the user's inventory/task update.
+    raise warning 'Push dispatch unavailable; pending events retained for retry';
+  end;
   perform app.arm_delivery_push_retry();
   return null;
 end;

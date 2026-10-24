@@ -14,6 +14,7 @@ create schema if not exists net;
 create temporary table push_http_calls(id bigint generated always as identity);
 create function net.http_post(url text,headers jsonb,body jsonb,timeout_milliseconds integer)
 returns bigint language plpgsql as $$declare n bigint;begin
+ if current_setting('app.fixture_push_fail',true)='1' then raise exception 'fixture HTTP queue unavailable';end if;
  insert into push_http_calls default values returning id into n;return n;
 end $$;
 insert into vault.secrets(name,secret) values('delivery_push_dispatch_token','fixture'),('delivery_push_project_url','https://fixture.invalid');
@@ -54,5 +55,15 @@ update app.admin_push_deliveries set state='pending';
 select app.retry_delivery_push();
 do $$begin
  if exists(select 1 from cron.job where jobname='delivery-push-retry') or exists(select 1 from app.admin_push_deliveries where state='pending') then raise exception 'Expired work still retries';end if;
+end $$;
+-- A transport enqueue failure cannot roll back the event or lose its retry.
+select set_config('app.fixture_push_fail','1',true);
+select set_config('app.web_push_kicked','',true);
+insert into app.admin_push_events(staff_id,kind,source_id,event_at,source_key)
+ select id,'action',gen_random_uuid(),now(),'idle-fixture-transport' from app.staff where code='AA';
+select app.retry_delivery_push();
+do $$begin
+ if not exists(select 1 from app.admin_push_events where source_key='idle-fixture-transport')
+   or not exists(select 1 from cron.job where jobname='delivery-push-retry') then raise exception 'Transport failure lost event or retry';end if;
 end $$;
 rollback;
