@@ -3,6 +3,12 @@ import {sellerScheduleReady,sellerAccounts,sellerTarget,parseSellerSaleDetail,se
 import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair,readMercariTransactionPage} from '../../tools/fleamarket-extension/seller-runtime.js';
 const day='2026-10-16',settings={mode:'tracking',purchaseImportEnabled:true,accounts:[{id:'mercari-2',site:'mercari',label:'メルカリ2',enabled:true},{id:'mercari-1',site:'mercari',enabled:true},{id:'auctions-1',site:'auctions',label:'ヤフオク1',enabled:true}]};
 const records=()=>({scheduledRuns:{tracking:{day},purchases:{day}},lastRun:{tracking:{day},purchases:{day}}});
+test('配送コードの結果再確認では読み取りだけ行い、コード未検出でも発行や設定を実行しない',async()=>{
+ for(const site of ['auctions','mercari'])for(const found of [true,false]){const phases=[];let finished;const job={id:'recover',kind:'shipping_code',account_id:site==='auctions'?'auctions-1':'mercari-2',url:site==='auctions'?'https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068':'https://jp.mercari.com/transaction/m123',payload:{read_only_code_recovery:true}};
+  await sellerQueuedOperations({settings,rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:finished=args,log:async()=>{},openSession:async()=>({go:async()=>{},prepareShipping:async()=>{throw Error('設定してはいけない');},operation:async(j,phase)=>{phases.push(phase);if(phase==='yahoo_shipping_preflight')return {ready:true};assert.equal(phase,'read_shipping_code');return {qr_code:found?'existing-code':null};},close:async()=>{}})});
+  assert.deepEqual(phases,site==='auctions'?['yahoo_shipping_preflight','read_shipping_code']:['read_shipping_code']);assert.equal(finished.p_status,found?'succeeded':'uncertain');if(found)assert.equal(finished.p_result.recovered_read_only,true);
+ }
+});
 test('ヤフオク配送コードは同一取引タブの事前確認後だけ発行し、停止時に入力値を含めず構造を残す',async()=>{
  for(const fail of [false,true]){const actions=[];let finished;let checks=0;
   const job={id:'yahoo-code',kind:'shipping_code',account_id:'auctions-1',url:'https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068'};
