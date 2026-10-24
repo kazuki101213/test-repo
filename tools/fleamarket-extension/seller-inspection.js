@@ -12,6 +12,7 @@ export function sellerInspectionApplies(request,profileId,previous,now=Date.now(
  if(request.inspectCarrierReceipt!=null&&(request.inspectCarrierReceipt!==true||!request.targetItemId||!request.targetSerial))return false;
  if(request.saleEvidenceLimit!=null&&(!request.saleEvidence||!Number.isInteger(request.saleEvidenceLimit)||request.saleEvidenceLimit<1||request.saleEvidenceLimit>40))return false;
  if(request.saleEvidence!=null&&(request.saleEvidence!==true||request.sellerListsOnly!==true||!request.accountId))return false;
+ if(request.buyerListEvidence!=null&&(request.buyerListEvidence!==true||!request.buyerReceiptIds))return false;
  if(request.receiptPreflight!=null&&(request.receiptPreflight!==true||!request.buyerReceiptIds))return false;
  if(request.buyerReceiptIds!=null&&(!Array.isArray(request.buyerReceiptIds)||request.buyerReceiptIds.length<1||request.buyerReceiptIds.length>10||!request.buyerReceiptIds.every(id=>/^[a-z][0-9]{8,14}$/.test(id))||!['auctions-1','auctions-2'].includes(request.accountId)||request.sellerListsOnly||request.targetItemId||request.targetSerial||request.saleEvidence))return false;
  if(request.listingSerials!=null&&(!request.sellerListsOnly||!Array.isArray(request.listingSerials)||request.listingSerials.length>20||!request.listingSerials.every(s=>/^[0-9]{1,8}[a-z]{0,3}$/.test(s))))return false;
@@ -88,6 +89,7 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
   if(request.buyerReceiptIds){
+   if(request.buyerListEvidence)evidence.buyerList=await session.buyerListEvidence();
    evidence.receipts=[];
    for(const itemId of request.buyerReceiptIds){
     if(Date.now()>Date.parse(request.expiresAt))throw Error('診断の有効期限を過ぎました');
@@ -169,4 +171,11 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  }catch(error){evidence.status='stopped';evidence.error=error.message;if(request.readShippingQrOnly&&session){try{evidence.pages.push({kind:'shipping-qr-stopped',...await session.structure()});}catch{}}await log('info',account.label+'の読取診断を停止しました。自動再試行しません：'+error.message);}
  finally{await session?.close();await storage.set({sellerInspectionEvidence:evidence});}
  return true;
+}
+
+// Only list product IDs and standalone date text; no buyer details or full page text.
+export function readBuyerListDateEvidence(){
+ if(location.hostname!=='auctions.yahoo.co.jp'||location.pathname!=='/my/won')throw Error('購入一覧ではありません');
+ const visible=e=>e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden',norm=s=>(s||'').replace(/\s+/g,' ').trim();
+ return [...document.querySelectorAll('main li')].filter(visible).slice(0,100).map(row=>({ids:[...new Set([...row.querySelectorAll('a[href]')].flatMap(e=>{try{const u=new URL(e.href);return u.hostname==='auctions.yahoo.co.jp'?u.pathname.match(/^\/jp\/auction\/([a-z]?[0-9]{8,14})$/i)?.slice(1)||[]:[];}catch{return [];}}))],dates:[...new Set([...row.querySelectorAll('*')].filter(e=>visible(e)&&!e.children.length).map(e=>norm(e.innerText)).filter(t=>/^(?:20[0-9]{2}[年/.-])?[0-9]{1,2}[月/.-][0-9]{1,2}(?:日)?(?:\s+[0-9]{1,2}[:：][0-9]{2})?(?:終了)?$/.test(t)))],times:[...row.querySelectorAll('time[datetime]')].map(e=>e.getAttribute('datetime'))})).filter(r=>r.ids.length);
 }
