@@ -88,7 +88,7 @@ test('ポップアップは名前登録後も選択アカウントを保持し�
  const base=new URL('../../tools/fleamarket-extension/',import.meta.url);
  await p.route('https://extension.test/**',route=>{
    const name=new URL(route.request().url()).pathname.slice(1);
-   if(!['popup.html','popup.js','ui.js','style.css'].includes(name))return route.abort();
+   if(!['popup.html','popup.js','ui.js','core.js','style.css'].includes(name))return route.abort();
    return route.fulfill({contentType:name.endsWith('.js')?'application/javascript':name.endsWith('.css')?'text/css':'text/html; charset=utf-8',body:fs.readFileSync(new URL(name,base),'utf8')});
  });
  await p.addInitScript(()=>{window.requests=[];window.chrome={runtime:{openOptionsPage:async()=>{},sendMessage:async m=>{

@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {settingsDefault} from '../../tools/fleamarket-extension/core.js';
+// The browser here is a fixture. Navigation pacing has its own clock tests;
+// do not let its real eight-second waits leak work into subsequent test cases.
+const realTimeout=globalThis.setTimeout;
+globalThis.setTimeout=(callback,delay,...args)=>realTimeout(callback,new Error().stack?.includes('/navigation-pacing.js:')?0:delay,...args);
 const data={};let listener,alarmHandler;const requests=[];let pageKind='list',submitClicks=0,adminTabs=[],sessionCreations=0;
 globalThis.chrome={
  storage:{local:{get:async keys=>{if(typeof keys==='string')return {[keys]:structuredClone(data[keys])};return Object.fromEntries(keys.map(k=>[k,structuredClone(data[k])]));},set:async obj=>{Object.assign(data,structuredClone(obj));},remove:async key=>{delete data[key];},setAccessLevel:async()=>{}}},

@@ -134,6 +134,8 @@ do $patch$ declare original text;patched text;begin
  execute patched;
 end $patch$;
 grant execute on function app.seller_operation_context(uuid) to service_role;
+-- Server media preparation reads existing data, without granting any writes.
+grant select on app.seller_listings,app.seller_operations,app.delivery_shipping_tasks,app.delivery_notice_completions to service_role;
 
 create function app.line_shipping_eligible(p_id uuid) returns boolean
 language sql stable set search_path='' as $$
