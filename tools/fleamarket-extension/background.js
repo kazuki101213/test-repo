@@ -26,7 +26,7 @@ import {newAccessMetrics,incrementAccess} from './access-metrics.js';
 import {PRODUCTION_PLAN} from './production-plan.js';
 import {SITES,API,PUBLIC_KEY,assertSiteUrl,siteFor,eligible,jstDay,dueTime,nextTime,settingsDefault,validateSettings,trackingEnabled,receiptAccounts,itemId as receiptItemId} from './core.js';
 import {rpc,connectSession} from './api.js';
-import {checkPackageUpdate,LOADED_BUILD} from './updates.js';
+import {checkPackageUpdate,checkRequestedPackageUpdate,LOADED_BUILD} from './updates.js';
 const STORE=chrome.storage.local;
 const navigationTabs=pacedTabs(chrome.tabs);
 let purchaseRefreshBusy=false;let sellerBusy=false;let busy=false;let focusRestore=null;let dailyStarting=false;let launcherChain=Promise.resolve();const readyLaunchTabs=new Set();
@@ -424,6 +424,7 @@ async function runSellerWork({patrol=false,checkQueues=true}={}){
   if(checkQueues){
    // The three diagnostic consumers share one local read per idle check.
    let requestRead;const fetchRequest=()=>requestRead??=(async()=>{try{const response=await fetch(chrome.runtime.getURL('seller-inspection-request.json'),{cache:'no-store'});return response.ok?await response.json():null;}catch{return null;}})();
+   if(await checkRequestedPackageUpdate({request:await fetchRequest(),profileId:records.diagnosticInstance,runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy,record:log}))return;
    if(await runSellerReadOnlyInspection({...dependencies,profileId:records.diagnosticInstance,fetchRequest,reportDiagnostic:()=>navigationTabs.create({url:chrome.runtime.getURL('report.html'),active:false})}))return;
    if(await runSellerSaleRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;
    if(await runSellerFeedbackRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;
