@@ -260,7 +260,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const {categoryId}=await execute(resolveYahooCategory,target);const next=new URL(formUrl);next.searchParams.set('category',categoryId);await go(next.href);
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
- return {go,loaded,advanceList:()=>execute(advanceSellerList,null),structure:()=>execute(readSellerStructure,null),
+ return {go,loaded,advanceList:()=>execute(advanceSellerList,null),structure:args=>execute(readSellerStructure,args||null),
   inspectAuctionOptions:async()=>{const selected=await execute(function(){if(location.hostname!=='auctions.yahoo.co.jp'||!/\/show\/submit$/.test(location.pathname))throw Error('出品入力画面ではありません');const radio=document.querySelector('input[name="salesmode"][value="auction"]');if(!radio||radio.disabled)throw Error('オークション形式を確認できません');if(!radio.checked)radio.click();return radio.checked;},null);if(!selected)throw Error('オークション形式を確認できません');await pause(500);return true;},
   categoryFormFromResults:categoryForm,
   prepareCategory:async target=>{

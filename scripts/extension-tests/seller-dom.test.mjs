@@ -374,3 +374,8 @@ test('ヤフオクの発送をしてくださいを認識し、落札者連絡�
  const p=await page('<h1>出品終了分</h1><ul><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/x1249217300">DBR-T1009【2403】</a><span>落札者からの連絡待ちです</span></li><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/g1249218068">DBR-W1007【2397】</a><span>発送をしてください</span></li><li><a href="https://page.auctions.yahoo.co.jp/jp/auction/p1249204792">4B-C20AT3【2398】</a><span>発送をしてください</span></li></ul>','https://auctions.yahoo.co.jp/my/closed');
  const r=await p.evaluate(readSellerPage,{site:'auctions',phase:'出品終了分'});assert.deepEqual(r.rows.map(x=>[x.external_id,x.serial,x.status]),[['g1249218068','2397','取引中'],['p1249204792','2398','取引中']]);await p.close();
 });
+
+test('ヤフオク対象行の構造は親階層と状態だけを返し、住所・本文・入力値を出力しない',async()=>{
+ const p=await page('<h1>出品終了分</h1><ul><li><span>発送をしてください</span><section><div><a href="https://page.auctions.yahoo.co.jp/jp/auction/g1249218068">【2397】</a></div></section></li></ul><p>PRIVATE_ADDRESS</p><input value="PRIVATE_VALUE"><button onclick="document.body.dataset.clicked=1">発送</button>','https://auctions.yahoo.co.jp/my/closed?hasWinner=1');
+ const r=await p.evaluate(readSellerStructure,{targetIds:['g1249218068','p1249204792']});assert.equal(r.listTargets[0].anchorCount,1);assert(r.listTargets[0].anchors[0].trace.some(x=>x.statusLabels.includes('発送をしてください')));assert.equal(r.listTargets[1].anchorCount,0);assert(!JSON.stringify(r).includes('PRIVATE_'));assert.equal(await p.evaluate(()=>document.body.dataset.clicked),undefined);await p.close();
+});
