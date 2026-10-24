@@ -40,6 +40,13 @@ async function rpc(name: string, params: Record<string, unknown> = {}) {
   if (result.error) throw result.error;
   return result.data;
 }
+async function cleanupCodeImages() {
+  // Event-based, bounded cleanup. Product photos and deduplication IDs remain.
+  const {data,error} = await admin.from('delivery_line_outbox').select('id').in('state',['sent','cancelled','failed']).is('code_cleaned_at',null).lt('next_attempt_at',new Date(Date.now()-8*86400000).toISOString()).limit(20);
+  if (error || !data?.length) return;
+  const removed = await admin.storage.from('line-shipping-codes').remove(data.map(row => `${row.id}.png`));
+  if (!removed.error) await admin.from('delivery_line_outbox').update({code_cleaned_at:new Date().toISOString(),message_payload:null}).in('id',data.map(row => row.id));
+}
 async function webhook(req: Request) {
   const raw = await req.text();
   if (raw.length > 262144) return response(413, {});
@@ -107,6 +114,7 @@ Deno.serve(async req => {
         await rpc('finish_delivery_line', { p_id: row.id, p_lease: row.lease, p_state: state, p_status: status });
       }
       if (rows.length === 2) await rpc('kick_delivery_line');
+      await cleanupCodeImages().catch(() => {});
       return response(200, { processed: rows.length, sent });
     }
     if (origin !== deliveryOrigin) return response(403, {});

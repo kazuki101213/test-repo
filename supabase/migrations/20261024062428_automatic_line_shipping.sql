@@ -18,6 +18,7 @@ create policy delivery_line_preferences_read on app.delivery_line_preferences fo
 );
 alter table app.delivery_line_outbox add column message_payload jsonb,add column last_error text;
 alter table app.delivery_line_outbox add column code_cleaned_at timestamptz;
+create index delivery_line_media_cleanup on app.delivery_line_outbox(next_attempt_at) where code_cleaned_at is null and state in ('sent','cancelled','failed');
 insert into storage.buckets(id,name,public) values('line-shipping-codes','line-shipping-codes',false) on conflict(id) do nothing;
 
 create function app.save_line_shipping_preferences(p_item_id uuid,p_overview uuid,p_model uuid,p_shipping jsonb default '{}'::jsonb) returns void
@@ -132,6 +133,7 @@ do $patch$ declare original text;patched text;begin
  if patched=original then raise exception 'Shipping defaults anchor missing';end if;
  execute patched;
 end $patch$;
+grant execute on function app.seller_operation_context(uuid) to service_role;
 
 create function app.line_shipping_eligible(p_id uuid) returns boolean
 language sql stable set search_path='' as $$
@@ -194,7 +196,9 @@ begin
  for o in select q.id,q.trade_key,t.item_id,l.account_id,l.trade_key current_trade from app.delivery_line_outbox q
  join app.delivery_shipping_tasks t on t.id=q.task_id join app.items item on item.id=t.item_id
  join app.seller_listings l on l.item_id=item.id and l.active and l.account_id=any(p_account_ids)
- where q.state='pending' and q.attempts=0 order by q.created_at limit 20 for update of q skip locked loop
+ where q.state='pending' and q.attempts=0
+ and exists(select 1 from app.delivery_line_preferences pref where pref.item_id=item.id and pref.overview_photo_id is not null and pref.model_photo_id is not null)
+ order by q.created_at limit 20 for update of q skip locked loop
   if o.trade_key is null then update app.delivery_line_outbox set trade_key=o.current_trade where id=o.id;end if;
   if not app.line_shipping_eligible(o.id) then update app.delivery_line_outbox set state='cancelled' where id=o.id;continue;end if;
   if app.line_shipping_media(o.id) is not null then continue;end if;
