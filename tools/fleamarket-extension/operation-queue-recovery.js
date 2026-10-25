@@ -26,3 +26,10 @@ export async function runOperationQueue({scope,storage,run,log,now=Date.now()}){
   return false;
  }
 }
+
+// Drain only an explicitly confirmed shipment batch; other actions retain one-per-check behavior.
+export async function drainConfirmedShippingQueue(run){
+ let last;
+ for(let n=0;n<3;n++){last=await run();if(!last?.processed||last.status!=='succeeded'||last.kind!=='ship_notice'||last.confirmedShippingPending!==true)break;}
+ return last;
+}

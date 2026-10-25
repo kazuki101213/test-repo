@@ -91,7 +91,7 @@ export async function processDailyShipping({jobs,session,rpc,log,fetchReceipts=f
   await session.go(job.url);const state=await session.operation(job,'ship_notice_preflight');
   if(state.alreadyNotified){await finish(job,{already_notified:true,observed_at:state.observed_at},true);continue;}
   const receipt=await session.outboundReceipt(job);if(shippingReceiptValid(receipt))pending.push({...job,...receipt,trade_key:job.trade_key});
-  else await log('info','自動発送通知：現在の送り状番号を確認できない商品は通知せず保留しました');
+  else await log('info','自動発送通知：'+job.inventory_sku+' は発送前の画面で送り状番号を確認できず保留しました。QR発行だけでは受付済みと判定しません');
  }catch(e){await log('warning','自動発送通知の確認を保留しました：'+e.message);}}
  if(!pending.length)return;
  let proofs;try{proofs=await fetchReceipts({receipts:pending,parse:args=>session.parseCarrierReceipts(args)});}catch(e){await log('warning','配送会社の確認を翌日に回します：'+e.message);return;}

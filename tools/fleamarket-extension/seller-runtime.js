@@ -347,7 +347,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
  }
  finally{await session?.close();}
  await rpc('extension_finish_seller_operation',{p_id:job.id,p_status:status,p_result:result});
- return {processed:true,id:job.id,status};
+ return {processed:true,id:job.id,status,kind:job.kind,confirmedShippingPending:job.kind==='ship_notice'&&job.payload?.posted===true&&queue.some(other=>other.id!==job.id&&other.kind==='ship_notice'&&other.account_id===account.id&&other.payload?.posted===true)};
 }
 /** Read-only list expansion. No retry, form submission, or business action. */
 export async function advanceSellerList(){
