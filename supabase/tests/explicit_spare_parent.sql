@@ -61,6 +61,7 @@ begin
   'cost_amount',0,'marketplace','Amazon返品','sales_channel','メルカリ'),spare);
  select * into strict accessory from app.items where id=(result->>'id')::uuid;
  if not accessory.is_accessory or accessory.parent_item_id is distinct from body.id then raise exception 'Amazon-return spare did not attach to the exact aa body';end if;
+ if accessory.sku !~ '^899994aa[a-z]+-' then raise exception 'Return accessory SKU lost its lowercase aa parent serial';end if;
  if (select count(*) from app.items where lot_seq=899994 and not is_accessory)<>3 then raise exception 'Accessory registration created a new returned body';end if;
  if not exists(select 1 from app.spare_accessories where id=spare and used_for_item_id=accessory.id) then raise exception 'Selected reserve was not allocated to the accessory';end if;
 end $test$;
