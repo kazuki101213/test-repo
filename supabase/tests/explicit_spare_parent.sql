@@ -48,5 +48,20 @@ begin
  if image is distinct from 'https://example.com/remote.jpg' then raise exception 'Own accessory image was lost';end if;
  select reference_image_url into image from app.v_delivery_tasks where id=accessory.id;
  if image is distinct from 'https://example.com/remote.jpg' then raise exception 'Own delivery accessory image was lost';end if;
+ -- Attaching an Amazon-return spare to an existing aa body must not create another body.
+ insert into app.items(sku,lot_seq,title,cost_amount,marketplace,purchased_at,purchaser_id,deliverer_id)
+ values('899994-AAHH-20260901-100',899994,'original',1000,'メルカリ','2026-09-01',buyer,worker),
+       ('899994a-AAHH-20260902-0',899994,'first return',0,'メルカリ','2026-09-02',buyer,worker);
+ insert into app.items(sku,lot_seq,title,cost_amount,marketplace,purchased_at,purchaser_id,deliverer_id)
+ values('899994aa-AAHH-20260903-0',899994,'target aa body',0,'メルカリ','2026-09-03',buyer,worker) returning * into body;
+ insert into app.spare_accessories(owner_staff_id,title,cost_amount,purchased_at,marketplace)
+ values(buyer,'リモコン',0,'2026-09-22','Amazon返品') returning id into spare;
+ result:=app.register_item_with_spare(jsonb_build_object('sku','899994aa-AAHH-20260922-0','lot_seq',899994,'is_accessory',true,
+  'purchaser_id',buyer,'deliverer_id',worker,'work_stream','付属品','purchased_at','2026-09-22','title','リモコン',
+  'cost_amount',0,'marketplace','Amazon返品','sales_channel','メルカリ'),spare);
+ select * into strict accessory from app.items where id=(result->>'id')::uuid;
+ if not accessory.is_accessory or accessory.parent_item_id is distinct from body.id then raise exception 'Amazon-return spare did not attach to the exact aa body';end if;
+ if (select count(*) from app.items where lot_seq=899994 and not is_accessory)<>3 then raise exception 'Accessory registration created a new returned body';end if;
+ if not exists(select 1 from app.spare_accessories where id=spare and used_for_item_id=accessory.id) then raise exception 'Selected reserve was not allocated to the accessory';end if;
 end $test$;
 rollback;
