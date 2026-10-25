@@ -193,3 +193,5 @@ test('LINE準備は自動コードだけを実行し、手動の出品・メッ�
  jobs.push(automatic);const processed=await sellerQueuedOperations(deps);
  assert.deepEqual(claims,['automatic']);assert.deepEqual(actions,['shipping_code']);assert.equal(result.p_status,'succeeded');assert.equal(processed.processed,true);
 });
+
+test('メルカリ評価の事前確認は取引DOMの対象ID描画を待ってからフォームを読む',async()=>{let tab={id:77,url:'https://jp.mercari.com/mypage/purchases',status:'complete'};const calls=[],tabs={query:async()=>[tab],get:async()=>tab,update:async(id,value)=>(tab={...tab,...value})};const session=await openSellerSession({id:'mercari-2',site:'mercari',identity:{pageUrl:tab.url}},{tabs,identity:async()=>({confirmed:true}),scripting:{executeScript:async({func,args})=>{calls.push([func.name,args[0]]);return [{result:{ready:true,text:'取引画面',url:tab.url}}];}}});await session.feedback({itemId:'m89610866040',serial:'2392',action:'inspect'});assert.deepEqual(calls.map(c=>c[0]),['readMercariTransactionPage','mercariSellerFeedback']);assert.equal(calls[0][1].id,'m89610866040');await session.close();});

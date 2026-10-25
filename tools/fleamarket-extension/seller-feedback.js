@@ -54,11 +54,11 @@ export async function mercariSellerFeedback(args){
 }
 
 /** Durable reservation precedes any submission; interrupted work is never retried. */
-export async function processSellerFeedback({account,rows,session,rpc,storage,log,now=Date.now()}){
+export async function processSellerFeedback({account,rows,session,rpc,storage,log,now=Date.now(),retryUnsent=false}){
  const pending=rows.filter(r=>r.feedback_pending===true&&!r.attention&&['取引中','販売済'].includes(r.status));
  if(!pending.length)return {rated:0,errors:0};
  const key='sellerFeedbackChecks',saved=(await storage.get(key))[key]||{},checks={...saved},day=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(new Date(now));
- const eligible=pending.filter(r=>!checks[account.id+':'+r.external_id]||checks[account.id+':'+r.external_id].day!==day&&!['succeeded','unknown','skipped'].includes(checks[account.id+':'+r.external_id].state)).slice(0,40);
+ const eligible=pending.filter(r=>!checks[account.id+':'+r.external_id]||(checks[account.id+':'+r.external_id].day!==day||retryUnsent&&checks[account.id+':'+r.external_id].state==='checked')&&!['succeeded','unknown','skipped'].includes(checks[account.id+':'+r.external_id].state)).slice(0,40);
  if(!eligible.length)return {rated:0,errors:0};
  const plans=await rpc('seller_feedback_candidates',{p_account_id:account.id,p_ids:eligible.map(r=>r.external_id)});
  if(!Array.isArray(plans))throw Error('購入者評価の在庫照合結果が不正です');
