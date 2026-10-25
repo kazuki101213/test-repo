@@ -11,6 +11,9 @@ begin
   seq:=seq+1;
   insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,status,malfunction_reported,condition)
   values(seq,buyer,holder,current_date,'damage instruction fixture',1230,'メルカリ','FBA','Amazon補填申請中',true,'非常に良い') returning id into body;
+  -- Insert derives the initial stage; enter the explicit damage stage as the real report does.
+  update app.items set status='Amazon補填申請中' where id=body;
+  if not exists(select 1 from app.items where id=body and status='Amazon補填申請中') then raise exception 'Invalid damage fixture';end if;
   reply:=gen_random_uuid();
   perform app.send_malfunction_reply(reply,body,'CI fixture only',kind,'{}');
   perform app.send_malfunction_reply(reply,body,'CI fixture only',kind,'{}');
