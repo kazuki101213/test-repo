@@ -28,7 +28,7 @@
 .invoice-task-rows > .admin-damage-task > .workflow-buttons > .btn { width:94px; }
 .invoice-task-rows > .admin-shipping-task .spare-shipping-content { display:contents; }
 .invoice-task-rows > .admin-shipping-task .spare-shipping-heading { grid-column:1; grid-row:1; min-width:0; overflow-wrap:anywhere; line-height:20px; }
-.invoice-task-rows > .admin-shipping-task .spare-shipping-details { grid-column:1 / -1; grid-row:2; display:flex; flex-direction:column; gap:0; font-size:inherit; line-height:20px; }
+.invoice-task-rows > .admin-shipping-task .spare-shipping-details { grid-column:1 / -1; grid-row:2; display:flex; flex-direction:column; gap:0; margin-top:0; font-size:inherit; line-height:20px; }
 .spare-shipping-detail-line { display:flex; flex-wrap:wrap; gap:0 12px; min-width:0; }
 .spare-shipping-detail-line > span { min-width:0; overflow-wrap:anywhere; }
 .invoice-task-rows > .admin-shipping-task > .spare-shipping-open { grid-column:2; grid-row:1; align-self:start; }
