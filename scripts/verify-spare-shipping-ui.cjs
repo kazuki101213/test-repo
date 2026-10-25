@@ -15,7 +15,7 @@ for(const app of ['admin','delivery']){
   let fixtures=[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}],focus;
   const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>{reads++;return fixtures;},
     sendSpareShipping:async(id,tracking)=>{if(failed)throw{message:'送信に失敗しました'};sent={id,tracking};},
-    completeSpareShipping:async id=>{completed=id;}};
+    completeSpareShipping:async id=>{if(failed)throw{message:'完了に失敗しました'};completed=id;}};
   const context={Date:{now:()=>now},exports:{},require:id=>id==='../purchaseUrl'?{purchaseItemUrl:(site,id)=>id==='m123'?'https://jp.mercari.com/item/m123':null}:id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
     window:{setInterval:(fn,ms)=>{tick=fn;intervalMs=ms;return 1;},clearInterval(){},addEventListener(name,fn){if(name==='focus')focus=fn;},removeEventListener(){}},
     document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
@@ -33,7 +33,7 @@ for(const app of ['admin','delivery']){
   focus();await settle();
   assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['other'],'Sending from another app automatically removes the task on refresh');
   assert.equal(completed,undefined,'Automatic removal must not issue another completion write');
-  assert.equal(intervalMs,86400000,'Spare shipping periodically refreshes once per 24 hours');
+  assert.equal(intervalMs,app==='admin'?300000:86400000,'Management uses the existing five-minute task refresh cadence; delivery keeps its daily refresh');
   const before=reads;focus();focus();await settle();assert.equal(reads,before,'Repeated focus must not duplicate downloads');
   context.document.visibilityState='hidden';now+=intervalMs;tick();await settle();assert.equal(reads,before,'Hidden pages do not poll');
   context.document.visibilityState='visible';
@@ -96,21 +96,26 @@ for(const app of ['admin','delivery']){
   assert.equal(all(tree).find(n=>n.props?.type==='checkbox').props.checked,false);assert(button('送信').props.disabled);
   if(app==='admin'){
     await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'admin'},management:true,onChanged:()=>changed++});
-    assert(!button('完了'),'Management card has no duplicate shipping completion');
+    assert(button('完了'),'Management may acknowledge without shipping');
     assert(text(tree).includes('通番号：2392品名：リモコンメーカー：Panasonic純正仕入先：メルカリ商品ID：m123利用記録：1647 / 1723')); assert(!button('発送')); assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,3);
     assert.equal(all(tree).find(n=>n.type==='a').props.href,'https://jp.mercari.com/item/m123');
   }
   await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});
-  assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(!button('完了'));
+  assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert.equal(!!button('完了'),app==='admin');
   if(app==='admin'){
     assert(!button('発送'),'Management shows shipping progress without performing shipment');
     assert(!all(tree).some(n=>n.type==='form'),'Management never offers a shipping form');
+    failed=true;button('完了').props.onClick();await settle();assert.equal(completed,undefined);assert(all(tree).some(n=>n.props?.role==='alert'));
+    failed=false;button('完了').props.onClick();button('完了').props.onClick();await settle();assert.equal(completed,'task');assert.equal(changed,2);
     await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:true,onChanged:()=>changed++});
     assert(!button('発送'),'Other administrators retain the holder-only permission');
   }
   await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('発送済み'));assert(text(tree).includes('通番号：2392'));assert(text(tree).includes('追跡番号：12345'));assert(!text(tree).includes('利用記録'));
-  assert(!button('完了'),'Sent tasks no longer offer a second completion button');assert.equal(completed,undefined);assert.equal(changed,1);
+  assert(!button('完了'),'Sent tasks no longer offer a second completion button');assert.equal(completed,app==='admin'?'task':undefined);assert.equal(changed,app==='admin'?2:1);
+  fixtures=[{...task,management_completed_at:'acknowledged'}];
+  await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
+  assert.equal(all(tree).filter(n=>typeof n.type==='function').length,app==='admin'?0:1,'Management acknowledgement hides only the management card');
 }
 console.log('Both apps: holder scope, requested details, checked shipping, cancel reset, error retry and automatic sent-task dismissal without extra completion passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

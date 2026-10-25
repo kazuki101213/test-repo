@@ -116,3 +116,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/line_photo_listing_order.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/daily_marketplace_price.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/damage_report_yahoo_instructions.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/spare_shipping_management_completion.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/purchase_draft_to_spare.sql"

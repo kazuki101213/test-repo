@@ -1,6 +1,6 @@
 import { purchaseItemUrl } from '../purchaseUrl';
 import { useEffect, useRef, useState } from 'react';
-import { fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
+import { completeSpareShipping, fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
 import type { SpareShippingTask, Staff } from '@bussan/shared';
 
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message
@@ -14,10 +14,19 @@ function ShippingRow({task,staff,management,onChanged}:{
   const [serialMarked,setSerialMarked]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+  const completing=useRef(false);
   const owner=staffDisplayName({code:task.owner_code,name:task.owner_name});
   const recipient=staffDisplayName({code:task.recipient_code,name:task.recipient_name});
   const canShip=!management && !task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
   const sourceUrl=purchaseItemUrl(task.marketplace,task.marketplace_item_id,null);
+  const canComplete=management && staff.role==='admin' && !task.sent_at && !task.management_completed_at;
+  async function complete() {
+    if(!canComplete || completing.current) return;
+    completing.current=true;setBusy(true);setError('');
+    try {await completeSpareShipping(task.id);onChanged();}
+    catch(cause){setError(messageOf(cause));}
+    finally{completing.current=false;setBusy(false);}
+  }
   async function act() {
     if(busy || !canShip || !tracking.trim() || !serialMarked) return;
     setBusy(true);setError('');
@@ -44,6 +53,7 @@ function ShippingRow({task,staff,management,onChanged}:{
       </>}
     </div>
     </div>
+    {canComplete && <button type="button" className="btn spare-shipping-open" disabled={busy} onClick={()=>void complete()}>{busy?'更新中…':'完了'}</button>}
     {canShip && !editing && <button type="button" className="btn spare-shipping-open" onClick={()=>{setSerialMarked(false);setEditing(true);}}>発送</button>}
     {editing && canShip && <form className="spare-shipping-form" onSubmit={event=>{event.preventDefault();void act();}}>
       <label className="field"><span>追跡番号</span><input value={tracking} autoFocus required maxLength={200}
@@ -79,12 +89,12 @@ export default function SpareShippingTasks({staff,management=false,onChanged}:{
     let lastAutomaticCheck=0;
     const visible=()=>{if(document.visibilityState==='visible'&&Date.now()-lastAutomaticCheck>=30000){lastAutomaticCheck=Date.now();void refresh();}};
     void refresh();
-    const timer=window.setInterval(visible,24*60*60*1000);
+    const timer=window.setInterval(visible,management?5*60*1000:24*60*60*1000);
     window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',visible);
       document.removeEventListener('visibilitychange',visible);};
-  },[revision,staff.id]);
-  const visible=rows.filter(task=>!task.sent_at && !task.completed_at && !dismissed.current.has(task.id)
+  },[revision,staff.id,management]);
+  const visible=rows.filter(task=>!task.sent_at && !task.completed_at && !(management && task.management_completed_at) && !dismissed.current.has(task.id)
     && (management && staff.role==='admin' || task.owner_staff_id===staff.id));
   if(error) return <li className="spare-shipping-row"><p className="error" role="alert">{error}</p>
     <button className="btn" onClick={()=>void refreshRef.current()}>再読み込み</button></li>;
