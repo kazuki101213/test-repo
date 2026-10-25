@@ -3,7 +3,7 @@ import {processLineShipping} from './line-shipping.js';
 import {runSellerFeedbackRepair} from './seller-feedback-repair.js';
 import {runBuyerReceiptRepair} from './buyer-receipt-repair.js';
 import {processPurchaseSync} from './purchase-sync.js';
-import {runOperationQueue} from './operation-queue-recovery.js';
+import {runOperationQueue,drainConfirmedShippingQueue} from './operation-queue-recovery.js';
 import {yahooTrackingPage,yahooTrackingFallback} from './yahoo-tracking-fallback.js';
 import {paceNavigation} from './navigation-pacing.js';
 import {pacedTabs} from './navigation-pacing.js';
@@ -431,7 +431,7 @@ async function runSellerWork({patrol=false,checkQueues=true}={}){
    if(await runSellerSaleRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;
    if(await runSellerFeedbackRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;
    await runOperationQueue({scope:'supplier',storage:STORE,log,run:()=>supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log})});
-   await runOperationQueue({scope:'seller',storage:STORE,log,run:()=>sellerQueuedOperations(dependencies)});
+   await runOperationQueue({scope:'seller',storage:STORE,log,run:()=>drainConfirmedShippingQueue(()=>sellerQueuedOperations(dependencies))});
   }
   const daily=await sellerDaily({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,automaticShipping:true});
   const hourlyRecords={...records,...await STORE.get(['job','authProblem','sellerDailyAttempt','sellerHourlyAttempt','sellerObservationCache'])};

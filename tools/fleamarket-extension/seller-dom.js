@@ -354,7 +354,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const sentValues=()=>[...root.querySelectorAll('[role=status],h1,h2,h3,p,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')&&!e.closest('button,a')).filter(e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return !h||!/メッセージ|コメント/.test(norm(h.innerText));}).map(e=>norm(e.innerText));
 
   try{await waitFor(()=>{
-   root=document.querySelector('main')||document.body;
+   root=document.body;
    const completed=sentValues().some(value=>/^(発送通知をしました|発送通知が完了しました|商品の発送を通知しました|発送を通知しました|発送通知を送信しました|発送済み|配送中)$/.test(value)||/^(?:購入者(?:から|の)?の?)?受取評価(?:を|が|の)?(?:お待ちください|待ち|待っています)[。.]?$/.test(value));
    if((completed||confirmed&&shippingNoticeCompleted())&&(!button.isConnected||button.disabled))return true;
    const dialogs=[...document.querySelectorAll('[role=dialog],[aria-modal=true]')].filter(e=>visible(e)&&exposedTextElement(e)&&/発送/.test(e.innerText)&&!e.querySelector('textarea'));
