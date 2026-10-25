@@ -282,8 +282,6 @@ export async function checkExistingListing(session,job,account){
 export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyAutomaticLine=false}){
  const accounts=sellerAccounts(settings);if(settings.mode==='diagnostic'||!accounts.length)return;
  const queue=await rpc('extension_seller_queue',{p_account_ids:accounts.map(a=>a.id)});if(!Array.isArray(queue)||!queue.length)return;
- // Prepare outstanding shipping requests before unrelated marketplace writes.
- // The existing atomic claim still validates the item revision and trade.
  const job=onlyAutomaticLine?queue.find(value=>value.kind==='shipping_code'&&value.payload?.automatic_line):(queue.find(value=>value.kind==='shipping_code')||queue[0]);if(!job)return;
  const account=accounts.find(value=>value.id===job.account_id);if(!account)return;
  if(job.read_only_listing_check){
@@ -414,7 +412,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
  return {go,loaded,refreshNotice:async job=>{const current=await tabs.get(borrowed.id);if(account.site!=='mercari'||current.url!==last||new URL(last).pathname!=='/transaction/'+job.external_id)throw Error('発送通知結果の対象画面が変更されたため停止しました');await paceNavigation(async()=>{const check=await tabs.get(borrowed.id);if(check.url!==last)throw Error('画面が変更されたため再読み込みしません');await tabs.reload(borrowed.id);});await loaded();},price:args=>execute(mercariPricePage,args),priceResult:args=>execute(mercariPriceResult,args),buyerListEvidence:()=>execute(readBuyerListDateEvidence,null),buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:args=>execute(readSellerStructure,args||null),
-  feedback:args=>execute(account.site==='mercari'?mercariSellerFeedback:yahooSellerFeedback,args),
+  feedback:async args=>{if(account.site==='mercari'&&args.action==='inspect')await execute(readMercariTransactionPage,{id:args.itemId});return execute(account.site==='mercari'?mercariSellerFeedback:yahooSellerFeedback,args);},
   feedbackGo:async url=>{if(last!==url)await go(url);},
   preserveForReview:()=>{preserveFeedback=true;},
   feedbackStructure:async({itemId,url})=>{await go(url);return execute(yahooSellerRating,{itemId,action:'inspect'});},

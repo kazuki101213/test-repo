@@ -17,7 +17,7 @@ export async function runSellerFeedbackRepair(dependencies){
   const rows=targets.map(t=>({external_id:t.itemId,serial:t.serial,status:'取引中',feedback_pending:true}));
   const plans=await rpc('seller_feedback_candidates',{p_account_id:account.id,p_ids:rows.map(r=>r.external_id)});
   if(!Array.isArray(plans)||!targets.every(t=>plans.some(p=>p.external_id===t.itemId&&p.sku?.split('-')[0].toLowerCase()===t.serial&&!p.state)))throw Error('評価対象の在庫・予約状態が変わったため停止しました');
-  result=await processSellerFeedback({account,rows,session,rpc,storage,log,now});
+  result=await processSellerFeedback({account,rows,session,rpc,storage,log,now,retryUnsent:true});
   const checks=(await storage.get('sellerFeedbackChecks')).sellerFeedbackChecks||{};
   for(const target of targets){if(checks[account.id+':'+target.itemId]?.state!=='succeeded')continue;try{const detail=await session.detail('https://jp.mercari.com/transaction/'+target.itemId,target.itemId),extra=parseSellerSaleDetail('メルカリ',detail.text,target.itemId,detail.url);const response=await rpc('sync_seller_observation',{p_account_id:account.id,p_observation:{external_id:target.itemId,serial:target.serial,status:'販売済',...extra,trade_url:detail.url,observed_at:new Date().toISOString()}});if(!['registered','updated'].includes(response))financialFailures.push({itemId:target.itemId,reason:response});}catch(error){financialFailures.push({itemId:target.itemId,reason:error.message});}}
   await storage.set({sellerFeedbackRepairAttempt:{id:request.id,accountId:account.id,total:targets.length,...result,financialFailures,status:result.rated===targets.length&&!result.errors&&!financialFailures.length?'completed':'needs-review',at:new Date().toISOString()}});
