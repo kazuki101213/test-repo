@@ -5,7 +5,7 @@ const delays=[300000,600000,900000,1800000];
 export async function runOperationQueue({scope,storage,run,log,now=Date.now()}){
  const key=scope==='supplier'?'supplierQueueRecovery':'sellerQueueRecovery';
  const previous=(await storage.get(key))[key];
- if(Number(previous?.nextAttemptAt)>now)return false;
+ if(Number(previous?.nextAttemptAt)>now+(previous?.failures===0?2000:0))return false;
  try{
   await run();
   await storage.set({[key]:{failures:0,checkedAt:new Date(now).toISOString(),nextAttemptAt:now+IDLE_CHECK_MINUTES*60000}});

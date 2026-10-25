@@ -343,6 +343,11 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
    try{await session.go(sellerUrl(account,account.identity?.pageUrl||account.listUrl));result={...await checkExistingListing(session,job,account),recovered_from_listing_list:true};status='succeeded';}
    catch(listError){result={...result,list_check_note:listError.message};}
   }}
+  // The server may commit while Mercari leaves its confirmation overlay stale. Read once after a paced reload; never submit again.
+  if(mutating&&job.kind==='ship_notice'&&error.shippingEvidence?.confirmationClicked===true&&session?.refreshNotice){
+   try{await session.refreshNotice(job);const verified=await session.operation(job,'ship_notice_preflight');if(verified.alreadyNotified===true){status='succeeded';result={notified:true,observed_at:verified.observed_at,recovered_read_only:true,previous_result:result,note:'発送通知後の表示遅延を1回の読取再読み込みで確認しました。再送していません'};}}
+   catch(checkError){result={...result,result_check_note:checkError.message};}
+  }
   if(status!=='succeeded')await log('error','販売サイトの操作を停止しました。自動再送はしません：'+error.message);
  }
  finally{await session?.close();}
@@ -406,7 +411,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const {categoryId}=await execute(resolveYahooCategory,target);const next=new URL(formUrl);next.searchParams.set('category',categoryId);await go(next.href);
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
- return {go,loaded,price:args=>execute(mercariPricePage,args),priceResult:args=>execute(mercariPriceResult,args),buyerListEvidence:()=>execute(readBuyerListDateEvidence,null),buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:args=>execute(readSellerStructure,args||null),
+ return {go,loaded,refreshNotice:async job=>{const current=await tabs.get(borrowed.id);if(account.site!=='mercari'||current.url!==last||new URL(last).pathname!=='/transaction/'+job.external_id)throw Error('発送通知結果の対象画面が変更されたため停止しました');await paceNavigation(async()=>{const check=await tabs.get(borrowed.id);if(check.url!==last)throw Error('画面が変更されたため再読み込みしません');await tabs.reload(borrowed.id);});await loaded();},price:args=>execute(mercariPricePage,args),priceResult:args=>execute(mercariPriceResult,args),buyerListEvidence:()=>execute(readBuyerListDateEvidence,null),buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:args=>execute(readSellerStructure,args||null),
   feedback:args=>execute(account.site==='mercari'?mercariSellerFeedback:yahooSellerFeedback,args),
   feedbackGo:async url=>{if(last!==url)await go(url);},
   preserveForReview:()=>{preserveFeedback=true;},
