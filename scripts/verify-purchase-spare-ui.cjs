@@ -79,4 +79,26 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
   await realApi.exports.createItem(saved.payload,'spare');assert.match(requests.at(-1).p_item.sku,/^1894aa-/);
  }
  console.log('Main form preserved; atomic spare save retains 1894aa; exact eight ordered assignee options passed');
+ // The requested location is the inventory registration form footer.
+ for(const imported of [false,true]){
+  hooks.splice(0);cursor=0;pending=[];dirty=true;currentSpares=[];saved=undefined;
+  selectedDraft=imported?{id:'draft-spare',title:'TOSHIBA リモコン',marketplace:'メルカリ',marketplace_item_id:'m-draft',purchased_at:'2026-10-25',cost_amount:1800,asin:'B000000004',model_no:'SE-R0435'}:null;
+  let spareWrite,inventoryWrites=0;
+  api.createItem=async()=>{inventoryWrites++;throw Error('Spare registration must not create inventory');};
+  api.registerPurchaseDraftSpare=async(id,input)=>{spareWrite={id,input};return'spare';};
+  api.createSpareAccessory=async input=>{spareWrite={input};};
+  await settle();
+  if(!imported){for(const [label,value] of [['型番','SE-R0435'],['仕入金額（円）','1800'],['商品ID','m-manual'],['ASIN','B000000004']]){field(label).props.onChange({target:{value}});await settle();}}
+  field('追跡番号').props.onChange({target:{value:'tracking-fixture'}});await settle();
+  const actions=all(tree).find(n=>n.props?.className==='toolbar registration-actions');
+  assert.equal(actions.props.children[0].props.children,'予備登録');assert.equal(actions.props.children[0].props.type,'button');assert.equal(actions.props.children[1].props.children,'在庫登録');
+  actions.props.children[0].props.onClick();await settle();
+  const modal=all(tree).find(n=>typeof n.props?.save==='function');assert(modal,'Form footer must open spare registration');
+  assert.equal(modal.props.draft.cost_amount,1800);assert.equal(modal.props.draft.marketplace_item_id,imported?'m-draft':'m-manual');
+  await modal.props.save({owner_staff_id:'II',title:'リモコン',manufacturer:'TOSHIBA',purchased_at:'2026-10-25',cost_amount:1800});
+  assert.equal(inventoryWrites,0);assert.equal(spareWrite.input.tracking_no,'tracking-fixture');assert.equal(spareWrite.input.model_no,'SE-R0435');assert.equal(spareWrite.input.asin,'B000000004');
+  if(imported){assert.equal(spareWrite.id,'draft-spare');}else{assert.equal(spareWrite.input.usage_note,null);assert.equal(spareWrite.input.source_sku,null);assert.equal(spareWrite.input.owner_name,'II');}
+  modal.props.onRegistered();await settle();assert(!all(tree).some(n=>typeof n.props?.save==='function'));assert.equal(field('商品ID').props.value,'');
+ }
+ console.log('Inventory form: spare button directly left of stock button; imported and manual purchases preserve metadata without creating inventory');
 })().catch(e=>{console.error(e);process.exitCode=1;});

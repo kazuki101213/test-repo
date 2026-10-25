@@ -9,7 +9,7 @@ begin
  values('メルカリ','spare-draft-fixture','https://jp.mercari.com/item/spare-draft-fixture','fixture','TOSHIBA SE-R0435','2026-10-25',1800) returning id into draft;
  insert into app.marketplace_purchase_drafts(marketplace,marketplace_item_id,marketplace_url,account_label,title)
  values('ヤフオク','spare-draft-failure','https://auctions.yahoo.co.jp/jp/auction/spare-draft-failure','fixture','remote') returning id into failed_draft;
- payload:=jsonb_build_object('owner_staff_id',holder,'title','リモコン','manufacturer','TOSHIBA','purchased_at','2026-10-25','cost_amount',1800);
+ payload:=jsonb_build_object('owner_staff_id',holder,'title','リモコン','manufacturer','TOSHIBA','purchased_at','2026-10-25','cost_amount',1800,'model_no','SE-R0435','asin','b000000004','tracking_no','tracking-fixture');
  set local role authenticated;
  spare:=app.register_purchase_draft_spare(draft,payload);
  again:=app.register_purchase_draft_spare(draft,payload);
@@ -17,7 +17,8 @@ begin
  if not exists(select 1 from app.marketplace_purchase_drafts where id=draft and state='registered' and registered_spare_id=spare and registered_item_id is null)
  then raise exception 'Draft was not atomically registered as a spare';end if;
  if not exists(select 1 from app.spare_accessories where id=spare and owner_staff_id=holder and title='リモコン' and manufacturer='TOSHIBA'
-   and purchased_at='2026-10-25' and cost_amount=1800 and marketplace='メルカリ' and marketplace_item_id='spare-draft-fixture' and usage_note is null and source_sku is null)
+   and purchased_at='2026-10-25' and cost_amount=1800 and marketplace='メルカリ' and marketplace_item_id='spare-draft-fixture' and usage_note is null and source_sku is null
+   and model_no='SE-R0435' and asin='B000000004' and tracking_no='tracking-fixture')
  then raise exception 'Purchase metadata or blank usage was lost';end if;
  if exists(select 1 from app.items where source_purchase_draft_id=draft or marketplace_item_id='spare-draft-fixture') then raise exception 'Unexpected inventory was created';end if;
  begin perform app.register_purchase_draft_spare(failed_draft,payload||'{"cost_amount":-1}'::jsonb);

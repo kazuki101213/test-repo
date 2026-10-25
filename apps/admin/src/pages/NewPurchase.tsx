@@ -10,7 +10,8 @@ import type {
   ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
   PurchaseDraft, SpareAccessory,
 } from '@bussan/shared';
-import { createItem, fetchCards, findInventoryForAmazonReturn, fetchProduct, fetchProducts, fetchStaff, nextLotSeq } from '../api';
+import { createItem, createSpareAccessory, registerPurchaseDraftSpare, fetchCards, findInventoryForAmazonReturn, fetchProduct, fetchProducts, fetchStaff, nextLotSeq } from '../api';
+import PurchaseDraftToSpare from '../components/PurchaseDraftToSpare';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -95,6 +96,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [registeringSpare,setRegisteringSpare]=useState(false);
   const spareSelection = useRef({ id: spareId, busy });
   spareSelection.current = { id: spareId, busy };
   const unavailableSpareMessage = '選択した予備はすでに別の商品に使用されているか、削除されています。「使用しない」または別の未使用の予備を選択してください。本体の入力内容は保持しています。';
@@ -348,6 +350,15 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     }
   }
 
+  function openSpareRegistration() {
+    setError(null);setDone(null);
+    if(spareId){setError('既存の予備を選択しています。新しく予備登録するときは「使用しない」を選んでください。');return;}
+    if(draft&&(draft.marketplace!==marketplace||draft.marketplace_item_id!==(generatedReference?.itemId??marketplaceItemId.trim()))){
+      setError('仕入れリストの商品と仕入先・商品IDが変わっています。元の商品情報を確認してください。');return;
+    }
+    setRegisteringSpare(true);
+  }
+
   return (
     <>
       <h2>在庫登録</h2>
@@ -485,8 +496,20 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
             </div>
           </div>
         </div>
-        <div className="toolbar registration-actions"><button className="btn primary" disabled={busy}>{busy ? '登録中…' : '在庫登録'}</button></div>
+        <div className="toolbar registration-actions"><button type="button" className="btn" disabled={busy||registeringSpare} onClick={openSpareRegistration}>予備登録</button><button className="btn primary" disabled={busy||registeringSpare}>{busy ? '登録中…' : '在庫登録'}</button></div>
       </form>
+      {registeringSpare&&<PurchaseDraftToSpare
+        draft={{id:draft?.id??'',title:title||draft?.title||'',marketplace,marketplace_item_id:generatedReference?.itemId??marketplaceItemId.trim(),purchased_at:purchasedAt,cost_amount:cost===''?null:Number(cost)}}
+        staff={staff} initialOwnerId={delivererId} initialManufacturer={product?.maker??undefined}
+        onClose={()=>setRegisteringSpare(false)}
+        save={async input=>{
+          const metadata={model_no:product?.model_no||title.trim()||null,asin:asin.trim().toUpperCase()||null,tracking_no:trackingNo.trim()||null};
+          if(draft) return registerPurchaseDraftSpare(draft.id,{...input,...metadata});
+          const holder=staff.find(person=>person.id===input.owner_staff_id);
+          await createSpareAccessory({...input,...metadata,owner_name:holder?.name??null,source_sku:null,marketplace,marketplace_item_id:generatedReference?.itemId??(marketplaceItemId.trim()||null),usage_note:null});
+        }}
+        onRegistered={()=>{setRegisteringSpare(false);setDone('予備に登録しました。');setTitle('');setAsin('');setProductSearch('');setCost('');setMarketplaceItemId('');setTrackingNo('');setUrlOverride(null);setProductId('');setNote('');onSaved?.();}}
+      />}
     </>
   );
 }

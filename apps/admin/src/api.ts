@@ -401,7 +401,7 @@ export async function dismissPurchaseDraft(id: string): Promise<void> {
   if (!data) throw new Error('仕入れリストが既に変更されています。一覧を再読み込みしてください。');
 }
 
-export async function registerPurchaseDraftSpare(draftId:string,input:{owner_staff_id:string;title:string;manufacturer:string|null;purchased_at:string;cost_amount:number}):Promise<string>{
+export async function registerPurchaseDraftSpare(draftId:string,input:{owner_staff_id:string;title:string;manufacturer:string|null;purchased_at:string;cost_amount:number;model_no?:string|null;asin?:string|null;tracking_no?:string|null}):Promise<string>{
   const {data,error}=await getSupabase().rpc('register_purchase_draft_spare',{p_draft_id:draftId,p_input:input});
   if(error)throw error;
   return data as string;
