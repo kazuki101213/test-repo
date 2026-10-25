@@ -15,7 +15,7 @@ const react={
  useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
 };
 const jsx=(type,props)=>({type,props});
-const shared={...names.exports,...skus.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
+const shared={...names.exports,...skus.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他','Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
 let currentSpares=[spare];
 const api={fetchStaff:async()=>staff,fetchCards:async()=>[{id:'amex',name:'アメックスカード'}],nextLotSeq:async()=>5000,fetchProducts:async()=>[],createItem:async(payload,id)=>{saved={payload,id};return{id:'created',sku:'body-sku',accessory_sku:'accessory-sku'};}};
 const context={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../purchaseUrl'?{buildPurchaseUrl:()=>null,parsePurchaseUrl:()=>null}:{default:'select'},setTimeout:fn=>{fn();return 1;},clearTimeout(){},Date,URL,window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
@@ -65,5 +65,18 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
  const realApi={exports:{},require:id=>id==='@bussan/shared'?{getSupabase:()=>db}:id==='./inventory'?inventory.exports:{}};vm.runInNewContext(compile('apps/admin/src/api.ts'),realApi);
  await realApi.exports.createItem(saved.payload,'spare');assert.match(requests[0].p_item.sku,/^1894aa-/);
  parents=[parents[0]];await assert.rejects(()=>realApi.exports.createItem(saved.payload,'spare'),/一意/);assert.equal(requests.length,1,'Never attach 1894aa to the only available 1894 body');
+ // User's failing combination: an Amazon-return reserve is attached to 1894aa.
+ for(const marketplace of ['Amazon返品','動作品Amazon返品']){
+  hooks.splice(0);cursor=0;pending=[];selectedDraft=null;dirty=true;saved=undefined;currentSpares=[{...spare,marketplace}];let returnLookups=0;
+  api.findInventoryForAmazonReturn=async()=>{returnLookups++;throw Error('Accessory registration must not allocate a new return suffix');};
+  await settle();field('作業ライン').props.onChange({target:{value:'付属品'}});await settle();
+  field('通番号').props.onChange({target:{value:'1894aa'}});await settle();
+  all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
+  assert.equal(field('仕入先').props.value,marketplace);assert.equal(field('作業ライン').props.value,'付属品');assert.equal(field('通番号').props.value,'1894aa');
+  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+  assert.equal(returnLookups,0);assert(saved);assert.equal(saved.payload.is_accessory,true);assert.equal(saved.payload.marketplace,marketplace);assert.equal(saved.payload.title,'リモコン');assert.match(saved.payload.sku,/^1894aa-/);
+  parents=[{id:'original',lot_seq:1894,sku:'1894-EEKK-20260701-1540'},{id:'return-a',lot_seq:1894,sku:'1894a-AAEE-20260927-0'},{id:'return-aa',lot_seq:1894,sku:'1894aa-AAII-20260921-0'}];
+  await realApi.exports.createItem(saved.payload,'spare');assert.match(requests.at(-1).p_item.sku,/^1894aa-/);
+ }
  console.log('Main form preserved; atomic spare save retains 1894aa; exact eight ordered assignee options passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -80,8 +80,9 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const [urlOverride, setUrlOverride] = useState<string | null>(null);
   const generatedReference = buildPurchaseUrl(marketplace, marketplaceItemId);
   const marketplaceUrl = urlOverride ?? generatedReference?.url ?? '';
-  const isAmazonReturn = marketplace === 'Amazon返品';
-  const isWorkingAmazonReturn = marketplace === '動作品Amazon返品';
+  // An accessory can come from an Amazon-return spare without being a new returned body.
+  const isAmazonReturn = marketplace === 'Amazon返品' && workStream !== '付属品';
+  const isWorkingAmazonReturn = marketplace === '動作品Amazon返品' && workStream !== '付属品';
   const [cardId, setCardId] = useState('');
   const [condition, setCondition] = useState<ItemCondition | ''>('非常に良い');
   const [salesChannel, setSalesChannel] = useState<SalesChannel>('FBA');
