@@ -34,6 +34,9 @@ jobs:
       - name: 型チェック
         run: pnpm -r typecheck
 
+      - name: 仕入れリストから予備登録
+        run: node scripts/verify-purchase-draft-spare.cjs
+
       - name: ビルド
         run: pnpm -r build
 

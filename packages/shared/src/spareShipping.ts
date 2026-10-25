@@ -9,6 +9,7 @@ export interface SpareShippingTask {
   manufacturer: string | null; marketplace: string | null; marketplace_item_id: string | null;
   usage_note: string | null; lot_seq: number; tracking_no: string | null;
   sent_at: string | null; completed_at: string | null;
+  management_completed_at?: string | null;
 }
 export async function fetchSpareShippingTasks(): Promise<SpareShippingTask[]> {
   const rows = await readResourceSnapshot<SpareShippingTask & {created_at:string}>('shipping');
