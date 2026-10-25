@@ -6,16 +6,18 @@ function message(cause: unknown): string {
   return '通信状況を確認して、もう一度更新してください。';
 }
 
-export function usePurchaseDrafts(fetchDrafts: () => Promise<PurchaseDraft[]>) {
+export function usePurchaseDrafts(fetchDrafts: () => Promise<PurchaseDraft[]>, visible = true) {
   const [rows, setRows] = useState<PurchaseDraft[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [updated, setUpdated] = useState<{ at: string; count: number } | null>(null);
   const pending = useRef(false);
+  const lastCheck = useRef<number | null>(null);
 
   const refresh = useCallback(async (manual = false) => {
     if (pending.current) return;
     pending.current = true;
+    lastCheck.current = Date.now();
     setLoading(true);
     setError(null);
     setUpdated(null);
@@ -32,6 +34,23 @@ export function usePurchaseDrafts(fetchDrafts: () => Promise<PurchaseDraft[]>) {
     }
   }, [fetchDrafts]);
 
+  const refreshIfStale = useCallback(async () => {
+    if (document.visibilityState !== 'visible' ||
+      (lastCheck.current !== null && Date.now() - lastCheck.current < 60000)) return;
+    await refresh();
+  }, [refresh]);
+
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!visible) return;
+    void refreshIfStale();
+    const returned = () => { void refreshIfStale(); };
+    window.addEventListener('focus', returned);
+    document.addEventListener('visibilitychange', returned);
+    return () => {
+      window.removeEventListener('focus', returned);
+      document.removeEventListener('visibilitychange', returned);
+    };
+  }, [visible, refreshIfStale]);
   return { rows, setRows, loading, error, setError, updated, refresh };
 }

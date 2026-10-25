@@ -72,6 +72,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const items=inventory.rows,count=inventory.total,loading=inventory.loading;
   const viewItems=useMemo(()=>filterInventoryColumns(items.filter(item=>matchesInventoryFilters(item,inventoryFilters)),columnFilters),[items,columnFilters,inventoryFilters]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const purchasePanel = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!purchaseOpen) return;
@@ -94,7 +95,7 @@ export default function Inventory({ me }: { me: Staff }) {
       window.removeEventListener('scroll', scheduleFit);
     };
   }, [purchaseOpen]);
-  const { rows: purchaseDrafts, setRows: setPurchaseDrafts, loading: draftsLoading, error: draftError, setError: setDraftError, updated: draftsUpdated, refresh: loadPurchaseDrafts } = usePurchaseDrafts(fetchPurchaseDrafts);
+  const { rows: purchaseDrafts, setRows: setPurchaseDrafts, loading: draftsLoading, error: draftError, setError: setDraftError, updated: draftsUpdated, refresh: loadPurchaseDrafts } = usePurchaseDrafts(fetchPurchaseDrafts, draftsOpen);
   const purchaseSync = usePurchaseSync(loadPurchaseDrafts, me.role === 'admin');
   const [selectedPurchaseDraft, setSelectedPurchaseDraft] = useState<PurchaseDraft | null>(null);
   const [dismissingDraft, setDismissingDraft] = useState<string | null>(null);
@@ -188,7 +189,7 @@ export default function Inventory({ me }: { me: Staff }) {
       </section>}
 
       <div className="inventory-data">
-      <details className="card purchase-draft-panel">
+      <details className="card purchase-draft-panel" onToggle={event => setDraftsOpen(event.currentTarget.open)}>
         <summary>仕入れリスト（未反映 {purchaseDrafts.length}件）</summary>
         <div className="toolbar" style={{ marginTop: 12 }}>
           <button type="button" className="btn" disabled={draftsLoading || purchaseSync.syncing || me.role !== 'admin'} onClick={() => void purchaseSync.startSync()}>{purchaseSync.syncing ? '同期中…' : '更新'}</button>
