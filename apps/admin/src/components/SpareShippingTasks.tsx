@@ -16,7 +16,7 @@ function ShippingRow({task,staff,management,onChanged}:{
   const [error,setError]=useState('');
   const owner=staffDisplayName({code:task.owner_code,name:task.owner_name});
   const recipient=staffDisplayName({code:task.recipient_code,name:task.recipient_name});
-  const canShip=!task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
+  const canShip=!management && !task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
   const sourceUrl=purchaseItemUrl(task.marketplace,task.marketplace_item_id,null);
   async function act() {
     if(busy || !canShip || !tracking.trim() || !serialMarked) return;
