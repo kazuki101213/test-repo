@@ -3,7 +3,7 @@ import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen,
+  CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen, buildSku,
   fetchSpareAccessories,
 } from '@bussan/shared';
 import type {
@@ -264,6 +264,10 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setDone(null);
     try {
       if (!purchaser || purchaser.role === 'deliverer' || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
+      const accessorySerial = lotSeq.trim().toLowerCase();
+      if (workStream === '付属品' && !/^[1-9][0-9]*[a-z]*$/.test(accessorySerial)) {
+        throw new Error('付属品には本体と同じ通番号を入力してください（例：1894aa）。');
+      }
       if (workStream !== '付属品') {
         if (!delivererId) throw new Error('納品担当者を選択してください。');
         if (!marketplace) throw new Error('仕入先を選択してください。');
@@ -290,6 +294,10 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       }
 
       const payload: ItemInsert = {
+        ...(!isAmazonReturn && !isWorkingAmazonReturn && workStream === '付属品' && /[a-z]/.test(accessorySerial) ? {
+          sku: buildSku({ lotSeq: accessorySerial, purchaserCode: purchaser.code,
+            delivererCode: staff.find(person => person.id === delivererId)?.code ?? '', purchasedAt, costAmount: Number(cost) }),
+        } : {}),
         ...((isAmazonReturn || isWorkingAmazonReturn) && assignedReturnSku ? { sku: assignedReturnSku } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq.match(/^\d+/)?.[0] ?? ''),
         is_accessory: !isWorkingAmazonReturn && workStream === '付属品',
@@ -438,10 +446,11 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
               </label>
               <label className="field"><span>{isAmazonReturn || isWorkingAmazonReturn ? '元商品の通番号' : '通番号'}</span>
                 <input
-                  type={isAmazonReturn || isWorkingAmazonReturn ? 'text' : 'number'}
-                  min={isAmazonReturn || isWorkingAmazonReturn ? undefined : 1}
-                  inputMode={isAmazonReturn || isWorkingAmazonReturn ? 'text' : 'numeric'}
-                  placeholder={isAmazonReturn || isWorkingAmazonReturn ? '例：1z、1za' : undefined}
+                  type={isAmazonReturn || isWorkingAmazonReturn || workStream === '付属品' ? 'text' : 'number'}
+                  min={isAmazonReturn || isWorkingAmazonReturn || workStream === '付属品' ? undefined : 1}
+                  inputMode={isAmazonReturn || isWorkingAmazonReturn || workStream === '付属品' ? 'text' : 'numeric'}
+                  autoCapitalize="none" spellCheck={false}
+                  placeholder={workStream === '付属品' ? '例：1894aa' : isAmazonReturn || isWorkingAmazonReturn ? '例：1z、1za' : undefined}
                   value={lotSeq}
                   onChange={(e) => setLotSeq(e.target.value)}
                 />
