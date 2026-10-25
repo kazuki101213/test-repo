@@ -73,7 +73,7 @@ for(const app of ['admin','delivery']){
     await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
   }
   for(const value of ['MM 株式会社吉光へ発送お願いします。','リモコン','Panasonic純正','メルカリ','m123','1647 / 1723'])assert(text(tree).includes(value));
-  button(app==='delivery'?'発送':'完了').props.onClick();await settle();
+  button('発送').props.onClick();await settle();
   assert(button('送信').props.disabled);
   all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'  12345  '}});await settle();
   assert(button('送信').props.disabled);sent=undefined;
@@ -87,19 +87,27 @@ for(const app of ['admin','delivery']){
   failed=false;all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
   assert.equal(sent.id,'task');assert.equal(sent.tracking,'12345');assert.equal(changed,1);
   await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
-  button(app==='delivery'?'発送':'完了').props.onClick();await settle();
+  button('発送').props.onClick();await settle();
   all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();
-  button('キャンセル').props.onClick();await settle();button(app==='delivery'?'発送':'完了').props.onClick();await settle();
+  button('キャンセル').props.onClick();await settle();button('発送').props.onClick();await settle();
   assert.equal(all(tree).find(n=>n.props?.type==='checkbox').props.checked,false);assert(button('送信').props.disabled);
   if(app==='admin'){
     await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'admin'},management:true,onChanged:()=>changed++});
     assert(!button('完了'),'Management card has no duplicate shipping completion');
-    assert(text(tree).includes('【利用記録：1647 / 1723】【通番号：2392】【m123】【リモコン】【Panasonic純正】'));
+    assert(text(tree).includes('通番号：2392品名：リモコンメーカー：Panasonic純正仕入先：メルカリ商品ID：m123利用記録：1647 / 1723')); assert(button('発送')); assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,3);
     assert.equal(all(tree).find(n=>n.type==='a').props.href,'https://jp.mercari.com/item/m123');
   }
-  await mount(context.exports.ShippingRow,{task,staff:{id:'AA',role:'admin'},management:true,onChanged:()=>changed++});
+  await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(!button('完了'));
-  await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',role:'admin'},management:true,onChanged:()=>changed++});
+  if(app==='admin'){
+    assert(button('発送'),'AA management can open the existing shipping form');
+    button('発送').props.onClick();await settle();
+    assert(button('送信').props.disabled,'Opening the card must not send or skip confirmation');
+    button('キャンセル').props.onClick();await settle();
+    await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:true,onChanged:()=>changed++});
+    assert(!button('発送'),'Other administrators retain the holder-only permission');
+  }
+  await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('発送済み'));assert(text(tree).includes('通番号：2392'));assert(text(tree).includes('追跡番号：12345'));assert(!text(tree).includes('利用記録'));
   assert(!button('完了'),'Sent tasks no longer offer a second completion button');assert.equal(completed,undefined);assert.equal(changed,1);
 }
