@@ -1,6 +1,7 @@
 const fs=require('node:fs'), vm=require('node:vm'), ts=require('typescript'), assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const names={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNames.ts'),names);
+const skus={exports:{}};vm.runInNewContext(compile('packages/shared/src/sku.ts'),skus);
 const codes=['AA','DD','EE','HH','II','KK','LL','MM'];
 const staff=[...codes,'FF','GG','JJ','NN'].reverse().map(code=>({id:code,code,name:code==='AA'?'長部一輝':code,role:code==='AA'?'admin':'deliverer',is_active:code!=='NN'}));
 assert.deepEqual(Array.from(names.exports.deliveryStaffOptions(staff),s=>s.code),codes);
@@ -14,7 +15,7 @@ const react={
  useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
 };
 const jsx=(type,props)=>({type,props});
-const shared={...names.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
+const shared={...names.exports,...skus.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
 let currentSpares=[spare];
 const api={fetchStaff:async()=>staff,fetchCards:async()=>[{id:'amex',name:'アメックスカード'}],nextLotSeq:async()=>5000,fetchProducts:async()=>[],createItem:async(payload,id)=>{saved={payload,id};return{id:'created',sku:'body-sku',accessory_sku:'accessory-sku'};}};
 const context={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../purchaseUrl'?{buildPurchaseUrl:()=>null,parsePurchaseUrl:()=>null}:{default:'select'},setTimeout:fn=>{fn();return 1;},clearTimeout(){},Date,URL,window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
@@ -49,5 +50,20 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
  selectedDraft={id:'draft',product_id:'selected-product',asin:'B000000003',model_no:'SELECTED',title:'SELECTED',marketplace:'ヤフオク',marketplace_item_id:'sample',purchased_at:'2026-10-01',cost_amount:1230};
  await settle();assert.deepEqual(lookups,['selected-product']);assert.equal(field('ASIN').props.value,'B000000003');
  console.log('Stale reserve prevented before save, input preservation and plain database error display passed');
- console.log('Main form preserved on spare selection; one atomic save; exact eight ordered assignee options passed');
+ // The exact multi-letter serial must reach the atomic reserve registration.
+ hooks.splice(0);cursor=0;pending=[];selectedDraft=null;dirty=true;currentSpares=[spare];saved=undefined;
+ api.createItem=async(payload,id)=>{saved={payload,id};return{id:'created',sku:payload.sku};};
+ await settle();field('作業ライン').props.onChange({target:{value:'付属品'}});await settle();
+ assert.equal(field('通番号').props.type,'text');assert.equal(field('通番号').props.inputMode,'text');
+ field('通番号').props.onChange({target:{value:'1894AA'}});await settle();
+ all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
+ await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+ assert(saved);assert.equal(saved.id,'spare');assert.equal(saved.payload.lot_seq,1894);assert.match(saved.payload.sku,/^1894aa-/);assert.equal(saved.payload.is_accessory,true);
+ const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
+ let parents=[{id:'root',lot_seq:1894,sku:'1894-AADD-20261001-100'},{id:'returned',lot_seq:1894,sku:'1894aa-AAII-20261002-0'}],requests=[];
+ const db={from(){return{select(){return this},eq(){return this},then(resolve){return Promise.resolve({data:parents,error:null}).then(resolve)}}},rpc:async(name,args)=>{requests.push(args);return{data:{id:'registered',sku:args.p_item.sku},error:null}}};
+ const realApi={exports:{},require:id=>id==='@bussan/shared'?{getSupabase:()=>db}:id==='./inventory'?inventory.exports:{}};vm.runInNewContext(compile('apps/admin/src/api.ts'),realApi);
+ await realApi.exports.createItem(saved.payload,'spare');assert.match(requests[0].p_item.sku,/^1894aa-/);
+ parents=[parents[0]];await assert.rejects(()=>realApi.exports.createItem(saved.payload,'spare'),/一意/);assert.equal(requests.length,1,'Never attach 1894aa to the only available 1894 body');
+ console.log('Main form preserved; atomic spare save retains 1894aa; exact eight ordered assignee options passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

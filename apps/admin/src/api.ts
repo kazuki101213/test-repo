@@ -372,7 +372,7 @@ export async function createItem(input: ItemInsert, spareId?: string): Promise<{
     if (parentError) throw parentError;
     if (!parents?.length) throw new Error('この通番号の本体が見つかりません。本体を先に登録してください。');
     const exact = parents.filter(parent => productSerial(parent.sku, parent.lot_seq) === productSerial(normalizedInput.sku ?? '', normalizedInput.lot_seq));
-    if (parents.length > 1 && exact.length !== 1) {
+    if ((parents.length > 1 || normalizedInput.sku) && exact.length !== 1) {
       throw new Error('同じ通番号の本体が複数あるため、SKUまたは商品ID・仕入先URLで対象を一意にしてください。');
     }
   }

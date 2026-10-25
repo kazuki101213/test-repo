@@ -200,7 +200,7 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
     </div>)}
     </div>
     <div className="task-template-row"><select aria-label="返信の定型文" value={kind} disabled={busy || pending || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value)}>
-      <option value="">定型文選択</option>{TASK_TEMPLATES.map(value => <option key={value} value={value}>{value}</option>)}
+      <option value="">定型文選択</option>{TASK_TEMPLATES.filter(value => item.status === '動作不良' || value.includes('ヤフオク')).map(value => <option key={value} value={value}>{value}</option>)}
     </select><button type="button" className="btn task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy || pending || loadingTemplatePhotos}
       onClick={() => ask('納品担当者とのメッセージ：送信', sendReply)}>{busy ? '送信中…' : '送信'}</button></div>
     <div className="task-reply-editor"><textarea ref={replyEditor} aria-label="納品担当者への返信" value={draft} disabled={busy || pending} onChange={event => setDraft(event.target.value)}
@@ -329,7 +329,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       const source = purchaseSources.get(row.id);
       const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, source?.marketplace_item_id ?? row.marketplace_item_id, source?.marketplace_url ?? null);
       const controls = (staff.role === 'admin' || staff.role === 'purchaser') && <div className="workflow-buttons">{row.status==='Amazon補填申請中'&&<button type="button" className="btn" data-action="complete_compensation_report" data-direction="back" disabled={busy!==null||pending} onClick={()=>ask('破損報告：完了',()=>completeCompensationReport(row))}>完了</button>}{managementWorkflowButtons(row.status).filter(button=>!['yahoo_instruction','compensation_complete','compensation_denied'].includes(button.key)).sort((a,b)=>['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(a.key)-['supplier_check','compensation_complete','compensation_denied','send_back'].indexOf(b.key)).map(button=><button key={button.key} className="btn" data-action={button.key} data-direction={workflowButtonDirection(button.key)} disabled={busy !== null || pending} onClick={()=>{if(button.key==='send_back'){returnRequest.current=crypto.randomUUID();setReturning(row);}else ask((row.status === '動作不良' ? '動作不良' : '破損報告')+'：'+button.label,()=>resolve(row,button.key as InventoryAction));}}>{button.label}</button>)}</div>;
-      return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className={`malfunction-task-row admin-task-card ${row.status === '動作不良' ? 'malfunction-report-row admin-fault-task' : 'admin-damage-task'}`}>
+      return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className="malfunction-task-row admin-task-card malfunction-report-row admin-fault-task">
       <div className="malfunction-task-content">
         <div className="task-action-details malfunction-report-details">
           <strong>{row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
@@ -341,7 +341,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
         <MalfunctionReportPhotos key={row.malfunction_reported_at} itemId={row.id} />
       </div>
-      {row.status === '動作不良' ? <MalfunctionConversation item={{...row, marketplace_item_id: source?.marketplace_item_id ?? row.marketplace_item_id}} staff={staff} onReplied={refresh} actions={controls} /> : controls}
+      <MalfunctionConversation item={{...row, marketplace_item_id: source?.marketplace_item_id ?? row.marketplace_item_id}} staff={staff} onReplied={refresh} actions={controls} />
     </li>;})}
     {returning&&<ReturnReasonDialog label={(returning.status==='動作不良'?'動作不良':'破損報告')+'：差し戻し'} onSubmit={returnReport} onCancel={()=>setReturning(null)}/>}
     {confirmation}
