@@ -1,6 +1,6 @@
 import type { ShippingPayload } from './validation.ts';
 export async function prepareShippingMedia({ admin, media, deliveryId, QRCode, fetcher = fetch }: {
-  admin: any; media: { itemId: string; serial: string; sku: string; supplierUrl: string; photoPaths: string[]; codeOperationId: string | null; withoutBarcode?: string };
+  admin: any; media: { itemId: string; serial: string; sku: string; supplierUrl: string | null; photoPaths: string[]; codeOperationId: string | null; withoutBarcode?: string };
   deliveryId: string; QRCode: { toDataURL(text: string, options: unknown): Promise<string> }; fetcher?: typeof fetch;
 }): Promise<ShippingPayload> {
   if (!Array.isArray(media.photoPaths) || media.photoPaths.length !== 2 || media.photoPaths.some(path => typeof path !== 'string' || !/\.(?:jpe?g|png)$/i.test(path))) throw new Error('通知写真はJPEGまたはPNGを指定してください');
