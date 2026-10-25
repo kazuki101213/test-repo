@@ -53,6 +53,9 @@ for(const app of ['admin','delivery']){
     assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other'],'Management hides sent tasks without another completion');
     await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
+    assert(tree.props.className.includes('delivery-return-task'),'Delivery spare shipping must use the same card border as the other notices');
+    assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,3,'Delivery details retain the three requested line groups');
+    assert(tree.props.children.includes(button('発送')),'Shipping button is a direct card grid child, not below the details');
     button('発送').props.onClick();await settle();
     all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'admin-tracking'}});await settle();
     all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();
