@@ -256,7 +256,7 @@ export default function TaskDetail({
   }
 
   const supplierAccounts=task.marketplace==='メルカリ'?[['mercari-1','メルカリ1'],['mercari-2','メルカリ2']]:task.marketplace==='ヤフオク'?[['auctions-1','ヤフオク1'],['auctions-2','ヤフオク2']]:task.marketplace==='ラクマ'?[['rakuma-1','ラクマ1']]:[['flea-1','Yahoo!フリマ1'],['flea-2','Yahoo!フリマ2']];
-  const canEditPhotos=packing?canAddPackingPhotos(task):task.status==='商品登録前';
+  const canEditPhotos=packing?canAddPackingPhotos(task):task.status==='商品登録前'||(staff.role==='admin'&&task.status==='取引中'&&photos.length===0);
   const isWorkingAmazonReturn = task.marketplace === '動作品Amazon返品';
 
   return (
