@@ -1,6 +1,7 @@
 import { purchaseItemUrl } from '../purchaseUrl';
 import { useEffect, useRef, useState } from 'react';
-import { completeSpareShipping, fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
+import { completeSpareShipping, fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee, resolveSpareUsageItem } from '@bussan/shared';
+import { deliveryAppUrl } from '../appUrls';
 import type { SpareShippingTask, Staff } from '@bussan/shared';
 
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message
@@ -15,6 +16,16 @@ function ShippingRow({task,staff,management,onChanged}:{
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const completing=useRef(false);
+  const usageOpening=useRef(false);
+  const [usageBusy,setUsageBusy]=useState(false);
+  async function openUsage(serial:string){
+    if(usageOpening.current)return;usageOpening.current=true;setUsageBusy(true);setError('');
+    try{const id=await resolveSpareUsageItem(serial);window.location.assign(deliveryAppUrl+'?itemId='+encodeURIComponent(id));}
+    catch(cause){setError(messageOf(cause));}
+    finally{usageOpening.current=false;setUsageBusy(false);}
+  }
+  const usageLinks=(task.usage_note||'—').split(/([0-9]+[a-z]*)/i).map((part,index)=>/^[1-9][0-9]*[a-z]*$/i.test(part)
+    ?<button type="button" role="link" className="spare-shipping-text-link" key={index} disabled={usageBusy} onClick={()=>void openUsage(part)}>{part}</button>:part);
   const owner=staffDisplayName({code:task.owner_code,name:task.owner_name});
   const recipient=staffDisplayName({code:task.recipient_code,name:task.recipient_name});
   const canShip=!management && !task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
@@ -44,7 +55,7 @@ function ShippingRow({task,staff,management,onChanged}:{
         : `${recipient}へ発送お願いします。`}</span>
     </div>
     <div className="spare-shipping-details">
-      <div className="spare-shipping-detail-line"><span>通番号：{task.lot_seq}</span>{!task.sent_at&&<span>利用記録：{task.usage_note || '—'}</span>}</div>
+      <div className="spare-shipping-detail-line"><span>通番号：<a href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.item_id)}>{task.lot_seq}</a></span>{!task.sent_at&&<span>利用記録：{usageLinks}</span>}</div>
       {management && task.sent_at ? <>
         <span>追跡番号：{task.tracking_no}</span>
       </> : <>

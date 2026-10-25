@@ -24,3 +24,16 @@ export async function completeSpareShipping(id: string): Promise<void> {
   const {error}=await getSupabase().rpc('complete_spare_shipping',{p_task_id:id});
   if(error) throw error;
 }
+
+/** Resolve only the clicked serial, including its exact return suffix. */
+export async function resolveSpareUsageItem(serial:string):Promise<string> {
+  const normalized=serial.trim().toLowerCase();
+  if(!/^[1-9][0-9]*[a-z]*$/.test(normalized))throw new Error('利用記録の通番号を確認してください。');
+  const lot=Number(normalized.match(/^[0-9]+/)?.[0]);
+  if(!Number.isSafeInteger(lot)||lot>2147483647)throw new Error('利用記録の通番号を確認してください。');
+  const {data,error}=await getSupabase().from('v_items').select('id,sku').eq('lot_seq',lot).eq('is_accessory',false).ilike('sku',normalized+'-%').limit(2);
+  if(error)throw error;
+  const item=data?.length===1?data[0]:undefined;
+  if(!item)throw new Error(`利用記録 ${serial} の商品を一意に確認できません。`);
+  return item.id as string;
+}

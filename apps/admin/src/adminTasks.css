@@ -39,6 +39,8 @@
 .admin-task-confirmation h3 { margin:0; }
 .admin-task-confirmation-actions { display:flex; justify-content:flex-end; gap:8px; }
 .purchase-draft-spare-form { display:grid; gap:12px; }
+.spare-shipping-details .spare-shipping-text-link { display:inline; width:auto; min-height:0; margin:0; padding:0; border:0; border-radius:0; background:transparent; color:var(--accent); font:inherit; line-height:inherit; text-decoration:underline; cursor:pointer; }
+.spare-shipping-details .spare-shipping-text-link:disabled { cursor:progress; }
 @media screen and (max-width:1023px) {
  .invoice-task-rows > .admin-task-card { column-gap:8px; padding:10px; }
  .invoice-task-rows > .admin-simple-task { grid-template-columns:minmax(0,1fr) auto; grid-auto-rows:minmax(20px,auto); }

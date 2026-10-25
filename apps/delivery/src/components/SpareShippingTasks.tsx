@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
+import { fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee, resolveSpareUsageItem } from '@bussan/shared';
 import type { SpareShippingTask, Staff } from '@bussan/shared';
 
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message
@@ -22,6 +22,16 @@ function ShippingRow({task,staff,management,onChanged}:{
   const [serialMarked,setSerialMarked]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+  const usageOpening=useRef(false);
+  const [usageBusy,setUsageBusy]=useState(false);
+  async function openUsage(serial:string){
+    if(usageOpening.current)return;usageOpening.current=true;setUsageBusy(true);setError('');
+    try{const id=await resolveSpareUsageItem(serial);window.location.assign('?itemId='+encodeURIComponent(id));}
+    catch(cause){setError(messageOf(cause));}
+    finally{usageOpening.current=false;setUsageBusy(false);}
+  }
+  const usageLinks=(task.usage_note||'—').split(/([0-9]+[a-z]*)/i).map((part,index)=>/^[1-9][0-9]*[a-z]*$/i.test(part)
+    ?<button type="button" role="link" className="spare-shipping-text-link" key={index} disabled={usageBusy} onClick={()=>void openUsage(part)}>{part}</button>:part);
   const owner=staffDisplayName({code:task.owner_code,name:task.owner_name});
   const recipient=staffDisplayName({code:task.recipient_code,name:task.recipient_name});
   const canShip=!task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
@@ -44,11 +54,11 @@ function ShippingRow({task,staff,management,onChanged}:{
     </div>
     {canShip && !editing && <button type="button" className="btn spare-shipping-open" onClick={()=>{setSerialMarked(false);setEditing(true);}}>発送</button>}
     <div className="spare-shipping-details">
-      <div className="spare-shipping-detail-line"><span>通番号：{task.lot_seq}</span>{!task.sent_at&&<span>利用記録：{task.usage_note || '—'}</span>}</div>
+      <div className="spare-shipping-detail-line"><span>通番号：<a href={'?itemId='+encodeURIComponent(task.item_id)}>{task.lot_seq}</a></span>{!task.sent_at&&<span>利用記録：{usageLinks}</span>}</div>
       {overview && task.sent_at ? <>
         <span>追跡番号：{task.tracking_no}</span>
       </> : <>
-        <div className="spare-shipping-detail-line"><span>{task.manufacturer || 'メーカー未登録'}</span><span className="spare-shipping-item-id">{task.marketplace_item_id || '商品ID未登録'}{supplierUrl && <a className="spare-shipping-source-link" href={supplierUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先URL"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2v-5" /></svg></a>}</span></div>
+        <div className="spare-shipping-detail-line"><span>{task.manufacturer || 'メーカー未登録'}</span><span>{supplierUrl?<a href={supplierUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く">{task.marketplace_item_id}</a>:task.marketplace_item_id||'商品ID未登録'}</span></div>
       </>}
     </div>
     {editing && canShip && <form className="spare-shipping-form" onSubmit={event=>{event.preventDefault();void act();}}>
