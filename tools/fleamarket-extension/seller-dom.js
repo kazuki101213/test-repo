@@ -18,7 +18,8 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
 
  function shippingNoticeCompleted(){
   if(job.channel==='ヤフオク')return noticeButtons().length===0&&[...root.querySelectorAll('[role=status],p,h2,h3')].filter(visible).some(e=>/^(商品の発送を連絡しました|発送連絡が完了しました|落札者の受け取り連絡をお待ちください)[。.]?$/.test(norm(e.innerText)));
-  return /受取評価を依頼できます/.test(root.innerText)&&[...root.querySelectorAll('h2,h3')].some(e=>visible(e)&&/^(配送状況|配送情報)$/.test(norm(e.innerText)))&&noticeButtons().length===0;
+  const waiting=[...root.querySelectorAll('[role=status],p,h1,h2,h3,span')].filter(e=>visible(e)&&(!e.children.length||e.getAttribute('role')==='status')&&/^購入者の受取(?:評価)?をお待ちください[。.]?$/.test(norm(e.innerText))).some(e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return (!h||!/メッセージ|コメント/.test(norm(h.innerText)))&&!e.closest('form')?.querySelector('textarea');});
+  return noticeButtons().length===0&&(waiting||/受取評価を依頼できます/.test(root.innerText)&&[...root.querySelectorAll('h2,h3')].some(e=>visible(e)&&/^(配送状況|配送情報)$/.test(norm(e.innerText))));
  }
  function oneButton(names,scope=root){const values=[...scope.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')].filter(e=>visible(e)&&names.includes(buttonLabel(e)));if(values.length!==1||values[0].disabled)throw Error('操作ボタンを1件に確認できません：'+names[0]);return values[0];}
  const fields=()=>[...root.querySelectorAll('input:not([type="hidden"]):not([type="file"]),textarea,select')].filter(visible);
