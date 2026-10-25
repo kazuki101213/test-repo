@@ -54,7 +54,7 @@ for(const app of ['admin','delivery']){
     await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
     assert(tree.props.className.includes('delivery-return-task'),'Delivery spare shipping must use the same card border as the other notices');
-    assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,3,'Delivery details retain the three requested line groups');
+    assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,2,'Delivery details retain the two requested detail lines');
     assert(tree.props.children.includes(button('発送')),'Shipping button is a direct card grid child, not below the details');
     button('発送').props.onClick();await settle();
     all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'admin-tracking'}});await settle();
@@ -75,7 +75,7 @@ for(const app of ['admin','delivery']){
     assert(!all(tree).some(n=>n.type==='a'),'Invalid IDs must not create supplier links');
     await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
   }
-  for(const value of ['MM 株式会社吉光へ発送お願いします。','リモコン','Panasonic純正','メルカリ','m123','1647 / 1723'])assert(text(tree).includes(value));
+  for(const value of ['MM 株式会社吉光へ発送お願いします。','Panasonic純正','m123','1647 / 1723'])assert(text(tree).includes(value));
   button('発送').props.onClick();await settle();
   assert(button('送信').props.disabled);
   all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'  12345  '}});await settle();
@@ -83,7 +83,7 @@ for(const app of ['admin','delivery']){
   all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(sent,undefined);assert.equal(changed,0);
   assert(text(tree).includes('通番号/利用記録：2392 / 1647 / 1723'));
   assert(text(tree).includes('通番号に◯をつけましたか？'));
-  assert(text(tree).indexOf('通番号：2392')<text(tree).indexOf('品名：リモコン'));
+  assert(text(tree).indexOf('通番号：2392')<text(tree).indexOf('利用記録：1647 / 1723'));
   all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();assert(!button('送信').props.disabled);
   failed=true;all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
   assert(text(tree).includes('送信に失敗しました'));assert.equal(changed,0);
@@ -97,7 +97,7 @@ for(const app of ['admin','delivery']){
   if(app==='admin'){
     await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'admin'},management:true,onChanged:()=>changed++});
     assert(button('完了'),'Management may acknowledge without shipping');
-    assert(text(tree).includes('通番号：2392品名：リモコンメーカー：Panasonic純正仕入先：メルカリ商品ID：m123利用記録：1647 / 1723')); assert(!button('発送')); assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,3);
+    assert(text(tree).includes('通番号：2392利用記録：1647 / 1723Panasonic純正m123')); assert(!button('発送')); assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,2);
     assert.equal(all(tree).find(n=>n.type==='a').props.href,'https://jp.mercari.com/item/m123');
   }
   await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});

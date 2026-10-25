@@ -44,12 +44,11 @@ function ShippingRow({task,staff,management,onChanged}:{
     </div>
     {canShip && !editing && <button type="button" className="btn spare-shipping-open" onClick={()=>{setSerialMarked(false);setEditing(true);}}>発送</button>}
     <div className="spare-shipping-details">
-      <div className="spare-shipping-detail-line"><span>通番号：{task.lot_seq}</span><span>品名：{task.title}</span></div>
+      <div className="spare-shipping-detail-line"><span>通番号：{task.lot_seq}</span>{!task.sent_at&&<span>利用記録：{task.usage_note || '—'}</span>}</div>
       {overview && task.sent_at ? <>
         <span>追跡番号：{task.tracking_no}</span>
       </> : <>
-        <div className="spare-shipping-detail-line"><span>メーカー：{task.manufacturer || '未登録'}</span><span>仕入先：{task.marketplace || '未登録'}</span></div>
-        <div className="spare-shipping-detail-line"><span className="spare-shipping-item-id">商品ID：{task.marketplace_item_id || '未登録'}{supplierUrl && <a className="spare-shipping-source-link" href={supplierUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先URL"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2v-5" /></svg></a>}</span><span>利用記録：{task.usage_note || '—'}</span></div>
+        <div className="spare-shipping-detail-line"><span>{task.manufacturer || 'メーカー未登録'}</span><span className="spare-shipping-item-id">{task.marketplace_item_id || '商品ID未登録'}{supplierUrl && <a className="spare-shipping-source-link" href={supplierUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先URL"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M14 3h7v7M21 3l-11 11M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2-2v-5" /></svg></a>}</span></div>
       </>}
     </div>
     {editing && canShip && <form className="spare-shipping-form" onSubmit={event=>{event.preventDefault();void act();}}>

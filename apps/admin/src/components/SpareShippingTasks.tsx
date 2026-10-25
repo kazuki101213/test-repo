@@ -44,12 +44,11 @@ function ShippingRow({task,staff,management,onChanged}:{
         : `${recipient}へ発送お願いします。`}</span>
     </div>
     <div className="spare-shipping-details">
-      <div className="spare-shipping-detail-line"><span>通番号：{task.lot_seq}</span><span>品名：{task.title}</span></div>
+      <div className="spare-shipping-detail-line"><span>通番号：{task.lot_seq}</span>{!task.sent_at&&<span>利用記録：{task.usage_note || '—'}</span>}</div>
       {management && task.sent_at ? <>
         <span>追跡番号：{task.tracking_no}</span>
       </> : <>
-        <div className="spare-shipping-detail-line"><span>メーカー：{task.manufacturer || '未登録'}</span><span>仕入先：{task.marketplace || '未登録'}</span></div>
-        <div className="spare-shipping-detail-line"><span>商品ID：{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{task.marketplace_item_id}</a> : task.marketplace_item_id || '未登録'}</span><span>利用記録：{task.usage_note || '—'}</span></div>
+        <div className="spare-shipping-detail-line"><span>{task.manufacturer || 'メーカー未登録'}</span><span>{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{task.marketplace_item_id}</a> : task.marketplace_item_id || '商品ID未登録'}</span></div>
       </>}
     </div>
     </div>
