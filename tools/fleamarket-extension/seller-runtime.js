@@ -282,7 +282,9 @@ export async function checkExistingListing(session,job,account){
 export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyAutomaticLine=false}){
  const accounts=sellerAccounts(settings);if(settings.mode==='diagnostic'||!accounts.length)return;
  const queue=await rpc('extension_seller_queue',{p_account_ids:accounts.map(a=>a.id)});if(!Array.isArray(queue)||!queue.length)return;
- const job=onlyAutomaticLine?queue.find(value=>value.kind==='shipping_code'&&value.payload?.automatic_line):queue[0];if(!job)return;
+ // Prepare outstanding shipping requests before unrelated marketplace writes.
+ // The existing atomic claim still validates the item revision and trade.
+ const job=onlyAutomaticLine?queue.find(value=>value.kind==='shipping_code'&&value.payload?.automatic_line):(queue.find(value=>value.kind==='shipping_code')||queue[0]);if(!job)return;
  const account=accounts.find(value=>value.id===job.account_id);if(!account)return;
  if(job.read_only_listing_check){
   if(job.kind!=='listing'||!await rpc('extension_claim_listing_result_check',{p_id:job.id,p_account_id:account.id}))return;
