@@ -1,6 +1,6 @@
 import { purchaseItemUrl } from '../purchaseUrl';
 import { useEffect, useRef, useState } from 'react';
-import { fetchSpareShippingTasks, sendSpareShipping, staffDisplayName } from '@bussan/shared';
+import { fetchSpareShippingTasks, sendSpareShipping, staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
 import type { SpareShippingTask, Staff } from '@bussan/shared';
 
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message
@@ -16,7 +16,8 @@ function ShippingRow({task,staff,management,onChanged}:{
   const [error,setError]=useState('');
   const owner=staffDisplayName({code:task.owner_code,name:task.owner_name});
   const recipient=staffDisplayName({code:task.recipient_code,name:task.recipient_name});
-  const canShip=!task.sent_at && task.owner_staff_id===staff.id;
+  const canShip=!task.sent_at && (task.owner_staff_id===staff.id || canViewDeliveryAssignee(staff));
+  const sourceUrl=purchaseItemUrl(task.marketplace,task.marketplace_item_id,null);
   async function act() {
     if(busy || !canShip || !tracking.trim() || !serialMarked) return;
     setBusy(true);setError('');
@@ -26,31 +27,24 @@ function ShippingRow({task,staff,management,onChanged}:{
     } catch(cause) {setError(messageOf(cause));}
     finally {setBusy(false);}
   }
-  if (management && !task.sent_at) {
-    const sourceUrl=purchaseItemUrl(task.marketplace,task.marketplace_item_id,null);
-    return <li className="spare-shipping-row admin-task-card admin-shipping-task" id={`spare-shipping-${task.id}`}>
-      <strong>{owner}→{recipient}の発送準備中</strong>
-      <div className="admin-shipping-fields"><span>【利用記録：{task.usage_note||'—'}】</span><span>【通番号：{task.lot_seq}】</span>{sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id||'未登録'}】</a>:<span>【{task.marketplace_item_id||'未登録'}】</span>}<span>【{task.title}】</span><span>【{task.manufacturer||'未登録'}】</span></div>
-    </li>;
-  }
-  return <li className="spare-shipping-row" id={`spare-shipping-${task.id}`}>
+  return <li className={`spare-shipping-row${management ? ' admin-task-card admin-shipping-task' : ''}`} id={`spare-shipping-${task.id}`}>
+    <div className="spare-shipping-content">
     <div className="spare-shipping-heading">
       <span>{management
         ? `${owner}→${recipient}の${task.sent_at ? '発送済み' : '発送準備中'}`
         : `${recipient}へ発送お願いします。`}</span>
-      {canShip && !editing && <button className="btn" onClick={()=>{setSerialMarked(false);setEditing(true);}}>完了</button>}
     </div>
     <div className="spare-shipping-details">
-      <span>通番号：{task.lot_seq}</span><span>品名：{task.title}</span>
+      <div className="spare-shipping-detail-line"><span>通番号：{task.lot_seq}</span><span>品名：{task.title}</span></div>
       {management && task.sent_at ? <>
         <span>追跡番号：{task.tracking_no}</span>
       </> : <>
-        <span>メーカー：{task.manufacturer || '未登録'}</span>
-        <span>仕入先：{task.marketplace || '未登録'}</span>
-        <span>商品ID：{task.marketplace_item_id || '未登録'}</span>
-        <span>利用記録：{task.usage_note || '—'}</span>
+        <div className="spare-shipping-detail-line"><span>メーカー：{task.manufacturer || '未登録'}</span><span>仕入先：{task.marketplace || '未登録'}</span></div>
+        <div className="spare-shipping-detail-line"><span>商品ID：{sourceUrl ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{task.marketplace_item_id}</a> : task.marketplace_item_id || '未登録'}</span><span>利用記録：{task.usage_note || '—'}</span></div>
       </>}
     </div>
+    </div>
+    {canShip && !editing && <button type="button" className="btn spare-shipping-open" onClick={()=>{setSerialMarked(false);setEditing(true);}}>発送</button>}
     {editing && canShip && <form className="spare-shipping-form" onSubmit={event=>{event.preventDefault();void act();}}>
       <label className="field"><span>追跡番号</span><input value={tracking} autoFocus required maxLength={200}
         disabled={busy} onChange={event=>setTracking(event.target.value)} /></label>
