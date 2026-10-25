@@ -27,17 +27,20 @@
 .invoice-task-rows > .admin-damage-task > .workflow-buttons { grid-column:2; grid-row:1; display:flex; flex-direction:row; justify-content:flex-end; gap:6px; margin:0; }
 .invoice-task-rows > .admin-damage-task > .workflow-buttons > .btn { width:94px; }
 .invoice-task-rows > .admin-shipping-task .spare-shipping-content { display:contents; }
-.invoice-task-rows > .admin-shipping-task .spare-shipping-heading { grid-column:1 / -1; grid-row:1; min-width:0; white-space:nowrap; font-size:clamp(11px,3.1vw,13.333px); line-height:20px; }
-.invoice-task-rows > .admin-shipping-task .spare-shipping-details { grid-column:1 / -1; grid-row:2; display:flex; flex-direction:column; gap:0; margin-top:0; font-size:inherit; line-height:20px; }
+.invoice-task-rows > .admin-shipping-task .spare-shipping-heading { grid-column:1 / -1; grid-row:1; min-width:0; white-space:normal; font-size:inherit; font-weight:700; line-height:20px; }
+.invoice-task-rows > .admin-shipping-task .spare-shipping-details { grid-column:1; grid-row:2; display:flex; flex-direction:column; gap:0; margin-top:0; font-size:inherit; line-height:20px; }
 .spare-shipping-detail-line { display:flex; flex-wrap:nowrap; gap:0 8px; min-width:0; white-space:nowrap; }
 .spare-shipping-detail-line > span { min-width:0; overflow-wrap:anywhere; }
-.invoice-task-rows > .admin-shipping-task > .spare-shipping-open { grid-column:2; grid-row:3; justify-self:end; align-self:start; }
+.invoice-task-rows > .admin-shipping-task > .spare-shipping-open { grid-column:2; grid-row:2; justify-self:end; align-self:center; }
 .invoice-task-rows > .admin-shipping-task > .spare-shipping-form,
 .invoice-task-rows > .admin-shipping-task > .error { grid-column:1 / -1; }
 .admin-task-confirmation { width:min(420px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; box-sizing:border-box; padding:20px; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font:inherit; }
 .admin-task-confirmation::backdrop { background:rgba(40,32,20,.35); }
 .admin-task-confirmation h3 { margin:0; }
 .admin-task-confirmation-actions { display:flex; justify-content:flex-end; gap:8px; }
+.purchase-draft-spare-form { display:grid; gap:12px; }
+.spare-shipping-details .spare-shipping-text-link { display:inline; width:auto; min-height:0; margin:0; padding:0; border:0; border-radius:0; background:transparent; color:var(--accent); font:inherit; line-height:inherit; text-decoration:underline; cursor:pointer; }
+.spare-shipping-details .spare-shipping-text-link:disabled { cursor:progress; }
 @media screen and (max-width:1023px) {
  .invoice-task-rows > .admin-task-card { column-gap:8px; padding:10px; }
  .invoice-task-rows > .admin-simple-task { grid-template-columns:minmax(0,1fr) auto; grid-auto-rows:minmax(20px,auto); }

@@ -2,8 +2,16 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),asser
 const jsx=(type,props)=>({type,props});
 function all(node,result=[]){if(!node||typeof node!=='object')return result;if(Array.isArray(node)){node.forEach(n=>all(n,result));return result;}result.push(node);all(node.props?.children,result);return result;}
 function text(node){if(node==null)return '';if(Array.isArray(node))return node.map(text).join('');if(typeof node==='object')return text(node.props?.children);return String(node);}
-const task={id:'task',owner_staff_id:'EE',recipient_staff_id:'MM',owner_code:'EE',owner_name:'石川秀樹',recipient_code:'MM',recipient_name:'株式会社吉光',title:'リモコン',manufacturer:'Panasonic純正',marketplace:'メルカリ',marketplace_item_id:'m123',usage_note:'1647 / 1723',lot_seq:2392,sent_at:null,completed_at:null,tracking_no:null};
+const task={id:'task',item_id:'body',owner_staff_id:'EE',recipient_staff_id:'MM',owner_code:'EE',owner_name:'石川秀樹',recipient_code:'MM',recipient_name:'株式会社吉光',title:'リモコン',manufacturer:'Panasonic純正',marketplace:'メルカリ',marketplace_item_id:'m123',usage_note:'1647 / 1723',lot_seq:2392,sent_at:null,completed_at:null,tracking_no:null};
 (async()=>{
+let lookupRows=[{id:'exact-return',sku:'1270a-AAII-20260101-0'}],lookupCalls=[];
+const query={select(){return this;},eq(...args){lookupCalls.push(['eq',...args]);return this;},ilike(...args){lookupCalls.push(['ilike',...args]);return this;},limit:async n=>{lookupCalls.push(['limit',n]);return{data:lookupRows,error:null};}};
+const lookupContext={exports:{},require:id=>id==='./supabase'?{getSupabase:()=>({from:name=>{assert.equal(name,'v_items');return query;}})}:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/spareShipping.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,lookupContext);
+assert.equal(await lookupContext.exports.resolveSpareUsageItem('1270A'),'exact-return');assert.deepEqual(lookupCalls,[['eq','lot_seq',1270],['eq','is_accessory',false],['ilike','sku','1270a-%'],['limit',2]]);
+lookupRows=[];await assert.rejects(()=>lookupContext.exports.resolveSpareUsageItem('1270a'),/一意/);
+lookupRows=[{id:'one'},{id:'two'}];await assert.rejects(()=>lookupContext.exports.resolveSpareUsageItem('1270a'),/一意/);
+const readsBeforeInvalid=lookupCalls.length;await assert.rejects(()=>lookupContext.exports.resolveSpareUsageItem('1270a%'),/確認/);assert.equal(lookupCalls.length,readsBeforeInvalid);
 for(const app of ['admin','delivery']){
   let cursor=0,hooks=[],dirty=true,tree,props,component,pending=[],sent,completed,changed=0,failed=false;
   const react={
@@ -11,13 +19,13 @@ for(const app of ['admin','delivery']){
     useRef(value){const i=cursor++;return hooks[i]??={current:value};},
     useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
   };
-  let now=1000000,tick,intervalMs,reads=0;
+  let now=1000000,tick,intervalMs,reads=0,usageReads=[],opened;
   let fixtures=[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}],focus;
   const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>{reads++;return fixtures;},
     sendSpareShipping:async(id,tracking)=>{if(failed)throw{message:'送信に失敗しました'};sent={id,tracking};},
-    completeSpareShipping:async id=>{if(failed)throw{message:'完了に失敗しました'};completed=id;}};
-  const context={Date:{now:()=>now},exports:{},require:id=>id==='../purchaseUrl'?{purchaseItemUrl:(site,id)=>id==='m123'?'https://jp.mercari.com/item/m123':null}:id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
-    window:{setInterval:(fn,ms)=>{tick=fn;intervalMs=ms;return 1;},clearInterval(){},addEventListener(name,fn){if(name==='focus')focus=fn;},removeEventListener(){}},
+    completeSpareShipping:async id=>{if(failed)throw{message:'完了に失敗しました'};completed=id;},resolveSpareUsageItem:async serial=>{usageReads.push(serial);return 'usage-'+serial;}};
+  const context={encodeURIComponent,Date:{now:()=>now},exports:{},require:id=>id==='../appUrls'?{deliveryAppUrl:'https://test-repo-delivery.vercel.app/'}:id==='../purchaseUrl'?{purchaseItemUrl:(site,id)=>id==='m123'?'https://jp.mercari.com/item/m123':null}:id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
+    window:{location:{assign:url=>opened=url},setInterval:(fn,ms)=>{tick=fn;intervalMs=ms;return 1;},clearInterval(){},addEventListener(name,fn){if(name==='focus')focus=fn;},removeEventListener(){}},
     document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
   const source=fs.readFileSync('apps/'+app+'/src/components/SpareShippingTasks.tsx','utf8')+'\nexport { ShippingRow };';
   vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,context);
@@ -54,7 +62,7 @@ for(const app of ['admin','delivery']){
     await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
     assert(tree.props.className.includes('delivery-return-task'),'Delivery spare shipping must use the same card border as the other notices');
-    assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,3,'Delivery details retain the three requested line groups');
+    assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,2,'Delivery details retain the two requested detail lines');
     assert(tree.props.children.includes(button('発送')),'Shipping button is a direct card grid child, not below the details');
     button('発送').props.onClick();await settle();
     all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'admin-tracking'}});await settle();
@@ -72,10 +80,14 @@ for(const app of ['admin','delivery']){
     assert.equal(sourceLink.props.href,'https://jp.mercari.com/item/m123');
     assert.equal(sourceLink.props.rel,'noopener noreferrer');
     await mount(context.exports.ShippingRow,{task:{...task,marketplace_item_id:'javascript:alert(1)'},staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
-    assert(!all(tree).some(n=>n.type==='a'),'Invalid IDs must not create supplier links');
+    assert(!all(tree).some(n=>n.type==='a'&&n.props['aria-label']==='仕入先の商品ページを開く'),'Invalid IDs must not create supplier links');
     await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
   }
-  for(const value of ['MM 株式会社吉光へ発送お願いします。','リモコン','Panasonic純正','メルカリ','m123','1647 / 1723'])assert(text(tree).includes(value));
+  for(const value of ['MM 株式会社吉光へ発送お願いします。','Panasonic純正','m123','1647 / 1723'])assert(text(tree).includes(value));
+  assert.equal(usageReads.length,0,'Usage links must not poll or preload inventory');
+  assert.equal(all(tree).find(n=>n.type==='a'&&text(n)==='2392').props.href,app==='admin'?'https://test-repo-delivery.vercel.app/?itemId=body':'?itemId=body');
+  assert(!all(tree).some(n=>n.type==='svg'),'Text links must not retain external-link icons');
+  button('1647').props.onClick();button('1647').props.onClick();await settle();assert.equal(usageReads.length,1);assert.equal(usageReads[0],'1647');assert(opened.endsWith('?itemId=usage-1647'));
   button('発送').props.onClick();await settle();
   assert(button('送信').props.disabled);
   all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'  12345  '}});await settle();
@@ -83,7 +95,7 @@ for(const app of ['admin','delivery']){
   all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(sent,undefined);assert.equal(changed,0);
   assert(text(tree).includes('通番号/利用記録：2392 / 1647 / 1723'));
   assert(text(tree).includes('通番号に◯をつけましたか？'));
-  assert(text(tree).indexOf('通番号：2392')<text(tree).indexOf('品名：リモコン'));
+  assert(text(tree).indexOf('通番号：2392')<text(tree).indexOf('利用記録：1647 / 1723'));
   all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();assert(!button('送信').props.disabled);
   failed=true;all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
   assert(text(tree).includes('送信に失敗しました'));assert.equal(changed,0);
@@ -97,8 +109,8 @@ for(const app of ['admin','delivery']){
   if(app==='admin'){
     await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'admin'},management:true,onChanged:()=>changed++});
     assert(button('完了'),'Management may acknowledge without shipping');
-    assert(text(tree).includes('通番号：2392品名：リモコンメーカー：Panasonic純正仕入先：メルカリ商品ID：m123利用記録：1647 / 1723')); assert(!button('発送')); assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,3);
-    assert.equal(all(tree).find(n=>n.type==='a').props.href,'https://jp.mercari.com/item/m123');
+    assert(text(tree).includes('通番号：2392利用記録：1647 / 1723Panasonic純正m123')); assert(!button('発送')); assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,2);
+    assert.equal(all(tree).find(n=>n.type==='a'&&text(n)==='m123').props.href,'https://jp.mercari.com/item/m123');
   }
   await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert.equal(!!button('完了'),app==='admin');
