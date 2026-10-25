@@ -30,6 +30,13 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
  const makers=['Panasonic◯','Panasonic×','SONY◯','SONY×','SHARP◯','SHARP×','TOSHIBA◯','TOSHIBA×'];
  const bodies=makers.map(m=>template.exports.templateBody(m+'ヤフオク',item));assert(bodies.every(b=>b===bodies[0]&&b.startsWith(prefix)));assert(bodies[0].includes('リモコンやB-CASカードや電源ケーブルは予備としてください。'));
  const other=template.exports.templateBody('ヤフオク その他',item);assert(other.startsWith(prefix));assert(other.includes('付属品はすべてつけてください。'));assert(!other.includes('予備としてください'));
+ const conversationRuntime=runtime();const conversation={exports:{},require:id=>id==='react'?conversationRuntime.react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){throw Error('Unexpected send');},pending:false,confirmation:null})}:id==='../inventory'?inventory.exports:{}};
+ vm.runInNewContext(compile('apps/admin/src/components/MalfunctionTasks.tsx','\nexport { MalfunctionConversation };'),conversation);
+ for(const status of ['Amazon補填申請中','動作不良']){
+  conversationRuntime.reset();const tree=conversation.exports.MalfunctionConversation({item:{...item,status},staff:{id:'AA',role:'admin'},onReplied:async()=>{},actions:jsx('button',{'data-action':'complete_compensation_report',children:'完了'})});
+  assert.equal(all(tree).filter(n=>n.type==='button'&&n.props['data-action']==='yahoo_instruction').length,status==='動作不良'?1:0,'Only malfunction reports retain the Yahoo instruction shortcut');
+  assert(all(tree).some(n=>n.props?.['data-action']==='complete_compensation_report'),'Removing the shortcut preserves the supplied completion actions');
+ }
  console.log('PASS: cancel/Escape write nothing, confirmation executes once, busy/error handling; all 10 templates use the actual suffixed serial, item ID and model');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 

@@ -211,8 +211,8 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
     {error && <p className="error" role="alert">メッセージ：{error}</p>}
     </div></div>
     <div className="malfunction-management-actions">{actions}
-      <button type="button" className="btn yahoo-instruction-open" data-action="yahoo_instruction" aria-haspopup="dialog"
-        disabled={busy || pending || loadingTemplatePhotos} onClick={() => setChoosingYahooInstruction(true)}>ヤフオク販売指示</button>
+      {item.status === '動作不良' && <button type="button" className="btn yahoo-instruction-open" data-action="yahoo_instruction" aria-haspopup="dialog"
+        disabled={busy || pending || loadingTemplatePhotos} onClick={() => setChoosingYahooInstruction(true)}>ヤフオク販売指示</button>}
     </div>
     <dialog ref={yahooInstructionDialog} className="admin-task-confirmation" aria-label="ヤフオク販売指示"
       onCancel={event => { event.preventDefault(); setChoosingYahooInstruction(false); }}>
