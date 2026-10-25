@@ -14689,7 +14689,7 @@ do $$declare source text;patched text;begin
 end $$;
 
 
--- ▼▼▼ 20261024224707_daily_marketplace_price_reduction.sql ▼▼▼
+-- ▼▼▼ 20261024225104_daily_marketplace_price_reduction.sql ▼▼▼
 
 create table app.marketplace_price_changes (
  channel text not null check(channel='メルカリ'), external_id text not null check(external_id ~ '^m[0-9]+$'),
@@ -14759,7 +14759,7 @@ grant execute on function app.marketplace_price_candidates(text) to authenticate
 grant execute on function app.marketplace_price_record(text,text,text,date,bigint,bigint,text,uuid,text) to authenticated;
 
 
--- ▼▼▼ 20261024225120_price_change_begin_guard.sql ▼▼▼
+-- ▼▼▼ 20261024225154_price_change_begin_guard.sql ▼▼▼
 
 create or replace function app.marketplace_price_record(p_account_id text,p_external_id text,p_action text,p_day date,p_before bigint default null,p_after bigint default null,p_title text default null,p_token uuid default null,p_note text default '') returns jsonb language plpgsql security invoker set search_path=pg_catalog,app as $$
 declare r app.marketplace_price_changes;i app.items;l app.seller_listings;matches text[];stamp timestamp:=clock_timestamp() at time zone 'Asia/Tokyo';
@@ -14797,7 +14797,7 @@ begin
 end $$;
 
 
--- ▼▼▼ 20261024230159_price_ledger_item_index.sql ▼▼▼
+-- ▼▼▼ 20261024230242_price_ledger_item_index.sql ▼▼▼
 
 create index marketplace_price_changes_item_idx on app.marketplace_price_changes(item_id);
 
