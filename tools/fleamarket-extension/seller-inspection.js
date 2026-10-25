@@ -22,9 +22,13 @@ export function sellerInspectionApplies(request,profileId,previous,now=Date.now(
  if(request.accountId!=null&&(!(request.sellerListsOnly||request.buyerReceiptIds||request.feedbackTargets)||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
  if(request.sellerListsOnly!=null&&(request.sellerListsOnly!==true||!request.accountId&&profileId!=='ba92b386-e0bc-48be-b3b6-ca9550fa1a2d'))return false;
  if(request.readShippingPlaceOnly!=null&&(request.readShippingPlaceOnly!==true||!request.targetSerial||!request.targetItemId))return false;
+ if(request.shippingTargets!=null){
+  const targets=request.shippingTargets?.[profileId];
+  if(!targets||!Array.isArray(targets)||targets.length<1||targets.length>40||!['f29f12b6-35f2-4e9f-8312-a8321ddf3c12','51502a66-28a6-4af0-81ea-660e63d8b66c'].includes(profileId)||new Set(targets.map(t=>t.itemId)).size!==targets.length||!targets.every(t=>/^m[0-9]{8,14}$/.test(t.itemId||'')&&/^[0-9]{1,8}[a-z]{0,3}$/.test(t.serial||''))||['accountId','targetItemId','targetSerial','feedbackTargets','buyerReceiptIds','sellerListsOnly','readShippingQrOnly','readShippingPlaceOnly','inspectCarrierReceipt','saleEvidence'].some(k=>request[k]!=null))return false;
+ }
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
  if(request.readShippingQrOnly!=null&&(request.readShippingQrOnly!==true||profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||request.targetSerial!=='1805a'||request.targetItemId!=='m99125688368'))return false;
- return request.kind==='seller-readonly-structure'&&(profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||!!request.targetItemId||request.sellerListsOnly===true||!!request.feedbackTargets)&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&['f29f12b6-35f2-4e9f-8312-a8321ddf3c12','51502a66-28a6-4af0-81ea-660e63d8b66c'].includes(profileId))&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
+ return request.kind==='seller-readonly-structure'&&(profileId!=='51502a66-28a6-4af0-81ea-660e63d8b66c'||!!request.targetItemId||request.sellerListsOnly===true||!!request.feedbackTargets||!!request.shippingTargets)&&(request.targetSerial==null||/^[0-9]{1,8}[a-z]{0,3}$/.test(request.targetSerial))&&(request.targetItemId==null||/^m[0-9]{8,14}$/.test(request.targetItemId)&&!!request.targetSerial&&['f29f12b6-35f2-4e9f-8312-a8321ddf3c12','51502a66-28a6-4af0-81ea-660e63d8b66c'].includes(profileId))&&Array.isArray(request.profiles)&&request.profiles.includes(profileId)&&request.profiles.every(id=>!!PROFILE_ACCOUNTS[id])&&Number.isFinite(issued)&&Number.isFinite(expires)&&issued<=now&&expires>now&&expires-issued<=15*60000;
 }
 /** Only public item IDs, financial labels and dates; never page text, buyer data or credentials. */
 export function saleDetailEvidence(site,row,page){
@@ -109,6 +113,28 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
  await storage.set({sellerInspectionRequest:request.id,sellerInspectionEvidence:{...evidence,status:'running'}});
  try{
   session=await openSession(account);evidence.choiceInspectionAvailable=typeof session.inspectChoice==='function';evidence.pages.push({kind:'identity',...await session.structure()});
+  if(request.shippingTargets){
+   if(account.site!=='mercari')throw Error('発送確認はメルカリの出品者取引のみです');
+   evidence.shipments=[];
+   const pending=[];
+   for(const target of request.shippingTargets[profileId]){
+    if(Date.now()>Date.parse(request.expiresAt))throw Error('発送確認の有効期限を過ぎました');
+    const entry={...target,at:new Date().toISOString()};evidence.shipments.push(entry);
+    try{
+     await session.go('https://jp.mercari.com/transaction/'+target.itemId);
+     const state=await session.inspectionShippingTarget(target);entry.state=state;
+     if(state.serialMatches!==true||state.buyerControls||state.paymentWaiting)continue;
+     entry.receipt=await session.outboundReceipt({channel:'メルカリ',external_id:target.itemId});
+     if(entry.receipt?.tracking_number&&entry.receipt?.trade_key)pending.push(entry);
+    }catch(error){entry.error=error.message;if(/ログイン|認証|名前|URLが変更/.test(error.message))throw error;}
+    await storage.set({sellerInspectionEvidence:{...evidence}});
+   }
+   if(pending.length){
+    try{const proofs=await fetchCarrierReceipts({receipts:pending.map(e=>e.receipt),parse:args=>session.parseCarrierReceipts(args)});for(const entry of pending)entry.carrierReceipt=proofs.get(entry.receipt.carrier+':'+entry.receipt.tracking_number)||null;}
+    catch(error){evidence.carrierError=error.message;}
+   }
+   evidence.status='completed';return true;
+  }
   if(request.feedbackTargets){
    evidence.feedback=[];
    for(const target of request.feedbackTargets){
