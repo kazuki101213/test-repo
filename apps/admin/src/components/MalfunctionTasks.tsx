@@ -94,6 +94,14 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
   const [busy, setBusy] = useState(false);
   const [loadingTemplatePhotos, setLoadingTemplatePhotos] = useState(false);
   const [error, setError] = useState('');
+  const [choosingYahooInstruction, setChoosingYahooInstruction] = useState(false);
+  const yahooInstructionDialog = useRef<HTMLDialogElement>(null);
+  const replyEditor = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (choosingYahooInstruction) yahooInstructionDialog.current?.showModal();
+    else yahooInstructionDialog.current?.close();
+  }, [choosingYahooInstruction]);
 
   async function refreshComments() {
     const rows = await fetchCommentRows(item.id);
@@ -195,14 +203,32 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
       <option value="">定型文選択</option>{TASK_TEMPLATES.map(value => <option key={value} value={value}>{value}</option>)}
     </select><button type="button" className="btn task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy || pending || loadingTemplatePhotos}
       onClick={() => ask('納品担当者とのメッセージ：送信', sendReply)}>{busy ? '送信中…' : '送信'}</button></div>
-    <div className="task-reply-editor"><textarea aria-label="納品担当者への返信" value={draft} disabled={busy || pending} onChange={event => setDraft(event.target.value)}
+    <div className="task-reply-editor"><textarea ref={replyEditor} aria-label="納品担当者への返信" value={draft} disabled={busy || pending} onChange={event => setDraft(event.target.value)}
       maxLength={2000} placeholder="納品担当者への返信を入力" />
     <label className="btn photo-upload">{loadingTemplatePhotos ? '定型写真を読み込み中…' : ('写真追加（' + photos.length + '枚）')}
       <input type="file" aria-label="返信写真を追加" accept="image/*" multiple disabled={busy || pending || loadingTemplatePhotos} onChange={event => { choosePhotos(event.target.files); event.target.value = ''; }} />
     </label>
     {error && <p className="error" role="alert">メッセージ：{error}</p>}
     </div></div>
-    <div className="malfunction-management-actions">{actions}</div>
+    <div className="malfunction-management-actions">{actions}
+      <button type="button" className="btn yahoo-instruction-open" data-action="yahoo_instruction" aria-haspopup="dialog"
+        disabled={busy || pending || loadingTemplatePhotos} onClick={() => setChoosingYahooInstruction(true)}>ヤフオク販売指示</button>
+    </div>
+    <dialog ref={yahooInstructionDialog} className="admin-task-confirmation" aria-label="ヤフオク販売指示"
+      onCancel={event => { event.preventDefault(); setChoosingYahooInstruction(false); }}>
+      <h3>ヤフオク販売指示</h3>
+      <p>種類を選択すると、指示文と定型写真を準備します。内容を確認して「送信」を押してください。</p>
+      <label className="field"><span>指示の種類</span><select aria-label="ヤフオク販売指示の種類" value="" onChange={event => {
+        const value = event.target.value;
+        if (!value) return;
+        setChoosingYahooInstruction(false);
+        void chooseTemplate(value).then(() => {
+          replyEditor.current?.scrollIntoView({ block: 'center' });
+          replyEditor.current?.focus();
+        });
+      }}><option value="">種類を選択</option>{TASK_TEMPLATES.filter(value => value.includes('ヤフオク')).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+      <button type="button" className="btn" onClick={() => setChoosingYahooInstruction(false)}>閉じる</button>
+    </dialog>
     {confirmation}
   </div>;
 }
