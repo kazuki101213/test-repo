@@ -15070,9 +15070,10 @@ alter table app.delivery_line_outbox alter column allow_initial_notice set defau
 create function app.line_initial_notice_payload(p_id uuid) returns jsonb
 language sql stable security invoker set search_path='' as $$
  select jsonb_build_object('itemId',i.id,'serial',app.product_serial(i.sku,i.lot_seq),'sku',i.sku,
-  'title',case when i.title ~ '^X[0-9A-Z]{9}$' then coalesce(i.model_no,i.title) else coalesce(i.title,i.model_no,'') end,
+  'title',case when i.title ~ '^X[0-9A-Z]{9}$' then coalesce(p.model_no,i.title) else coalesce(i.title,p.model_no,'') end,
   'supplierUrl',null,'images','[]'::jsonb,'initialNotice',true,'deliveryRetryKey',o.initial_retry_key)
  from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id join app.items i on i.id=t.item_id
+ left join app.products p on p.id=i.product_id
  where o.id=p_id and o.allow_initial_notice and o.initial_sent_at is null and app.line_shipping_eligible(o.id);
 $$;
 revoke all on function app.line_initial_notice_payload(uuid) from public,anon,authenticated;
