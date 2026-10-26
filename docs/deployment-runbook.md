@@ -3,7 +3,7 @@
 ## 公開回数を浪費しない設定
 
 - リポジトリ直下と両アプリの `vercel.json` は `git.deploymentEnabled = { "**": false, "main": true }`。作業ブランチへの保存ごとの自動プレビューを止め、mainへの統合時に公開する。
-- リポジトリ直下を使う公開プロジェクトにも同じGit設定を置く。アプリ内の設定だけでは直下を使うプロジェクトのプレビューを停止できない。`bussan-delivery` の作業ブランチ公開が残った実測に基づく。
+- 直下のGit設定は誤ってリポジトリ直下を参照するプロジェクトの自動プレビューも抑えるために残す。納品アプリの正しいRoot Directoryは `apps/delivery`。直下のGit設定だけで納品アプリのビルドはできない。
 - Pull Requestの型チェック・テスト・ビルドはGitHub Actionsで引き続き行う。確認に使うプレビューが本当に必要な場合だけ、許可された範囲で明示的に作成する。
 - 同じコミットの作成済み／作成中デプロイを確認し、Git公開の後に無条件で同じAPI公開を重ねない。小さな修正は可能な範囲で一つの公開にまとめる。
 - 管理・納品とも `/` と `/index.html` は `no-cache, max-age=0, must-revalidate`。HTMLを再検証し、ハッシュ付きアセットで最新版を読む。
@@ -17,6 +17,8 @@
 | bussan-admin.vercel.app | prj_N4QH55G78owhWhKnV7J8GH49FdI1 | apps/admin |
 | test-repo-delivery.vercel.app | prj_9qZ0O97hTwljYxFok10DSTJKqgts | apps/delivery |
 | bussan-delivery.vercel.app | prj_USYeSHtiW0i8uvTArAv8o2xgQoDs | apps/delivery |
+
+2026-10-26の実配信検証で、`bussan-delivery` はREADYでもルートURLが404となる設定漏れを確認し、プロジェクト設定をRoot Directory `apps/delivery`、framework `vite`、build `pnpm build`、install `pnpm install --frozen-lockfile`、output `dist`、共有パッケージへのアクセス有効に修正した。設定変更前のREADY成果物は再利用しない。APIの回数制限がある場合も、実際のGitビルドとHTTP応答を確認するまで復旧済みとしない。
 
 APIはこの作業で利用中の認証済み接続を優先する。名前からteamIdを推測して付加しない。明示スコープが必要な場合は接続と対象の所属を確認する。サービスロールキーやトークンをこの文書・ログ・公開ファイルへ書かない。
 
