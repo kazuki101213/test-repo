@@ -11,7 +11,6 @@ import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
 import type { InventoryField } from '../api';
 import NewPurchase from './NewPurchase';
-import PurchaseDraftToSpare from '../components/PurchaseDraftToSpare';
 import AmazonSalesSync from '../components/AmazonSalesSync';
 import ColoredLabel from '../components/ColoredLabel';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
@@ -99,7 +98,6 @@ export default function Inventory({ me }: { me: Staff }) {
   const { rows: purchaseDrafts, setRows: setPurchaseDrafts, loading: draftsLoading, error: draftError, setError: setDraftError, updated: draftsUpdated, refresh: loadPurchaseDrafts } = usePurchaseDrafts(fetchPurchaseDrafts, draftsOpen);
   const purchaseSync = usePurchaseSync(loadPurchaseDrafts, me.role === 'admin');
   const [selectedPurchaseDraft, setSelectedPurchaseDraft] = useState<PurchaseDraft | null>(null);
-  const [spareDraft,setSpareDraft]=useState<PurchaseDraft|null>(null);
   const [dismissingDraft, setDismissingDraft] = useState<string | null>(null);
   const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
   const [fullEditFor, setFullEditFor] = useState<InventoryItem | null>(null);
@@ -201,13 +199,11 @@ export default function Inventory({ me }: { me: Staff }) {
         {draftError && <div className="error">仕入れリストを読み込めませんでした: {draftError}</div>}
         {purchaseDrafts.length > 0 ? <div className="scroll"><table className="purchase-draft-table"><thead><tr><th>購入日</th><th>商品情報</th><th>仕入先</th><th>購入金額</th><th>商品ID</th><th>販売予定金額</th><th>振込予定金額</th><th>操作</th></tr></thead><tbody>
           {purchaseDrafts.map(draft => <tr key={draft.id}><td>{draft.purchased_at || '要入力'}</td><td><a title={draft.title} href={draft.marketplace_url} target="_blank" rel="noreferrer">{Array.from(draft.title).slice(0, 20).join('')}</a><div className="purchase-draft-product-meta">型番 {draft.model_no || '未特定'} / 品番 {draft.product_no ?? '未特定'} / ASIN {draft.asin || '未特定'}</div></td><td><ColoredLabel value={draft.marketplace} /></td><td>{draft.cost_amount == null ? '要入力' : yen(draft.cost_amount)}</td><td>{draft.marketplace_item_id}</td><td>{draft.planned_price == null ? '未特定' : yen(draft.planned_price)}</td><td>{draft.planned_payout == null ? '未特定' : yen(draft.planned_payout)}</td><td><div className="purchase-draft-actions">
-            <button type="button" className="btn" disabled={me.role!=='admin'} onClick={()=>setSpareDraft(draft)}>予備登録</button>
             <button type="button" className="btn primary" onClick={() => { setSelectedPurchaseDraft(draft); setPurchaseOpen(true); window.scrollTo({ top: 0 }); }}>在庫へ反映</button>
             <button type="button" className="btn" disabled={dismissingDraft !== null} onClick={() => void excludeDraft(draft.id)}>{dismissingDraft === draft.id ? '除外中…' : '除外'}</button>
           </div></td></tr>)}
         </tbody></table></div> : !draftError && !draftsLoading && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
-      {spareDraft&&<PurchaseDraftToSpare key={spareDraft.id} draft={spareDraft} staff={staff} onClose={()=>setSpareDraft(null)} onRegistered={()=>{setPurchaseDrafts(current=>current.filter(row=>row.id!==spareDraft.id));if(selectedPurchaseDraft?.id===spareDraft.id){setSelectedPurchaseDraft(null);setPurchaseOpen(false);}setSpareDraft(null);void loadPurchaseDrafts();}}/>}
       {me.role === 'admin' && <AmazonOrderHistory />}
       <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
 
