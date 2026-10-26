@@ -1,4 +1,4 @@
-import {sessionRead,stablePhotoUrls,invalidateReadCache,clearPhotoUrlCache} from '@bussan/shared';
+import {sessionRead,stablePhotoUrls,invalidateReadCache,clearPhotoUrlCache,sellerShippingError} from '@bussan/shared';
 import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition, ItemStatus } from '@bussan/shared';
 
@@ -437,6 +437,7 @@ export async function requestListingResultCheck(itemId:string,listingUrl=''):Pro
  const {data,error}=await getSupabase().rpc('request_listing_result_check',{p_item_id:itemId,p_listing_url:listingUrl.trim()||null});if(error)throw error;return data as string;
 }
 export async function queueSellerOperation(itemId:string,kind:string,payload:Record<string,unknown>,requestId:string):Promise<string>{
+ if(['shipping_code','register_package'].includes(kind)){const issue=sellerShippingError(payload);if(issue)throw new Error(issue);}
  const {data,error}=await getSupabase().rpc('queue_seller_operation',{p_item_id:itemId,p_kind:kind,p_payload:payload,p_request_id:requestId});if(error)throw error;return data as string;
 }
 export async function fetchSupplierConversation(itemId:string):Promise<MarketplaceConversation&{account_id?:string|null}>{
