@@ -81,3 +81,7 @@ test('Explicit initial notice sends text once with a distinct stable key; follow
  assert.equal(followup.length,4);assert(followup[0].text.startsWith('発送用の写真・コードです。'));assert(!followup[0].text.includes('発送お願いします。'));
  const cancelled=fixture({rows:[row],prepare:false});await cancelled.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert(!cancelled.state.calls.some(x=>x.url.endsWith('/push')));
 });
+
+test('Listing photo recovery is not available through a user or public request',async()=>{
+ const f=fixture();assert.equal((await f.request('recover-listing-photo-files')).status,401);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
+});
