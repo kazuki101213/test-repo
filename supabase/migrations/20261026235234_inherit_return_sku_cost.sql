@@ -137,6 +137,8 @@ begin new.sku:=app.return_sku_original_cost(new.sku,new.lot_seq);
  return new;end$$;
 revoke all on function app.normalize_return_sku_insert() from public,anon,authenticated;
 create trigger items_zzz_return_sku_original_cost before insert on app.items for each row execute function app.normalize_return_sku_insert();
+drop trigger items_record_sku_alias on app.items;
+create trigger items_record_sku_alias after update on app.items for each row when (old.sku is distinct from new.sku) execute function app.record_item_sku_alias();
 CREATE OR REPLACE FUNCTION app.sync_accessory_sale_date()
  RETURNS trigger
  LANGUAGE plpgsql
