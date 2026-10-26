@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {getSupabase,sellerShippingError} from '@bussan/shared';
+import {getSupabase,sellerShippingError,sellerShippingPlaces} from '@bussan/shared';
 import type {SellerDraft} from '@bussan/shared';
 import {fetchPhotoUrls} from '../api';
 import type {ItemPhoto} from '../api';
@@ -12,6 +12,7 @@ export default function LineShippingSettings({itemId,draft,overviewId,listing=fa
  async function edit(){if(lock.current||!context)return;lock.current=true;setBusy(true);setError('');try{const values=linePhotoOrder(await fetchPhotoUrls(itemId),context.photoOrder);if(active.current){setPhotos(values);setOverview(current=>current||overviewId||values[0]?.id||'');setOpen(true);}}catch{if(active.current)setError('商品写真を取得できませんでした');}finally{lock.current=false;if(active.current)setBusy(false);}}
  async function save(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
   if(draft.size){const issue=sellerShippingError(draft);if(issue)throw new Error(issue);}
+  else if(draft.dropoff&&!sellerShippingPlaces(draft.shippingMethod).includes(draft.dropoff))throw new Error('配送方法に対応する発送場所を選択してください');
   const shipping={size:draft.size,dropoff:draft.dropoff,shippingMethod:draft.shippingMethod,category:draft.category,...(draft.weightKg?{weightKg:draft.weightKg}:{})};
   const {error}=await getSupabase().rpc('save_line_shipping_preferences',{p_item_id:itemId,p_overview:overview||null,p_model:model||null,p_shipping:shipping});if(error)throw error;
   const result=await getSupabase().rpc('line_shipping_context',{p_item_id:itemId});if(result.error)throw result.error;
