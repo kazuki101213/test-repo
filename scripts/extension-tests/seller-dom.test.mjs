@@ -459,3 +459,9 @@ test('配送修正確認は指定の配送方法だけ選択し、発送通知�
  assert.equal((await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'})).__error,undefined);await p.waitForURL('https://jp.mercari.com/transaction/m24285629702/shipping_class');assert.equal((await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'})).sizeReady,true);await p.close();
  const q=await page('<h1>取引画面</h1><div role="dialog"><p>商品の発送通知を送信しますか</p><button onclick="document.body.dataset.clicked=1">はい</button></div>','https://jp.mercari.com/transaction/m24285629702');const stopped=await q.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'});assert(stopped.__error);assert(stopped.shippingEvidence.editor.text);assert.equal(await q.evaluate(()=>document.body.dataset.clicked),undefined);await q.close();
 });
+
+test('配送修正の入れ子ダイアログは最内側だけ確認し、空の常設ダイアログを数えない',async()=>{
+ const p=await page('<div role="dialog"></div><div role="dialog"><div aria-modal="true"><p>商品サイズや発送方法を修正します。コードは無効になります。</p><button onclick="location.href=\'/transaction/m24285629702/shipping_class\'">修正する</button></div></div>','https://jp.mercari.com/transaction/m24285629702');
+ assert.equal((await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'})).__error,undefined);await p.waitForURL('https://jp.mercari.com/transaction/m24285629702/shipping_class');await p.close();
+ const q=await page('<button>商品サイズや発送方法を修正する</button>','https://jp.mercari.com/transaction/m24285629702');const result=await q.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'});assert.equal(result.shippingEvidence.editor.dialogCount,0);assert.deepEqual(result.shippingEvidence.editor.buttons,['商品サイズや発送方法を修正する']);await q.close();
+});

@@ -90,8 +90,9 @@ export function advanceMercariShippingEditor({itemId,shippingMethod}){
  const path='/transaction/'+itemId,norm=s=>String(s||'').replace(/\s+/g,' ').trim(),visible=e=>e.getClientRects().length>0;
  if(location.hostname!=='jp.mercari.com'||!/^m[0-9]{8,14}$/.test(itemId)||![path,path+'/shipping_class'].includes(location.pathname))throw Error('対象取引の配送設定画面ではありません');
  if(location.pathname===path+'/shipping_class')return {sizeReady:true};
- const dialogs=[...document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open]')].filter(visible);
- if(dialogs.length!==1)throw Error('配送設定の確認画面を1件に確認できません');
+ const allDialogs=[...document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open]')].filter(e=>visible(e)&&getComputedStyle(e).visibility!=='hidden'&&norm(e.innerText));
+ const dialogs=allDialogs.filter(e=>!allDialogs.some(other=>other!==e&&e.contains(other)));
+ if(dialogs.length!==1)return {__error:'配送設定の確認画面を1件に確認できません',shippingEvidence:{editor:{dialogCount:allDialogs.length,dialogs:allDialogs.map(e=>({role:e.getAttribute('role'),text:norm(e.innerText).replace(/[0-9]{4,}/g,'[number]').slice(0,800)})),buttons:[...document.querySelectorAll('button')].filter(visible).map(e=>norm(e.innerText)).filter(t=>t&&t.length<100).slice(-30)}}};
  const dialog=dialogs[0],text=norm(dialog.innerText),buttons=[...dialog.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled);
  const evidence={text:text.replace(/[0-9]{4,}/g,'[number]').slice(0,600),buttons:buttons.map(e=>norm(e.innerText)),radios:[...dialog.querySelectorAll('input[type=radio]')].filter(visible).map(e=>norm([e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText)].join(' ')))};
  const stop=()=>({__error:'配送設定の確認画面を照合できません。コードは発行していません',shippingEvidence:{editor:evidence}});
