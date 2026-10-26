@@ -1,6 +1,6 @@
 import {parseCarrierReceipts,readOutboundReceipt} from '../../tools/fleamarket-extension/daily-shipping.js';
 import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from '../../tools/fleamarket-extension/seller-inspection.js';
-import {clickSellerListTab,advanceSellerList,clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
+import {clickSellerListTab,advanceSellerList,clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,advanceMercariShippingEditor,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
 import test,{before,after} from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
 import {readSellerPage} from '../../tools/fleamarket-extension/seller-sync.js';import {sellerDomOperation} from '../../tools/fleamarket-extension/seller-dom.js';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/長部一輝/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');let browser;
@@ -452,4 +452,10 @@ test('発行済みコードの修正ボタンを読み込み完了として認�
  const job={external_id:'m24285629702',channel:'メルカリ',trade_key:'trade',payload:{shippingMethod:'ゆうゆうメルカリ便',size:'ゆうパケットプラス',dropoff:'ローソン'}};
  const result=await p.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'});assert.equal(result.needsEditor,true);assert.equal(result.configuredDropoff,'セブンイレブン');assert.equal(await p.evaluate(()=>document.body.dataset.edited),undefined);assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);
  const clicked=await p.evaluate(clickSellerChoice,'shipping-details');assert(clicked);await p.waitForFunction(()=>document.body.dataset.edited==='1');assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+});
+
+test('配送修正確認は指定の配送方法だけ選択し、発送通知や未知の確認は押さない',async()=>{
+ const p=await page('<h1>取引画面</h1><div role="dialog"><p>商品サイズや発送方法を修正します。コードは無効になります。</p><button onclick="location.href=\'/transaction/m24285629702/shipping_class\'">修正する</button><button>キャンセル</button></div>','https://jp.mercari.com/transaction/m24285629702');
+ assert.equal((await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'})).__error,undefined);await p.waitForURL('https://jp.mercari.com/transaction/m24285629702/shipping_class');assert.equal((await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'})).sizeReady,true);await p.close();
+ const q=await page('<h1>取引画面</h1><div role="dialog"><p>商品の発送通知を送信しますか</p><button onclick="document.body.dataset.clicked=1">はい</button></div>','https://jp.mercari.com/transaction/m24285629702');const stopped=await q.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'});assert(stopped.__error);assert(stopped.shippingEvidence.editor.text);assert.equal(await q.evaluate(()=>document.body.dataset.clicked),undefined);await q.close();
 });
