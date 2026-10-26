@@ -2,5 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "outputDirectory": "dist",
+  "git": { "deploymentEnabled": { "**": false, "main": true } },
+  "headers": [{ "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] }, { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" }] }],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

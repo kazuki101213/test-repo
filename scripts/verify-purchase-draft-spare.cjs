@@ -17,6 +17,6 @@ const submit=()=>all(tree).find(n=>n.type==='form').props.onSubmit({preventDefau
  fail=false;submit();submit();await settle();assert.equal(calls.length,2,'Double clicks must not register twice');assert.equal(done,0);assert.equal(calls[1].payload.title,'リモコン');assert(!('usage_note' in calls[1].payload));
  tree.props.onCancel({preventDefault(){}});assert.equal(closed,0,'Pending registration cannot be cancelled');
  release();await settle();assert.equal(done,1);assert.equal(closed,0);
- const source=fs.readFileSync('apps/admin/src/pages/Inventory.tsx','utf8');assert(source.indexOf('>予備登録</button>')<source.indexOf('>在庫へ反映</button>'),'Spare button must precede inventory registration');
+ const source=fs.readFileSync('apps/admin/src/pages/Inventory.tsx','utf8');assert(!source.includes('>予備登録</button>'),'Spare registration belongs only beside the inventory form save button');assert(source.includes('>在庫へ反映</button>'));
  console.log('Draft to spare: inherited fields, validation, failure retention, double-click lock and success passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});
