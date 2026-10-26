@@ -68,3 +68,7 @@ test('Dispatch stops after trade/assignee recheck, media failure or disabled set
   const f=fixture(options);assert.equal((await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'})).status,200);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
  }
 });
+
+test('Listing photo recovery is not available through a user or public request',async()=>{
+ const f=fixture();assert.equal((await f.request('recover-listing-photo-files')).status,401);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
+});
