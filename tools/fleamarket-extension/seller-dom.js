@@ -107,6 +107,22 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const barcode=e=>/barcode|バーコード/i.test([e.id,e.getAttribute('data-testid'),e.parentElement?.getAttribute('data-testid')].filter(Boolean).join(' '))||[e.getAttribute('alt'),e.getAttribute('aria-label'),e.parentElement?.getAttribute('aria-label')].filter(Boolean).some(t=>/^(?:(?:配送用|発送用)?バーコード(?:の画像)?|(?:shipping)?barcode)$/i.test(t.replace(/\s/g,'')));
   const codeRoot=job.channel==='ヤフオク'&&location.hostname==='contact.auctions.yahoo.co.jp'&&location.pathname.startsWith('/trade/')?document.body:root;
   const elements=[...codeRoot.querySelectorAll('canvas,img,svg')].filter(e=>{const box=e.getBoundingClientRect();return visible(e)&&(barcode(e)?box.width>=128&&(box.height>=24||e.tagName==='IMG'&&!e.complete):box.width>=64&&(box.height>=64||e.tagName==='IMG'&&!e.complete)&&named(e));});if(!elements.length)return null;if(elements.length!==1)throw Error('配送コードの画像を1件に確認できません');const source=elements[0];
+  if(job.channel==='ヤフオク'&&/日本郵便/.test(payload.shippingMethod||'')&&payload.dropoff){
+   const wanted=payload.dropoff==='ローソン'?/^ローソン$/:payload.dropoff==='郵便局'?/^郵便局(?:の窓口)?$/:null;
+   if(!wanted)throw Error('日本郵便の発送場所を確認してください');
+   const selects=[...codeRoot.querySelectorAll('select')].filter(e=>visible(e)&&[...e.options].some(o=>/^ローソン$/.test(norm(o.text)))&&[...e.options].some(o=>/^郵便局(?:の窓口)?$/.test(norm(o.text))));
+   if(selects.length!==1||selects[0].disabled)throw Error('配送コードの発送場所を1件に確認できません');
+   const select=selects[0],options=[...select.options].filter(o=>wanted.test(norm(o.text))&&!o.disabled);
+   if(options.length!==1)throw Error('設定した発送場所を選択できません');
+   if(select.value!==options[0].value){
+    if(payload.read_only_code_recovery===true)throw Error('設定した発送場所への変更が必要です。読取専用では変更しません');
+    const signature=e=>e?.tagName.toLowerCase()==='canvas'?e.toDataURL('image/png'):e?.outerHTML;
+    const before=signature(source);setValue(select,options[0].value);qrImageRead=undefined;
+    await waitFor(()=>{const codes=[...document.querySelectorAll('canvas,img,svg')].filter(e=>visible(e)&&(named(e)||barcode(e)));return select.isConnected&&select.value===options[0].value&&codes.length===1&&signature(codes[0])!==before;},'発送場所変更後の配送コードを確認できません。送信せず停止します');
+    return qrPng();
+   }
+   if(!wanted.test(norm(select.selectedOptions[0]?.text)))throw Error('配送コードの発送場所が設定と一致しません');
+  }
   if(source.tagName.toLowerCase()==='canvas')return source.toDataURL('image/png');
   if(source.tagName==='IMG'&&new URL(source.src).origin!==location.origin&&new URL(source.src).hostname==='api.mercari.jp'&&new URL(source.src).protocol==='https:'){
    // Read only the exact displayed QR image, once. Normal page CORS applies; no credentials are exported.
