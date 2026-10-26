@@ -17,7 +17,7 @@ export async function normalizeSellerPhoto({file,site}){
 }
 /** Return before a full-page category navigation destroys this execution frame. */
 export async function clickSellerChoice(kind){
- const names={category:['カテゴリーを選択する','カテゴリを選択する'],condition:['商品の状態を選択する'],shipping:['配送の方法を選択する'],'category-search':['キーワードから選択する（出品カテゴリ検索）'],'shipping-details':['商品サイズと発送場所を選択する']};
+ const names={category:['カテゴリーを選択する','カテゴリを選択する'],condition:['商品の状態を選択する'],shipping:['配送の方法を選択する'],'category-search':['キーワードから選択する（出品カテゴリ検索）'],'shipping-details':['商品サイズと発送場所を選択する','商品サイズや発送方法を修正する']};
  if(!names[kind])throw Error('未対応の選択画面です');
  const norm=s=>String(s||'').replace(/\s+/g,'').trim();let candidates=[];const end=Date.now()+10000;
  const shippingEdit=e=>kind==='shipping-details'&&e.tagName==='A'&&location.hostname==='jp.mercari.com'&&/^\/transaction\/m[0-9]+$/.test(location.pathname)&&e.origin===location.origin&&e.pathname===location.pathname+'/shipping_class';

@@ -446,3 +446,10 @@ for(const [dropoff,initial] of [['ローソン','郵便局の窓口'],['郵便�
  const result=await p.evaluate(sellerDomOperation,{job,phase:'read_shipping_code'});assert.match(result.qr_code,/^data:image\/png;base64,/);assert.match(await p.locator('select option:checked').innerText(),dropoff==='ローソン'?/^ローソン$/:/^郵便局の窓口$/);assert.deepEqual(await p.evaluate(()=>({...document.body.dataset})),{});await p.close();
 });
 test('Yahoo postal code without a verifiable drop-off is never returned',async()=>{const p=await page('<h1>取引ナビ</h1><p>g1249218068 配送コード</p><canvas id="shippingQR" width="160" height="160"></canvas>','https://contact.auctions.yahoo.co.jp/trade/top?aid=g1249218068');const result=await p.evaluate(sellerDomOperation,{job:{id:'missing-place',channel:'ヤフオク',external_id:'g1249218068',trade_key:'g1249218068',payload:{shippingMethod:'おてがる配送（日本郵便）',dropoff:'ローソン'}},phase:'read_shipping_code'});assert.match(result.__error,/発送場所/);assert.equal(result.qr_code,undefined);await p.close();});
+
+test('発行済みコードの修正ボタンを読み込み完了として認識し、配送方法が異なる場合も修正入口だけ返す',async()=>{
+ const p=await page('<h1>取引画面</h1><p>らくらくメルカリ便</p><button>セブン-イレブンからの発送方法</button><button onclick="document.body.dataset.edited=1">商品サイズや発送方法を修正する</button><button onclick="document.body.dataset.shipped=1">商品を発送したので、発送通知をする</button>','https://jp.mercari.com/transaction/m24285629702');
+ const job={external_id:'m24285629702',channel:'メルカリ',trade_key:'trade',payload:{shippingMethod:'ゆうゆうメルカリ便',size:'ゆうパケットプラス',dropoff:'ローソン'}};
+ const result=await p.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'});assert.equal(result.needsEditor,true);assert.equal(result.configuredDropoff,'セブンイレブン');assert.equal(await p.evaluate(()=>document.body.dataset.edited),undefined);assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);
+ const clicked=await p.evaluate(clickSellerChoice,'shipping-details');assert(clicked);await p.waitForFunction(()=>document.body.dataset.edited==='1');assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+});
