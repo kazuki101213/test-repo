@@ -3,6 +3,7 @@ import { deliveryOrigin, friendUrl, hashCode, linkCode, validSignature, shipping
 import type { ShippingPayload } from './validation.ts';
 import QRCode from 'npm:qrcode@1.5.4';
 import { prepareShippingMedia } from './media.ts';
+import { recoverListingPhotoFiles } from './photo-recovery.ts';
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
   db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false },
@@ -83,9 +84,10 @@ Deno.serve(async req => {
     // This public route is authenticated using LINE's signature, not user JWTs.
     if (new URL(req.url).pathname.endsWith('/webhook')) return await webhook(req);
     const body = await req.json();
-    if (body.action === 'dispatch' || body.action === 'connection') {
+    if (body.action === 'dispatch' || body.action === 'connection' || body.action === 'recover-listing-photo-files') {
       const config = await rpc('delivery_push_config');
       if (!req.headers.get('x-delivery-dispatch') || req.headers.get('x-delivery-dispatch') !== config.delivery_push_dispatch_token) return response(401, {});
+      if (body.action === 'recover-listing-photo-files') return response(200, await recoverListingPhotoFiles({admin,itemId:body.itemId,sources:body.sources}));
       if (body.action === 'connection') return response(200, await botConnection());
       if (!await shippingEnabled()) return response(200, { configured: false, processed: 0 });
       const rows = await rpc('claim_delivery_line');
