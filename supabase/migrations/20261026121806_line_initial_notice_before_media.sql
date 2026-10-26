@@ -9,6 +9,16 @@ alter table app.delivery_line_outbox
  add column initial_last_status integer;
 alter table app.delivery_line_outbox alter column allow_initial_notice set default true;
 
+-- Preparing the image bundle may continue while the initial text is retrying.
+-- Keep all existing account/assignee/trade/duplicate-operation guards.
+do $$declare original text;patched text;begin
+ original:=pg_get_functiondef('app.extension_prepare_line_shipping(text[])'::regprocedure);
+ patched:=replace(original,'where q.state=''pending'' and q.attempts=0',
+  'where ((q.state=''pending'' and q.attempts=0) or (q.delivery_phase=''initial'' and q.state in (''pending'',''sending'')))');
+ if patched=original then raise exception 'LINE preparation filter changed; migration requires review';end if;
+ execute patched;
+end $$;
+
 create function app.line_initial_notice_payload(p_id uuid) returns jsonb
 language sql stable security invoker set search_path='' as $$
  select jsonb_build_object('itemId',i.id,'serial',app.product_serial(i.sku,i.lot_seq),'sku',i.sku,
