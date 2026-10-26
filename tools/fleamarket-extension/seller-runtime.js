@@ -84,6 +84,25 @@ export function returnMercariListingForm(){
  if(location.hostname!=='jp.mercari.com')return {__error:'メルカリではありません'};if(location.pathname==='/sell/create'&&document.querySelector('input[type=file]'))return false;if(location.pathname!=='/sell/wizard')return {__error:'出品フォームへの復帰画面ではありません'};
  const buttons=[...document.querySelectorAll('button')].filter(e=>e.getClientRects().length&&!e.disabled&&e.innerText.trim()==='出品画面に戻る');if(buttons.length!==1)return {__error:'出品画面へ戻る操作を1件に確認できません'};const before={url:location.href};setTimeout(()=>buttons[0].click(),100);return before;
 }
+/** Only the exact trade's shipping settings confirmation, never a shipment notice. */
+export function advanceMercariShippingEditor({itemId,shippingMethod}){
+ try{
+ const path='/transaction/'+itemId,norm=s=>String(s||'').replace(/\s+/g,' ').trim(),visible=e=>e.getClientRects().length>0;
+ if(location.hostname!=='jp.mercari.com'||!/^m[0-9]{8,14}$/.test(itemId)||![path,path+'/shipping_class'].includes(location.pathname))throw Error('対象取引の配送設定画面ではありません');
+ if(location.pathname===path+'/shipping_class')return {sizeReady:true};
+ const dialogs=[...document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open]')].filter(visible);
+ if(dialogs.length!==1)throw Error('配送設定の確認画面を1件に確認できません');
+ const dialog=dialogs[0],text=norm(dialog.innerText),buttons=[...dialog.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled);
+ const evidence={text:text.replace(/[0-9]{4,}/g,'[number]').slice(0,600),buttons:buttons.map(e=>norm(e.innerText)),radios:[...dialog.querySelectorAll('input[type=radio]')].filter(visible).map(e=>norm([e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText)].join(' ')))};
+ const stop=()=>({__error:'配送設定の確認画面を照合できません。コードは発行していません',shippingEvidence:{editor:evidence}});
+ if(!/配送|発送|サイズ/.test(text)||/発送通知|発送しました|取引をキャンセル|購入する|支払う/.test(text))return stop();
+ const radios=[...dialog.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&norm([e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText)].join(' ')).startsWith(shippingMethod));
+ let candidates;
+ if(radios.length===1){candidates=buttons.filter(e=>['変更する','更新する','選択して次へ'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();if(!radios[0].checked)radios[0].click();if(!radios[0].checked)return stop();}
+ else {if(radios.length||dialog.querySelector('input:not([type=hidden]):not([type=button]):not([type=submit]),textarea,select')||!/コード|商品サイズ/.test(text))return stop();candidates=buttons.filter(e=>['修正する','変更する','はい'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();}
+ const before={url:location.href,text:document.body.innerText,controls:''};setTimeout(()=>candidates[0].click(),100);return before;
+ }catch(error){return {__error:error.message};}
+}
 /** Advance only the size step, never the place confirmation or QR issuance. */
 export function advanceMercariShippingSize({itemId,size,shippingMethod='らくらくメルカリ便'}){
  try{
@@ -432,7 +451,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   },
   inspectionTarget:serial=>execute(readInspectionTarget,serial),
   inspectionShippingTarget:target=>execute(readShippingInspectionTarget,target),
-  prepareShipping:async job=>{if(account.site!=='mercari'||!await finishChoice(await execute(clickSellerChoice,'shipping-details'),'shipping-details'))throw Error('配送サイズの選択画面を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
+  prepareShipping:async job=>{if(account.site!=='mercari'||!await finishChoice(await execute(clickSellerChoice,'shipping-details'),'shipping-details'))throw Error('配送サイズの選択画面を確認できません');let sizeReady=false;for(let step=0;step<3;step++){const editor=await execute(advanceMercariShippingEditor,{itemId:job.external_id,shippingMethod:job.payload.shippingMethod});if(editor.sizeReady){sizeReady=true;break;}await finishChoice(editor);}if(!sizeReady)throw Error('配送設定の画面遷移を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.map(link=>{const u=new URL(link.url);return u.hostname==='salesmanagement.yahoo.co.jp'&&u.pathname==='/list'&&/^売上金管理(?:\s+Yahoo!かんたん決済)?$/.test(link.text)?{...link,text:'売上金管理'}:link;}).filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|落札者なし|出品|出品する|出品フォーム)$/.test(link.text)),
   read:phase=>readSellerListWithRecovery({site:account.site,read:()=>execute(readSellerPage,{site:account.site,phase,reportErrors:true}),reload:()=>go(last)}),
