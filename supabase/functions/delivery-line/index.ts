@@ -93,9 +93,10 @@ Deno.serve(async req => {
       for (const row of rows || []) {
         let state = 'cancelled', status: number | null = null;
         if (row.eligible) {
-          // Refuse incomplete media rather than send text-only or an old code.
+          // Initial notices are explicitly marked by the queue. Media deliveries
+          // still require their complete current-trade bundle.
           try {
-            const payload = row.payload.media ? await prepareShippingMedia({ admin, media: row.payload.media, deliveryId: row.id, QRCode }) : row.payload as ShippingPayload;
+            const payload = row.payload.media ? {...await prepareShippingMedia({ admin, media: row.payload.media, deliveryId: row.id, QRCode }),...(row.payload.imageFollowup ? {imageFollowup:true} : {})} : row.payload as ShippingPayload;
             const messages = shippingMessages(payload);
             // Recheck the current trade and assignee before the LINE request.
             if (!await rpc('prepare_delivery_line_message', { p_id: row.id, p_lease: row.lease, p_messages: payload })) {
@@ -104,7 +105,7 @@ Deno.serve(async req => {
             }
             try {
               const result = await fetch('https://api.line.me/v2/bot/message/push', { method: 'POST', signal: AbortSignal.timeout(8000), headers: {
-                Authorization: `Bearer ${accessToken()}`, 'Content-Type': 'application/json', 'X-Line-Retry-Key': row.id,
+                Authorization: `Bearer ${accessToken()}`, 'Content-Type': 'application/json', 'X-Line-Retry-Key': payload.deliveryRetryKey || row.id,
               }, body: JSON.stringify({ to: row.recipient, messages }) });
               status = result.status; state = dispatchState(status);
             } catch { state = 'pending'; }

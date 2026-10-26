@@ -4,7 +4,7 @@ import type {SellerDraft} from '@bussan/shared';
 import {fetchPhotoUrls} from '../api';
 import type {ItemPhoto} from '../api';
 import {linePhotoOrder} from '../linePhotoOrder';
-type Context={overviewPhotoId:string|null;modelPhotoId:string|null;photoOrder?:string[];shipping:Record<string,string>;state:string|null;message:string;enabled:boolean};
+type Context={overviewPhotoId:string|null;modelPhotoId:string|null;photoOrder?:string[];shipping:Record<string,string>;state:string|null;initialSentAt?:string|null;message:string;enabled:boolean};
 export default function LineShippingSettings({itemId,draft,overviewId,listing=false}:{itemId:string;draft:SellerDraft;overviewId?:string;listing?:boolean}){
  const [context,setContext]=useState<Context|null>(null),[photos,setPhotos]=useState<ItemPhoto[]|null>(null),[overview,setOverview]=useState(''),[model,setModel]=useState(''),[open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const active=useRef(true),lock=useRef(false);
@@ -20,7 +20,7 @@ export default function LineShippingSettings({itemId,draft,overviewId,listing=fa
  }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'LINE発送設定を保存できませんでした');}finally{lock.current=false;if(active.current)setBusy(false);}}
  return <section className="line-shipping-settings" aria-label="LINE発送依頼の設定">
   <div className="row"><span>LINE発送依頼</span><button type="button" className="btn ghost" disabled={busy||!context} onClick={()=>void edit()}>通知写真を設定</button>{!listing&&<button type="button" className="btn ghost" disabled={busy} onClick={()=>void save()}>配送設定を保存</button>}</div>
-  {context?.state==='sent'&&<p role="status">LINEへ送信済み</p>}{error&&<p className="error" role="alert">{error}</p>}
+  {context?.state==='sent'&&<p role="status">LINEへ送信済み</p>}{context?.initialSentAt&&context.state!=='sent'&&<p role="status">LINE本文は送信済みです。画像は準備後に自動送信します。</p>}{error&&<p className="error" role="alert">{error}</p>}
   {open&&photos&&<>
    <p>全体写真と、型番が読める写真を一度指定してください。梱包写真は通知に使いません。</p>
    <p>{context?.photoOrder?.length?'出品時の写真順です。出品に使わなかった写真は末尾に表示します。':'写真の追加順です。'}</p>

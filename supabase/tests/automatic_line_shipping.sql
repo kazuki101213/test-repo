@@ -12,6 +12,8 @@ update app.items i set seller_trade_key=l.trade_key from app.seller_listings l w
 update app.items set status='取引中' where lot_seq=998743;
 update app.delivery_line_settings set enabled=true;
 update app.items set status='取引中' where lot_seq in(998741,998742);
+-- Exercise the retained all-media policy separately from staged notices.
+update app.delivery_line_outbox set allow_initial_notice=false;
 do $$begin
  if (select count(*) from app.delivery_line_outbox)<>2 then raise exception 'Old requests were broadcast or new requests missing';end if;
  if exists(select 1 from app.claim_delivery_line()) then raise exception 'Missing photos/code could send';end if;

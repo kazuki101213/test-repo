@@ -68,3 +68,16 @@ test('Dispatch stops after trade/assignee recheck, media failure or disabled set
   const f=fixture(options);assert.equal((await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'})).status,200);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
  }
 });
+
+test('Explicit initial notice sends text once with a distinct stable key; follow-up keeps images',async()=>{
+ const payload={itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2303b',sku:'2303b-EEII-20260927-0',title:'BDZ-FBW1000',supplierUrl:null,images:[],initialNotice:true,deliveryRetryKey:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799'};
+ const row={id:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',lease:'lease',eligible:true,recipient:'fixture',payload};
+ const f=fixture({rows:[row]});await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
+ const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);assert.equal(push.init.headers['X-Line-Retry-Key'],payload.deliveryRetryKey);
+ const messages=JSON.parse(push.init.body).messages;assert.equal(messages.length,1);assert(messages[0].text.includes('BDZ-FBW1000'));assert(messages[0].text.includes('準備でき次第'));assert(messages[0].text.includes('?itemId='+payload.itemId));
+ await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert.equal(f.state.calls.filter(x=>x.url.endsWith('/push')).at(-1).init.body,push.init.body);
+ assert.throws(()=>validation.shippingMessages({...payload,initialNotice:false}));
+ const followup=validation.shippingMessages({...payload,initialNotice:false,imageFollowup:true,images:['front','model','code'].map(x=>'https://fixture.invalid/'+x+'.png')});
+ assert.equal(followup.length,4);assert(followup[0].text.startsWith('発送用の写真・コードです。'));assert(!followup[0].text.includes('発送お願いします。'));
+ const cancelled=fixture({rows:[row],prepare:false});await cancelled.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert(!cancelled.state.calls.some(x=>x.url.endsWith('/push')));
+});
