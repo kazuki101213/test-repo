@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {sellerDefaults,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,SMALL_PACKAGES,canViewDeliveryAssignee} from '@bussan/shared';
+import {sellerDefaults,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,SMALL_PACKAGES,canViewDeliveryAssignee} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
 import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,requestListingResultCheck,performDatedInventoryAction} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
@@ -84,13 +84,13 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    {!amazonListing&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
    {amazonListing&&<button type="button" className="btn primary" disabled={disabled} onClick={()=>setConfirming('listing_complete')}>{task.sales_channel==='FBA'?'出品':'出品完了'}</button>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
-   <div className="seller-form"><label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{sellerShippingSizes(draft.shippingMethod).map(value=><option key={value}>{value}</option>)}</select></label><label>発送場所<select value={draft.dropoff} disabled={disabled} onChange={event=>change('dropoff',event.target.value)}><option value="">選択</option>{sellerShippingPlaces(draft.shippingMethod).map(value=><option key={value}>{value}</option>)}</select></label></div>
+   <div className="seller-form">{draft.category==='小物'&&<label>配送方法<select value={draft.shippingMethod} disabled={disabled} onChange={event=>{const shippingMethod=event.target.value;setDraft(current=>current?{...current,shippingMethod,size:sellerShippingSizes(shippingMethod).includes(current.size)?current.size:'',dropoff:sellerShippingPlaces(shippingMethod).includes(current.dropoff)?current.dropoff:''}:current);request.current=crypto.randomUUID();}}>{(task.sales_channel==='ヤフオク'?['おてがる配送（ヤマト運輸）','おてがる配送（日本郵便）']:['らくらくメルカリ便','ゆうゆうメルカリ便']).map(value=><option key={value}>{value}</option>)}</select></label>}<label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{sellerShippingSizes(draft.shippingMethod).map(value=><option key={value}>{value}</option>)}</select></label><label>発送場所<select value={draft.dropoff} disabled={disabled} onChange={event=>change('dropoff',event.target.value)}><option value="">選択</option>{sellerShippingPlaces(draft.shippingMethod).map(value=><option key={value}>{value}</option>)}</select></label></div>
    <LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>
    {draft.category==='小物'&&<div>{SMALL_PACKAGES.map(value=><p key={value.name}>{value.name}：{value.dimensions}</p>)}</div>}
    {/ゆうパケットポストmini/.test(draft.size)?<>
-    <button type="button" className="btn" disabled={disabled} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
+    <button type="button" className="btn" disabled={disabled||!!sellerShippingError(draft)} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
-   </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={disabled||!draft.size||!draft.dropoff} onClick={()=>void submit('shipping_code',tradePayload)}>発送コード表示</button></div>{qr&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
+   </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={disabled||!!sellerShippingError(draft)} onClick={()=>void submit('shipping_code',tradePayload)}>発送コード表示</button></div>{qr&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>
    {Array.isArray(latestMessages)&&latestMessages.map((entry,index)=><p key={index} className="seller-preview">{entry&&typeof entry==='object'&&typeof entry.body==='string'?entry.body:''}</p>)}
