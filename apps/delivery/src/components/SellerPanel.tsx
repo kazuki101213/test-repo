@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {sellerDefaults,sellerShippingDraft,sellerShippingPlaces,SMALL_PACKAGES,canViewDeliveryAssignee} from '@bussan/shared';
+import {sellerDefaults,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,SMALL_PACKAGES,canViewDeliveryAssignee} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
 import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,requestListingResultCheck,performDatedInventoryAction} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
@@ -84,7 +84,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    {!amazonListing&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
    {amazonListing&&<button type="button" className="btn primary" disabled={disabled} onClick={()=>setConfirming('listing_complete')}>{task.sales_channel==='FBA'?'出品':'出品完了'}</button>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
-   <div className="seller-form"><label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{['100','140',...SMALL_PACKAGES.map(value=>value.name)].map(value=><option key={value}>{value}</option>)}</select></label><label>発送場所<select value={draft.dropoff} disabled={disabled} onChange={event=>change('dropoff',event.target.value)}><option value="">選択</option>{sellerShippingPlaces(draft.shippingMethod).map(value=><option key={value}>{value}</option>)}</select></label></div>
+   <div className="seller-form"><label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{sellerShippingSizes(draft.shippingMethod).map(value=><option key={value}>{value}</option>)}</select></label><label>発送場所<select value={draft.dropoff} disabled={disabled} onChange={event=>change('dropoff',event.target.value)}><option value="">選択</option>{sellerShippingPlaces(draft.shippingMethod).map(value=><option key={value}>{value}</option>)}</select></label></div>
    <LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>
    {draft.category==='小物'&&<div>{SMALL_PACKAGES.map(value=><p key={value.name}>{value.name}：{value.dimensions}</p>)}</div>}
    {/ゆうパケットポストmini/.test(draft.size)?<>

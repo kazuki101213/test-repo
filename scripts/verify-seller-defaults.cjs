@@ -44,3 +44,10 @@ for(const dropoff of ['ローソン','郵便局']){
  assert.equal(draft.dropoff,dropoff);
 }
 console.log('Saved postal shipping methods cannot inherit Yamato/Seven drop-offs');
+// Both carrier directions must reject cross-carrier packages and stores.
+for(const [method,size,place] of [['らくらくメルカリ便','宅急便コンパクト','セブンイレブン'],['ゆうゆうメルカリ便','ゆうパケットプラス','ローソン'],['ゆうゆうメルカリ便','ゆうパケットプラス','郵便局']]) assert.equal(sellerExports.sellerShippingError({shippingMethod:method,size,dropoff:place}),'');
+for(const [method,size,place] of [['らくらくメルカリ便','ゆうパケットプラス','セブンイレブン'],['ゆうゆうメルカリ便','宅急便コンパクト','ローソン'],['らくらくメルカリ便','宅急便コンパクト','ローソン'],['ゆうゆうメルカリ便','ゆうパケットプラス','セブンイレブン']]) assert.notEqual(sellerExports.sellerShippingError({shippingMethod:method,size,dropoff:place}),'');
+for(const [method,size] of [['らくらくメルカリ便','ゆうパケットプラス'],['ゆうゆうメルカリ便','宅急便コンパクト']]) assert.equal(sellerExports.sellerShippingDraft(sellerExports.sellerDefaults({sales_channel:'メルカリ'}),{shippingMethod:method,size}).size,'');
+assert(!sellerExports.sellerShippingSizes('らくらくメルカリ便').includes('ゆうパケットプラス'));
+assert(!sellerExports.sellerShippingSizes('ゆうゆうメルカリ便').includes('宅急便コンパクト'));
+console.log('Shipping compatibility: both carrier directions, stores, and invalid saved package require reselection');

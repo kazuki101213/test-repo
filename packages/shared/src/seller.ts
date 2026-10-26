@@ -29,7 +29,17 @@ export function sellerDefaults(task:DeliveryTask):SellerDraft{
 export function sellerShippingPlaces(method:string):string[]{
  return /日本郵便|ゆうゆう/.test(method)?['ローソン','郵便局']:['ヤマト営業所','セブンイレブン'];
 }
+export function sellerShippingSizes(method:string):string[]{
+ const postal=/日本郵便|ゆうゆう/.test(method);
+ return ['100','140',...SMALL_PACKAGES.filter(value=>postal?value.name.startsWith('ゆう'):value.name==='宅急便コンパクト').map(value=>value.name)];
+}
+export function sellerShippingError(draft:{shippingMethod?:unknown;size?:unknown;dropoff?:unknown}):string{
+ if(typeof draft.shippingMethod!=='string'||!draft.shippingMethod)return '配送方法を確認してください';
+ if(typeof draft.size!=='string'||!sellerShippingSizes(draft.shippingMethod).includes(draft.size))return '配送方法に対応する配送サイズを選択してください';
+ if(typeof draft.dropoff!=='string'||!sellerShippingPlaces(draft.shippingMethod).includes(draft.dropoff))return '配送方法に対応する発送場所を選択してください';
+ return '';
+}
 export function sellerShippingDraft(defaults:SellerDraft,saved:Partial<SellerDraft>|null={}):SellerDraft{
  const draft={...defaults,...(saved??{})},places=sellerShippingPlaces(draft.shippingMethod);
- return {...draft,dropoff:places.includes(draft.dropoff)?draft.dropoff:places.includes(defaults.dropoff)?defaults.dropoff:places[0]!};
+ return {...draft,size:sellerShippingSizes(draft.shippingMethod).includes(draft.size)?draft.size:'',dropoff:places.includes(draft.dropoff)?draft.dropoff:places.includes(defaults.dropoff)?defaults.dropoff:places[0]!};
 }
