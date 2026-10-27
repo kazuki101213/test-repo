@@ -242,7 +242,7 @@ export function selectProfileRequest(request,profileId){
  if(!/^[-0-9a-f]{36}$/i.test(request.id||'')||!Array.isArray(request.requests)||request.requests.length<1||request.requests.length>3)return null;
  const owners=new Set();
  for(const child of request.requests){
-  if(!child||!['seller-readonly-structure','seller-feedback-repair','package-update'].includes(child.kind))return null;
+  if(!child||!['seller-readonly-structure','seller-feedback-repair','seller-sale-repair','package-update'].includes(child.kind))return null;
   const owner=child.profileId||(Array.isArray(child.profiles)&&child.profiles.length===1?child.profiles[0]:null);
   if(!PROFILE_ACCOUNTS[owner]||owners.has(owner)||child.profileId&&child.profiles&&!(child.profiles.length===1&&child.profiles[0]===owner))return null;
   owners.add(owner);

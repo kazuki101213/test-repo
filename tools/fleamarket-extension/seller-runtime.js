@@ -1,3 +1,4 @@
+import {validSaleRepairTargets,repairCompletedTargetSales} from './seller-target-sale-repair.js';
 import {mercariPricePage,mercariPriceResult} from './daily-price.js';
 import {yahooReceiptPage} from './yahoo-receipt.js';
 import {readBuyerTodoState} from './todo-audit.js';
@@ -282,10 +283,11 @@ export async function runSellerSaleRepair(dependencies){
  if(!Number.isFinite(issued)||!Number.isFinite(expires)||issued>now||expires<=now||expires-issued>15*60000)return false;
  if(settings.mode==='diagnostic'||records.job||records.authProblem||!records.session?.access_token||!settings.accounts.some(a=>a.enabled&&a.id===request.accountId))return false;
  if(!['tracking',...(settings.purchaseImportEnabled?['purchases']:[])].every(kind=>records.scheduledRuns?.[kind]?.day===day&&records.lastRun?.[kind]?.day===day))return false;
+ const repairAccount=settings.accounts.find(a=>a.enabled&&a.id===request.accountId);if(request.targets!=null&&!validSaleRepairTargets(request,repairAccount))return false;
  const consumed=(await storage.get('sellerRepairConsumed')).sellerRepairConsumed||[];
  if(consumed.includes(request.id))return false;
  await storage.set({sellerRepairConsumed:[...consumed,request.id].slice(-32)});
- await sellerDaily({...dependencies,repair:{id:request.id,accountId:request.accountId}});
+ if(request.targets)await repairCompletedTargetSales({...dependencies,request,account:repairAccount});else await sellerDaily({...dependencies,repair:{id:request.id,accountId:request.accountId}});
  return true;
 }
 /** Read an existing listing without opening or submitting a listing form. */
