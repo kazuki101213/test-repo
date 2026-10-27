@@ -62,8 +62,8 @@ export async function fetchCarrierReceipts({receipts,parse,fetchPage=fetch,pace=
  for(const carrier of Object.keys(origins)){
   const rows=receipts.filter(r=>r.carrier===carrier&&shippingReceiptValid(r));
   for(let start=0;start<rows.length;start+=10){const group=rows.slice(start,start+10),params=new URLSearchParams();
-   group.forEach((r,i)=>params.set(carrier==='yamato'?'number'+String(i+1).padStart(2,'0'):'requestNo'+(i+1),r.tracking_number));
-   const base=origins[carrier]+(carrier==='yamato'?'/cgi-bin/tneko':'/services/srv/search');if(carrier==='japanpost')params.set('locale','ja');
+   group.forEach((r,i)=>params.set(carrier==='yamato'?'number'+String(i+1).padStart(2,'0'):'reqCodeNo'+(i+1),r.tracking_number));
+   const base=origins[carrier]+(carrier==='yamato'?'/cgi-bin/tneko':'/services/srv/search/direct');if(carrier==='japanpost')params.set('locale','ja');
    const response=await pace(()=>fetchPage(carrier==='yamato'?base:base+'?'+params,{method:carrier==='yamato'?'POST':'GET',...(carrier==='yamato'?{body:params}:{}),credentials:'omit',redirect:'error',cache:'no-store',signal:AbortSignal.timeout(20000)}));
    if(!response.ok)throw Error('配送会社の追跡情報を取得できません');
    const bytes=await response.arrayBuffer();if(bytes.byteLength>2500000)throw Error('追跡応答の容量を確認してください');
