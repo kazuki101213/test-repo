@@ -81,14 +81,14 @@ export async function processSellerFeedback({account,rows,session,rpc,storage,lo
     await go(target);
    }
    const args={itemId:row.external_id,serial:plan.sku.split('-')[0].toLowerCase()};
-   const ready=await session.feedback({...args,action:'inspect'});if(ready.alreadyCompleted){checks[id].state='skipped';continue;}if(!ready.ready){if(ready.deferred)await log('warning','購入者評価を商品単位で保留しました。他の商品は継続します',{account:account.label,itemId:row.external_id,sku:plan.sku,reason:ready.reason});continue;}
+   const ready=await session.feedback({...args,action:'inspect'});if(ready.alreadyCompleted){checks[id].state='skipped';checks[id].alreadyCompleted=true;continue;}if(!ready.ready){if(ready.deferred)await log('warning','購入者評価を商品単位で保留しました。他の商品は継続します',{account:account.label,itemId:row.external_id,sku:plan.sku,reason:ready.reason});continue;}
    const reservation=await call('reserve');if(!reservation?.claimed)continue;token=reservation.token;
    if(account.site==='mercari'){
     const prepared=await session.feedback({...args,action:'prepare'});if(!prepared.prepared)throw Error('評価内容を準備できません');
     await call('begin');begun=true;checks[id].state='unknown';await storage.set({[key]:checks});
     const sent=await session.feedback({...args,action:'submit'});if(!sent.submitRequested)throw Error('評価送信を確認できません');
     await session.loaded();await session.feedback({...args,action:'confirm'});await session.loaded();const result=await session.feedback({...args,action:'result'});if(!result.success)throw Error('評価完了を確認できません');
-   }else await session.feedbackWorkflow({...args,beforePublish:async()=>{await call('begin');begun=true;checks[id].state='unknown';await storage.set({[key]:checks});}});
+   }else{const result=await session.feedbackWorkflow({...args,beforePublish:async()=>{await call('begin');begun=true;checks[id].state='unknown';await storage.set({[key]:checks});}});if(result?.alreadyCompleted){if(begun)throw Error('Unexpected completion after publication began');await call('skip','Native seller rating already completed; not resent');checks[id].state='skipped';checks[id].alreadyCompleted=true;continue;}}
    await call('complete','良い評価の完了表示を実画面で確認');checks[id].state='succeeded';rated++;await log('info','購入者への良い評価が完了しました',{account:account.label,itemId:row.external_id});
   }catch(e){errors++;checks[id].state=begun?'unknown':'checked';if(token){try{await call(begun?'unknown':'skip','自動再送停止：'+e.message.slice(0,200));checks[id].state=begun?'unknown':'skipped';}catch{checks[id].state='unknown';}}
    if(begun&&account.site==='mercari'){try{await storage.set({sellerFeedbackIssue:{itemId:row.external_id,accountId:account.id,structure:await session.feedback({itemId:row.external_id,serial:plan.sku.split('-')[0].toLowerCase(),action:'structure'})}});session.preserveForReview?.();}catch{}}
