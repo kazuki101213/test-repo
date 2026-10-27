@@ -75,6 +75,11 @@ export async function selectMercariListingChoice({kind,value}){
  }throw Error('選択肢を1件に確認できません：'+kind);
  }catch(error){return {__error:error.message};}
 }
+export function readListingChoiceEvidence(){
+ if(location.hostname!=='jp.mercari.com'||!/^\/sell\//.test(location.pathname))return null;
+ const visible=e=>!!e.getClientRects().length, norm=s=>String(s||'').replace(/\s+/g,' ').trim();
+ return {path:location.pathname,headings:[...document.querySelectorAll('h1,h2,h3')].filter(visible).map(e=>norm(e.innerText)),choices:[...document.querySelectorAll('a,button,[role=option],[role=button]')].filter(visible).map(e=>({tag:e.tagName,role:e.getAttribute('role'),text:norm(e.innerText).slice(0,160),path:e.tagName==='A'?new URL(e.href).pathname:undefined})).filter(e=>e.text).slice(0,100)};
+}
 export function mercariListingChoiceSelected({kind,value}){
  if(location.hostname!=='jp.mercari.com'||location.pathname!=='/sell/create')return false;const path=({category:'/sell/categories',condition:'/sell/conditions',shipping:'/sell/shipping_methods'})[kind];if(!path)return false;
  const links=[...document.querySelectorAll('a')].filter(e=>e.getClientRects().length&&e.origin===location.origin&&e.pathname===path);if(links.length!==1)return false;
@@ -317,10 +322,12 @@ export async function checkExistingListing(session,job,account){
  const result=await session.operation(job,'listing_result');if(result.external_id!==row.external_id)throw Error('出品済み商品の照合結果が一致しません');return result;
 }
 /** A claimed write is never reclaimed after failure, suspension, or an uncertain outcome. */
-export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyAutomaticLine=false}){
+export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyAutomaticLine=false,listingBatchId=null}){
  const accounts=sellerAccounts(settings);if(settings.mode==='diagnostic'||!accounts.length)return;
  const queue=await rpc('extension_seller_queue',{p_account_ids:accounts.map(a=>a.id)});if(!Array.isArray(queue)||!queue.length)return;
- const job=onlyAutomaticLine?queue.find(value=>value.kind==='shipping_code'&&value.payload?.automatic_line):(queue.find(value=>value.kind==='shipping_code')||queue[0]);if(!job)return;
+ if(listingBatchId&&!/^[-0-9a-f]{36}$/i.test(listingBatchId))return;
+ if(listingBatchId&&queue.some(value=>value.kind==='shipping_code'))return;
+ const job=listingBatchId?queue.find(value=>value.kind==='listing'&&value.payload?.listing_batch_id===listingBatchId):onlyAutomaticLine?queue.find(value=>value.kind==='shipping_code'&&value.payload?.automatic_line):(queue.find(value=>value.kind==='shipping_code')||queue[0]);if(!job)return;
  const account=accounts.find(value=>value.id===job.account_id);if(!account)return;
  if(job.read_only_listing_check){
   if(job.kind!=='listing'||!await rpc('extension_claim_listing_result_check',{p_id:job.id,p_account_id:account.id}))return;
@@ -373,6 +380,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
   }
   status='succeeded';
  }catch(error){status=error.existingListing||mutating&&!error.stoppedBeforePublish||job.kind==='shipping_code'&&job.payload?.read_only_code_recovery===true?'uncertain':'failed';result={note:error.message,phase,...(confirmationTrace.length?{confirmation_trace:confirmationTrace}:{}),...(error.stoppedBeforePublish?{stopped_before_publish:true,confirmation_evidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shipping_evidence:error.shippingEvidence}:{})};
+  if(job.kind==='listing'&&phase==='listing_choices'&&session?.listingChoiceEvidence){try{result.choice_evidence=await session.listingChoiceEvidence();}catch{}}
   if(job.kind==='shipping_code'&&session?.structure){try{const view=await session.structure();result.shipping_structure={host:view.host,path:view.path,headings:view.headings,codeElements:view.shippingCodeElements,dialogs:view.shippingDialogs,validationErrors:view.validationErrors,invalidFields:view.invalidFields,controls:view.controls?.filter(c=>['INPUT','SELECT'].includes(c.tag)||/品名|商品名|配送|発送|サイズ|コード|ローソン|郵便局/.test(c.label||'')).map(({tag,type,name,id,label,options,disabled})=>({tag,type,name,id,label,options,disabled}))};}catch{}}
   if(error.stoppedBeforePublish&&session?.structure){try{const view=await session.structure();result.confirmation_structure={headings:view.headings,validationErrors:view.validationErrors,invalidFields:view.invalidFields,notices:view.notices,auctionOptionLabels:view.auctionOptionLabels,fixedAuctionSettings:view.fixedAuctionSettings,publicSettings:view.publicSettings,controls:view.controls?.filter(c=>/自動|確認|出品|設定|エラー/.test(c.label||''))};}catch{}}
   // Navigation can destroy the submit frame. Read its settled result, never submit twice.
@@ -390,7 +398,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
  }
  finally{await session?.close();}
  await rpc('extension_finish_seller_operation',{p_id:job.id,p_status:status,p_result:result});
- return {processed:true,id:job.id,status,kind:job.kind,confirmedShippingPending:job.kind==='ship_notice'&&job.payload?.posted===true&&queue.some(other=>other.id!==job.id&&other.kind==='ship_notice'&&other.account_id===account.id&&other.payload?.posted===true)};
+ return {processed:true,id:job.id,status,kind:job.kind,listingBatchId:job.kind==='listing'?job.payload?.listing_batch_id:undefined,listingBatchPending:job.kind==='listing'&&queue.some(other=>other.id!==job.id&&other.kind==='listing'&&other.account_id===account.id&&other.payload?.listing_batch_id===job.payload?.listing_batch_id),confirmedShippingPending:job.kind==='ship_notice'&&job.payload?.posted===true&&queue.some(other=>other.id!==job.id&&other.kind==='ship_notice'&&other.account_id===account.id&&other.payload?.posted===true)};
 }
 /** Read-only list expansion. No retry, form submission, or business action. */
 export async function advanceSellerList(){
@@ -450,6 +458,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
  return {go,loaded,refreshNotice:async job=>{const current=await tabs.get(borrowed.id);if(account.site!=='mercari'||current.url!==last||new URL(last).pathname!=='/transaction/'+job.external_id)throw Error('発送通知結果の対象画面が変更されたため停止しました');await paceNavigation(async()=>{const check=await tabs.get(borrowed.id);if(check.url!==last)throw Error('画面が変更されたため再読み込みしません');await tabs.reload(borrowed.id);});await loaded();},price:args=>execute(mercariPricePage,args),priceResult:args=>execute(mercariPriceResult,args),buyerListEvidence:()=>execute(readBuyerListDateEvidence,null),buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:args=>execute(readSellerStructure,args||null),
+  listingChoiceEvidence:()=>execute(readListingChoiceEvidence,null),
   feedback:async args=>{if(account.site==='mercari'&&args.action==='inspect')await execute(readMercariTransactionPage,{id:args.itemId});return execute(account.site==='mercari'?mercariSellerFeedback:yahooSellerFeedback,args);},
   feedbackGo:async url=>{if(last!==url)await go(url);},
   preserveForReview:()=>{preserveFeedback=true;},

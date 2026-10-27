@@ -33,3 +33,16 @@ export async function drainConfirmedShippingQueue(run){
  for(let n=0;n<3;n++){last=await run();if(!last?.processed||last.status!=='succeeded'||last.kind!=='ship_notice'||last.confirmedShippingPending!==true)break;}
  return last;
 }
+
+// Continue only an explicit listing batch already requested by the user.
+// Idle polling stays unchanged; any failure or uncertain publish ends this run.
+export async function drainRequestedListingBatch(run){
+ let batch=null,last;
+ for(let n=0;n<12;n++){
+  last=await run(batch);
+  if(!last?.processed||last.status!=='succeeded'||last.kind!=='listing'||!/^[-0-9a-f]{36}$/i.test(last.listingBatchId||'')||last.listingBatchPending!==true)break;
+  if(batch&&batch!==last.listingBatchId)break;
+  batch=last.listingBatchId;
+ }
+ return last;
+}
