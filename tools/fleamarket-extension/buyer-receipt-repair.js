@@ -10,5 +10,5 @@ export async function runBuyerReceiptRepair({request,profileId,storage,start,now
  await storage.set({buyerReceiptRepairConsumed:[...done,request.id].slice(-32)});
  await start('receipt',true,[request.accountId],request.id);
  const {job}=await storage.get('job');if(job?.id!==request.id||job.kind!=='receipt')throw Error('受取評価補修の開始状態を確認できません');
- job.receiptTargetIds=[...ids];await storage.set({job});return true;
+ job.receiptTargetIds=[...ids];job.urls=ids.map(id=>'https://contact.auctions.yahoo.co.jp/buyer/top?aid='+id);job.index=0;job.stage='detail';await storage.set({job});return true;
 }

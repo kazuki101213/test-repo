@@ -21,3 +21,5 @@ test('carrier lookup batches ten, omits cookies, never retries a failed request'
  assert.deepEqual(sizes,[10,1]);assert.equal(count,2);assert(methods.every(v=>v.credentials==='omit'&&v.redirect==='error'));
  count=0;await assert.rejects(fetchCarrierReceipts({receipts:[receipt],pace:fn=>fn(),parse:async()=>[],fetchPage:async()=>{count++;throw Error('offline');}}));assert.equal(count,1);
 });
+
+test('Japan Post uses the verified direct tracking endpoint with reqCodeNo fields',async()=>{let seen;await fetchCarrierReceipts({receipts:[{carrier:'japanpost',tracking_number:'999999999999'}],pace:fn=>fn(),parse:async()=>[],fetchPage:async(url,args)=>{seen=new URL(url);assert.equal(args.credentials,'omit');return {ok:true,headers:new Headers({'content-type':'text/html;charset=utf-8'}),arrayBuffer:async()=>new TextEncoder().encode('<table></table>').buffer};}});assert.equal(seen.origin,'https://trackings.post.japanpost.jp');assert.equal(seen.pathname,'/services/srv/search/direct');assert.equal(seen.searchParams.get('reqCodeNo1'),'999999999999');assert.equal(seen.searchParams.has('requestNo1'),false);});

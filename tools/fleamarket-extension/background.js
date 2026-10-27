@@ -1,3 +1,4 @@
+import {deferredReceiptItem} from './receipt-item-errors.js';
 import {runDailyPriceReduction,ensurePriceAlarm,PRICE_POLICY} from './daily-price.js';
 import {processLineShipping} from './line-shipping.js';
 import {runSellerFeedbackRepair} from './seller-feedback-repair.js';
@@ -220,6 +221,11 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
   }catch(e){
     job.counts.errors++;if(job.kind==='purchases'&&job.tabId)await capturePage(job,a,'purchase-error');await log('error',e.message,{account:a.label});
     if(job.stage==='sending'){await recoverSend(job,a);return;}
+    const deferredId=deferredReceiptItem(job,a,e);if(deferredId){
+      await task(a,'画面確認待ち','receipt','商品ID候補が複数あるため、この取引だけ受取評価を保留しました。他の取引は継続します',deferredId);
+      await log('warning','受取評価を商品単位で保留しました。他の取引は継続します',{account:a.label,itemId:deferredId});
+      job.index++;await STORE.set({job});return;
+    }
     if(job.settings.mode!=='diagnostic'){const status=/画面確認待ち/.test(e.message)?'画面確認待ち':/追加承認待ち/.test(e.message)?'追加承認待ち':/ログイン切れ/.test(e.message)?'ログイン切れ':/名前|アカウント|登録内容と一致/.test(e.message)?'名前不一致':'画面確認待ち';await task(a,status,job.kind,'サイト='+SITES[a.site].name+'; 名前='+a.identity.text+'; '+e.message);}
     // 認証・画面異常があるアカウントはこの回の巡回を停止。利用者用にタブを残す。
     job.tabId=null;await nextAccount(job);
