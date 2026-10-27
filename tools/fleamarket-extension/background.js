@@ -11,7 +11,7 @@ import {runPurchaseRefresh} from './purchase-refresh.js';
 import {yahooEvaluationFlow} from './yahoo-workflow.js';
 import {yahooRatingPage} from './yahoo-rating.js';
 import {yahooReceiptPage} from './yahoo-receipt.js';
-import {runSellerReadOnlyInspection} from './seller-inspection.js?v=0.1.143';
+import {runSellerReadOnlyInspection,selectProfileRequest} from './seller-inspection.js?v=0.1.143';
 import {supplierQueuedOperations} from './supplier-runtime.js';
 import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair} from './seller-runtime.js?v=0.1.143';
 import {readSellerInventory} from './sales-status.js';
@@ -425,7 +425,7 @@ async function runSellerWork({patrol=false,checkQueues=true}={}){
   if(await runDailyPriceReduction({...dependencies,records,profileId:records.diagnosticInstance,continueWork:async active=>{const old=await chrome.alarms.get('fm:price-work');if(active&&!old)await chrome.alarms.create('fm:price-work',{when:Date.now()+60000});if(!active&&old)await chrome.alarms.clear('fm:price-work');},fetchInspection:async()=>{try{const response=await fetch(chrome.runtime.getURL('price-inspection-request.json'),{cache:'no-store'});return response.ok?await response.json():null;}catch{return null;}}}))return;
   if(checkQueues){
    // The three diagnostic consumers share one local read per idle check.
-   let requestRead;const fetchRequest=()=>requestRead??=(async()=>{try{const response=await fetch(chrome.runtime.getURL('seller-inspection-request.json'),{cache:'no-store'});return response.ok?await response.json():null;}catch{return null;}})();
+   let requestRead;const fetchRequest=()=>requestRead??=(async()=>{try{const response=await fetch(chrome.runtime.getURL('seller-inspection-request.json'),{cache:'no-store'});return response.ok?selectProfileRequest(await response.json(),records.diagnosticInstance):null;}catch{return null;}})();
    if(await checkRequestedPackageUpdate({request:await fetchRequest(),profileId:records.diagnosticInstance,runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy,record:log}))return;
    if(await runSellerReadOnlyInspection({...dependencies,profileId:records.diagnosticInstance,fetchRequest,reportDiagnostic:()=>navigationTabs.create({url:chrome.runtime.getURL('report.html'),active:false})}))return;
    if(await runSellerSaleRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;

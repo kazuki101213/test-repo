@@ -235,3 +235,17 @@ export function readBuyerListDateEvidence(){
  const visible=e=>e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden',norm=s=>(s||'').replace(/\s+/g,' ').trim();
  return [...document.querySelectorAll('main li')].filter(visible).slice(0,100).map(row=>({ids:[...new Set([...row.querySelectorAll('a[href]')].flatMap(e=>{try{const u=new URL(e.href);return u.hostname==='auctions.yahoo.co.jp'?u.pathname.match(/^\/jp\/auction\/([a-z]?[0-9]{8,14})$/i)?.slice(1)||[]:[];}catch{return [];}}))],dates:[...new Set([...row.querySelectorAll('*')].filter(e=>visible(e)&&!e.children.length).map(e=>norm(e.innerText)).filter(t=>/^(?:20[0-9]{2}[年/.-])?[0-9]{1,2}[月/.-][0-9]{1,2}(?:日)?(?:\s+[0-9]{1,2}[:：][0-9]{2})?(?:終了)?$/.test(t)))],times:[...row.querySelectorAll('time[datetime]')].map(e=>e.getAttribute('datetime'))})).filter(r=>r.ids.length);
 }
+
+/** Route independent requests to their exact existing profile; child validators remain authoritative. */
+export function selectProfileRequest(request,profileId){
+ if(request?.kind!=='profile-batch')return request;
+ if(!/^[-0-9a-f]{36}$/i.test(request.id||'')||!Array.isArray(request.requests)||request.requests.length<1||request.requests.length>3)return null;
+ const owners=new Set();
+ for(const child of request.requests){
+  if(!child||!['seller-readonly-structure','seller-feedback-repair','package-update'].includes(child.kind))return null;
+  const owner=child.profileId||(Array.isArray(child.profiles)&&child.profiles.length===1?child.profiles[0]:null);
+  if(!PROFILE_ACCOUNTS[owner]||owners.has(owner)||child.profileId&&child.profiles&&!(child.profiles.length===1&&child.profiles[0]===owner))return null;
+  owners.add(owner);
+ }
+ return request.requests.find(child=>(child.profileId||child.profiles?.[0])===profileId)||null;
+}
