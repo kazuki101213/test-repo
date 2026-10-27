@@ -44,7 +44,7 @@ function templateBody(kind: TaskKind, row: MalfunctionTask): string {
   const header = '【' + productSerial(row.sku, row.lot_seq) + '】【' + (row.marketplace_item_id || '商品ID未登録') + '】【' + model + '】';
   if (kind === '仕入先確認') return header + '\n取引メッセージより仕入先へ連絡お願いします。';
   if (kind === 'ヤフオク その他') return header + '\nヤフオク販売お願いします。\n【写真に関して】\n付属品はすべてつけてください。\n撮影ボックスではなくて、床やテーブル等で撮ってください。\n電源が確認できるものであれば、確認できるような写真お願いします。';
-  return header + '\nヤフオク販売お願いします。\nリモコンやB-CASカードや電源ケーブルは予備としてください。\n【写真に関して】\n付属品が写っていれば付属させてください。\n撮影ボックスで撮っていますが、床やテーブル等で撮ってください。\nランプや表示は写真の通りお願いします。\nトレイは開かない場合は開かなくて大丈夫です。\n写真は以下の通りです。';
+  return header + '\nヤフオク販売お願いします。\nリモコンやB-CASカードや電源ケーブルは予備としてください。\n【写真に関して】\n見本の写真に付属品が写っていれば付属させてください。\n撮影ボックスで撮っていますが、床やテーブル等で撮ってください。\nランプや表示は写真の通りお願いします。\nトレイは開かない場合は開かなくて大丈夫です。\n写真は以下の通りです。';
 }
 
 async function prepareImage(file: File): Promise<File> {
