@@ -58,14 +58,14 @@ export async function processSellerFeedback({account,rows,session,rpc,storage,lo
  const pending=rows.filter(r=>r.feedback_pending===true&&!r.attention&&['取引中','販売済'].includes(r.status));
  if(!pending.length)return {rated:0,errors:0};
  const key='sellerFeedbackChecks',saved=(await storage.get(key))[key]||{},checks={...saved},day=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(new Date(now));
- const eligible=pending.filter(r=>!checks[account.id+':'+r.external_id]||(checks[account.id+':'+r.external_id].day!==day||retryUnsent&&checks[account.id+':'+r.external_id].state==='checked')&&!['succeeded','unknown','skipped'].includes(checks[account.id+':'+r.external_id].state)).slice(0,40);
+ const eligible=pending.filter(r=>{const check=checks[account.id+':'+r.external_id];if(!check)return true;if(['succeeded','unknown','skipped'].includes(check.state))return false;const last=Date.parse(check.checkedAt||'');return check.day!==day||check.state==='checked'&&(retryUnsent||!Number.isFinite(last)||now-last>=240*60000);}).slice(0,40);
  if(!eligible.length)return {rated:0,errors:0};
  const plans=await rpc('seller_feedback_candidates',{p_account_id:account.id,p_ids:eligible.map(r=>r.external_id)});
  if(!Array.isArray(plans))throw Error('購入者評価の在庫照合結果が不正です');
  let rated=0,errors=0;
  for(const row of eligible){
   const id=account.id+':'+row.external_id,plan=plans.find(p=>p.external_id===row.external_id);let token=null,begun=false;
-  checks[id]={day,state:plan?.state||'checked'};await storage.set({[key]:checks});
+  checks[id]={day,checkedAt:new Date(now).toISOString(),state:plan?.state||'checked'};await storage.set({[key]:checks});
   if(!plan||plan.state)continue;
   const call=(action,note='')=>rpc('seller_feedback_record',{p_account_id:account.id,p_external_id:row.external_id,p_trade_key:plan.trade_key,p_action:action,p_token:token,p_note:note});
   try{
