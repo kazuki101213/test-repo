@@ -21,7 +21,7 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
   '動作不良':['comments','messages','supplier_return_complete','return_impossible','work_complete','report_cancel'],
   'Amazon補填申請中':['compensation_complete','work_complete'],
   '出品中':['packingPhotos','listing_cancel'],
-  '商品登録前':['photos','listing','listing_complete','inspection_cancel','yahoo_instruction_cancel'],
+  '商品登録前':['photos','listing','listing_complete','inspection_cancel','yahoo_instruction_cancel','comments'],
   '取引中':['shipping','messages','trade_cancel','resell'],
   '返品処理':['supplier_return_cancel'],
  };
