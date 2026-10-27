@@ -334,3 +334,7 @@
  .layout .daily-sales-range button[title] { width:20px; }
  .layout .daily-sales .daily-sales-range > .btn { font-size:11px; padding-inline:2px; }
 }
+@media screen {
+ .layout .toolbar.inventory-edit-actions { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; gap:8px; }
+ .layout .inventory-edit-actions > .btn { flex:0 0 auto; width:auto; }
+}
