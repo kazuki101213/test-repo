@@ -243,7 +243,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
     if(feedback.errors)throw Error('購入者評価の結果確認が必要なため、このアカウントの販売反映を保留しました');
     feedbackChecks=(await storage.get('sellerFeedbackChecks')).sellerFeedbackChecks||{};
     if(account.site==='mercari')for(const row of feedbackRows.values()){
-     if(feedbackChecks[account.id+':'+row.external_id]?.state==='succeeded'&&!pending.some(v=>v.row.external_id===row.external_id))pending.push({row,action:'detail'});
+     if((feedbackChecks[account.id+':'+row.external_id]?.state==='succeeded'||feedbackChecks[account.id+':'+row.external_id]?.alreadyCompleted===true)&&!pending.some(v=>v.row.external_id===row.external_id))pending.push({row,action:'detail'});
     }
    }
    // Details are opened after harvesting lists so returning from a detail cannot reset infinite-scroll progress.
@@ -252,7 +252,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
     // Do not apply a transaction row collected before a successful evaluation.
     const feedbackState=feedbackChecks[account.id+':'+row.external_id]?.state;
     if(feedbackState==='unknown')continue;
-    if(account.site==='mercari'&&feedbackState==='succeeded'&&row.status==='取引中'){
+    if(account.site==='mercari'&&(feedbackState==='succeeded'||feedbackChecks[account.id+':'+row.external_id]?.alreadyCompleted===true)&&row.status==='取引中'){
      row={...row,status:'販売済'};action='detail';
     }
     try{
@@ -465,7 +465,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   feedbackGo:async url=>{if(last!==url)await go(url);},
   preserveForReview:()=>{preserveFeedback=true;},
   feedbackStructure:async({itemId,url})=>{await go(url);return execute(yahooSellerRating,{itemId,action:'inspect'});},
-  feedbackWorkflow:async args=>{const {beforePublish,...pageArgs}=args;const proof=await execute(yahooSellerFeedback,pageArgs);if(!proof.ready)throw Error('落札者評価の受取完了を確認できません');await go(proof.ratingUrl);const prepared=await execute(yahooSellerRating,{...pageArgs,action:'prepare'});if(!prepared.prepared)throw Error('新規の落札者評価ではありません');await pause(350);await loaded();const check=await execute(yahooSellerRating,{...pageArgs,action:'preflight',comment:prepared.comment});if(!check.ready)throw Error('評価内容を確認できません');await beforePublish();const notBefore=Date.now(),sent=await execute(yahooSellerRating,{...pageArgs,beforePublish:undefined,action:'submit',comment:prepared.comment});if(!sent.submitRequested)throw Error('評価送信を確認できません');await pause(350);await loaded();await go(proof.ratingUrl);const result=await execute(yahooSellerRating,{...pageArgs,beforePublish:undefined,action:'verify',comment:prepared.comment,notBefore});if(!result.success)throw Error('公開済み評価を確認できません');return result;},
+  feedbackWorkflow:async args=>{const {beforePublish,...pageArgs}=args;const proof=await execute(yahooSellerFeedback,pageArgs);if(!proof.ready)throw Error('落札者評価の受取完了を確認できません');await go(proof.ratingUrl);const prepared=await execute(yahooSellerRating,{...pageArgs,action:'prepare'});if(prepared.alreadyCompleted)return {alreadyCompleted:true};if(!prepared.prepared)throw Error('新規の落札者評価ではありません');await pause(350);await loaded();const check=await execute(yahooSellerRating,{...pageArgs,action:'preflight',comment:prepared.comment});if(!check.ready)throw Error('評価内容を確認できません');await beforePublish();const notBefore=Date.now(),sent=await execute(yahooSellerRating,{...pageArgs,beforePublish:undefined,action:'submit',comment:prepared.comment});if(!sent.submitRequested)throw Error('評価送信を確認できません');await pause(350);await loaded();await go(proof.ratingUrl);const result=await execute(yahooSellerRating,{...pageArgs,beforePublish:undefined,action:'verify',comment:prepared.comment,notBefore});if(!result.success)throw Error('公開済み評価を確認できません');return result;},
   inspectAuctionOptions:async()=>{const selected=await execute(function(){if(location.hostname!=='auctions.yahoo.co.jp'||!/\/show\/submit$/.test(location.pathname))throw Error('出品入力画面ではありません');const radio=document.querySelector('input[name="salesmode"][value="auction"]');if(!radio||radio.disabled)throw Error('オークション形式を確認できません');if(!radio.checked)radio.click();return radio.checked;},null);if(!selected)throw Error('オークション形式を確認できません');await pause(500);return true;},
   categoryFormFromResults:categoryForm,
   prepareCategory:async target=>{

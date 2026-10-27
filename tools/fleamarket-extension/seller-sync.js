@@ -99,6 +99,8 @@ export async function readSellerPage({site,phase=null,reportErrors=false}={}){
   // Yahoo's settlement list may only say チャージ完了. This is a candidate,
   // never proof of receipt: the actual seller navigator must confirm it below.
   if(site==='auctions'&&status==='販売済'&&!row.attention)row.feedback_pending=true;
+  // A native seller contact link makes this a preflight candidate, never evidence of receipt.
+  if(site==='auctions'&&status==='取引中'&&wonClosed&&sellerContact&&!row.attention)row.feedback_pending=true;
   const previous=rows.get(external_id);if(previous&&previous.status!==status)throw Error('同じ商品IDに異なる状態があります');rows.set(external_id,row);
  }
  return {itemCount,itemIds:[...itemIds],rows:[...rows.values()],navigation,active:active||null,text,empty:/終了した商品はありません|お取り扱いはありません|出品中の商品(?:は|が)(?:ありません|ございません)|出品した商品がありません|該当する商品はありません|取引中の商品はありません|売却済みの商品はありません|該当する明細がありません/.test(text)};
