@@ -334,3 +334,14 @@
  .layout .daily-sales-range button[title] { width:20px; }
  .layout .daily-sales .daily-sales-range > .btn { font-size:11px; padding-inline:2px; }
 }
+
+@media screen and (min-width:1024px) {
+ .invoice-task-rows > li:not(.error):not(.muted) { padding:14px; margin:10px 0; border:1px solid var(--border); border-radius:12px; background:var(--surface); box-shadow:0 2px 8px rgba(40,32,20,.06); }
+ .invoice-task-rows > li > button:not(.btn) { border-bottom:0; }
+ .malfunction-conversation-body { font-size:13.333px; line-height:1.5; }
+}
+
+@media screen and (min-width:1024px) {
+ .invoice-task-rows .listing-task-details { display:grid; grid-template-columns:max-content max-content minmax(0,1fr); column-gap:4px; row-gap:0; align-items:baseline; }
+ .invoice-task-rows .listing-task-details > strong { grid-column:1 / -1; }
+}
