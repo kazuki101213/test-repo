@@ -204,6 +204,7 @@ export interface DeliveryTask {
   reference_image_url: string | null;
   photo_count: number;
   last_comment_at: string | null;
+  has_malfunction_reply?: boolean;
   malfunction_reported: boolean;
   malfunction_comment: string | null;
   has_physical_damage?: boolean;

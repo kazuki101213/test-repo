@@ -68,7 +68,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   const [panel,setPanel]=useState<ProductPanel>(()=>new URLSearchParams(window.location.search).get('openMessages')==='1'?'messages':'photos');
   const [actionError,setActionError]=useState<string|null>(null);
   async function refreshAction(){const updated=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(updated)onTaskChange(updated);}
-  function openPanel(mode:ProductPanel){setPanel(mode);onOpen();}
+  function openPanel(mode:ProductPanel){setPanel(mode);if(mode==='comments'&&expandedId===task.id&&panel!=='comments')return;onOpen();}
   const productIdFor = (item: DeliveryTask) => (item.marketplace === '動作品Amazon返品' ? item.marketplace_item_id : originalMarketplaceIds.get(item.id) || item.marketplace_item_id) || '—';
   const modelFor = productModelText;
   const itemIdLabel = (item: DeliveryTask) => item.marketplace === '動作品Amazon返品' ? 'ENA' : '商品ID';
