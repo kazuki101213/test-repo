@@ -74,6 +74,7 @@ export async function readSellerPage({site,phase=null,reportErrors=false}={}){
  const navigation=links.filter(link=>/^(出品中|取引中|売却済み|出品終了分|売上金管理(?: Yahoo!かんたん決済)?|落札者なし|次へ|次のページ|次)$/.test(norm(link.innerText))&&allowed(link.href)).map(link=>({text:/^売上金管理(?: Yahoo!かんたん決済)?$/.test(norm(link.innerText))?'売上金管理':norm(link.innerText),url:link.href}));
  const active=[...document.querySelectorAll('[aria-selected="true"],[aria-current="page"],[aria-pressed="true"],[data-state="active"]')].filter(visible).map(e=>norm(e.innerText)).find(value=>['出品中','取引中','売却済み','出品終了分','売上金管理'].includes(value));
  const effectivePhase=active||phase;
+ const wonClosed=site==='auctions'&&effectivePhase==='出品終了分'&&location.pathname==='/my/closed'&&(new URL(location.href).searchParams.get('hasWinner')==='1'||[...root.querySelectorAll('button')].some(e=>visible(e)&&e.disabled&&norm(e.innerText)==='落札者あり'));
  let itemCount=0;const rows=new Map(),itemIds=new Set();
  for(const link of links){const external_id=idOf(link.href);if(!external_id)continue;itemCount++;itemIds.add(external_id);
   let box=link.closest('tr,li,article,[data-testid="item-cell"],[data-testid="item-container"]')||link;
@@ -88,6 +89,8 @@ export async function readSellerPage({site,phase=null,reportErrors=false}={}){
   if(site==='mercari')status=/キャンセルが成立|取引がキャンセルされました/.test(body)?'キャンセル':/支払い待ち|支払いをお待ち|お支払い待ち/.test(body)?'支払い待ち':effectivePhase==='売却済み'?'販売済':effectivePhase==='取引中'?'取引中':effectivePhase==='出品中'?'出品中':null;
   else status=/チャージ完了/.test(body)?'販売済':/入金期限.*(?:過ぎ|切れ)|取引が中止されました/.test(body)?'キャンセル':/(?:商品を)?発送(?:を)?して(?:下さい|ください)/.test(body)&&!/落札者なし|落札されませんでした/.test(body)?'取引中':effectivePhase==='出品中'?'出品中':null;
   if(!status&&site==='auctions'&&/落札者を評価|評価してください|評価待ち/.test(body)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(body)&&!/キャンセル|中止|返品|返金/.test(body))status='取引中';
+  const sellerContact=site==='auctions'&&[...box.querySelectorAll('a[href]')].some(a=>{try{const u=new URL(a.href);return u.protocol==='https:'&&u.hostname==='contact.auctions.yahoo.co.jp'&&u.pathname==='/seller/top'&&(u.searchParams.get('aid')||u.searchParams.get('aID'))===external_id;}catch{return false;}});
+  if(!status&&wonClosed&&sellerContact&&!/落札者なし|落札されませんでした|キャンセル|中止|返品|返金/.test(body))status='取引中';
   if(!status)continue;
   const detail=[...box.querySelectorAll('a[href]')].find(a=>allowed(a.href)&&/詳細|取引画面|取引情報|取引ナビ/.test(norm(a.innerText)));
   const trade=[...box.querySelectorAll('a[href]')].find(a=>allowed(a.href)&&/\/transaction\/|\/trade\/|\/seller\/top|\/order\//.test(a.href));
