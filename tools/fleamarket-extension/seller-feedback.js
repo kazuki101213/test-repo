@@ -2,7 +2,7 @@
 export function sellerFeedbackPending(site,text){
  const s=String(text||'').replace(/\s+/g,' ');
  if(/キャンセル|中止|返品|返金|トラブル|支払い待ち|発送してください|購入者の受取評価待ち|購入者からの(?:受取)?評価待ち|受取評価待ち|受取評価を依頼できます|購入者の受取(?:評価)?をお待ちください|受取評価をお待ち/.test(s))return false;
- return site==='mercari'?/評価してください|購入者を評価|評価待ち/.test(s):site==='auctions'&&/落札者を評価|評価してください|評価待ち/.test(s)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(s);
+ return site==='mercari'?/評価(?:を)?してください|購入者を評価|評価待ち/.test(s):site==='auctions'&&/落札者を評価|評価してください|評価待ち/.test(s)&&/受取連絡|受け取り連絡|受取完了|取引完了/.test(s);
 }
 
 /** Injected in an identity-verified seller tab. Never reads or sends transaction messages. */
@@ -27,7 +27,7 @@ export async function mercariSellerFeedback(args){
  });
  if(buttons().length===0&&(/購入者の受取評価待ち|購入者からの(?:受取)?評価待ち|受取評価をお待ち/.test(text)||systemWaiting))return {ready:false,waitingForBuyer:true};
  if(/商品が届いたら|受け取り評価をする|受取評価をする|発送してください|支払いをお待ち|返品申請|キャンセル申請/.test(text))throw Error('出品者の評価待ち画面ではありません');
- const candidates=buttons();if(candidates.length!==1||candidates[0].disabled)throw Error('購入者への評価ボタンを一意に確認できません');
+ const candidates=buttons();if(action==='inspect'&&candidates.length===0)return {ready:false,deferred:true,reason:'本人・商品確認済みですが購入者評価フォームは表示されていません'};if(candidates.length!==1||candidates[0].disabled)throw Error('購入者への評価ボタンを一意に確認できません');
  const good=[...root.querySelectorAll('input[type=radio][name=fame][value=good]')].filter(visible),bad=[...root.querySelectorAll('input[type=radio][name=fame][value=bad]')].filter(visible);
  const comments=[...root.querySelectorAll('textarea[name=message]')].filter(visible);
  if(good.length!==1||bad.length!==1||comments.length!==1||good[0].disabled||comments[0].disabled||!['submit','confirm'].includes(action)&&comments[0].value)throw Error('評価フォームまたは入力済みコメントを確認してください');
@@ -81,7 +81,7 @@ export async function processSellerFeedback({account,rows,session,rpc,storage,lo
     await go(target);
    }
    const args={itemId:row.external_id,serial:plan.sku.split('-')[0].toLowerCase()};
-   const ready=await session.feedback({...args,action:'inspect'});if(ready.alreadyCompleted){checks[id].state='skipped';continue;}if(!ready.ready)continue;
+   const ready=await session.feedback({...args,action:'inspect'});if(ready.alreadyCompleted){checks[id].state='skipped';continue;}if(!ready.ready){if(ready.deferred)await log('warning','購入者評価を商品単位で保留しました。他の商品は継続します',{account:account.label,itemId:row.external_id,sku:plan.sku,reason:ready.reason});continue;}
    const reservation=await call('reserve');if(!reservation?.claimed)continue;token=reservation.token;
    if(account.site==='mercari'){
     const prepared=await session.feedback({...args,action:'prepare'});if(!prepared.prepared)throw Error('評価内容を準備できません');
