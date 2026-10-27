@@ -141,7 +141,7 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
         for(const row of data.inventoryRows||[]){if(job.kind==='receipt'&&job.receiptTargetIds&&!job.receiptTargetIds.includes(row.itemId))continue;
           let u;try{assertSiteUrl(a.site,row.url);u=new URL(row.url);}catch{continue;}
           if(u.hostname!=='contact.auctions.yahoo.co.jp'||!['/trade/top','/buyer/top'].includes(u.pathname)||receiptItemId(a.site,row.url)!==row.itemId)continue;
-          const match=await rpc('marketplace_extension_probe',{p_marketplace:SITES[a.site].db[0],p_item_id:row.itemId});
+          const match=await rpc('marketplace_receipt_context',{p_marketplace:SITES[a.site].db[0],p_item_id:row.itemId});
           if(eligible(match.items,{role:'buyer',state:'pending'}).ok)urls.push(row.url);
           else if(match.count>1)await task(a,'評価処理保留','receipt','商品IDに一致する在庫が複数あります',row.itemId);
         }
@@ -191,7 +191,7 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
     }
     await navigate(job,a,job.urls[job.index]);const tx=await content(job.tabId,'detail',{account:a,recipe:r});await capturePage(job,a,'detail');if(tx.auth)throw new Error(tx.auth);job.counts.checked++;if(job.settings.mode==='diagnostic')await log('info','診断: 取引を読み取りました',{account:a.label,itemId:tx.itemId,role:tx.role,state:tx.state,trackingNo:tx.trackingNo});
     if(tx.role!=='buyer'||tx.state!=='pending'){job.counts.skipped++;if(tx.state!=='completed'&&(tx.role==='unknown'||tx.state==='unknown')){await log('error','購入者・取引状態を判定できません',{account:a.label,itemId:tx.itemId});if(job.settings.mode!=='diagnostic')await task(a,'画面確認待ち',job.kind,'購入者側の未完了取引か判断できません',tx.itemId);}job.index++;await STORE.set({job});return;}
-    const match=await rpc('marketplace_extension_probe',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});
+    const match=await rpc(job.kind==='receipt'?'marketplace_receipt_context':'marketplace_extension_probe',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});
     if(job.kind==='tracking'){
       if(job.settings.mode==='diagnostic'||!trackingEnabled(r)){if(job.settings.mode!=='diagnostic'&&!trackingEnabled(r))await task(a,'画面確認待ち','追跡番号','追跡画面の実地確認が未完了のため登録を保留しています',tx.itemId);await log('info','診断: 更新せず照合',{account:a.label,itemId:tx.itemId,count:match.count,trackingNo:tx.trackingNo,sku:match.items.map(x=>x.sku),inventoryStatus:match.items.map(x=>({sku:x.sku,inspected:!!x.inspected_at,cleaned:!!x.cleaned_at,trackingPresent:!!x.tracking_no})),eligibleForReceipt:eligible(match.items,tx).ok});}
       else{const result=await rpc('reconcile_marketplace_tracking',{p_marketplace:SITES[a.site].db[0],p_account_label:a.label,p_marketplace_item_id:tx.itemId,p_site_tracking_no:tx.trackingAmbiguous?null:tx.trackingNo,p_confirmation_status:null,p_details:'Chrome拡張機能; 購入者側・未完了確認済み'+(tx.trackingAmbiguous?'; サイトに複数の追跡番号があり要確認':'')});if(result.result==='updated')job.counts.updated++;await log('info',result.status||result.result,{account:a.label,itemId:tx.itemId,sku:result.sku});}
@@ -206,7 +206,7 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
           if(r.receiptWorkflow==='yahoo-buyer-contact-v1')await yahooEvaluationFlow({
             itemId:tx.itemId,contact:args=>receiptPage(job,yahooReceiptPage,args),rating:args=>receiptPage(job,yahooRatingPage,args),
             go:url=>navigate(job,a,url),settle:async()=>{await wait(1000);await loaded(job.tabId,a.site);},
-            assertEligible:async()=>{const current=await rpc('marketplace_extension_probe',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});if(!eligible(current.items,{role:'buyer',state:'pending'}).ok)throw Error('評価公開前に検品・清掃の条件が変わりました');}
+            assertEligible:async()=>{const current=await rpc('marketplace_receipt_context',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});if(!eligible(current.items,{role:'buyer',state:'pending'}).ok)throw Error('評価公開前に検品・清掃の条件が変わりました');}
           });else{
           await content(job.tabId,'submit',{account:a,recipe:r,itemId:tx.itemId});
           await loaded(job.tabId,a.site);await wait(1200);
