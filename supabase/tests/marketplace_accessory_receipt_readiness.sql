@@ -1,4 +1,5 @@
 begin;
+select set_config('request.jwt.claim.sub',(select p.user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.role='admin' and s.is_active limit 1)::text,true);
 select set_config('request.jwt.claims',jsonb_build_object('sub',(select p.user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.role='admin' and s.is_active limit 1),'role','authenticated')::text,true);
 set local role authenticated;
 do $test$
@@ -33,6 +34,7 @@ do $test$begin
  exception when insufficient_privilege then null;end;
 end $test$;
 reset role;
+select set_config('request.jwt.claim.sub',(select p.user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.role<>'admin' and s.is_active limit 1)::text,true);
 select set_config('request.jwt.claims',jsonb_build_object('sub',(select p.user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.role<>'admin' and s.is_active limit 1),'role','authenticated')::text,true);
 set local role authenticated;
 do $test$begin
