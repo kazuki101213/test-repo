@@ -17,9 +17,10 @@ export function sellerInspectionApplies(request,profileId,previous,now=Date.now(
  if(request.feedbackTargets!=null&&(!Array.isArray(request.feedbackTargets)||request.feedbackTargets.length<1||request.feedbackTargets.length>12||new Set(request.feedbackTargets.map(t=>t.itemId)).size!==request.feedbackTargets.length||!request.feedbackTargets.every(t=>/^m[0-9]{8,14}$/.test(t.itemId||'')&&/^[0-9]{1,8}[a-z]{0,3}$/.test(t.serial||''))||!['mercari-1','mercari-2'].includes(request.accountId)||request.buyerReceiptIds||request.sellerListsOnly||request.targetItemId))return false;
  if(request.buyerListEvidence!=null&&(request.buyerListEvidence!==true||!request.buyerReceiptIds))return false;
  if(request.receiptPreflight!=null&&(request.receiptPreflight!==true||!request.buyerReceiptIds))return false;
+ if(request.auctionTargets!=null&&(!Array.isArray(request.auctionTargets)||request.auctionTargets.length<1||request.auctionTargets.length>10||!['auctions-1','auctions-2'].includes(request.accountId)||new Set(request.auctionTargets.map(t=>t.itemId)).size!==request.auctionTargets.length||!request.auctionTargets.every(t=>/^[a-z][0-9]{8,14}$/.test(t.itemId||'')&&/^[0-9]{1,8}[a-z]{0,3}$/.test(t.serial||''))||request.sellerListsOnly||request.buyerReceiptIds||request.feedbackTargets||request.targetItemId||request.shippingTargets))return false;
  if(request.buyerReceiptIds!=null&&(!Array.isArray(request.buyerReceiptIds)||request.buyerReceiptIds.length<1||request.buyerReceiptIds.length>10||!request.buyerReceiptIds.every(id=>/^[a-z][0-9]{8,14}$/.test(id))||!['auctions-1','auctions-2'].includes(request.accountId)||request.sellerListsOnly||request.targetItemId||request.targetSerial||request.saleEvidence))return false;
  if(request.listingSerials!=null&&(!request.sellerListsOnly||!Array.isArray(request.listingSerials)||request.listingSerials.length>20||!request.listingSerials.every(s=>/^[0-9]{1,8}[a-z]{0,3}$/.test(s))))return false;
- if(request.accountId!=null&&(!(request.sellerListsOnly||request.buyerReceiptIds||request.feedbackTargets)||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
+ if(request.accountId!=null&&(!(request.sellerListsOnly||request.buyerReceiptIds||request.feedbackTargets||request.auctionTargets)||!PROFILE_SALES[profileId]?.includes(request.accountId)))return false;
  if(request.sellerListsOnly!=null&&(request.sellerListsOnly!==true||!request.accountId&&profileId!=='ba92b386-e0bc-48be-b3b6-ca9550fa1a2d'))return false;
  if(request.readShippingPlaceOnly!=null&&(request.readShippingPlaceOnly!==true||!request.targetSerial||!request.targetItemId))return false;
  if(request.shippingTargets!=null){
@@ -143,6 +144,16 @@ export async function runSellerReadOnlyInspection({settings,profileId,storage,fe
     try{await session.go('https://jp.mercari.com/transaction/'+target.itemId);entry.preflight=await session.feedback({...target,action:'inspect'});if(!entry.preflight.ready)entry.structure=await session.feedback({...target,action:'structure'});}catch(error){entry.error=error.message;try{entry.structure=await session.feedback({...target,action:'structure'});}catch{}}
    }
    evidence.status='completed';return true;
+  }
+  if(request.auctionTargets){
+   evidence.auctionTrades=[];
+   for(const target of request.auctionTargets){const entry={...target,at:new Date().toISOString()};evidence.auctionTrades.push(entry);
+    try{if(Date.now()>Date.parse(request.expiresAt))throw Error('Read-only inspection expired');const page=await session.auctionDetail(target.itemId),u=new URL(page.url),native=x=>x.protocol==='https:'&&!x.username&&!x.password&&x.hostname==='contact.auctions.yahoo.co.jp'&&['/seller/top','/trade/top'].includes(x.pathname)&&(x.searchParams.get('aid')||x.searchParams.get('aID'))===target.itemId;
+     let url=page.url;if(!native(u)){const links=page.links.filter(l=>{try{return native(new URL(l.url))&&/\u53d6\u5f15\u30ca\u30d3|\u53d6\u5f15\u9023\u7d61/.test(l.text);}catch{return false;}});if(links.length!==1)throw Error('Native seller trade link is not unique');url=links[0].url;}
+     await session.go(url);entry.feedback=await session.feedback({...target,action:'inspect'});entry.structure=await session.structure();entry.receipt=await session.outboundReceipt({external_id:target.itemId,channel:'\u30e4\u30d5\u30aa\u30af'});if(entry.feedback.ready)entry.rating=await session.feedbackStructure({itemId:target.itemId,url:entry.feedback.ratingUrl});
+    }catch(error){entry.error=error.message;if(/\u30ed\u30b0\u30a4\u30f3|\u8a8d\u8a3c|\u540d\u524d|URL/.test(error.message))throw error;}
+    await storage.set({sellerInspectionEvidence:{...evidence}});
+   }evidence.status='completed';return true;
   }
   if(request.buyerReceiptIds){
    if(request.buyerListEvidence)evidence.buyerList=await session.buyerListEvidence();
