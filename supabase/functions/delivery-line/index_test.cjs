@@ -44,6 +44,16 @@ test('Missing supplier URL omits that line but preserves exact item and three ph
  const payload={itemId:'e6d0e28b-f6eb-46d1-998a-3581ba232401',serial:'2346b',sku:'2346b-AALL-20260927-0',supplierUrl:null,images:['front','model','code'].map(x=>'https://fixture.invalid/'+x+'.jpg')};
  const messages=validation.shippingMessages(payload);assert.equal(messages.length,4);assert(messages[0].text.includes('【2346b】'));assert(messages[0].text.includes('?itemId='+payload.itemId));assert(!messages[0].text.includes('［仕入れ先］'));assert.throws(()=>validation.shippingMessages({...payload,supplierUrl:''}));assert.throws(()=>validation.shippingMessages({...payload,supplierUrl:'https://unexpected.invalid/item'}));
 });
+
+test('Yahoo Fleamarket purchase links survive dispatch with the original item and retry key',async()=>{
+ const payload={itemId:'f076528b-da2d-44e2-8a61-c49002e3bff6',serial:'2118a',sku:'2118a-AAII-18991230-1200',supplierUrl:'https://paypayfleamarket.yahoo.co.jp/item/z657512394',images:['front','model','code'].map(x=>'https://fixture.invalid/'+x+'.png')};
+ const row={id:'10b4980a-22db-4b59-9b30-49ab2e431282',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload};
+ const f=fixture({rows:[row]});await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
+ const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push,'Yahoo Fleamarket purchase must not stop before LINE push');
+ const sent=JSON.parse(push.init.body);assert.equal(sent.messages.length,4);assert(sent.messages[0].text.includes('［仕入れ先］'+payload.supplierUrl));assert.equal(push.init.headers['X-Line-Retry-Key'],row.id);
+ assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,'sent');
+ for(const supplierUrl of ['https://paypayfleamarket.yahoo.co.jp.evil.invalid/item/z657512394','http://paypayfleamarket.yahoo.co.jp/item/z657512394'])assert.throws(()=>validation.shippingMessages({...payload,supplierUrl}));
+});
 test('Private connection check never sends messages or exposes credentials; invalid token disables registration',async()=>{
  const f=fixture();assert.equal((await f.request('connection')).status,401);assert.equal(f.state.calls.length,0);
  const result=await (await f.request('connection',{'x-delivery-dispatch':'private-dispatch'})).json();
