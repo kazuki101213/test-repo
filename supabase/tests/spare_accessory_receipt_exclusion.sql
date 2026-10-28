@@ -24,8 +24,19 @@ begin
  if (select count(*) from app.v_receipt_evaluation_tasks where item_id in(parent,normal_child,allocated_child,direct_child,linked_child))<>2 then raise exception 'Only body and ordinary purchase should be visible';end if;
  if not exists(select 1 from app.v_receipt_evaluation_tasks where item_id=parent) or not exists(select 1 from app.v_receipt_evaluation_tasks where item_id=normal_child) then raise exception 'Body or ordinary sibling was excluded';end if;
  if exists(select 1 from app.receipt_evaluation_tasks where item_id in(allocated_child,direct_child,linked_child)) then raise exception 'Spare-origin child was enqueued';end if;
- -- Preserve historical requests, while hiding them even when the accessory has its own inspection.
- insert into app.receipt_evaluation_tasks(item_id,requested_at) values(allocated_child,now()),(direct_child,now()),(linked_child,now());
+end $test$;
+-- Seed historical rows with the test database owner; normal users cannot insert tasks.
+reset role;
+insert into app.receipt_evaluation_tasks(item_id,requested_at)
+select id,now() from app.items where lot_seq in(990963,990964,990965);
+set local role authenticated;
+do $test$
+declare allocated_child uuid;direct_child uuid;linked_child uuid;
+begin
+ select id into allocated_child from app.items where lot_seq=990963;
+ select id into direct_child from app.items where lot_seq=990964;
+ select id into linked_child from app.items where lot_seq=990965;
+ -- Preserve historical requests, while hiding them even after the accessory's own inspection.
  update app.items set inspected_at=now(),cleaned_at=now() where id in(allocated_child,direct_child,linked_child);
  if exists(select 1 from app.v_receipt_evaluation_tasks where item_id in(allocated_child,direct_child,linked_child)) then raise exception 'Legacy spare task remained visible';end if;
  begin perform app.complete_receipt_evaluation_task(direct_child);raise exception 'Stale spare task could be completed';exception when invalid_parameter_value then null;end;
