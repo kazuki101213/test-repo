@@ -6,13 +6,14 @@ const switchModule={exports:{},require:()=>({}),URLSearchParams};vm.runInNewCont
 const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
 const origin='https://test-repo-delivery.vercel.app/';
 const workflow={exports:{}};vm.runInNewContext(compile('packages/shared/src/workflow.ts'),workflow);
-async function render(file,resources,products=[]){
+async function render(file,resources,products=[],props={},reads=[],imports={}){
  let cursor=0,hooks=[],pending=[],dirty=true,tree;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,value=>{hooks[n].value=typeof value==='function'?value(hooks[n].value):value;dirty=true;}];},useRef(value){return hooks[cursor++]??={current:value};},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((value,index)=>value!==old.deps[index])){old?.cleanup?.();const hook=hooks[n]={deps};pending.push(()=>hook.cleanup=fn());}}};
- const shared={...workflow.exports,readResourceSnapshot:async name=>resources[name]??[],getSupabase:()=>({from:table=>{assert.equal(table,'items');const q={select:fields=>{assert(['id,marketplace_item_id,marketplace,marketplace_url','id,marketplace,marketplace_item_id,marketplace_url'].includes(fields));return q;},in:(key,ids)=>{assert.equal(key,'id');assert(ids.length<=200);return Promise.resolve({data:products.filter(row=>ids.includes(row.id)),error:null});}};return q;}})};
+ const shared={...workflow.exports,staffDisplayName:name=>name,yen:value=>String(value),readResourceSnapshot:async name=>{reads.push(name);return resources[name]??[];},getSupabase:()=>({from:table=>{assert.equal(table,'items');const q={select:fields=>{assert(['id,marketplace_item_id,marketplace,marketplace_url','id,marketplace,marketplace_item_id,marketplace_url'].includes(fields));return q;},in:(key,ids)=>{assert.equal(key,'id');assert(ids.length<=200);return Promise.resolve({data:products.filter(row=>ids.includes(row.id)),error:null});}};return q;}})};
  const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='react-dom'?{createPortal:node=>node}:name==='@bussan/shared'?shared:name==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){},pending:false,confirmation:null})}:name==='../inventory'?inventory.exports:name==='../appUrls'?{deliveryAppUrl:origin}:name==='../taskNotice'?{adminTaskNotice:()=>null}:name==='../purchaseUrl'?{purchaseItemUrl:()=>null}:{},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}}};
+ const originalRequire=context.require;context.require=name=>imports[name]??originalRequire(name);
  vm.runInNewContext(compile(file),context);
- for(let n=0;n<50;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({staff:{id:'admin',role:'admin'}});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}
+ for(let n=0;n<50;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({staff:{id:'admin',role:'admin'},...props});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}
  hooks.forEach(hook=>hook?.cleanup?.());return all(tree);
 }
 function inventoryLink(nodes,label,item){
@@ -35,6 +36,18 @@ function inventoryLink(nodes,label,item){
  const channels=['メルカリ','ヤフオク','自己発送','FBA'];
  const photoNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{photo_reviews:channels.map((sales_channel,n)=>({id:'review'+n,item_id:'review'+n,submitted_at:'2026-10-19',exported_photo_count:8,item:{id:'review'+n,sku:'250'+n+'-SKU',lot_seq:2500+n,title:'写真商品',sales_channel}}))});
  for(const channel of channels)assert(photoNodes.some(n=>n.type==='strong'&&text(n)==='写真確認（'+channel+'販売用）'),'Photo review retains actual '+channel+' channel through reference hydration');
+ const splitResources={listing_tasks:[{id:listingId,sku:'2395-EE',lot_seq:2395,sales_channel:'メルカリ'}],photo_reviews:[{id:'review',item_id:'review',submitted_at:'2026-10-19',exported_photo_count:1,item:{id:'review',sku:'2500-SKU',lot_seq:2500,title:'写真商品',sales_channel:'メルカリ'}}]};
+ for(const mode of ['photos','listing']){
+  const reads=[];const nodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',splitResources,[],{mode},reads);
+  assert.deepEqual(reads,[mode==='photos'?'photo_reviews':'listing_tasks'],'Split cards fetch only their own resource');
+  assert.equal(nodes.filter(n=>n.props?.className==='admin-task-card admin-simple-task admin-photo-task').length,mode==='photos'?1:0);
+  assert.equal(nodes.filter(n=>n.props?.className==='task-action-details listing-task-details').length,mode==='listing'?1:0);
+ }
+ const childNames=['PhotoReviewTasks','PackingPhotoTasks','MalfunctionTasks','ReceiptEvaluationTasks','ShippingReminderTasks','SpareShippingTasks'];
+ const childStubs=Object.fromEntries(childNames.map(name=>['./'+name,{default:Object.defineProperty(()=>null,'name',{value:name})}]));
+ const dashboard=await render('apps/admin/src/components/InvoiceTasks.tsx',{invoice_tasks:[{id:'invoice',name:'担当者',month:'2026-10',updated:'2026-10-28',invoice:{total:100,delivery_invoice_approvals:null}}]},[],{},[],childStubs);
+ const taskOrder=dashboard.flatMap(n=>n.type==='strong'&&n.props.children==='請求書'?['invoice']:typeof n.type==='function'&&childNames.includes(n.type.name)?[n.type.name==='PhotoReviewTasks'?n.props.mode:n.type.name]:[]);
+ assert.deepEqual(taskOrder,['invoice','photos','PackingPhotoTasks','MalfunctionTasks','ReceiptEvaluationTasks','listing','ShippingReminderTasks','SpareShippingTasks'],'All eight task categories follow the requested order');
  const shippingNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_shipping_tasks:['メルカリ','ヤフオク','自己発送'].map((sales_channel,n)=>({id:'shipping'+n,item_id:'stock'+n,sku:(2500+n)+'-SHIPPING',lot_seq:2500+n,sales_channel,marketplace_item_id:'product'+n}))});
  inventoryLink(shippingNodes,'発送する商品の在庫を開く','stock0');
  for(const channel of ['メルカリ','ヤフオク','自己発送'])assert(shippingNodes.some(n=>n.type==='strong'&&text(n)===channel+'発送'));
