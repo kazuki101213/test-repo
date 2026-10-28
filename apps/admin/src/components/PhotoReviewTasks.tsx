@@ -27,7 +27,7 @@ async function listingProductIds(tasks: ListingTask[]): Promise<ListingTask[]> {
   return tasks.map(task => ({ ...task, ...ids.get(task.id) }));
 }
 
-export default function PhotoReviewTasks() {
+export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=0}:{mode?:'all'|'photos'|'listing';onReviewed?:()=>void;refreshRevision?:number}={}) {
   const { ask, pending, confirmation } = useTaskConfirmation();
   const notice = adminTaskNotice();
   const noticeHandled = useRef(false);
@@ -57,8 +57,8 @@ export default function PhotoReviewTasks() {
       reading = true; lastRead = Date.now();
       try {
       const [rows,nextListingTasks] = await Promise.all([
-        readResourceSnapshot<Review & {id:string;item:Item}>('photo_reviews'),
-        readResourceSnapshot<ListingTask>('listing_tasks'),
+        mode==='listing'?Promise.resolve([]):readResourceSnapshot<Review & {id:string;item:Item}>('photo_reviews'),
+        mode==='photos'?Promise.resolve([]):readResourceSnapshot<ListingTask>('listing_tasks'),
       ]);
       const references = await listingProductIds([...nextListingTasks, ...rows.map(row => ({...row.item, id:row.item_id, sales_channel:row.item.sales_channel??''}))]);
       const byReference = new Map(references.map(row => [row.id,row]));
@@ -67,7 +67,7 @@ export default function PhotoReviewTasks() {
 
       if (active) {
         setReviews([...rows].sort((a,b)=>b.submitted_at.localeCompare(a.submitted_at))); setListingTasks(detailedListingTasks); setItems(byId); setError('');
-        if (!noticeHandled.current && notice?.kind === 'photo_review') {
+        if (mode!=='listing' && !noticeHandled.current && notice?.kind === 'photo_review') {
           noticeHandled.current = true;
           const target = rows.find(row => row.item_id === notice.itemId);
           if (target) setSelected(target);
@@ -81,7 +81,7 @@ export default function PhotoReviewTasks() {
     void refresh(); const timer = window.setInterval(visible, 300000);
     window.addEventListener('focus', visible); document.addEventListener('visibilitychange', visible);
     return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); };
-  }, [revision]);
+  }, [revision,mode,refreshRevision]);
 
   useEffect(() => {
     setPhotos([]);setSaveFiles([]);setSaveMessage('');
@@ -127,7 +127,7 @@ export default function PhotoReviewTasks() {
     try {
       const { error: approveError } = await getSupabase().rpc('approve_photo_review', { p_item_id: selected.item_id });
       if (approveError) throw approveError;
-      setSelected(null); setRevision(value => value + 1);
+      setSelected(null); setRevision(value => value + 1); onReviewed?.();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   }
@@ -136,7 +136,7 @@ export default function PhotoReviewTasks() {
     if(!selected)return;
     const {error:rejectError}=await getSupabase().rpc('reject_photo_review',{p_item_id:selected.item_id,p_submitted_at:selected.submitted_at,p_reason:reason,p_request_id:returnRequest.current});
     if(rejectError)throw rejectError;
-    setRejecting(false);setSelected(null);setRevision(value=>value+1);
+    setRejecting(false);setSelected(null);setRevision(value=>value+1);onReviewed?.();
   }
 
   async function completeListing(task: ListingTask) {
