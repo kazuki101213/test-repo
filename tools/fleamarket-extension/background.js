@@ -142,7 +142,12 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
           let u;try{assertSiteUrl(a.site,row.url);u=new URL(row.url);}catch{continue;}
           if(u.hostname!=='contact.auctions.yahoo.co.jp'||!['/trade/top','/buyer/top'].includes(u.pathname)||receiptItemId(a.site,row.url)!==row.itemId)continue;
           const match=await rpc('marketplace_receipt_context',{p_marketplace:SITES[a.site].db[0],p_item_id:row.itemId});
-          if(eligible(match.items,{role:'buyer',state:'pending'}).ok)urls.push(row.url);
+          const item=match.items?.length===1?match.items[0]:null;
+          const ready=!!item&&((item.inspected_at&&item.cleaned_at)||(item.receipt_ready===true&&item.receipt_source==='parent'&&typeof item.receipt_parent_sku==='string'&&item.receipt_parent_sku.length>0));
+          const receiptStart=job.settings.receiptStartDay||null;
+          const explicitRepairTarget=job.receiptTargetIds?.includes(row.itemId)===true;
+          const recentCompletedCandidate=job.kind==='receipt'&&ready&&(explicitRepairTarget||row.purchasedAt&&(!receiptStart||row.purchasedAt>=receiptStart));
+          if(eligible(match.items,{role:'buyer',state:'pending'}).ok||recentCompletedCandidate)urls.push(row.url);
           else if(match.count>1)await task(a,'評価処理保留','receipt','商品IDに一致する在庫が複数あります',row.itemId);
         }
         data.links=urls;
@@ -190,6 +195,20 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
       job.counts.checked++;job.index++;await STORE.set({job});return;
     }
     await navigate(job,a,job.urls[job.index]);const tx=await content(job.tabId,'detail',{account:a,recipe:r});await capturePage(job,a,'detail');if(tx.auth)throw new Error(tx.auth);job.counts.checked++;if(job.settings.mode==='diagnostic')await log('info','診断: 取引を読み取りました',{account:a.label,itemId:tx.itemId,role:tx.role,state:tx.state,trackingNo:tx.trackingNo});
+    let alreadyReceived=false,alreadyOnRatingPage=false,ratingUrl=null;
+    const yahooReceipt=job.kind==='receipt'&&a.site==='auctions'&&r.receiptWorkflow==='yahoo-buyer-contact-v1';
+    if(yahooReceipt&&(tx.role!=='buyer'||tx.state!=='pending')){
+      const native=await receiptPage(job,yahooReceiptPage,{itemId:tx.itemId,action:'inspect'});
+      if(native.received===true){
+        const link=await receiptPage(job,yahooReceiptPage,{itemId:tx.itemId,action:'ratingLink'});ratingUrl=link.url;
+        if(!ratingUrl)throw Error('受取連絡済み取引の評価リンクがありません');
+        await navigate(job,a,ratingUrl);await wait(1000);await loaded(job.tabId,a.site);
+        const buyerForm=await receiptPage(job,yahooRatingPage,{itemId:tx.itemId,action:'buyerPreflight'});
+        if(buyerForm.evaluated===true){job.counts.skipped++;job.index++;await log('info','購入者評価はすでに完了しています',{account:a.label,itemId:tx.itemId});await STORE.set({job});return;}
+        if(buyerForm.buyer!==true||buyerForm.seller!==false||buyerForm.newEvaluation!==true)throw Error('受取済み取引の購入者未評価フォームを確認できません');
+        alreadyReceived=true;alreadyOnRatingPage=true;tx={...tx,role:'buyer',state:'pending'};
+      }
+    }
     if(tx.role!=='buyer'||tx.state!=='pending'){job.counts.skipped++;if(tx.state!=='completed'&&(tx.role==='unknown'||tx.state==='unknown')){await log('error','購入者・取引状態を判定できません',{account:a.label,itemId:tx.itemId});if(job.settings.mode!=='diagnostic')await task(a,'画面確認待ち',job.kind,'購入者側の未完了取引か判断できません',tx.itemId);}job.index++;await STORE.set({job});return;}
     const match=await rpc(job.kind==='receipt'?'marketplace_receipt_context':'marketplace_extension_probe',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});
     if(job.kind==='tracking'){
@@ -206,6 +225,7 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
           if(r.receiptWorkflow==='yahoo-buyer-contact-v1')await yahooEvaluationFlow({
             itemId:tx.itemId,contact:args=>receiptPage(job,yahooReceiptPage,args),rating:args=>receiptPage(job,yahooRatingPage,args),
             go:url=>navigate(job,a,url),settle:async()=>{await wait(1000);await loaded(job.tabId,a.site);},
+            alreadyReceived,alreadyOnRatingPage,ratingUrl,
             assertEligible:async()=>{const current=await rpc('marketplace_receipt_context',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});if(!eligible(current.items,{role:'buyer',state:'pending'}).ok)throw Error('評価公開前に検品・清掃の条件が変わりました');}
           });else{
           await content(job.tabId,'submit',{account:a,recipe:r,itemId:tx.itemId});

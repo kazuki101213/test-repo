@@ -1,11 +1,12 @@
 // Only the site/account policy and durable receipt reservation may invoke this flow.
-export async function yahooEvaluationFlow({itemId,contact,rating,go,settle,assertEligible}){
+export async function yahooEvaluationFlow({itemId,contact,rating,go,settle,assertEligible,alreadyReceived=false,alreadyOnRatingPage=false,ratingUrl=null}){
  const startedAt=Date.now();
  const checked=async promise=>{const value=await promise;if(value?.error)throw Error(value.error);if(!value)throw Error('評価画面から結果が返りません');return value;};
- const received=await checked(contact({itemId,action:'receive'}));
- if(!received.received)throw Error('受取連絡後の完了を確認できません');
- const link=await checked(contact({itemId,action:'ratingLink'}));if(!link.url)throw Error('出品者評価へのリンクがありません');
- await go(link.url);
+ if(!alreadyReceived){const received=await checked(contact({itemId,action:'receive'}));if(!received.received)throw Error('受取連絡後の完了を確認できません');}
+ const link=alreadyOnRatingPage?{url:ratingUrl}:await checked(contact({itemId,action:'ratingLink'}));if(!link.url)throw Error('出品者評価へのリンクがありません');
+ if(!alreadyOnRatingPage)await go(link.url);
+ const buyer=await checked(rating({itemId,action:'buyerPreflight'}));
+ if(!buyer.buyer||buyer.seller||buyer.evaluated||!buyer.newEvaluation)throw Error('購入者の未評価フォームを確認できません');
  const preview=await checked(rating({itemId,action:'preview'}));if(!preview.previewRequested)throw Error('評価確認を開始できません');
  await settle();
  const args={itemId,expectedComment:preview.comment};
