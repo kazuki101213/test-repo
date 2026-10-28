@@ -2,6 +2,7 @@ import {validSaleRepairTargets,repairCompletedTargetSales} from './seller-target
 import {mercariPricePage,mercariPriceResult} from './daily-price.js';
 import {yahooReceiptPage} from './yahoo-receipt.js';
 import {readBuyerTodoState} from './todo-audit.js';
+import {yahooRatingPage} from './yahoo-rating.js';
 import {pacedTabs,paceNavigation} from './navigation-pacing.js';
 import {processDailyShipping,readOutboundReceipt,parseCarrierReceipts} from './daily-shipping.js';
 import {readBuyerListDateEvidence,readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from './seller-inspection.js?v=0.1.143';
@@ -459,7 +460,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   const {categoryId}=await execute(resolveYahooCategory,target);const next=new URL(formUrl);next.searchParams.set('category',categoryId);await go(next.href);
   const structure=await execute(readSellerStructure,null);if(!structure.fileInputs?.length)throw Error('カテゴリ指定後の出品入力画面を確認できません');categoryResolution={target,url:last};return true;
  }
- return {go,loaded,refreshNotice:async job=>{const current=await tabs.get(borrowed.id);if(account.site!=='mercari'||current.url!==last||new URL(last).pathname!=='/transaction/'+job.external_id)throw Error('発送通知結果の対象画面が変更されたため停止しました');await paceNavigation(async()=>{const check=await tabs.get(borrowed.id);if(check.url!==last)throw Error('画面が変更されたため再読み込みしません');await tabs.reload(borrowed.id);});await loaded();},price:args=>execute(mercariPricePage,args),priceResult:args=>execute(mercariPriceResult,args),buyerListEvidence:()=>execute(readBuyerListDateEvidence,null),buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:args=>execute(readSellerStructure,args||null),
+ return {go,loaded,refreshNotice:async job=>{const current=await tabs.get(borrowed.id);if(account.site!=='mercari'||current.url!==last||new URL(last).pathname!=='/transaction/'+job.external_id)throw Error('発送通知結果の対象画面が変更されたため停止しました');await paceNavigation(async()=>{const check=await tabs.get(borrowed.id);if(check.url!==last)throw Error('画面が変更されたため再読み込みしません');await tabs.reload(borrowed.id);});await loaded();},price:args=>execute(mercariPricePage,args),priceResult:args=>execute(mercariPriceResult,args),buyerListEvidence:()=>execute(readBuyerListDateEvidence,null),buyerReceiptPreflight:args=>execute(yahooReceiptPage,{...args,action:'preflight',reportErrors:true}),buyerTodo:args=>args.stage==='rating'?execute(yahooRatingPage,{itemId:args.itemId,action:'buyerPreflight'}):execute(readBuyerTodoState,args),advanceList:()=>execute(advanceSellerList,null),structure:args=>execute(readSellerStructure,args||null),
   listingChoiceEvidence:()=>execute(readListingChoiceEvidence,null),
   feedback:async args=>{if(account.site==='mercari'&&args.action==='inspect')await execute(readMercariTransactionPage,{id:args.itemId});return execute(account.site==='mercari'?mercariSellerFeedback:yahooSellerFeedback,args);},
   feedbackGo:async url=>{if(last!==url)await go(url);},
