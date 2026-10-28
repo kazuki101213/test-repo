@@ -35,7 +35,7 @@ jobs:
         run: node --test scripts/extension-tests/yahoo-workflow.test.mjs scripts/extension-tests/buyer-receipt-repair.test.mjs scripts/extension-tests/yahoo-rating-audit-runtime.test.mjs
 
       - name: Daily price reduction guards
-        run: node --test scripts/extension-tests/daily-price.test.mjs scripts/extension-tests/daily-price-api.test.mjs
+        run: node --test scripts/extension-tests/daily-price.test.mjs scripts/extension-tests/daily-price-api.test.mjs scripts/extension-tests/dispatch-days.test.mjs
 
       - name: 型チェック
         run: pnpm -r typecheck
