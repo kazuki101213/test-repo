@@ -7,7 +7,7 @@ begin
  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,marketplace_item_id)
  values(990951,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'receipt parent fixture',100,'ヤフフリ','メルカリ','123','accessory-todo-parent') returning id into parent;
  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory,parent_item_id)
- select 990952+n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'receipt accessory fixture',10,
+ select 990952+n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'receipt accessory fixture',10+n,
  market::app.marketplace,'メルカリ',purchase,true,parent
  from (values (0,'ヤフフリ','accessory-todo-child'),(1,'PayPayフリマ','accessory-todo-child'),(2,'PayPayフリマ','accessory-todo-parent'),(3,'メルカリ','accessory-todo-own')) f(n,market,purchase);
  select id into child from app.items where lot_seq=990952;
@@ -26,7 +26,7 @@ begin
  if not exists(select 1 from app.v_receipt_evaluation_tasks where item_id=own_child) then raise exception 'Own inspected accessory lost task';end if;
  perform app.perform_inventory_action(parent,'inspection_complete','検品中');
  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory)
- values(990956,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'linked later fixture',10,'ラクマ','メルカリ','accessory-todo-late',true) returning id into late_child;
+ values(990956,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'linked later fixture',14,'ラクマ','メルカリ','accessory-todo-late',true) returning id into late_child;
  if exists(select 1 from app.receipt_evaluation_tasks where item_id=late_child) then raise exception 'Unlinked child enqueued';end if;
  update app.items set parent_item_id=parent where id=late_child;
  if not exists(select 1 from app.v_receipt_evaluation_tasks where item_id=late_child and is_accessory) then raise exception 'Later linked purchase omitted';end if;
@@ -49,7 +49,7 @@ insert into app.marketplace_extension_receipts(marketplace,marketplace_item_id,a
 values('ラクマ','accessory-todo-late','fixture','succeeded',auth.uid());
 set local role authenticated;
 do $test$begin
- if exists(select 1 from app.v_receipt_evaluation_tasks where lot_seq=990956) then raise exception 'Succeeded receipt stayed visible';end if;
+ if exists(select 1 from app.v_receipt_evaluation_tasks where marketplace_item_id='accessory-todo-late') then raise exception 'Succeeded receipt stayed visible';end if;
  begin perform app.enqueue_accessory_receipt_tasks(null,now());raise exception 'Internal enqueue exposed';exception when insufficient_privilege then null;end;
 end $test$;
 reset role;
@@ -57,7 +57,7 @@ select set_config('request.jwt.claim.sub',(select p.user_id from app.profiles p 
 set local role authenticated;
 do $test$begin
  if exists(select 1 from app.v_receipt_evaluation_tasks where lot_seq between 990951 and 990958) then raise exception 'Nonadmin task disclosure';end if;
- begin perform app.complete_receipt_evaluation_task((select id from app.items where lot_seq=990952));raise exception 'Nonadmin completion allowed';exception when insufficient_privilege then null;end;
+ begin perform app.complete_receipt_evaluation_task((select id from app.items where marketplace_item_id='accessory-todo-child' limit 1));raise exception 'Nonadmin completion allowed';exception when insufficient_privilege then null;end;
 end $test$;
 set local role anon;
 do $test$begin
