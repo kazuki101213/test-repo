@@ -15253,6 +15253,156 @@ $function$
 ;
 
 
+-- ▼▼▼ 20261027205732_marketplace_accessory_receipt_readiness.sql ▼▼▼
+
+-- Receipt-only readiness. Tracking continues to use the unchanged exact-one probe.
+create or replace function app.marketplace_receipt_context(p_marketplace app.marketplace,p_item_id text)
+returns jsonb language plpgsql security invoker set search_path=app,public as $$
+declare v_probe jsonb; v_items jsonb;
+begin
+  v_probe=app.marketplace_extension_probe(p_marketplace,p_item_id);
+  select coalesce(jsonb_agg(e.value || jsonb_build_object(
+    'receipt_ready', (i.inspected_at is not null and i.cleaned_at is not null) or
+      (i.is_accessory and p.id is not null and not p.is_accessory and p.id<>i.id and p.inspected_at is not null and p.cleaned_at is not null),
+    'receipt_source', case when i.inspected_at is not null and i.cleaned_at is not null then 'own'
+      when i.is_accessory and p.id is not null and not p.is_accessory and p.id<>i.id and p.inspected_at is not null and p.cleaned_at is not null then 'parent' else null end,
+    'receipt_parent_sku', case when i.is_accessory and p.id is not null and not p.is_accessory then p.sku else null end
+  ) order by i.id),'[]'::jsonb) into v_items
+  from jsonb_array_elements(v_probe->'items') e(value)
+  join app.items i on i.id=(e.value->>'id')::uuid
+  left join app.items p on i.is_accessory and p.id=i.parent_item_id;
+  return v_probe || jsonb_build_object('items',v_items);
+end $$;
+revoke all on function app.marketplace_receipt_context(app.marketplace,text) from public,anon;
+grant execute on function app.marketplace_receipt_context(app.marketplace,text) to authenticated;
+
+CREATE OR REPLACE FUNCTION app.marketplace_extension_receipt(p_action text, p_marketplace app.marketplace, p_item_id text, p_account_label text, p_token uuid DEFAULT NULL::uuid, p_details text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'app', 'public'
+AS $function$
+declare v_market text; v_probe jsonb; v_row app.marketplace_extension_receipts%rowtype; v_token uuid;
+begin
+  if auth.uid() is null or not app.is_admin() then raise exception '管理者認証が必要です'; end if;
+  if p_action not in ('reserve','begin','complete','unknown','release') then raise exception '操作が不正です'; end if;
+  if nullif(trim(p_account_label),'') is null or length(p_account_label)>200 then raise exception 'アカウント識別が必要です'; end if;
+  v_probe=app.marketplace_receipt_context(p_marketplace,p_item_id);
+  v_market=case when p_marketplace in ('ヤフフリ','PayPayフリマ') then 'Yahoo!フリマ' else p_marketplace::text end;
+  perform pg_advisory_xact_lock(hashtextextended(v_market||':'||p_item_id,0));
+  select * into v_row from app.marketplace_extension_receipts where marketplace=v_market and marketplace_item_id=p_item_id for update;
+  if p_action='reserve' then
+    if (v_probe->>'count')::int<>1 then return jsonb_build_object('eligible',false,'reason','在庫1件一致が必要です'); end if;
+    if coalesce((v_probe->'items'->0->>'receipt_ready')::boolean,false) is not true then return jsonb_build_object('eligible',false,'reason','検品・清掃の記録待ち'); end if;
+    if v_row.state is not null then return jsonb_build_object('eligible',false,'reason','既存の評価記録: '||v_row.state); end if;
+    insert into app.marketplace_extension_receipts(marketplace,marketplace_item_id,account_label,state,reserved_by)
+      values(v_market,p_item_id,p_account_label,'reserved',auth.uid()) returning token into v_token;
+    return jsonb_build_object('eligible',true,'token',v_token,'sku',v_probe->'items'->0->>'sku');
+  end if;
+  if v_row.token is distinct from p_token or v_row.reserved_by is distinct from auth.uid() or v_row.account_label<>p_account_label then raise exception '評価予約が一致しません'; end if;
+  if p_action='begin' then
+    if v_row.state<>'reserved' or v_row.reserved_at<now()-interval '5 minutes' then raise exception '評価予約が期限切れか送信済みです'; end if;
+    if (v_probe->>'count')::int<>1 or coalesce((v_probe->'items'->0->>'receipt_ready')::boolean,false) is not true then raise exception '評価条件が変わりました'; end if;
+    update app.marketplace_extension_receipts set state='submitting',updated_at=now() where token=p_token;
+  elsif p_action='release' then
+    if v_row.state<>'reserved' then raise exception '送信開始後は予約を解除できません'; end if;
+    delete from app.marketplace_extension_receipts where token=p_token;
+  elsif p_action in ('complete','unknown') then
+    if v_row.state not in ('submitting','unknown') then raise exception '送信状態が不正です'; end if;
+    update app.marketplace_extension_receipts set state=case when p_action='complete' then 'succeeded' else 'unknown' end,details=left(p_details,2000),updated_at=now() where token=p_token;
+  end if;
+  return jsonb_build_object('ok',true);
+end $function$
+
+
+-- ▼▼▼ 20261027213127_marketplace_receipt_purchase_groups.sql ▼▼▼
+
+-- Receipt-only readiness. Tracking continues to use the unchanged exact-one probe.
+create or replace function app.marketplace_receipt_context(p_marketplace app.marketplace,p_item_id text)
+returns jsonb language plpgsql security invoker set search_path=app,public as $$
+declare v_probe jsonb; v_items jsonb; v_group_ok boolean; v_source_ready boolean; v_representative jsonb; v_skus jsonb; v_count integer;
+begin
+  v_probe=app.marketplace_extension_probe(p_marketplace,p_item_id);
+  select coalesce(jsonb_agg(e.value || jsonb_build_object(
+    'receipt_ready', (i.inspected_at is not null and i.cleaned_at is not null) or
+      (i.is_accessory and p.id is not null and not p.is_accessory and p.id<>i.id and p.inspected_at is not null and p.cleaned_at is not null),
+    'receipt_source', case when i.inspected_at is not null and i.cleaned_at is not null then 'own'
+      when i.is_accessory and p.id is not null and not p.is_accessory and p.id<>i.id and p.inspected_at is not null and p.cleaned_at is not null then 'parent' else null end,
+    'receipt_parent_sku', case when i.is_accessory and p.id is not null and not p.is_accessory then p.sku else null end
+  ) order by i.id),'[]'::jsonb) into v_items
+  from jsonb_array_elements(v_probe->'items') e(value)
+  join app.items i on i.id=(e.value->>'id')::uuid
+  left join app.items p on i.is_accessory and p.id=i.parent_item_id;
+  v_count=jsonb_array_length(v_items);
+  if p_marketplace='ヤフオク' and v_count between 2 and 40 then
+    with members as (
+      select e.value,i.is_accessory,
+        coalesce((e.value->>'receipt_ready')::boolean,false) as ready,
+        i.is_accessory and i.parent_item_id is not null and exists(
+          select 1 from app.spare_accessories s
+          where s.marketplace_item_id=p_item_id and s.marketplace='ヤフオク'
+          and (s.used_for_item_id=i.parent_item_id or exists(
+            select 1 from app.spare_shipping_tasks t
+            where t.spare_id=s.id and t.accessory_item_id=i.id and t.item_id=i.parent_item_id
+          ))
+        ) as allocated
+      from jsonb_array_elements(v_items) e(value)
+      join app.items i on i.id=(e.value->>'id')::uuid
+    )
+    select bool_and(ready or allocated),bool_or(ready and not allocated),
+      jsonb_agg(value->>'sku' order by value->>'sku'),
+      (select value from members where ready and not allocated order by is_accessory,value->>'id' limit 1)
+      into v_group_ok,v_source_ready,v_skus,v_representative from members;
+    if v_group_ok and v_source_ready and v_representative is not null then
+      return v_probe || jsonb_build_object('inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation');
+    end if;
+  end if;
+  return v_probe || jsonb_build_object('items',v_items);
+end $$;
+revoke all on function app.marketplace_receipt_context(app.marketplace,text) from public,anon;
+grant execute on function app.marketplace_receipt_context(app.marketplace,text) to authenticated;
+
+
+-- ▼▼▼ 20261027213842_formalize_marketplace_extension_probe.sql ▼▼▼
+
+-- Preserve the live tracking probe; bootstrap its existing definition on fresh databases.
+do $bootstrap$
+begin
+ if to_regprocedure('app.marketplace_extension_probe(app.marketplace,text)') is null then
+  execute $definition$
+  create function app.marketplace_extension_probe(p_marketplace app.marketplace,p_item_id text)
+  returns jsonb language plpgsql security invoker set search_path=app,public as $body$
+  declare v_items jsonb;
+  begin
+   if auth.uid() is null or not app.is_admin() then raise exception '管理者認証が必要です';end if;
+   if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') or nullif(trim(p_item_id),'') is null or length(p_item_id)>100 then raise exception '照合条件が不正です';end if;
+   select coalesce(jsonb_agg(jsonb_build_object('id',id,'sku',sku,'marketplace',marketplace,'tracking_no',tracking_no,'inspected_at',inspected_at,'cleaned_at',cleaned_at)),'[]'::jsonb)
+    into v_items from app.items
+    where marketplace_item_id=p_item_id and (marketplace=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and marketplace in ('ヤフフリ','PayPayフリマ')));
+   return jsonb_build_object('items',v_items,'count',jsonb_array_length(v_items));
+  end $body$;
+  $definition$;
+ end if;
+end $bootstrap$;
+revoke all on function app.marketplace_extension_probe(app.marketplace,text) from public,anon;
+grant execute on function app.marketplace_extension_probe(app.marketplace,text) to authenticated;
+
+
+-- ▼▼▼ 20261027214243_formalize_marketplace_receipt_reservations.sql ▼▼▼
+
+-- Formalize the extension's existing admin-only reservation ledger on clean databases.
+alter table app.marketplace_extension_receipts enable row level security;
+revoke all on app.marketplace_extension_receipts from public,anon;
+grant select,insert,update,delete on app.marketplace_extension_receipts to authenticated;
+do $policy$
+begin
+ if not exists(select 1 from pg_policies where schemaname='app' and tablename='marketplace_extension_receipts' and policyname='marketplace_extension_receipts_admin') then
+  execute 'create policy marketplace_extension_receipts_admin on app.marketplace_extension_receipts for all to authenticated using(app.is_admin()) with check(app.is_admin())';
+ end if;
+end $policy$;
+
+
 -- ▼▼▼ 20261028110000_delivery_malfunction_reply_entry.sql ▼▼▼
 
 -- Keep the reply entry available after notice acknowledgement, but only for an actual reply.

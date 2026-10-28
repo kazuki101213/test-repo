@@ -9,6 +9,15 @@ export function yahooRatingPage(args){
   const ids=new Set([...['aID','aid','auctionID','auctionId'].map(k=>u.searchParams.get(k)),...[...document.querySelectorAll('input[type="hidden"]')].filter(e=>/^(aid|auctionid)$/i.test(e.name)).map(e=>e.value)].filter(Boolean));
   if(u.hostname!=='auctions.yahoo.co.jp'||!['/jp/show/leavefeedback','/jp/preview/leavefeedback'].includes(u.pathname)||ids.size!==1||!ids.has(itemId))throw Error('出品者評価の商品ID・画面が一致しません');
   const visible=e=>e.getClientRects().length>0;
+  if(action==='buyerPreflight'){
+   const hidden=name=>[...document.querySelectorAll('input[type="hidden"]')].filter(e=>e.name===name).map(e=>e.value);
+   const buyer=hidden('isBuyer').some(x=>['true','1'].includes(x)),seller=hidden('isSeller').some(x=>['true','1'].includes(x));
+   if(!buyer||seller)throw Error('購入者としての評価フォームを確認できません');
+   const evaluated=document.body.innerText.includes('評価の変更')&&document.body.innerText.includes('前回、評価した内容')&&hidden('isRevision').some(x=>['true','1'].includes(x));
+   const newEvaluation=document.body.innerText.includes('評価の新規入力')&&hidden('isRevision').some(x=>['false','0'].includes(x));
+   if(evaluated===newEvaluation)throw Error('評価済みか新規評価かを一意に確認できません');
+   return {itemId,buyer:true,seller:false,evaluated,newEvaluation,observedAt:new Date().toISOString()};
+  }
   const inspect=()=>({host:u.hostname,path:u.pathname,fields:[...document.querySelectorAll('input:not([type="hidden"]),select,textarea,button')].filter(visible).map(e=>({tag:e.tagName,type:e.type||null,id:e.id||null,name:e.name||null,label:n(e.labels?.[0]?.innerText||e.innerText||e.value).slice(0,150),required:e.required===true,options:e.tagName==='SELECT'?[...e.options].map(o=>({text:n(o.text),value:o.value})):undefined})),markers:[...document.querySelectorAll('td,th,p,h1,h2,h3')].filter(visible).map(e=>n(e.innerText)).filter(t=>t.length<170&&/評価の新規入力|評価の変更|非常に良い|コメント.*(?:入力|必須)|評価を公開|評価.*(?:完了|受け付け)/.test(t)).slice(0,20),forms:[...document.forms].map(f=>({method:f.method,path:new URL(f.action).pathname}))});
   if(action==='inspect')return inspect();
   if(action==='verifyPublished'){

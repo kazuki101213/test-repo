@@ -28,6 +28,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Accessory receipt parent readiness
+        run: node --test scripts/extension-tests/accessory-receipt.test.mjs
+
+      - name: Yahoo buyer receipt resume safety
+        run: node --test scripts/extension-tests/yahoo-workflow.test.mjs scripts/extension-tests/buyer-receipt-repair.test.mjs
+
       - name: Daily price reduction guards
         run: node --test scripts/extension-tests/daily-price.test.mjs scripts/extension-tests/daily-price-api.test.mjs
 
