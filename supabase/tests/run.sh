@@ -55,6 +55,7 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/listing_photo_approval.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/inspection_receipt_tasks.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/accessory_receipt_evaluation_tasks.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/spare_accessory_receipt_exclusion.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/listing_result_check.sql"
 
