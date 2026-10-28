@@ -23,7 +23,7 @@ export function shippingMessages(payload: ShippingPayload) {
   const imageCount = payload.withoutBarcode === 'size_unset' ? 2 : 3;
   if (!/^[0-9a-f-]{36}$/.test(payload.itemId) || !payload.serial || !payload.sku || payload.images.length !== imageCount) throw new Error('Incomplete shipping request');
   const supplier = payload.supplierUrl == null ? null : new URL(payload.supplierUrl);
-  if (supplier && (supplier.protocol !== 'https:' || !['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','jp.mercari.com','item.mercari.com','fril.jp','item.fril.jp','www.amazon.co.jp','amazon.co.jp'].includes(supplier.hostname))) throw new Error('Invalid supplier URL');
+  if (supplier && (supplier.protocol !== 'https:' || !['auctions.yahoo.co.jp','page.auctions.yahoo.co.jp','paypayfleamarket.yahoo.co.jp','jp.mercari.com','item.mercari.com','fril.jp','item.fril.jp','www.amazon.co.jp','amazon.co.jp'].includes(supplier.hostname))) throw new Error('Invalid supplier URL');
   const images = payload.images.map(value => {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid image URL');
