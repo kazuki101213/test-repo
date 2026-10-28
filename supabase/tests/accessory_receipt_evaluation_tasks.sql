@@ -22,10 +22,10 @@ begin
  if exists(select 1 from app.items where id in(child,duplicate,same_purchase,own_child) and (inspected_at is not null or cleaned_at is not null)) then raise exception 'Accessory inspection history modified';end if;
  -- An accessory's own real inspection keeps its task eligible after parent cancellation.
  update app.items set inspected_at=now(),cleaned_at=now() where id=own_child;
- perform app.perform_inventory_action(parent,'inspection_cancel','商品登録前');
+ update app.items set cleaned_at=null where id=parent;
  if exists(select 1 from app.v_receipt_evaluation_tasks where item_id in(parent,child,duplicate)) then raise exception 'Cancelled parent still ready';end if;
  if not exists(select 1 from app.v_receipt_evaluation_tasks where item_id=own_child) then raise exception 'Own inspected accessory lost task';end if;
- perform app.perform_inventory_action(parent,'inspection_complete','検品中');
+ update app.items set cleaned_at=now() where id=parent;
  insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory)
  values('990956aaaaa-AADD-'||to_char(current_date-10,'YYYYMMDD')||'-1',990956,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'linked later fixture',14,'ラクマ','メルカリ','accessory-todo-late',true) returning id into late_child;
  if exists(select 1 from app.receipt_evaluation_tasks where item_id=late_child) then raise exception 'Unlinked child enqueued';end if;
@@ -36,8 +36,10 @@ begin
  update app.items set parent_item_id=parent where id=late_child;
  perform app.complete_receipt_evaluation_task(child);
  if exists(select 1 from app.receipt_evaluation_tasks where item_id in(child,duplicate) and completed_at is null) then raise exception 'Same purchase manual completion not grouped';end if;
- perform app.perform_inventory_action(parent,'inspection_cancel','商品登録前');
- perform app.perform_inventory_action(parent,'inspection_complete','検品中');
+ update app.items set cleaned_at=null where id=parent;
+ update app.items set cleaned_at=now() where id=parent;
+ update app.items set parent_item_id=null where id=child;
+ update app.items set parent_item_id=parent where id=child;
  if exists(select 1 from app.v_receipt_evaluation_tasks where item_id in(child,duplicate)) then raise exception 'Completed purchase revived';end if;
  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,inspected_at,cleaned_at)
  values(990957,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'imported dates fixture',100,'メルカリ','メルカリ','accessory-todo-import',now(),now()) returning id into imported_parent;
