@@ -2,7 +2,7 @@ begin;
 select set_config('request.jwt.claim.sub',(select p.user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.role='admin' and s.is_active limit 1)::text,true);
 set local role authenticated;
 do $test$
-declare parent uuid;child uuid;duplicate uuid;same_purchase uuid;late_child uuid;own_child uuid;
+declare parent uuid;child uuid;duplicate uuid;same_purchase uuid;late_child uuid;own_child uuid;imported_parent uuid;
 begin
  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,marketplace_item_id)
  values(990951,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'receipt parent fixture',100,'ヤフフリ','メルカリ','123','accessory-todo-parent') returning id into parent;
@@ -38,6 +38,11 @@ begin
  perform app.perform_inventory_action(parent,'inspection_cancel','商品登録前');
  perform app.perform_inventory_action(parent,'inspection_complete','検品中');
  if exists(select 1 from app.v_receipt_evaluation_tasks where item_id in(child,duplicate)) then raise exception 'Completed purchase revived';end if;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,inspected_at,cleaned_at)
+ values(990957,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'imported dates fixture',100,'メルカリ','メルカリ','accessory-todo-import',now(),now()) returning id into imported_parent;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory,parent_item_id)
+ values(990958,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'imported parent child fixture',10,'メルカリ','メルカリ','accessory-todo-import-child',true,imported_parent);
+ if exists(select 1 from app.receipt_evaluation_tasks t join app.items i on i.id=t.item_id where i.lot_seq=990958) then raise exception 'Imported dates created task without inspection event';end if;
 end $test$;
 reset role;
 insert into app.marketplace_extension_receipts(marketplace,marketplace_item_id,account_label,state,reserved_by)
@@ -51,7 +56,7 @@ reset role;
 select set_config('request.jwt.claim.sub',(select p.user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.role<>'admin' and s.is_active limit 1)::text,true);
 set local role authenticated;
 do $test$begin
- if exists(select 1 from app.v_receipt_evaluation_tasks where lot_seq between 990951 and 990956) then raise exception 'Nonadmin task disclosure';end if;
+ if exists(select 1 from app.v_receipt_evaluation_tasks where lot_seq between 990951 and 990958) then raise exception 'Nonadmin task disclosure';end if;
  begin perform app.complete_receipt_evaluation_task((select id from app.items where lot_seq=990952));raise exception 'Nonadmin completion allowed';exception when insufficient_privilege then null;end;
 end $test$;
 set local role anon;
