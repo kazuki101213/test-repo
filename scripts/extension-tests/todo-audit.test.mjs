@@ -32,7 +32,7 @@ test('DOM audit distinguishes pending receipt, completed receipt and previous ev
   await p.evaluate(()=>{const a=document.createElement('a');a.href='#';a.textContent='受け取り連絡をする';document.querySelector('main').append(a);});
   const pending=await p.evaluate(readBuyerTodoState,{itemId:id,stage:'receipt'});assert.equal(pending.received,false);assert.equal(pending.pending,true);
   await p.unroute('**/*');await p.route('**/*',r=>r.fulfill({contentType:'text/html; charset=utf-8',body:'<p>評価の変更 前回、評価した内容</p><input type="hidden" name="aID" value="'+id+'"><input type="hidden" name="isBuyer" value="true"><input type="hidden" name="isRevision" value="1"><textarea>既存値</textarea>'}));
-  await p.goto('https://auctions.yahoo.co.jp/jp/show/leavefeedback?aID='+id);assert.equal((await p.evaluate(readBuyerTodoState,{itemId:id,stage:'rating'})).evaluated,true);assert.equal(await p.locator('textarea').inputValue(),'既存値');
+  await p.goto('https://auctions.yahoo.co.jp/jp/show/leavefeedback?aID='+id);const rating=await p.evaluate(readBuyerTodoState,{itemId:id,stage:'rating'});assert.equal(rating.buyer,true);assert.equal(rating.seller,false);assert.equal(rating.evaluated,true);assert.equal(rating.newEvaluation,false);assert.equal(await p.locator('textarea').inputValue(),'既存値');
   assert.ok((await p.evaluate(readBuyerTodoState,{itemId:'b1234567890',stage:'rating'})).__error);
  }finally{await browser.close();}
 });
