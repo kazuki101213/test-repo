@@ -14,7 +14,7 @@ export async function readBuyerTodoState({itemId,stage}){
    if(!hidden('aID').includes(itemId)&&!hidden('aid').includes(itemId))throw Error('評価フォームの商品IDを確認できません');
    const buyer=hidden('isBuyer').some(x=>['true','1'].includes(x)),seller=hidden('isSeller').some(x=>['true','1'].includes(x));
    if(!buyer||seller)throw Error('購入者としての評価画面を確認できません');
-   return {itemId,stage,evaluated:text.includes('評価の変更')&&text.includes('前回、評価した内容')&&hidden('isRevision').some(x=>['true','1'].includes(x)),newEvaluation:text.includes('評価の新規入力'),observedAt:new Date().toISOString()};
+   return {itemId,stage,buyer:true,seller:false,evaluated:text.includes('評価の変更')&&text.includes('前回、評価した内容')&&hidden('isRevision').some(x=>['true','1'].includes(x)),newEvaluation:text.includes('評価の新規入力')&&hidden('isRevision').some(x=>['false','0'].includes(x)),observedAt:new Date().toISOString()};
   }
   const roots=[...document.querySelectorAll('main')].filter(v);if(roots.length!==1)throw Error('取引領域を確認できません');const root=roots[0];
   const links=[...root.querySelectorAll('a[href]')].filter(v),labels=links.map(a=>n(a.innerText));
