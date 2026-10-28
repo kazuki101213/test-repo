@@ -265,8 +265,8 @@ export default function TaskDetail({
       {photoMode && <>
       <div className="card photo-control-row">
         <span className="muted">{packing?'梱包写真':'写真'} {photos.length}枚</span>
-        <div className="photo-primary-actions">{canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : packing?'梱包写真追加':'写真表示'}
-          <input type="file" aria-label={packing?'梱包写真追加':'商品写真表示'} accept="image/*" multiple disabled={uploading || driveBusy || reflecting || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
+        <div className="photo-primary-actions">{canEditPhotos&&<label className="btn photo-upload">{uploading ? '追加中…' : packing?'梱包写真追加':'写真追加'}
+          <input type="file" aria-label={packing?'梱包写真追加':'商品写真追加'} accept="image/*" multiple disabled={uploading || driveBusy || reflecting || deletingPhotoId !== null} onChange={e => { void onPhotoPick(e.target.files); e.target.value = ''; }} />
         </label>}
         {canEditPhotos && !packing && /^\d+a+-/i.test(task.sku) && <button type="button" className="btn photo-reflect" disabled={reflecting || uploading || driveBusy || deletingPhotoId !== null || savingPhotoId !== null} onClick={() => void reflectPhotos()}>{reflecting ? '反映中…' : '写真反映'}</button>}</div>
         {(canEditPhotos || (!packing && photos.length > 0 && !photoReview?.approved_at))&&<button type="button" className="btn photo-drive-add" disabled={driveBusy || uploading || reflecting || deletingPhotoId !== null || photos.length === 0}
