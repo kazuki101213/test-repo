@@ -22,7 +22,7 @@ export function sellerDefaults(task:DeliveryTask):SellerDraft{
  const listingCategory=yahoo&&category==='ブルーレイレコーダー'&&maker?`${category} > ${maker}`:category==='小物'?(/ヘッドホン|ヘッドフォン|headphone/i.test(title)?'ヘッドホン':/イヤホン|earphone/i.test(title)?'イヤホン':/リモコン/.test(title)?'リモコン':/スピーカー/.test(title)?'スピーカー':/アンプ/.test(title)?'アンプ':''):category==='モニター'?'ディスプレイ・モニター':category;
  return {title:listing?.[1]||task.title,description:listing?.[2]||task.description||'',price:Math.ceil((task.planned_price||0)*(yahoo?(task.condition==='可'?.2:.35):.8)),
  condition:!task.condition?'':yahoo?task.condition==='可'?'傷や汚れあり':'やや傷や汚れあり':task.condition==='可'?'全体的に状態が悪い':task.condition==='良い'?'やや傷や汚れあり':'目立った傷や汚れなし',
- shippingMethod:yahoo?(postal?'おてがる配送（日本郵便）':'おてがる配送（ヤマト運輸）'):postal?'ゆうゆうメルカリ便':'らくらくメルカリ便',shippingPayer:yahoo?'購入者負担':'出品者負担',dispatchDays:'2〜3日',origin,category,listingCategory,weightKg:yahoo?(category==='小物'?'2':'5'):undefined,size:category==='ブルーレイレコーダー'?'100':category==='テレビ'||category==='モニター'?'140':'',dropoff,auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false};
+ shippingMethod:yahoo?(postal?'おてがる配送（日本郵便）':'おてがる配送（ヤマト運輸）'):postal?'ゆうゆうメルカリ便':'らくらくメルカリ便',shippingPayer:yahoo?'購入者負担':'出品者負担',dispatchDays:yahoo?'2〜3日':'4〜7日',origin,category,listingCategory,weightKg:yahoo?(category==='小物'?'2':'5'):undefined,size:category==='ブルーレイレコーダー'?'100':category==='テレビ'||category==='モニター'?'140':'',dropoff,auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false};
 }
 
 /** A saved shipping method must never inherit a drop-off from another carrier. */
