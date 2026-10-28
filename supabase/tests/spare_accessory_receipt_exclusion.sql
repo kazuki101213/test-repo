@@ -5,8 +5,8 @@ do $test$
 declare parent uuid; normal_child uuid; allocated_child uuid; direct_child uuid; linked_child uuid; staff_id uuid;
 begin
  select id into staff_id from app.staff where code='AA';
- insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id)
- values(990961,staff_id,(select id from app.staff where code='DD'),current_date,'spare receipt parent fixture',100,'メルカリ','メルカリ','spare-receipt-parent') returning id into parent;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,marketplace_item_id)
+ values(990961,staff_id,(select id from app.staff where code='DD'),current_date,'spare receipt parent fixture',100,'メルカリ','メルカリ','123','spare-receipt-parent') returning id into parent;
  insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory,parent_item_id)
  select (990962+n)::text||repeat('a',n+1)||'-AADD-'||to_char(current_date-n,'YYYYMMDD')||'-1',990962+n,staff_id,(select id from app.staff where code='DD'),current_date-n,'spare receipt child fixture',10+n,'メルカリ','メルカリ',purchase,true,parent
  from (values(0,'spare-receipt-normal'),(1,'spare-receipt-allocated'),(2,'spare-receipt-direct'),(3,'spare-receipt-linked')) f(n,purchase);
