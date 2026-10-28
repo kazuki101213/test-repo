@@ -18,7 +18,7 @@ assert(!keys('商品登録前',{workflow_decision:'yahoo',has_malfunction_reply:
 assert(!keys('商品登録前',{workflow_decision:'yahoo'}).includes('comments'));
 const replyButtons=workflow.deliveryWorkflowButtons({...base,status:'商品登録前',workflow_decision:'yahoo',has_malfunction_reply:true});
 assert.equal(replyButtons.at(-2).label,'販売不可取消');
-assert.equal(replyButtons.at(-1).label,'動作不良確認');
+assert.equal(replyButtons.at(-1).label,'仕入担当者へメッセージ');
 assert(!keys('商品登録前',{has_malfunction_reply:true}).includes('comments'));
 assert(workflow.deliveryWorkflowButtons({...base,status:'動作不良'}).find(b=>b.key==='supplier_return_complete').disabled);assert(keys('動作不良',{supplier_contact_requested_at:'now'}).includes('supplier_return_complete'));
 assert.deepEqual(keys('返品処理'),['supplier_return_cancel']);assert(!keys('返品処理',{marketplace:'Amazon返品'}).length);
