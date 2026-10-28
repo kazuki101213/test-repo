@@ -1,7 +1,8 @@
 // Explicit, expiring operator request. This changes only existing Mercari dispatch days.
 const OWNERS={'f29f12b6-35f2-4e9f-8312-a8321ddf3c12':'mercari-1','51502a66-28a6-4af0-81ea-660e63d8b66c':'mercari-2'};
 export function dispatchDaysRequest(request,profileId,now=Date.now()){
- if(request?.kind!=='mercari-dispatch-days'||!/^[-0-9a-f]{36}$/i.test(request.id||'')||request.targetDays!=='4〜7日'||!['audit','apply'].includes(request.action))return null;
+ if(request?.kind!=='mercari-dispatch-days'||!/^[-0-9a-f]{36}$/i.test(request.id||'')||request.targetDays!=='4〜7日'||!['audit','apply','reconcile'].includes(request.action))return null;
+ if(request.action==='reconcile'&&!/^[-0-9a-f]{36}$/i.test(request.sourceRequestId||''))return null;
  const issued=Date.parse(request.issuedAt),expires=Date.parse(request.expiresAt);
  if(!Number.isFinite(issued)||!Number.isFinite(expires)||issued>now||expires<=now||expires-issued>4*3600000)return null;
  const target=request.accounts?.find(a=>a.profileId===profileId&&a.accountId===OWNERS[profileId]);
@@ -11,6 +12,11 @@ export async function mercariDispatchDaysPage({itemId,title:expectedTitle,action
  try{
  const visible=e=>!!e&&e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden',norm=s=>String(s||'').replace(/\s+/g,' ').trim(),days=s=>norm(s).replace(/[～~–—-]/g,'〜').replace(/で発送$/,'');
  if(!/^m[0-9]{8,14}$/.test(itemId)||location.hostname!=='jp.mercari.com')throw Error('対象の商品ID・サイトが一致しません');
+ if(action==='saved'){
+  const end=Date.now()+18000;
+  while(location.pathname==='/sell/edit/'+itemId&&Date.now()<end)await new Promise(r=>setTimeout(r,250));
+  if(location.pathname!=='/item/'+itemId)throw Error('保存後の商品画面への遷移を確認できません');
+ }
  const isPublic=location.pathname==='/item/'+itemId,isEdit=location.pathname==='/sell/edit/'+itemId;
  if(!isPublic&&!isEdit)throw Error('対象の商品画面ではありません');
  const deadline=Date.now()+18000;let titles;
@@ -19,7 +25,7 @@ export async function mercariDispatchDaysPage({itemId,title:expectedTitle,action
  const title=norm(isEdit?titles[0].value:titles[0].innerText);
  if(expectedTitle&&title!==expectedTitle)throw Error('対象の商品名が変更されています');
  if(isPublic){
-  if(action!=='public')throw Error('公開画面では読み取りだけ可能です');
+  if(!['public','saved'].includes(action))throw Error('公開画面では読み取りだけ可能です');
   if(/売り切れました|SOLD OUT|公開停止中|この商品は削除されました/.test(document.body.innerText))return {eligible:false,reason:'販売中ではありません'};
   const edits=[...document.querySelectorAll('a[href]')].filter(e=>visible(e)&&new URL(e.href).origin===location.origin&&new URL(e.href).pathname==='/sell/edit/'+itemId);
   const buttons=[...document.querySelectorAll('button')].filter(e=>visible(e)&&/^商品の編集$/.test(norm(e.innerText)));
@@ -69,6 +75,22 @@ export async function runDispatchDaysUpdate({settings,records,profileId,storage,
  if(!request||settings.mode==='diagnostic'||records.job||records.authProblem)return false;
  const account=settings.accounts.find(a=>a.enabled&&a.site==='mercari'&&a.id===request.accountId);if(!account)return false;
  const saved=await storage.get(['dispatchDaysJob','dispatchDaysAudit']);let job=saved.dispatchDaysJob;
+ if(request.action==='reconcile'){
+  const audit=saved.dispatchDaysAudit,result=job?.results?.at(-1),target=job?.targets?.[job.index];
+  if(job?.requestId!==request.sourceRequestId||job.status!=='unknown'||job.reconciliationRequestId===request.id||result?.state!=='unknown'||result.itemId!==target?.itemId||job.results.filter(r=>['unknown','submitting'].includes(r.state)).length!==1)return false;
+  const original=result.fingerprint?{fingerprint:result.fingerprint,title:result.title}:audit?.targets?.[0]?.itemId===target.itemId?audit.sample:null;
+  if(!original?.fingerprint||!original.title)return false;
+  let session;
+  try{
+   session=await openSession(account);await session.go('https://jp.mercari.com/item/'+target.itemId);
+   const item=await session.dispatchDays({...target,title:original.title,action:'public'});if(!item.eligible)throw Error('保存結果の出品を確認できません');
+   await session.go(item.editUrl);const form=await session.dispatchDays({...target,title:original.title,action:'inspect'});
+   if(!form.eligible||form.days!=='4〜7日'||form.fingerprint!==original.fingerprint)throw Error('不明な保存の発送日数・他項目を確認できません');
+   result.originalError=result.error;delete result.error;Object.assign(result,{state:'completed',after:form.days,verifiedAt:new Date().toISOString(),reconciliationRequestId:request.id});
+   job.index++;job.status='running';job.error=null;job.reconciliationRequestId=request.id;job.at=new Date().toISOString();await storage.set({dispatchDaysJob:job});await continueWork?.(false);
+  }catch(error){await log('error','発送日数の保存結果は未確認のままです：'+error.message);}
+  finally{await session?.close();}return true;
+ }
  if(job?.requestId===request.id&&['completed','failed','unknown'].includes(job.status))return false;
  if(job?.requestId!==request.id){
   if(job?.results?.some(r=>['submitting','unknown'].includes(r.state)))return false;
@@ -96,13 +118,13 @@ export async function runDispatchDaysUpdate({settings,records,profileId,storage,
     await session.go('https://jp.mercari.com/item/'+target.itemId);const item=await session.dispatchDays({...target,action:'public'});
     if(!item.eligible){result.state='skipped';result.reason=item.reason;job.index++;continue;}
     await session.go(item.editUrl);const form=await session.dispatchDays({...target,title:item.title,action:'inspect'});
-    if(!form.eligible)throw Error(form.reason);result.before=form.days;
+    if(!form.eligible)throw Error(form.reason);result.before=form.days;result.fingerprint=form.fingerprint;result.title=form.title;
     if(form.days==='4〜7日'){result.state='already';result.after=form.days;job.index++;continue;}
     const args={...target,title:item.title,before:form.days,fingerprint:form.fingerprint};
     if(!(await session.dispatchDays({...args,action:'prepare'})).prepared)throw Error('変更内容を準備できません');
     result.state='submitting';await storage.set({dispatchDaysJob:job});submitted=true;
     if(!(await session.dispatchDays({...args,action:'submit'})).submitRequested)throw Error('保存結果が不明です');
-    await session.loaded();await session.go(item.editUrl);
+    await session.loaded();const landed=await session.dispatchDays({...target,title:item.title,action:'saved'});if(!landed.eligible)throw Error('保存後の商品画面を確認できません');await session.loaded();await session.go(item.editUrl);
     const verified=await session.dispatchDays({...target,title:item.title,action:'inspect'});
     if(!verified.eligible||verified.days!=='4〜7日'||verified.fingerprint!==form.fingerprint)throw Error('保存後の発送日数・他項目を確認できません');
     result.state='completed';result.after=verified.days;result.verifiedAt=new Date().toISOString();job.index++;
