@@ -83,8 +83,7 @@ export function withReportedDamage(value:string,hasDamage:boolean):string {
 function yahooAuctionDescription(product: string, condition: string, skuText: string, hasPhysicalDamage = false) {
   const damaged = condition === '傷や汚れあり' || condition === '全体的に状態が悪い';
   const recorder = [
-    '知人宅で通常通り使用してました。',
-    '譲り受けた際にリモコンが行方不明になりました。',
+    '通常通り使用してましたが、リモコンが行方不明になりました。',
     '今現在で確認できないので、現状品になります。',
     '素人保管ですので、ご了承の程よろしくお願いいたします。',
     '素人のため、詳しいことは分かりません。',
@@ -95,8 +94,7 @@ function yahooAuctionDescription(product: string, condition: string, skuText: st
     'ブルーレイレコーダー　ブルーレイプレーヤー　ブルーレイ・ディスク　BD　SONY　ソニー Panasonic　パナソニック　DIGA　ディーガ　SHARP　シャープ　AQUOS　アクオス　TOSHIBA　東芝　とうしば　REGZA　レグザ　B-casカード　mini B-casカード　リモコン　同時録画　電源ケーブル　2ピンケーブル　3ピンケーブル　HDMIケーブル　同軸ケーブル　アンテナケーブル',
   ];
   const monitor = [
-    '知人宅で通常通り使用してました。',
-    '譲り受けた際にリモコンが行方不明になりました。',
+    '通常通り使用してましたが、リモコンが行方不明になりました。',
     '今現在で確認できないので、現状品になります。',
     '素人保管ですので、ご了承の程よろしくお願いいたします。',
     '素人のため、詳しいことは分かりません。',
@@ -108,8 +106,7 @@ function yahooAuctionDescription(product: string, condition: string, skuText: st
     'PCモニター　ディスプレイ　液晶モニター　外部モニター　在宅ワーク　テレワーク　デュアルモニター　サブモニター　ゲーミングモニター　テレビ　TV　電源ケーブル　2ピンケーブル　3ピンケーブル　HDMIケーブル　同軸ケーブル　アンテナケーブル　21インチ　24インチ　27インチ　32インチ　フルHD　WQHD　4K　IPS　144Hz　165Hz　HDMI　DisplayPort　USB-C　高さ調整　縦回転　VESA対応　EIZO　アイ・オー・データ　JAPANNEXT　ソニー　SONY　シャープ　SHARP　デル　Dell　ベンキュー　BenQ　LG　ASUS　Acer　MSI　Samsung　HP　Lenovo　Philips　ViewSonic　AOC　GIGABYTE',
   ];
   const small = [
-    '知人宅で通常通り使用してました。',
-    '譲り受けた際にリモコンが行方不明になりました。',
+    '通常通り使用してましたが、リモコンが行方不明になりました。',
     '今現在で確認できないので、現状品になります。',
     '素人保管ですので、ご了承の程よろしくお願いいたします。',
     '素人のため、詳しいことは分かりません。',
