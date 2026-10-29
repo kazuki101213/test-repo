@@ -15,12 +15,12 @@ begin
   'overviewPhotoId',p.overview_photo_id,$new$);
  execute patched;
  source:=pg_get_functiondef('app.queue_seller_operation(uuid,text,jsonb,uuid)'::regprocedure);
- patched:=replace(source,$old$IF i.status <> '商品登録前' THEN$old$,$new$
+ patched:=regexp_replace(source,$old$if[[:space:]]+i[.]status[[:space:]]*<>[[:space:]]*'商品登録前'[[:space:]]+then$old$,$new$
     IF coalesce((app.line_shipping_context(i.id)->>'requiresPhotos')::boolean,false)
       AND NOT coalesce((app.line_shipping_context(i.id)->>'photosReady')::boolean,false) THEN
       RAISE EXCEPTION '出品前にLINE発送依頼の全体写真と型番確認写真を保存してください';
     END IF;
-    IF i.status <> '商品登録前' THEN$new$);
+    IF i.status <> '商品登録前' THEN$new$,'i');
  if patched=source then raise exception 'Listing readiness anchor changed';end if;
  execute patched;
  -- Include LINE preparation failures immediately, without waiting for the 24-hour reminder.
