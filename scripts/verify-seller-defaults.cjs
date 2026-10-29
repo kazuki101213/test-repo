@@ -51,3 +51,8 @@ for(const [method,size] of [['らくらくメルカリ便','ゆうパケット�
 assert(!sellerExports.sellerShippingSizes('らくらくメルカリ便').includes('ゆうパケットプラス'));
 assert(!sellerExports.sellerShippingSizes('ゆうゆうメルカリ便').includes('宅急便コンパクト'));
 console.log('Shipping compatibility: both carrier directions, stores, and invalid saved package require reselection');
+
+for(const model of ['BDP-S6700','UBP-X700','ｂｄｐ－ｓ６７００']){const draft=sellerExports.sellerDefaults({title:model,model_no:model,sales_channel:'ヤフオク'});assert.equal(draft.listingCategory,'ブルーレイレコーダー > ソニー');assert.equal(sellerExports.sellerListingCategoryError(draft,'ヤフオク'),'');}
+for(const manufacturer of ['SONY','Panasonic','東芝']){const draft=sellerExports.sellerDefaults({title:'ブルーレイレコーダー',model_no:'TT-4K100',sales_channel:'ヤフオク'},manufacturer);assert(draft.listingCategory.includes(' > '));assert.equal(sellerExports.sellerListingCategoryError(draft,'ヤフオク'),'');}
+const unknown={category:'ブルーレイレコーダー',listingCategory:'ブルーレイレコーダー'};assert.match(sellerExports.sellerListingCategoryError(unknown,'ヤフオク'),/メーカーまで指定/);assert.equal(sellerExports.sellerListingCategoryError(unknown,'メルカリ'),'');
+console.log('Yahoo manufacturer category defaults and pre-submit parent guard passed');
