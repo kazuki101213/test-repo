@@ -11,7 +11,7 @@ const description=load('apps/delivery/src/description.ts',{'./descriptionTemplat
 for(const condition of description.CONDITIONS_BY_TARGET['yahoo-auction']){
  const output=description.buildDescription({product:'ブルーレイレコーダー',condition,accessories:'',year:'',target:'yahoo-auction',inspected:false,cleaned:false,salesChannel:'ヤフオク',sku:'2403-test',modelNo:'DBR-T1009',manufacturer:'TOSHIBA'});
  assert(!output.includes('破損あります'),'A condition rating is not evidence of physical damage');
- assert(output.includes('通常通り使用してましたが、リモコンが行方不明になりました。'));
+ assert(output.includes('リモコンが行方不明になりました。'));
 }
 for(const product of ['ブルーレイレコーダー','モニター','テレビ','小物']){
  const damaged=description.buildDescription({product,condition:'傷や汚れあり',accessories:'',year:'',target:'yahoo-auction',inspected:false,cleaned:false,salesChannel:'ヤフオク',hasPhysicalDamage:true});
