@@ -28,7 +28,7 @@ const FOOTER_FILTERS: { key: Filter; label: string }[] = [
 ];
 
 function serialNumber(task: DeliveryTask): string {
-  const prefix = task.sku.match(/^(\d+[a-z]*)-/i)?.[1];
+  const prefix = task.inventory_group_serial?.trim() || task.sku.match(/^(\d+[a-z]*)-/i)?.[1];
   return prefix?.toLocaleUpperCase() ?? `item:${task.id}`;
 }
 

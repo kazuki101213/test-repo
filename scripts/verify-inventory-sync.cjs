@@ -20,7 +20,8 @@ let owner='hook-user',filters={status:'検品中'},view;
 async function settle(){for(let i=0;i<25;i++){if(dirty){dirty=false;cursor=0;view=hook.exports.useInventoryPage('delivery',owner,filters);effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
 async function initial(){await settle();for(const [id,fn]of [...timers]){timers.delete(id);fn();}await settle();}
 (async()=>{
-response={data:{ids:['a'],rows:[{id:'a'}],fingerprints:{a:'v1'},revision:'page-v1',total:100},error:null};await initial();assert.equal(view.rows.length,1);assert.equal(calls.at(-1).args.p_limit,50);
+response={data:{ids:['a'],rows:[{id:'a',inventory_group_serial:'1894aa'}],fingerprints:{a:'v1'},revision:'page-v1',total:100},error:null};await initial();assert.equal(view.rows.length,1);assert.equal(calls.at(-1).args.p_limit,50);
+response={data:{ids:[],rows:[],fingerprints:{},unchanged:true,revision:'page-v1',total:100},error:null};view.updateRow({id:'a',title:'edited'});await settle();assert.equal(view.rows[0].inventory_group_serial,'1894aa','Local detail saves retain parent grouping metadata');
 const before=calls.length;document.visibilityState='hidden';clock+=30000;intervals.forEach(fn=>fn());await settle();assert.equal(calls.length,before,'Hidden inventory must not poll');
 document.visibilityState='visible';response={data:{ids:[],rows:[],fingerprints:{},unchanged:true,revision:'page-v1',total:100},error:null};intervals.forEach(fn=>fn());await settle();assert.equal(view.rows[0].id,'a');assert.equal(calls.at(-1).args.p_known.a,'v1');assert.equal(calls.at(-1).args.p_known.__revision,'page-v1');
 const once=calls.length;listeners.focus();await settle();assert.equal(calls.length,once,'Focus immediately after poll must be deduplicated');
@@ -33,3 +34,10 @@ const signal=new AbortController().signal;await fetchInventoryPage('delivery',{}
 await assert.rejects(fetchInventoryPage('management',{from:'2026-10-20',to:'2026-10-01'},50),/終了日/);
 console.log('Inventory transport: 50/100 paging, fingerprints, deletion, ordering, retained errors/recovery, hidden/focus dedup, per-user cache and abort passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+const groupContext={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/delivery/src/pages/TaskList.tsx','utf8').match(/function serialNumber\(task: DeliveryTask\): string \{[\s\S]*?\n\}/)[0]+'\nexports.groupKey=serialNumber;', {compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,groupContext);
+const groupKey=groupContext.exports.groupKey;
+const bodyGroup=groupKey({id:"body",sku:"1894aa-AAII-20260921-1540",inventory_group_serial:"1894aa"});
+assert.equal(groupKey({id:"spare",sku:"1894aaaaa-AAII-20261029-1540",inventory_group_serial:"1894aa"}),bodyGroup);
+assert.notEqual(groupKey({id:"other",sku:"1894a-AAEE-20260927-1540",inventory_group_serial:"1894a"}),bodyGroup);
+assert.equal(groupKey({id:"legacy",sku:"2000-AAII-20261001-1"}),"2000");

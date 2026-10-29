@@ -38,4 +38,31 @@ do $$declare q jsonb;begin
  q:=app.read_inventory_page('delivery','{"queryField":"serial","query":"990201"}',50,'{}');
  if jsonb_array_length(q->'rows')<>2 then raise exception 'Own complete group unavailable';end if;
 end $$;
+
+-- A spare registered to a resale must stay with that explicit parent despite its unique suffix.
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace)
+select '990203aa-AADD-20261001-100',990203,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),'2026-10-01','parent grouping fixture',1000,'ヤフオク';
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace)
+select '990203b-AAHH-20261001-100',990203,(select id from app.staff where code='AA'),(select id from app.staff where code='HH'),'2026-10-01','unrelated resale fixture',1000,'ヤフオク';
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,parent_item_id)
+select '990203aaaaa-AADD-20261002-10',990203,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),'2026-10-02','parent spare fixture',100,'ヤフオク',true,(select id from app.items where title='parent grouping fixture');
+do $$declare p jsonb; q jsonb; key text;begin
+ select lower(app.product_serial(sku,lot_seq)) into key from app.items where title='parent grouping fixture';
+ p:=app.read_inventory_page('delivery',jsonb_build_object('queryField','sku','query',(select sku from app.items where title='parent grouping fixture')),1,'{}');
+ if (p->>'total')::integer<>1 or jsonb_array_length(p->'rows')<>2 then raise exception 'Parent search omitted its uniquely numbered spare';end if;
+ if exists(select 1 from jsonb_array_elements(p->'rows') d where d->>'inventory_group_serial'<>key) then raise exception 'Parent and spare have different rendering groups';end if;
+ q:=app.read_inventory_page('delivery',jsonb_build_object('queryField','sku','query',(select sku from app.items where title='parent spare fixture')),1,'{}');
+ if q->'ids'<>p->'ids' then raise exception 'Accessory search omitted its parent';end if;
+ q:=app.read_inventory_page('delivery',jsonb_build_object('queryField','sku','query',(select sku from app.items where title='unrelated resale fixture')),1,'{}');
+ if jsonb_array_length(q->'rows')<>1 then raise exception 'Different resale merged into explicit parent group';end if;
+ q:=app.read_inventory_page('delivery',jsonb_build_object('queryField','sku','query',(select sku from app.items where title='parent grouping fixture')),1,(p->'fingerprints')||jsonb_build_object('__revision',p->>'revision'));
+ if not (q->>'unchanged')::boolean then raise exception 'Explicit parent group broke unchanged revision';end if;
+end $$;
+set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+do $$declare p jsonb;begin
+ p:=app.read_inventory_page('delivery','{"queryField":"serial","query":"990203"}',50,'{}');
+ if jsonb_array_length(p->'rows')<>2 or exists(select 1 from jsonb_array_elements(p->'rows') d where d->>'title'='unrelated resale fixture') then raise exception 'Parent grouping changed staff visibility';end if;
+end $$;
+
 rollback;
