@@ -42,6 +42,7 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
  const props={mode:'listing',task:{...base,sales_channel:channel,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(task){changed.push(task);},onClose(){}};
  async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=Panel(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
  await settle();
+ if(approved&&!uncertain){const field=all(tree).find(n=>n.type==='input'&&n.props.maxLength===200),original=field.props.value;field.props.onChange({target:{value:' '}});await settle();assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='出品').props.disabled,true);assert(all(tree).some(n=>n.props?.role==='alert'&&String(n.props.children).includes('出品カテゴリを入力')));assert.equal(queued,undefined);field.props.onChange({target:{value:original}});await settle();}
  if(channel==='ヤフオク'&&approved&&!uncertain){const field=all(tree).find(n=>n.type==='input'&&n.props.maxLength===200),original=field.props.value;field.props.onChange({target:{value:'ブルーレイレコーダー'}});await settle();assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='出品').props.disabled,true);assert(all(tree).some(n=>n.props?.role==='alert'&&String(n.props.children).includes('メーカーまで指定')));field.props.onChange({target:{value:original}});await settle();}
  assert.equal(all(tree).some(n=>n.type==='button'&&n.props.children==='閉じる'),false);
  const title=all(tree).find(n=>n.type==='input'&&n.props.maxLength===128);
