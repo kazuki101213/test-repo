@@ -32,6 +32,7 @@ export function searchSellerCategory(term){
  return before;
 }
 export async function resolveYahooCategory(target){
+ try{
  if(location.hostname!=='auctions.yahoo.co.jp'||!/\/show\/topsubmit$/.test(location.pathname))throw Error('ヤフオクのカテゴリ検索結果ではありません');
  const norm=s=>String(s||'').replace(/（出品されている商品）/g,'').replace(/\s/g,'').replace(/＞/g,'>');const wanted=norm(target);
  const end=Date.now()+10000;while(Date.now()<end){
@@ -39,6 +40,7 @@ export async function resolveYahooCategory(target){
   if(radios.length){const matches=radios.filter(e=>{const path=norm([...e.labels].map(l=>l.innerText).join(' '));return path===wanted||path.endsWith('>'+wanted);});if(matches.length!==1||!/^\d+$/.test(matches[0].value))throw Error('出品カテゴリを1件に特定できません。メーカーまで指定してください');return {categoryId:matches[0].value};}
   await new Promise(resolve=>setTimeout(resolve,250));
  }throw Error('カテゴリの検索結果を確認できません');
+ }catch(error){return {__error:error.message};}
 }
 export function sellerChoiceReady(kind){
  const visible=e=>!!e&&e.getClientRects().length>0;

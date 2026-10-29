@@ -42,6 +42,7 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
  const props={mode:'listing',task:{...base,sales_channel:channel,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(task){changed.push(task);},onClose(){}};
  async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=Panel(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
  await settle();
+ if(channel==='ヤフオク'&&approved&&!uncertain){const field=all(tree).find(n=>n.type==='input'&&n.props.maxLength===200),original=field.props.value;field.props.onChange({target:{value:'ブルーレイレコーダー'}});await settle();assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='出品').props.disabled,true);assert(all(tree).some(n=>n.props?.role==='alert'&&String(n.props.children).includes('メーカーまで指定')));field.props.onChange({target:{value:original}});await settle();}
  assert.equal(all(tree).some(n=>n.type==='button'&&n.props.children==='閉じる'),false);
  const title=all(tree).find(n=>n.type==='input'&&n.props.maxLength===128);
  const body=all(tree).find(n=>n.type==='textarea'&&n.props.maxLength===5000);
@@ -80,3 +81,5 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
 }
 (async()=>{await panelCheck(true,null,false,'ヤフオク');await panelCheck(true,null,true);await panelCheck(false,null);await panelCheck(true,null);await panelCheck(true,'商品名（メルカリ）\n保存済みタイトル\n\n説明文\n保存済み本文');console.log('PASS: four-channel approval gate, listing-panel generation, family SKUs and saved edits');})().catch(error=>{console.error(error);process.exitCode=1;});
 
+
+for(const description of [null,'商品名（ヤフオク）\n保存済み名\n\n説明文\n保存済み本文']){const d=listingDraft({...base,title:'BDP-S6700',model_no:'BDP-S6700',sales_channel:'ヤフオク',description},'SONY');assert.equal(d.listingCategory,'ブルーレイレコーダー > ソニー');if(description)assert.equal(d.description,'保存済み本文');}
