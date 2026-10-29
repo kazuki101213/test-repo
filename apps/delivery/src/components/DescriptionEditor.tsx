@@ -1,7 +1,7 @@
 import ColoredSelect from './ColoredSelect';
 import { useListingKeywords } from '../useListingKeywords';
 import { useEffect, useState, type FormEvent } from 'react';
-import { productModelText, type DeliveryTask, type SellerDraft } from '@bussan/shared';
+import { productListingName, type DeliveryTask, type SellerDraft } from '@bussan/shared';
 import { fetchProductMaker, saveDeliveryDescription } from '../api';
 import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, withReportedDamage, type DescriptionTarget } from '../description';
 
@@ -64,7 +64,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
   const generated = buildDescription({
     product, condition, accessories, year, target, salesChannel: task.sales_channel,
     hasPhysicalDamage: task.has_physical_damage===true, inspected: task.inspected, cleaned: task.cleaned, sku: task.sku, listingSkus,
-    itemNumber: serial, modelNo: productModelText(task), manufacturer,
+    itemNumber: serial, modelNo: productListingName(task), manufacturer,
   });
   const description = embedded?(target==='amazon'?embedded.value.description:joinMarketplaceListing(target,embedded.value.title,embedded.value.description)):manual ?? generated;
   const generatedListing = splitMarketplaceListing(generated);
