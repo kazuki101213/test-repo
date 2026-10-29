@@ -15666,6 +15666,7 @@ declare source text; patched text;
 begin
  source:=pg_get_functiondef('app.line_shipping_context(uuid)'::regprocedure);
  patched:=replace(source,$old$reason:=case when p.model_photo_id is null$old$,$new$reason:=case when q.state='sent' then 'LINEへ送信済み'
+  when exists(select 1 from app.delivery_notice_completions c where c.item_id=i.id and c.staff_id=i.deliverer_id and c.notice_id='shipping:'||q.task_id::text) then '担当者が発送依頼を完了しています。自動通知は停止しています'
   when q.state='failed' then 'LINE送信に失敗しました。設定を確認してください'
   when q.state='sending' then 'LINEへ送信中です'
   when p.model_photo_id is null$new$);
@@ -15688,8 +15689,11 @@ begin
  source:=pg_get_functiondef('app.read_resource_snapshot(text,jsonb,jsonb)'::regprocedure);
  patched:=replace(source,$old$i.marketplace_url,t.created_at from app.delivery_shipping_tasks t$old$,$new$i.marketplace_url,t.created_at,case when lc.value->>'state' in ('pending','sending','failed') then lc.value->>'message' end as line_message from app.delivery_shipping_tasks t$new$);
  if patched=source then raise exception 'Shipping reminder projection anchor changed';end if;
- patched:=replace(patched,$old$join app.items i on i.id=t.item_id where t.resolved_at is null and t.created_at<=now()-interval '24 hours'$old$,$new$join app.items i on i.id=t.item_id left join lateral(select app.line_shipping_context(i.id) value) lc on true where t.resolved_at is null and (t.created_at<=now()-interval '24 hours' or lc.value->>'state' in ('pending','sending','failed'))$new$);
- if position('left join lateral(select app.line_shipping_context(i.id) value) lc' in patched)=0 then raise exception 'Shipping reminder filter anchor changed';end if;
+ patched:=replace(patched,$old$from app.delivery_shipping_tasks t join app.items i on i.id=t.item_id$old$,$new$from app.delivery_shipping_tasks t join app.items i on i.id=t.item_id left join lateral(select app.line_shipping_context(i.id) value) lc on true$new$);
+ if position('left join lateral(select app.line_shipping_context(i.id) value) lc' in patched)=0 then raise exception 'Shipping reminder join anchor changed';end if;
+ source:=patched;
+ patched:=replace(patched,$old$t.created_at<=now()-interval '24 hours'$old$,$new$(t.created_at<=now()-interval '24 hours' or lc.value->>'state' in ('pending','sending','failed'))$new$);
+ if patched=source then raise exception 'Shipping reminder delay anchor changed';end if;
  execute patched;
 end $migration$;
 
