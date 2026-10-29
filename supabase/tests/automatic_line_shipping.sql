@@ -15,6 +15,8 @@ update app.items set status='取引中' where lot_seq in(998741,998742);
 do $$begin
  if (select count(*) from app.delivery_line_outbox)<>2 then raise exception 'Old requests were broadcast or new requests missing';end if;
  if exists(select 1 from app.claim_delivery_line()) then raise exception 'Missing photos/code could send';end if;
+ if exists(select 1 from line_probe where lot_seq in(998741,998742) and (app.line_shipping_context(id)->>'requiresPhotos'<>'true' or app.line_shipping_context(id)->>'photosReady'<>'false')) then raise exception 'Missing preparation not exposed';end if;
+ if (select count(*) from jsonb_array_elements(app.read_resource_snapshot('admin_shipping_tasks')->'rows') r where r->>'item_id' in(select id::text from line_probe where lot_seq in(998741,998742)) and r->>'line_message'='通知写真を指定してください')<>2 then raise exception 'New pending requests hidden for 24 hours';end if;
 end $$;
 insert into app.item_photos(item_id,storage_path,uploaded_by,photo_kind)
  select p.id,'fixture/'||p.lot_seq||'-'||v||'.jpg',(select id from app.staff where code='DD'),'product' from line_probe p cross join generate_series(1,2) v;

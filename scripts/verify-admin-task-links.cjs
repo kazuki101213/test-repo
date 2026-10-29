@@ -48,8 +48,8 @@ function inventoryLink(nodes,label,item){
  const dashboard=await render('apps/admin/src/components/InvoiceTasks.tsx',{invoice_tasks:[{id:'invoice',name:'担当者',month:'2026-10',updated:'2026-10-28',invoice:{total:100,delivery_invoice_approvals:null}}]},[],{},[],childStubs);
  const taskOrder=dashboard.flatMap(n=>n.type==='strong'&&n.props.children==='請求書'?['invoice']:typeof n.type==='function'&&childNames.includes(n.type.name)?[n.type.name==='PhotoReviewTasks'?n.props.mode:n.type.name]:[]);
  assert.deepEqual(taskOrder,['invoice','photos','PackingPhotoTasks','MalfunctionTasks','ReceiptEvaluationTasks','listing','ShippingReminderTasks','SpareShippingTasks'],'All eight task categories follow the requested order');
- const shippingNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_shipping_tasks:['メルカリ','ヤフオク','自己発送'].map((sales_channel,n)=>({id:'shipping'+n,item_id:'stock'+n,sku:(2500+n)+'-SHIPPING',lot_seq:2500+n,sales_channel,marketplace_item_id:'product'+n}))});
- inventoryLink(shippingNodes,'発送する商品の在庫を開く','stock0');
+ const shippingNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_shipping_tasks:['メルカリ','ヤフオク','自己発送'].map((sales_channel,n)=>({line_message:n===0?'通知写真を指定してください':null,id:'shipping'+n,item_id:'stock'+n,sku:(2500+n)+'-SHIPPING',lot_seq:2500+n,sales_channel,marketplace_item_id:'product'+n}))});
+ inventoryLink(shippingNodes,'発送する商品の在庫を開く','stock0');assert(shippingNodes.some(n=>n.props?.role==='status'&&text(n)==='LINE：通知写真を指定してください'),'Pending reason is actionable in management reminders');
  for(const channel of ['メルカリ','ヤフオク','自己発送'])assert(shippingNodes.some(n=>n.type==='strong'&&text(n)===channel+'発送'));
  assert.equal(shippingNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,3,'Shipping reminders open the existing shipping flow');
  const itemId='22222222-2222-4222-8222-222222222222';
