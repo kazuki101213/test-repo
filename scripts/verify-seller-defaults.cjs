@@ -56,3 +56,10 @@ for(const model of ['BDP-S6700','UBP-X700','ｂｄｐ－ｓ６７００']){const
 for(const manufacturer of ['SONY','Panasonic','東芝']){const draft=sellerExports.sellerDefaults({title:'ブルーレイレコーダー',model_no:'TT-4K100',sales_channel:'ヤフオク'},manufacturer);assert(draft.listingCategory.includes(' > '));assert.equal(sellerExports.sellerListingCategoryError(draft,'ヤフオク'),'');}
 const unknown={category:'ブルーレイレコーダー',listingCategory:'ブルーレイレコーダー'};assert.match(sellerExports.sellerListingCategoryError(unknown,'ヤフオク'),/メーカーまで指定/);assert.equal(sellerExports.sellerListingCategoryError(unknown,'メルカリ'),'');
 console.log('Yahoo manufacturer category defaults and pre-submit parent guard passed');
+
+// Camera condenser microphone names must map to an actual Mercari leaf, not a free-text alias.
+for(const title of ["RODE VideoMic GO","RODE VideoMic GO II","RØDE VideoMicro","ＲＯＤＥ ＶｉｄｅｏＭｉｃ ＧＯ"]){const draft=sellerExports.sellerDefaults({title,sales_channel:"メルカリ"});assert.equal(draft.listingCategory,"コンデンサーマイク");assert.equal(sellerExports.sellerListingCategoryError(draft,"メルカリ"),"");}
+assert.equal(sellerExports.sellerDefaults({title:"RODE VideoMic GO",sales_channel:"ヤフオク"}).listingCategory,"");
+for(const listingCategory of [undefined,"","  "])assert.match(sellerExports.sellerListingCategoryError({category:"小物",listingCategory},"メルカリ"),/出品カテゴリを入力/);
+assert.equal(sellerExports.sellerDefaults({title:"RODE microphone",sales_channel:"メルカリ"}).listingCategory,"");
+console.log("VideoMic Mercari condenser category and visible missing-category reason passed");

@@ -20,7 +20,7 @@ export function sellerDefaults(task:DeliveryTask,manufacturer=''):SellerDraft{
  const category=catalogProductCategory(task)??(/ブルーレイ|blu.?ray|UBP-|BDP-|BDZ-|DMR-|DBR-|BD-|2B-|4B-/i.test(title)?'ブルーレイレコーダー':/テレビ|TV|液晶テレビ/i.test(title)?'テレビ':/モニター|モニタ|ディスプレイ/i.test(title)?'モニター':'小物');
  const makerText=[manufacturer,title].join(' ').normalize('NFKC');
  const maker=/SONY|ソニー|BDZ-|BDP-S|UBP-X/i.test(makerText)?'ソニー':/Panasonic|パナソニック|DMR-/i.test(makerText)?'パナソニック':/SHARP|シャープ|(?:2B|4B|BD)-/i.test(makerText)?'シャープ':/TOSHIBA|東芝|DBR-/i.test(makerText)?'東芝':/三菱|MITSUBISHI/i.test(makerText)?'三菱電機':'';
- const listingCategory=yahoo&&category==='ブルーレイレコーダー'&&maker?`${category} > ${maker}`:category==='小物'?(/ヘッドホン|ヘッドフォン|headphone/i.test(title)?'ヘッドホン':/イヤホン|earphone/i.test(title)?'イヤホン':/リモコン/.test(title)?'リモコン':/スピーカー/.test(title)?'スピーカー':/アンプ/.test(title)?'アンプ':''):category==='モニター'?'ディスプレイ・モニター':category;
+ const listingCategory=yahoo&&category==='ブルーレイレコーダー'&&maker?`${category} > ${maker}`:category==='小物'?(!yahoo&&/\bVideoMic(?:ro)?\b/i.test(title.normalize('NFKC'))?'コンデンサーマイク':/ヘッドホン|ヘッドフォン|headphone/i.test(title)?'ヘッドホン':/イヤホン|earphone/i.test(title)?'イヤホン':/リモコン/.test(title)?'リモコン':/スピーカー/.test(title)?'スピーカー':/アンプ/.test(title)?'アンプ':''):category==='モニター'?'ディスプレイ・モニター':category;
  return {title:listing?.[1]||task.title,description:listing?.[2]||task.description||'',price:Math.ceil((task.planned_price||0)*(yahoo?(task.condition==='可'?.2:.35):.8)),
  condition:!task.condition?'':yahoo?task.condition==='可'?'傷や汚れあり':'やや傷や汚れあり':task.condition==='可'?'全体的に状態が悪い':task.condition==='良い'?'やや傷や汚れあり':'目立った傷や汚れなし',
  shippingMethod:yahoo?(postal?'おてがる配送（日本郵便）':'おてがる配送（ヤマト運輸）'):postal?'ゆうゆうメルカリ便':'らくらくメルカリ便',shippingPayer:yahoo?'購入者負担':'出品者負担',dispatchDays:yahoo?'2〜3日':'4〜7日',origin,category,listingCategory,weightKg:yahoo?(category==='小物'?'2':'5'):undefined,size:category==='ブルーレイレコーダー'?'100':category==='テレビ'||category==='モニター'?'140':'',dropoff,auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false};
@@ -28,6 +28,7 @@ export function sellerDefaults(task:DeliveryTask,manufacturer=''):SellerDraft{
 
 /** Manufacturer branches cannot be selected using only their parent category. */
 export function sellerListingCategoryError(draft:Pick<SellerDraft,'category'|'listingCategory'>,salesChannel:string|null):string{
+ if(!draft.listingCategory?.trim())return '出品カテゴリを入力してください（販売サイトのカテゴリ名）。';
  return salesChannel==='ヤフオク'&&draft.category==='ブルーレイレコーダー'&&(!draft.listingCategory?.trim()||draft.listingCategory.normalize('NFKC').replace(/\s/g,'')==='ブルーレイレコーダー')
   ?'出品カテゴリはメーカーまで指定してください（例：ブルーレイレコーダー > ソニー）。':'';
 }
