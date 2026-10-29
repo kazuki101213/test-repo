@@ -31,7 +31,7 @@ set local role postgres;
 insert into app.delivery_line_links(staff_id,line_user_id) select id,'U'||repeat('7',32) from app.staff where code='DD';
 update app.delivery_line_settings set enabled=true;
 set local role authenticated;
-do $declare probe approval_probe;front uuid;model uuid;context jsonb;begin
+do $$declare probe approval_probe;front uuid;model uuid;context jsonb;begin
  select * into probe from approval_probe;
  context:=app.line_shipping_context(probe.id);
  if context->>'requiresPhotos'<>'true' or context->>'photosReady'<>'false' then raise exception 'Missing LINE readiness not exposed';end if;
@@ -44,7 +44,7 @@ do $declare probe approval_probe;front uuid;model uuid;context jsonb;begin
  select id into model from app.item_photos where item_id=probe.id order by storage_path desc limit 1;
  perform app.save_line_shipping_preferences(probe.id,front,model,'{}');
  if app.line_shipping_context(probe.id)->>'photosReady'<>'true' then raise exception 'Saved LINE readiness missing';end if;
-end $;
+end $$;
 select app.queue_seller_operation(id,'listing',payload,request) from approval_probe;
 -- Upload invalidates approval even if the listing was queued earlier.
 insert into app.item_photos(item_id,storage_path) select id,'test/approval-added.jpg' from approval_probe;
