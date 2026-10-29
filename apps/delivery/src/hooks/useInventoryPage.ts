@@ -36,7 +36,7 @@ export function useInventoryPage<T extends {id:string}>(scope:InventoryScope,own
   const current=cachedInventoryPage<T>(key);if(!current)return;
   // The next diff must revalidate server-derived parent/accessory values after a local save.
   const fingerprints={...current.fingerprints};delete fingerprints[row.id];
-  const next={...current,rows:current.rows.map(item=>item.id===row.id?row:item),fingerprints};
+  const next={...current,rows:current.rows.map(item=>item.id===row.id?{...item,...row}:item),fingerprints};
   rememberInventoryPage(key,next);setState(s=>s.key===key?({...s,page:next}):s);void refreshRef.current();
  },[key]);
  return {rows:page?.rows??[],total:page?.total??0,more:!all&&(page?.total??0)>limit,loading:state.key!==key||state.loading,error:state.key===key?state.error:null,
