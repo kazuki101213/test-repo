@@ -17,7 +17,15 @@ do $$begin
  if exists(select 1 from app.claim_delivery_line()) then raise exception 'Missing photos/code could send';end if;
  if exists(select 1 from line_probe where lot_seq in(998741,998742) and (app.line_shipping_context(id)->>'requiresPhotos'<>'true' or app.line_shipping_context(id)->>'photosReady'<>'false')) then raise exception 'Missing preparation not exposed';end if;
  if (select count(*) from jsonb_array_elements(app.read_resource_snapshot('admin_shipping_tasks')->'rows') r where r->>'item_id' in(select id::text from line_probe where lot_seq in(998741,998742)) and r->>'line_message'='通知写真を指定してください')<>2 then raise exception 'New pending requests hidden for 24 hours';end if;
-end $$;
+end $;
+-- Acknowledged work is held visibly without erasing recipient completion history.
+insert into app.delivery_notice_completions(staff_id,notice_id,item_id)
+ select i.deliverer_id,'shipping:'||t.id::text,i.id from app.items i join app.delivery_shipping_tasks t on t.item_id=i.id where i.lot_seq=998742;
+do $declare item uuid:=(select id from line_probe where lot_seq=998742);begin
+ if app.line_shipping_context(item)->>'message' not like '担当者が発送依頼を完了%' then raise exception 'Acknowledgement hold hidden';end if;
+ if exists(select 1 from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=item and app.line_shipping_eligible(o.id)) then raise exception 'Acknowledged work could resend';end if;
+end $;
+delete from app.delivery_notice_completions where item_id=(select id from line_probe where lot_seq=998742);
 insert into app.item_photos(item_id,storage_path,uploaded_by,photo_kind)
  select p.id,'fixture/'||p.lot_seq||'-'||v||'.jpg',(select id from app.staff where code='DD'),'product' from line_probe p cross join generate_series(1,2) v;
 do $$declare i uuid;front uuid;model uuid;foreign_photo uuid;prepared jsonb;begin
