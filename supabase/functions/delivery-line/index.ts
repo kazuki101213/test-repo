@@ -95,9 +95,18 @@ Deno.serve(async req => {
       for (const row of rows || []) {
         let state = 'cancelled', status: number | null = null;
         if (row.eligible) {
-          // Refuse incomplete media rather than send text-only or an old code.
+          // Send the request even when optional photos/code are unavailable.
+          // The app link always identifies the exact product; never use an old trade's code.
           try {
-            const payload = row.payload.media ? await prepareShippingMedia({ admin, media: row.payload.media, deliveryId: row.id, QRCode }) : row.payload as ShippingPayload;
+            let payload: ShippingPayload;
+            if (row.payload.media) {
+              try { payload = await prepareShippingMedia({ admin, media: row.payload.media, deliveryId: row.id, QRCode }); }
+              catch (error) {
+                if (row.payload.media.automatic !== true) throw error;
+                const media = row.payload.media;
+                payload = {itemId:media.itemId,serial:media.serial,sku:media.sku,supplierUrl:media.supplierUrl,images:[],automatic:true};
+              }
+            } else payload = row.payload as ShippingPayload;
             const messages = shippingMessages(payload);
             // Recheck the current trade and assignee before the LINE request.
             if (!await rpc('prepare_delivery_line_message', { p_id: row.id, p_lease: row.lease, p_messages: payload })) {

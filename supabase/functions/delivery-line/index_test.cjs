@@ -82,3 +82,11 @@ test('Dispatch stops after trade/assignee recheck, media failure or disabled set
 test('Listing photo recovery is not available through a user or public request',async()=>{
  const f=fixture();assert.equal((await f.request('recover-listing-photo-files')).status,401);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
 });
+
+test('Automatic media failure still sends one exact-item request using the same retry key',async()=>{
+ const media={automatic:true,itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2392',sku:'2392-EEMM-20261002-591',supplierUrl:null,photoPaths:[],codeOperationId:null};
+ const row={id:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload:{media}};
+ const f=fixture({rows:[row],mediaFail:true});await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
+ const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);const body=JSON.parse(push.init.body);assert.equal(body.messages.length,1);assert.equal(body.to,'fixture-recipient');assert(body.messages[0].text.includes('?itemId='+media.itemId));assert.equal(push.init.headers['X-Line-Retry-Key'],row.id);assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,'sent');
+ const stopped=fixture({rows:[row],mediaFail:true,prepare:false});await stopped.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert(!stopped.state.calls.some(x=>x.url.endsWith('/push')),'Trade/assignee recheck is still mandatory');
+});

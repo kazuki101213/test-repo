@@ -8,3 +8,13 @@ test('Current code is reused, only code image uploaded, product photos signed wi
 test('Unset small size sends requested text and two photos, without code lookup/upload',async()=>{const f=fixture(),p=await prepareShippingMedia({...f,media:{...media,codeOperationId:null,withoutBarcode:'size_unset'},deliveryId:'delivery'});assert.equal(p.withoutBarcode,'size_unset');assert.equal(shippingMessages(p).length,3);assert(!f.actions.some(x=>['upload','table','generate'].includes(x[0])));assert.equal(p.images.length,2);});
 test('Missing/invalid code or failed image never degrades to size-unset exception',async()=>{for(const opts of[{code:''},{code:'data:text/html;base64,AAAA'},{failHead:true}]){await assert.rejects(prepareShippingMedia({...fixture(opts),media,deliveryId:'delivery'}));}await assert.rejects(prepareShippingMedia({...fixture(),media:{...media,codeOperationId:null},deliveryId:'delivery'}));assert.throws(()=>shippingMessages({...media,images:['https://fixture.invalid/front.jpg','https://fixture.invalid/model.jpg']}));});
 test('QR content becomes one PNG and signed URLs remain fixed for API retry payload',async()=>{const f=fixture({code:'fixture-qr-content'}),p=await prepareShippingMedia({...f,media,deliveryId:'delivery'});assert.equal(f.actions.filter(x=>x[0]==='generate').length,1);assert(f.actions.some(x=>x[0]==='code'&&x[2]===604800));assert.equal(p.images[2],'https://fixture.invalid/delivery.png');});
+
+test('Automatic request needs no photo selection or code; exact product link still reaches LINE',async()=>{
+ for(const paths of [[],['front.jpg'],['front.jpg','second.jpg']]){
+  const f=fixture(),p=await prepareShippingMedia({...f,media:{...media,automatic:true,photoPaths:paths,codeOperationId:null},deliveryId:'automatic'});
+  assert.equal(p.images.length,paths.length);assert.equal(p.automatic,true);
+  const messages=shippingMessages(p);assert.equal(messages.length,1+paths.length);assert(messages[0].text.includes('?itemId='+media.itemId));assert(!f.actions.some(x=>['upload','table','generate'].includes(x[0])));
+ }
+ const f=fixture(),p=await prepareShippingMedia({...f,media:{...media,automatic:true,photoPaths:[]},deliveryId:'automatic'});assert.equal(p.images.length,1,'Existing current code is attached even without photos');
+ assert.throws(()=>shippingMessages({...p,images:['https://fixture.invalid/a.jpg','https://fixture.invalid/b.jpg','https://fixture.invalid/c.jpg','https://fixture.invalid/d.jpg']}));
+});

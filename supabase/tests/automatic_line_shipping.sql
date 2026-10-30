@@ -9,23 +9,13 @@ insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade
  select id,'メルカリ','mercari-1','m'||lot_seq,'https://jp.mercari.com/transaction/m'||lot_seq,'m'||lot_seq||':2026-10-24T12:00' from line_probe;
 update app.items i set seller_trade_key=l.trade_key from app.seller_listings l where l.item_id=i.id and i.id in(select id from line_probe);
 -- Past tasks are not backfilled when enabled.
-update app.items set status='取引中' where lot_seq=998743;
+update app.items set status='取引中',shipped_on=current_date where lot_seq=998743;
 update app.delivery_line_settings set enabled=true;
 update app.items set status='取引中' where lot_seq in(998741,998742);
 do $$begin
  if (select count(*) from app.delivery_line_outbox)<>2 then raise exception 'Old requests were broadcast or new requests missing';end if;
- if exists(select 1 from app.claim_delivery_line()) then raise exception 'Missing photos/code could send';end if;
- if exists(select 1 from line_probe where lot_seq in(998741,998742) and (app.line_shipping_context(id)->>'requiresPhotos'<>'true' or app.line_shipping_context(id)->>'photosReady'<>'false')) then raise exception 'Missing preparation not exposed';end if;
- if (select count(*) from jsonb_array_elements(app.read_resource_snapshot('admin_shipping_tasks')->'rows') r where r->>'item_id' in(select id::text from line_probe where lot_seq in(998741,998742)) and r->>'line_message'='通知写真を指定してください')<>2 then raise exception 'New pending requests hidden for 24 hours';end if;
+ if exists(select 1 from line_probe where lot_seq in(998741,998742) and app.line_shipping_media((select o.id from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=line_probe.id))->>'automatic' is distinct from 'true') then raise exception 'Missing photos blocked notification';end if;
 end $$;
--- Acknowledged work is held visibly without erasing recipient completion history.
-insert into app.delivery_notice_completions(staff_id,notice_id,item_id)
- select i.deliverer_id,'shipping:'||t.id::text,i.id from app.items i join app.delivery_shipping_tasks t on t.item_id=i.id where i.lot_seq=998742;
-do $$declare item uuid:=(select id from line_probe where lot_seq=998742);begin
- if app.line_shipping_context(item)->>'message' not like '担当者が発送依頼を完了%' then raise exception 'Acknowledgement hold hidden';end if;
- if exists(select 1 from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=item and app.line_shipping_eligible(o.id)) then raise exception 'Acknowledged work could resend';end if;
-end $$;
-delete from app.delivery_notice_completions where item_id=(select id from line_probe where lot_seq=998742);
 insert into app.item_photos(item_id,storage_path,uploaded_by,photo_kind)
  select p.id,'fixture/'||p.lot_seq||'-'||v||'.jpg',(select id from app.staff where code='DD'),'product' from line_probe p cross join generate_series(1,2) v;
 do $$declare i uuid;front uuid;model uuid;foreign_photo uuid;prepared jsonb;begin
@@ -41,6 +31,8 @@ do $$declare i uuid;front uuid;model uuid;foreign_photo uuid;prepared jsonb;begi
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);if prepared->>'queued'<>'0' then raise exception 'Code queued twice';end if;
  if exists(select 1 from app.seller_operations where item_id=i and kind<>'shipping_code') then raise exception 'Automatic flow queued a business action';end if;
 end $$;
+-- Keep the second request for its separate lease/idempotency test.
+update app.delivery_line_outbox o set next_attempt_at=now()+interval '1 hour' from app.delivery_shipping_tasks t where o.task_id=t.id and t.item_id=(select id from line_probe where lot_seq=998742);
 -- Service dispatch reads only the media it needs, without opening the UI context.
 set local role service_role;
 select app.line_shipping_media(o.id) from app.delivery_line_outbox o;
@@ -64,13 +56,14 @@ end $$;
 -- A small item without a saved size sends its two product photos, no code job.
 do $$declare i uuid;front uuid;model uuid;r record;prepared jsonb;begin
  select id into i from line_probe where lot_seq=998742;
+ update app.delivery_line_outbox o set next_attempt_at=now() from app.delivery_shipping_tasks t where o.task_id=t.id and t.item_id=i;
  select id into front from app.item_photos where item_id=i order by storage_path limit 1;
  select id into model from app.item_photos where item_id=i order by storage_path desc limit 1;
  perform app.save_line_shipping_preferences(i,front,model,'{}');
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
  if prepared->>'queued'<>'0' or exists(select 1 from app.seller_operations where item_id=i) then raise exception 'Unset small size accessed marketplace';end if;
  select * into r from app.claim_delivery_line() where eligible;
- if r.payload->'media'->>'withoutBarcode'<>'size_unset' or r.payload->'media'->>'codeOperationId' is not null then raise exception 'Unset size did not prepare photo-only LINE';end if;
+ if r.payload->'media'->>'automatic'<>'true' or r.payload->'media'->>'codeOperationId' is not null then raise exception 'Unset size did not prepare photo-only LINE';end if;
  perform app.finish_delivery_line(r.id,r.lease,'sent',200);
  if exists(select 1 from app.claim_delivery_line()) then raise exception 'Photo-only request sent twice';end if;
  if app.line_model_shipping_size('BDP-S6700','')<>'100' or app.line_model_shipping_size('VZ239HR','')<>'140'
@@ -90,6 +83,29 @@ do $$declare target uuid;begin
  if app.line_learned_shipping_size(target) is not null then raise exception 'Different product inherited size';end if;
  update app.items set title='リモコン',asin=null where id=target;
  if app.line_learned_shipping_size(target) is not null then raise exception 'Generic title inherited size';end if;
+end $$;
+-- All current work is notified, including manual shipping and cards acknowledged before linking.
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,status,inspected_at,product_registered_at)
+ select n,(select id from app.staff where code='AA'),(select id from app.staff where code=case when n=998744 then 'DD' else 'HH' end),current_date,'automatic request no photos',1000,'ヤフオク','自己発送','出品中',now(),now() from generate_series(998744,998745)n;
+update app.items set status='取引中' where lot_seq in(998744,998745);
+insert into app.delivery_notice_completions(staff_id,notice_id,item_id)
+ select i.deliverer_id,'shipping:'||t.id::text,i.id from app.items i join app.delivery_shipping_tasks t on t.item_id=i.id where i.lot_seq in(998744,998745);
+do $$declare r record;target uuid;begin
+ select id into target from app.staff where code='HH';
+ if exists(select 1 from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id join app.items i on i.id=t.item_id where i.lot_seq=998745) then raise exception 'Unlinked recipient invented';end if;
+ perform app.issue_delivery_line_code(target,repeat('e',64));
+ if not app.handle_delivery_line_event('automatic-current-link','link','U'||repeat('4',32),repeat('e',64)) then raise exception 'Late link failed';end if;
+ if (select count(*) from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id join app.items i on i.id=t.item_id where i.lot_seq in(998744,998745))<>2 then raise exception 'Current work omitted after linking';end if;
+ for r in select * from app.claim_delivery_line() loop
+  if not r.eligible or r.payload->'media'->>'automatic'<>'true' or r.payload->'media'->'photoPaths'<>'[]'::jsonb then raise exception 'Acknowledged or media-less request blocked';end if;
+  perform app.finish_delivery_line(r.id,r.lease,'sent',200);
+ end loop;
+ if exists(select 1 from app.claim_delivery_line()) then raise exception 'Sent request repeated';end if;
+ perform app.ensure_line_shipping_requests();
+ if exists(select 1 from app.claim_delivery_line()) then raise exception 'Patrol reissued a sent request';end if;
+ -- User cancellation is an explicit exception and survives patrol/rechecks.
+ update app.delivery_line_outbox o set state='cancelled' from app.delivery_shipping_tasks t,app.items i where o.task_id=t.id and t.item_id=i.id and i.lot_seq=998744;
+ if exists(select 1 from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id join app.items i on i.id=t.item_id where i.lot_seq=998744 and app.line_shipping_eligible(o.id)) then raise exception 'Explicit no-reissue was ignored';end if;
 end $$;
 set local role authenticated;
 set local request.jwt.claim.sub='33333333-3333-3333-3333-333333333333';
