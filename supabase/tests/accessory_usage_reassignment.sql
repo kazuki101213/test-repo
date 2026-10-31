@@ -91,6 +91,11 @@ do $$declare p usage_probe;begin
   raise exception 'Shipped accessory moved';
  exception when raise_exception then if sqlerrm='Shipped accessory moved' then raise;end if;end;
  update app.items set shipped_on=null where id=p.target;
+ -- The moved accessory must not block later sale completion alongside another
+ -- accessory. Their shared amounts mirror the one parent transaction.
+ update app.items set sold_on=current_date,sold_price=10000,payout_amount=9000 where id=p.target;
+ if (select count(*) from app.items where parent_item_id=p.target and sold_on=current_date)<>2 then raise exception 'Later sale failed to synchronize both accessories';end if;
+ update app.items set sold_on=null,sold_price=null,payout_amount=null,status='検品中' where id=p.target;
  insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace)
  select '995104b-AADD-20261002-500',995104,purchaser_id,deliverer_id,'2026-10-02','lettered usage target',5000,'メルカリ' from app.items where id=p.target;
  perform app.reassign_accessory_usage(p.child,'995104B',(select updated_at from app.items where id=p.child));

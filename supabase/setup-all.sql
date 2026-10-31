@@ -15842,6 +15842,14 @@ begin
   if old.id::text=current_setting('app.reassigning_accessory_id',true) and new.parent_item_id is distinct from old.parent_item_id then return new;end if;$guard$,'i');
  if source=patched then raise exception 'Accessory redirect anchor changed';end if;
  execute patched;
+ -- Also retain the deployed sale guard's explicit-parent exception: mirrored
+ -- accessory sale values are the same sale as their parent, not a second sale.
+ source:=pg_get_functiondef('app.guard_single_product_sale()'::regprocedure);
+ if position('i.id=new.parent_item_id' in source)=0 then
+  patched:=replace(source,'and i.id<>new.id','and i.id<>new.id and not (new.is_accessory and i.id=new.parent_item_id)');
+  if source=patched then raise exception 'Sale guard anchor changed';end if;
+  execute patched;
+ end if;
 end $migration$;
 
 -- Reconcile the deployed helper: retain each accessory's purchase tail and
@@ -15913,6 +15921,8 @@ begin
   exit when not exists(select 1 from app.items where sku=candidate and id<>i.id)
    and not exists(select 1 from app.item_sku_aliases where sku in(candidate,projected_sku) and item_id<>i.id)
    and not exists(select 1 from app.items where sku=projected_sku and id<>i.id)
+   and not exists(select 1 from app.items a where a.parent_item_id=target.id and a.is_accessory and a.id<>i.id
+    and app.product_serial(a.sku,a.lot_seq)=app.product_serial(candidate,target.lot_seq))
    and not exists(select 1 from app.items a where a.parent_item_id=target.id and a.is_accessory and a.id<>i.id
     and app.return_sku_original_cost(app.accessory_sku_for_parent(target.sku,a.sku),target.lot_seq)=projected_sku);
   suffix:=suffix||'a';attempt:=attempt+1;
