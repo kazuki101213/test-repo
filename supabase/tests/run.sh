@@ -24,6 +24,8 @@ done
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/smoke.sql"
 
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/accessory_usage_reassignment.sql"
+
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/product_family_accounting.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/serial_delivery_invoice.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/spare_holder_manufacturer.sql"
@@ -126,4 +128,3 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_accessory_receipt_rea
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_receipt_purchase_groups.sql"
 
-$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/accessory_usage_reassignment.sql"
