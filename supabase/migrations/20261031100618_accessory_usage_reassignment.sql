@@ -9,14 +9,6 @@ begin
   if old.id::text=current_setting('app.reassigning_accessory_id',true) and new.parent_item_id is distinct from old.parent_item_id then return new;end if;$guard$,'i');
  if source=patched then raise exception 'Accessory redirect anchor changed';end if;
  execute patched;
- -- Also retain the deployed sale guard's explicit-parent exception: mirrored
- -- accessory sale values are the same sale as their parent, not a second sale.
- source:=pg_get_functiondef('app.guard_single_product_sale()'::regprocedure);
- if position('i.id=new.parent_item_id' in source)=0 then
-  patched:=replace(source,'and i.id<>new.id','and i.id<>new.id and not (new.is_accessory and i.id=new.parent_item_id)');
-  if source=patched then raise exception 'Sale guard anchor changed';end if;
-  execute patched;
- end if;
 end $migration$;
 
 -- Reconcile the deployed helper: retain each accessory's purchase tail and
@@ -32,6 +24,36 @@ begin
  if parent_numeric='' then return p_parent_sku;end if;
  tail:=coalesce(substring(p_accessory_sku from '[-_].*$'),substring(p_parent_sku from '[-_].*$'));
  return parent_numeric||accessory_letters||tail;
+end $$;
+
+-- Parent/accessory amounts mirror one sale. Preserve the deployed parent
+-- exception in both directions so later corrections do not see a second sale.
+-- Unlinked accessories and other main products still use the duplicate guard.
+create or replace function app.guard_single_product_sale() returns trigger
+language plpgsql set search_path='' as $$
+declare serial_key text;
+begin
+ if tg_op='UPDATE' and new.sold_on is not distinct from old.sold_on
+  and new.sold_price is not distinct from old.sold_price
+  and new.payout_amount is not distinct from old.payout_amount then return new;end if;
+ if new.sold_on is null then return new;end if;
+ if new.is_accessory and app.is_standalone_accessory_serial(new.sku,new.lot_seq) then return new;end if;
+ if new.is_accessory and coalesce(new.sold_price,0)=0 and coalesce(new.payout_amount,0)=0 then return new;end if;
+ serial_key:=app.product_serial(new.sku,new.lot_seq);
+ perform pg_advisory_xact_lock(hashtextextended(serial_key,179049));
+ if exists(select 1 from app.items i where app.product_serial(i.sku,i.lot_seq)=serial_key
+  and i.id<>new.id
+  and not coalesce(new.is_accessory and i.id=new.parent_item_id,false)
+  and not coalesce(i.is_accessory and i.parent_item_id=case when new.is_accessory then new.parent_item_id else new.id end
+   and not app.is_standalone_accessory_serial(i.sku,i.lot_seq),false)
+  and i.sold_on is not null
+  and not (i.is_accessory and coalesce(i.sold_price,0)=0 and coalesce(i.payout_amount,0)=0)
+  and not app.is_standalone_accessory_serial(i.sku,i.lot_seq)
+  and i.amazon_returned_on is null and i.returned_on is null
+  and i.marketplace is distinct from 'Amazon返品' and i.status<>'返品処理') then
+  raise exception '同じ商品番号の商品に販売記録があります。返品処理済みの履歴は保持し、重複販売を防止します。';
+ end if;
+ return new;
 end $$;
 
 create function app.accessory_usage_context(p_item_id uuid) returns jsonb
