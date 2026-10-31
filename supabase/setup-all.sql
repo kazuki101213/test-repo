@@ -15860,7 +15860,7 @@ end $$;
 create function app.reassign_accessory_usage(p_item_id uuid,p_serial text,p_expected_revision timestamptz) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare i app.items;target app.items;original app.items;matches integer;serial text:=lower(btrim(p_serial));
- suffix text;original_serial text;tail text;candidate text;attempt integer:=0;previous_marker text;middle_code text;
+ suffix text;original_serial text;tail text;candidate text;projected_sku text;attempt integer:=0;previous_marker text;middle_code text;
 begin
  select * into i from app.items where id=p_item_id for update;
  if auth.uid() is null or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active)
@@ -15892,8 +15892,14 @@ begin
  tail:='-'||middle_code||'-'||coalesce(to_char(i.purchased_at,'YYYYMMDD'),split_part(i.sku,'-',3))||'-'||(i.cost_amount/10)::text;
  loop
   candidate:=app.return_sku_original_cost(serial||suffix||tail,target.lot_seq);
+  -- Main-product updates later synchronize all accessory SKU tails. Reserve a
+  -- distinct serial under that transformation too, not just today's full SKU.
+  projected_sku:=app.return_sku_original_cost(app.accessory_sku_for_parent(target.sku,candidate),target.lot_seq);
   exit when not exists(select 1 from app.items where sku=candidate and id<>i.id)
-   and not exists(select 1 from app.item_sku_aliases where sku=candidate and item_id<>i.id);
+   and not exists(select 1 from app.item_sku_aliases where sku in(candidate,projected_sku) and item_id<>i.id)
+   and not exists(select 1 from app.items where sku=projected_sku and id<>i.id)
+   and not exists(select 1 from app.items a where a.parent_item_id=target.id and a.is_accessory and a.id<>i.id
+    and app.return_sku_original_cost(app.accessory_sku_for_parent(target.sku,a.sku),target.lot_seq)=projected_sku);
   suffix:=suffix||'a';attempt:=attempt+1;
   if attempt>30 then raise exception '使用先の付属品SKUを確保できません';end if;
  end loop;
