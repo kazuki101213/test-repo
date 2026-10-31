@@ -15853,14 +15853,14 @@ begin
   or i.id is null or not coalesce(app.is_admin() or i.deliverer_id=app.current_staff_id(),false) then raise exception '担当する付属品のみ確認できます' using errcode='42501';end if;
  if not i.is_accessory or app.is_standalone_accessory_serial(i.sku,i.lot_seq) then raise exception '本体に付属する商品のみ利用記録を変更できます';end if;
  select * into parent from app.items where id=i.parent_item_id and not is_accessory;
- return jsonb_build_object('serial',coalesce(app.product_serial(parent.sku,parent.lot_seq),app.product_serial(i.sku,i.lot_seq)),
+ return jsonb_build_object('serial',lower(coalesce(app.product_serial(parent.sku,parent.lot_seq),app.product_serial(i.sku,i.lot_seq))),
   'revision',i.updated_at,'sku',i.sku);
 end $$;
 
 create function app.reassign_accessory_usage(p_item_id uuid,p_serial text,p_expected_revision timestamptz) returns jsonb
 language plpgsql security definer set search_path='' as $$
 declare i app.items;target app.items;original app.items;matches integer;serial text:=lower(btrim(p_serial));
- suffix text;original_serial text;tail text;candidate text;attempt integer:=0;previous_marker text;
+ suffix text;original_serial text;tail text;candidate text;attempt integer:=0;previous_marker text;middle_code text;
 begin
  select * into i from app.items where id=p_item_id for update;
  if auth.uid() is null or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active)
@@ -15883,9 +15883,13 @@ begin
  if i.shipped_on is not null or i.sold_on is not null or original.shipped_on is not null or original.sold_on is not null
   or target.shipped_on is not null or target.sold_on is not null or i.status='販売済' or original.status='販売済' or target.status='販売済' then
   raise exception '発送・販売完了した商品の利用記録は変更できません';end if;
- original_serial:=app.product_serial(original.sku,original.lot_seq);
- suffix:=case when app.product_serial(i.sku,i.lot_seq) like original_serial||'%' then substring(app.product_serial(i.sku,i.lot_seq) from length(original_serial)+1) else '' end;
- tail:=substring(i.sku from '[-_].*$');
+ original_serial:=lower(app.product_serial(original.sku,original.lot_seq));
+ suffix:=case when lower(app.product_serial(i.sku,i.lot_seq)) like original_serial||'%' then substring(lower(app.product_serial(i.sku,i.lot_seq)) from length(original_serial)+1) else '' end;
+ -- Match the identity trigger's final SKU before checking collisions, even when
+ -- a previous parent synchronization left a different date/cost in the old SKU.
+ select coalesce((select code from app.staff where id=i.purchaser_id),'')||coalesce((select code from app.staff where id=i.deliverer_id),'') into middle_code;
+ if middle_code='' then middle_code:=split_part(i.sku,'-',2);end if;
+ tail:='-'||middle_code||'-'||coalesce(to_char(i.purchased_at,'YYYYMMDD'),split_part(i.sku,'-',3))||'-'||(i.cost_amount/10)::text;
  loop
   candidate:=app.return_sku_original_cost(serial||suffix||tail,target.lot_seq);
   exit when not exists(select 1 from app.items where sku=candidate and id<>i.id)

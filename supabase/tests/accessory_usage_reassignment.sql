@@ -37,7 +37,7 @@ begin
  if r->>'serial'<>'995101' then raise exception 'Original usage not read';end if;
  r:=app.reassign_accessory_usage(p.child,'995102',p.revision);
  if r->>'serial'<>'995102' or r->>'item_id'<>p.child::text then raise exception 'Transfer changed identity';end if;
- if not exists(select 1 from app.items where id=p.child and parent_item_id=p.target and lot_seq=995102 and app.product_serial(sku,lot_seq)='995102a') then raise exception 'Usage did not move safely past SKU collision';end if;
+ if not exists(select 1 from app.items where id=p.child and parent_item_id=p.target and lot_seq=995102 and lower(app.product_serial(sku,lot_seq))='995102a') then raise exception 'Usage did not move safely past SKU collision';end if;
  if (select to_jsonb(i) from app.items i where id=p.source) is distinct from p.source_before
   or (select to_jsonb(i) from app.items i where id=p.target) is distinct from p.target_before then raise exception 'Transfer corrupted a parent';end if;
  if (select to_jsonb(i)-array['parent_item_id','lot_seq','sku','status','packed_on','shipped_on','returned_on','sales_channel','condition','sold_on','sold_price','payout_amount','updated_at'] from app.items i where id=p.child)
@@ -86,5 +86,12 @@ do $$declare p usage_probe;begin
   perform app.reassign_accessory_usage(p.child,'995101',(select updated_at from app.items where id=p.child));
   raise exception 'Shipped accessory moved';
  exception when raise_exception then if sqlerrm='Shipped accessory moved' then raise;end if;end;
+ update app.items set shipped_on=null where id=p.target;
+ insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace)
+ select '995104b-AADD-20261002-500',995104,purchaser_id,deliverer_id,'2026-10-02','lettered usage target',5000,'メルカリ' from app.items where id=p.target;
+ perform app.reassign_accessory_usage(p.child,'995104B',(select updated_at from app.items where id=p.child));
+ if app.accessory_usage_context(p.child)->>'serial'<>'995104b' or not exists(select 1 from app.items where id=p.child and lower(app.product_serial(sku,lot_seq))='995104ba') then raise exception 'Lettered target lost accessory suffix or usage serial';end if;
+ perform app.reassign_accessory_usage(p.child,'995101',(select updated_at from app.items where id=p.child));
+ if app.accessory_usage_context(p.child)->>'serial'<>'995101' then raise exception 'Transfer from lettered parent failed';end if;
 end $$;
 rollback;
