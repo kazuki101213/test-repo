@@ -3,8 +3,10 @@ set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no)
 select n,(select id from app.staff where code='AA'),(select id from app.staff where code=case when n=990201 then 'DD' else 'HH' end),current_date,'paged inventory fixture',1000,'ヤフオク','メルカリ','123456' from generate_series(990201,990202) n;
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
-select 990201,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'paged accessory fixture',100,'ヤフオク',true;
+-- An explicit suffix tests separate management groups without relying on the
+-- old workflow-sync bug to rewrite the accessory's purchase SKU into suffix a.
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
+select '990201a-AADD-'||to_char(current_date,'YYYYMMDD')||'-10',990201,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'paged accessory fixture',100,'ヤフオク',true;
 create temporary table page_probe as select app.read_inventory_page('delivery','{"queryField":"serial","query":"９９０２０１","status":"検品中"}',1,'{}') p;
 do $$declare p jsonb;q jsonb;begin
  select page_probe.p into p from page_probe;
