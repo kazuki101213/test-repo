@@ -125,3 +125,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/return_sku_original_cost.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_accessory_receipt_readiness.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_receipt_purchase_groups.sql"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/accessory_usage_reassignment.sql"

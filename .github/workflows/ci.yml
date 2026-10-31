@@ -40,6 +40,9 @@ jobs:
       - name: 型チェック
         run: pnpm -r typecheck
 
+      - name: 付属品の利用記録変更
+        run: node scripts/verify-accessory-usage.cjs
+
       - name: 仕入れリストから予備登録
         run: node scripts/verify-purchase-draft-spare.cjs
 
