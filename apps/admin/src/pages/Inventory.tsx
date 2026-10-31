@@ -18,6 +18,7 @@ import { productCount, productSerial } from '../inventory';
 import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, saleDays, type ColumnFilters } from '../inventoryFilters';
 import InventoryStateFilter from '../components/InventoryStateFilter';
 import InventoryColumnFilter from '../components/InventoryColumnFilter';
+import AccessoryUsageDialog from '../components/AccessoryUsageDialog';
 import { inventorySearchFields, type InventorySearchField } from '../inventorySearch';
 
 function inventoryError(cause: unknown): string {
@@ -312,6 +313,7 @@ const fullEditFields: (keyof InventoryEdit)[] = [
 ];
 
 function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onClose: () => void; onSaved: () => void }) {
+  const [usageEditing,setUsageEditing]=useState(false);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
   const [cardId, setCardId] = useState('');
   const [paymentReady, setPaymentReady] = useState(false);
@@ -387,6 +389,8 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
   }
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報編集">
     <div className="card inventory-full-edit-panel"><h3>商品情報編集</h3><p className="sku">{item.sku}</p>
+      {item.is_accessory&&canDelete&&<button type="button" className="btn" disabled={busy} onClick={()=>setUsageEditing(true)}>利用記録を変更</button>}
+      {usageEditing&&<AccessoryUsageDialog itemId={item.id} onClose={()=>setUsageEditing(false)} onSaved={async()=>{setUsageEditing(false);onSaved();}}/>}
       <div className="grid cols2">
         <label className="field"><span>通番号</span><input type="number" min={1} step={1} value={identity.lot_seq} onChange={event => setIdentity(current => ({ ...current, lot_seq: Number(event.target.value) }))} /></label>
         <label className="field"><span>SKU</span><input type="text" value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
