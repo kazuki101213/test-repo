@@ -11,6 +11,21 @@ begin
  execute patched;
 end $migration$;
 
+-- Reconcile the deployed helper: retain each accessory's purchase tail and
+-- suffix. The old migration-only implementation collapsed uppercase serials.
+create or replace function app.accessory_sku_for_parent(p_parent_sku text,p_accessory_sku text)
+returns text language plpgsql immutable set search_path='' as $$
+declare
+ parent_numeric text:=coalesce((regexp_match(p_parent_sku,'^([0-9]+)'))[1],'');
+ accessory_serial text:=lower(coalesce((regexp_match(p_accessory_sku,'^([0-9]+[a-z]*)[-_]'))[1],''));
+ accessory_letters text:=coalesce((regexp_match(accessory_serial,'^[0-9]+([a-z]*)$'))[1],'');
+ tail text;
+begin
+ if parent_numeric='' then return p_parent_sku;end if;
+ tail:=coalesce(substring(p_accessory_sku from '[-_].*$'),substring(p_parent_sku from '[-_].*$'));
+ return parent_numeric||accessory_letters||tail;
+end $$;
+
 create function app.accessory_usage_context(p_item_id uuid) returns jsonb
 language plpgsql stable security definer set search_path='' as $$
 declare i app.items;parent app.items;
