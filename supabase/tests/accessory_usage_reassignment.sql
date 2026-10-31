@@ -16,6 +16,9 @@ begin
  values(995103,aa,hh,'2026-10-02','usage foreign body',3000,'メルカリ','foreign tracking') returning id into f;
  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,marketplace_item_id,tracking_no,is_accessory,parent_item_id)
  values(995101,aa,dd,'2026-09-20','usage remote',1610,'メルカリ','usage-remote-order','remote tracking',true,a) returning id into c;
+ -- Another identical-purchase accessory already occupies the target's plain SKU.
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,parent_item_id)
+ values(995102,aa,dd,'2026-09-20','existing target remote',1610,'メルカリ',true,b);
  insert into app.item_photos(item_id,storage_path) values(c,'usage-test/remote.jpg');
  insert into app.spare_accessories(owner_staff_id,title,cost_amount) values(aa,'usage spare',1610) returning id into s;
  update app.spare_accessories set used_for_item_id=c where id=s;
@@ -34,7 +37,7 @@ begin
  if r->>'serial'<>'995101' then raise exception 'Original usage not read';end if;
  r:=app.reassign_accessory_usage(p.child,'995102',p.revision);
  if r->>'serial'<>'995102' or r->>'item_id'<>p.child::text then raise exception 'Transfer changed identity';end if;
- if not exists(select 1 from app.items where id=p.child and parent_item_id=p.target and lot_seq=995102 and app.product_serial(sku,lot_seq)='995102') then raise exception 'Usage did not move';end if;
+ if not exists(select 1 from app.items where id=p.child and parent_item_id=p.target and lot_seq=995102 and app.product_serial(sku,lot_seq)='995102a') then raise exception 'Usage did not move safely past SKU collision';end if;
  if (select to_jsonb(i) from app.items i where id=p.source) is distinct from p.source_before
   or (select to_jsonb(i) from app.items i where id=p.target) is distinct from p.target_before then raise exception 'Transfer corrupted a parent';end if;
  if (select to_jsonb(i)-array['parent_item_id','lot_seq','sku','status','packed_on','shipped_on','returned_on','sales_channel','condition','sold_on','sold_price','payout_amount','updated_at'] from app.items i where id=p.child)
