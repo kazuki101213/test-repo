@@ -1,6 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 let hooks=[],cursor=0,dirty=true,pending=[],tree,component,props,saved;
-const react={useState(initial){const i=cursor++;hooks[i]??={value:typeof initial==='function'?initial():initial};return[hooks[i].value,value=>{hooks[i].value=typeof value==='function'?value(hooks[i].value):value;dirty=true;}];},useEffect(fn,deps){const i=cursor++;if(!hooks[i]||deps.some((d,j)=>d!==hooks[i].deps[j])){hooks[i]?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}}};
+const react={useRef(initial){const i=cursor++;return hooks[i]??(hooks[i]={current:initial});},useState(initial){const i=cursor++;hooks[i]??={value:typeof initial==='function'?initial():initial};return[hooks[i].value,value=>{hooks[i].value=typeof value==='function'?value(hooks[i].value):value;dirty=true;}];},useEffect(fn,deps){const i=cursor++;if(!hooks[i]||deps.some((d,j)=>d!==hooks[i].deps[j])){hooks[i]?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}}};
 const jsx=(type,props)=>({type,props});
 const api={fetchCards:async()=>[],fetchInventoryPaymentCard:async()=>null,updateInventoryField:async(item,field,value)=>{saved={item,field,value};},updateInventoryItem:async(item,fields)=>{saved={item,fields};}};
 const shared={CONDITIONS:[],MARKETPLACES:[],SALES_CHANNELS:[],STATUSES:[],deliveryStaffOptions:s=>s};
