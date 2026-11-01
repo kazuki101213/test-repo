@@ -18,7 +18,7 @@ import { productCount, productSerial } from '../inventory';
 import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, saleDays, type ColumnFilters } from '../inventoryFilters';
 import InventoryStateFilter from '../components/InventoryStateFilter';
 import InventoryColumnFilter from '../components/InventoryColumnFilter';
-import AccessoryUsageDialog from '../components/AccessoryUsageDialog';
+import { fetchAccessoryUsage, reassignAccessoryUsage, type AccessoryUsageContext } from '@bussan/shared';
 import { inventorySearchFields, type InventorySearchField } from '../inventorySearch';
 
 function inventoryError(cause: unknown): string {
@@ -313,7 +313,18 @@ const fullEditFields: (keyof InventoryEdit)[] = [
 ];
 
 function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onClose: () => void; onSaved: () => void }) {
-  const [usageEditing,setUsageEditing]=useState(false);
+  const hasUsage = item.is_accessory && canDelete && !productSerial(item.sku,item.lot_seq).endsWith('c');
+  const [usageContext,setUsageContext]=useState<AccessoryUsageContext|null>(null);
+  const [usageSerial,setUsageSerial]=useState('');
+  const [usageError,setUsageError]=useState('');
+  const saveState=useRef({locked:false,cardId:''});
+  useEffect(()=>{
+    if(!hasUsage)return;
+    let live=true;
+    void fetchAccessoryUsage(item.id).then(context=>{if(live){setUsageContext(context);setUsageSerial(context.serial);}})
+      .catch(cause=>{if(live)setUsageError(inventoryError(cause));});
+    return()=>{live=false;};
+  },[item.id,hasUsage]);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
   const [cardId, setCardId] = useState('');
   const [paymentReady, setPaymentReady] = useState(false);
@@ -326,6 +337,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
       setCards(currentId && !options.some(option => option.id === currentId)
         ? [...options, { id: currentId, name: item.card_name ?? '現在の支払い方法' }] : options);
       setCardId(currentId ?? '');
+      saveState.current.cardId=currentId ?? '';
       setPaymentReady(true);
     }).catch(cause => { if (!cancelled) setPaymentError(inventoryError(cause)); });
     return () => { cancelled = true; };
@@ -361,9 +373,19 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     setValues(current => ({ ...current, [field]: value }) as InventoryEdit);
   }
   async function save() {
-    if (!paymentReady) return;
+    if (!paymentReady || saveState.current.locked) return;
+    saveState.current.locked=true;
     setBusy(true); setError('');
     try {
+      const nextUsage=usageSerial.trim().toLowerCase();
+      const usageChanged=!!usageContext&&nextUsage!==usageContext.serial;
+      if(usageChanged&&(!/^[1-9][0-9]*[a-z]*$/.test(nextUsage)||nextUsage.length>32))throw new Error('利用記録に使用先の通番号を入力してください。');
+      const otherChanged=Object.entries(values).some(([field,value])=>value!==item[field as keyof InventoryEdit])
+        ||cardId!==saveState.current.cardId||identity.lot_seq!==item.lot_seq||identity.sku!==item.sku
+        ||identity.product_no!==item.product_no||identity.model_no!==item.model_no;
+      // A usage-only save must not write the old parent's shared fields back
+      // after the transfer. Other explicitly edited fields follow the normal save.
+      if(!usageChanged||otherChanged){
       let current = item;
       if (identity.lot_seq !== item.lot_seq) {
         await updateInventoryField(current, 'lot_seq', String(identity.lot_seq));
@@ -376,9 +398,15 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
       await updateInventoryItem(current, { ...values, card_id: cardId || null });
       if (identity.product_no !== item.product_no) await updateInventoryField(current, 'product_no', String(identity.product_no ?? ''));
       if (identity.model_no !== item.model_no) await updateInventoryField(current, 'model_no', String(identity.model_no ?? ''));
+      }
+      if(usageChanged&&usageContext){
+        const context=otherChanged?await fetchAccessoryUsage(item.id):usageContext;
+        await reassignAccessoryUsage(item.id,nextUsage,context.revision);
+      }
       onSaved();
     }
     catch (cause) { setError(inventoryError(cause)); setBusy(false); }
+    finally {saveState.current.locked=false;}
   }
   async function remove() {
     const confirmed = window.confirm(`「${item.sku}」を在庫から削除しますか？削除した商品情報は元に戻せません。`);
@@ -389,11 +417,10 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
   }
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報編集">
     <div className="card inventory-full-edit-panel"><h3>商品情報編集</h3><p className="sku">{item.sku}</p>
-      {item.is_accessory&&canDelete&&<button type="button" className="btn" disabled={busy} onClick={()=>setUsageEditing(true)}>利用記録を変更</button>}
-      {usageEditing&&<AccessoryUsageDialog itemId={item.id} onClose={()=>setUsageEditing(false)} onSaved={async()=>{setUsageEditing(false);onSaved();}}/>}
       <div className="grid cols2">
         <label className="field"><span>通番号</span><input type="number" min={1} step={1} value={identity.lot_seq} onChange={event => setIdentity(current => ({ ...current, lot_seq: Number(event.target.value) }))} /></label>
         <label className="field"><span>SKU</span><input type="text" value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
+        {hasUsage&&<label className="field"><span>利用記録</span><input type="text" maxLength={32} value={usageSerial} disabled={!usageContext||busy} onChange={event=>setUsageSerial(event.target.value)}/></label>}
         <label className="field"><span>品番</span><input type="number" min={1} step={1} value={identity.product_no ?? ''} onChange={event => setIdentity(current => ({ ...current, product_no: event.target.value ? Number(event.target.value) : null }))} /></label>
         <label className="field"><span>型番</span><input type="text" value={identity.model_no ?? ''} onChange={event => setIdentity(current => ({ ...current, model_no: event.target.value || null }))} /></label>
         <label className="field"><span>支払い方法</span><select value={cardId} disabled={!paymentReady || busy} onChange={event => setCardId(event.target.value)}>
@@ -411,6 +438,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         </label>;
       })}</div>
       {error && <div className="error" role="alert">{error}</div>}
+      {usageError&&<div className="error" role="alert">利用記録を読み込めませんでした。{usageError}</div>}
       {paymentError && <div className="error" role="alert">支払い方法を読み込めませんでした。画面を開き直してください。{paymentError}</div>}
       <div className="toolbar inventory-edit-actions"><button className="btn primary" disabled={busy || !paymentReady} onClick={() => void save()}>保存</button>{canDelete && <button className="btn" disabled={busy} onClick={() => void remove()} style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>削除</button>}<button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
     </div>
