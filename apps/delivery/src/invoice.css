@@ -129,7 +129,7 @@
  .invoices .receipt-optional-fields > label:first-child { grid-column:5; grid-row:1; }
  .invoices .receipt-optional-fields > label:last-child { grid-column:6; grid-row:1; }
  .invoices .receipt-detail-form fieldset > :is(div,p):not(.receipt-entry-scroll):not(.receipt-optional-fields) { grid-column:1 / -1; }
- .invoices .receipt-entry-row textarea { height:42px; min-height:42px; box-sizing:border-box; }
+ .invoices .receipt-optional-fields textarea { height:42px; min-height:42px; box-sizing:border-box; }
 }
 .receipt-selected-file { margin:0; overflow-wrap:anywhere; font-size:13px; }
 @media print { .app:has(.invoices) { max-width:none; } }
