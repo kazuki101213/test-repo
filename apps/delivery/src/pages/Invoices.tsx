@@ -11,6 +11,7 @@ import InvoiceSheet from '../components/InvoiceSheet';
 import InvoiceReceipts from '../components/InvoiceReceipts';
 import InvoiceExtraRows from '../components/InvoiceExtraRows';
 import ReceiptSheets from '../components/ReceiptSheets';
+import InvoiceAttachmentPreview from '../components/InvoiceAttachmentPreview';
 import DocumentPreview from '../components/DocumentPreview';
 import type { Invoice, InvoiceDetails, InvoiceLine, InvoiceProfile, InvoiceSnapshot } from '../invoices';
 import '../invoice.css';
@@ -51,10 +52,17 @@ function ProfileEditor({ profile, onSave }: { profile: InvoiceProfile; onSave: (
   </form>;
 }
 
-export default function Invoices({ staff, onNavigationChange }: { staff: Staff; onNavigationChange: (state: 'busy' | 'dirty' | null) => void }) {
+export interface InvoiceReviewState {
+  invoice: Invoice | null; receiptVersion: number | null; busy: boolean; dirty: boolean; ready: boolean;
+}
+export interface InvoiceReviewContext {
+  staffId: string; month: string; receiptVersion: number | null;
+  onStateChange: (state: InvoiceReviewState) => void; onSaved?: () => void;
+}
+export default function Invoices({ staff, onNavigationChange, review }: { staff: Staff; onNavigationChange: (state: 'busy' | 'dirty' | null) => void; review?: InvoiceReviewContext }) {
   const [profiles, setProfiles] = useState<InvoiceProfile[]>([]);
-  const [staffId, setStaffId] = useState(staff.id);
-  const [month, setMonth] = useState(japanToday().slice(0, 7));
+  const [staffId, setStaffId] = useState(review?.staffId ?? staff.id);
+  const [month, setMonth] = useState(review?.month ?? japanToday().slice(0, 7));
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [snapshot, setSnapshot] = useState<InvoiceSnapshot | null>(null);
   const [extras, setExtras] = useState<InvoiceLine[]>([]);
@@ -72,10 +80,16 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   const [settings, setSettings] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [reload, setReload] = useState(0);
-  const [receiptBusy, setReceiptBusy] = useState(false);
+  const [receiptBusy, setReceiptBusy] = useState(true);
+  const [receiptSaving, setReceiptSaving] = useState(false);
+  const [receiptVersion, setReceiptVersion] = useState<number | null>(review?.receiptVersion ?? null);
   const [receiptTableTarget, setReceiptTableTarget] = useState<HTMLDivElement | null>(null);
   const [receiptRows, setReceiptRows] = useState<InvoiceReceipt[]>([]);
   const [pdfBusy, setPdfBusy] = useState(false);
+  useEffect(() => {
+    review?.onStateChange({invoice,receiptVersion,busy:busy || receiptSaving || pdfBusy,dirty,
+      ready:!!invoice && !!snapshot && !loading && !profileLoading && !receiptBusy && !error && !settings});
+  }, [invoice,receiptVersion,busy,receiptSaving,pdfBusy,dirty,snapshot,loading,profileLoading,receiptBusy,error,settings,review?.onStateChange]);
   const profile = profiles.find(p => p.staff_id === staffId);
   const isIshikawa = profile?.details.issuer_name === '石川秀樹';
 
@@ -92,10 +106,10 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       const rows = staff.role === 'admin'
         ? deliveryStaffOptions(allRows.map(row => ({ ...row, name: row.details.issuer_name }))) : allRows;
       setProfiles(rows);
-      if (!rows.some(p => p.staff_id === staff.id) && staff.role === 'admin' && rows[0]) setStaffId(rows[0].staff_id);
+      if (!review && !rows.some(p => p.staff_id === staff.id) && staff.role === 'admin' && rows[0]) setStaffId(rows[0].staff_id);
     }).catch(e => { if (!cancelled) setError(errorText(e)); }).finally(() => { if (!cancelled) setProfileLoading(false); });
     return () => { cancelled = true; };
-  }, [staff.id, staff.role, reload]);
+  }, [staff.id, staff.role, reload, !!review]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,14 +177,14 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
   async function save() {
     setBusy(true); setError(''); setMessage('');
     try {
-      const saved = await submitDocuments(staffId, month, issued, editableExtras, note, invoice, true, receiptRows.some(row => row.document_type !== 'invoice'));
+      const saved = await submitDocuments(staffId, month, issued, editableExtras, note, invoice, true, receiptRows.some(row => row.document_type !== 'invoice'), result => setReceiptVersion(current => result.receipt_version ?? current));
       if (saved) {
         setInvoice(saved); setSnapshot(saved.snapshot);
         setExtras(saved.extras.filter(line => line.description !== 'ヤフオク入札作業日' && line.description !== '粗利益連動調整'));
         setWorkdays(saved.extras.filter(line => line.description === 'ヤフオク入札作業日').map(line => line.date).filter((date): date is string => !!date));
-        setDirty(false);
+        setDirty(false); review?.onSaved?.();
       }
-      setMessage('請求書を送信しました。');
+      setMessage(review ? '請求書を保存しました。' : '請求書を送信しました。');
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); }
   }
@@ -180,13 +194,13 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
     <div className="invoice-header no-print">
 
       <div className="invoice-toolbar-scroll"><div className="invoice-toolbar">
-        <label>担当者<select value={staffId} disabled={staff.role !== 'admin' || busy || receiptBusy || pdfBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{staffDisplayName(p.details.issuer_name)}</option>)}</select></label>
-        <label>請求月<MonthInput aria-label="請求対象月" required value={month} disabled={busy || receiptBusy || pdfBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>
+        {!review && <label>担当者<select value={staffId} disabled={staff.role !== 'admin' || busy || receiptBusy || pdfBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{staffDisplayName(p.details.issuer_name)}</option>)}</select></label>}
+        {!review && <label>請求月<MonthInput aria-label="請求対象月" required value={month} disabled={busy || receiptBusy || pdfBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>}
         <label>作成日<DateInput form="invoice-submit-form" required value={issued} disabled={busy || receiptBusy || pdfBusy || loading || settings || !!invoice?.approved_at} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label>
-        {profile && <button type="button" className="btn invoice-settings-button" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
+        {!review && profile && <button type="button" className="btn invoice-settings-button" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
         <div className="invoice-toolbar-actions">
         {snapshot && <button type="button" className="btn invoice-pdf-button" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>請求書PDF保存</button>}
-        {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn primary invoice-send-button" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>請求書送信</button>}
+        {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn primary invoice-send-button" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>{review ? '保存' : '請求書送信'}</button>}
         </div>
       </div></div>
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に設定の登録を依頼してください。</p>}
@@ -214,15 +228,22 @@ export default function Invoices({ staff, onNavigationChange }: { staff: Staff; 
       </form>}
       </div>
       <div className="receipt-section">
-      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
+      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onSavingChange={setReceiptSaving} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
       </div>
+      {review ? <div className="invoice-review-documents">
+        <section aria-label="請求書"><h3>請求書</h3><DocumentPreview><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts}/></DocumentPreview>{receiptRows.filter(row=>row.document_type==='invoice').map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
+        <section aria-label="領収書"><h3>領収書</h3>{claimedReceipts.length>0&&<DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="summary"/></DocumentPreview>}{receiptRows.filter(row=>row.document_type==='receipt').map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
+        <section aria-label="領収書の写真PDF"><h3>領収書の写真PDF</h3>{claimedReceipts.some(row=>row.mime_type.startsWith('image/'))&&<DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="photos"/></DocumentPreview>}{receiptRows.filter(row=>row.document_type==='receipt_photo'&&!claimedReceipts.some(claim=>claim.id===row.id&&claim.mime_type.startsWith('image/'))).map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
+      </div> : <>
       <DocumentPreview><div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div></DocumentPreview>
       <DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} /></DocumentPreview>
+      </>}
+
     </>}
     </div>
     <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />
-    <div className="no-print"><GrossProfitSummary staff={staff} /></div>
-    <div className="card no-print"><PackedSummary staffId={staff.id} /></div>
+    {!review&&<div className="no-print"><GrossProfitSummary staff={staff} /></div>}
+    {!review&&<div className="card no-print"><PackedSummary staffId={staff.id} /></div>}
   </section>;
 }
