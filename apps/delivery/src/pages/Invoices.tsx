@@ -195,7 +195,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
     <div className="invoice-header no-print">
 
       <div className="invoice-toolbar-scroll"><div className="invoice-toolbar">
-        {!review && <label>担当者<select value={staffId} disabled={staff.role !== 'admin' || busy || receiptBusy || pdfBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{staffDisplayName(p.details.issuer_name)}</option>)}</select></label>}
+        {!review && <label className="invoice-staff-field">担当者<select value={staffId} disabled={staff.role !== 'admin' || busy || receiptBusy || pdfBusy || loading} onChange={e => { if (leave()) setStaffId(e.target.value); }}>{profiles.map(p => <option key={p.staff_id} value={p.staff_id}>{staffDisplayName(p.details.issuer_name)}</option>)}</select></label>}
         {!review && <label>請求月<MonthInput aria-label="請求対象月" required value={month} disabled={busy || receiptBusy || pdfBusy} onChange={e => { if (e.target.value && leave()) setMonth(e.target.value); }} /></label>}
         <label>作成日<DateInput form="invoice-submit-form" required value={issued} disabled={busy || receiptBusy || pdfBusy || loading || settings || !!invoice?.approved_at} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label>
         {!review && profile && <button type="button" className="btn invoice-settings-button" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}

@@ -20,6 +20,7 @@ export default function InvoiceExtraRows({ lines, disabled, onChange, onDraftCha
   function changeDraft(patch: Partial<Draft>) { setDraft({ ...draft, ...patch }); setError(''); onDraftChange(); }
   function change(index: number, patch: Partial<InvoiceLine>) { onChange(lines.map((line, i) => i === index ? { ...line, ...patch } : line)); }
   return <>
+    <h3 className="invoice-extra-heading">追加登録</h3>
     <div className="invoice-extra-scroll">
       <div className="invoice-extra invoice-extra-header" aria-hidden="true"><span>日付</span><span>内容</span><span>数量</span><span>金額</span><span /></div>
       {lines.map((line, i) => <div className="invoice-extra" key={i}>
