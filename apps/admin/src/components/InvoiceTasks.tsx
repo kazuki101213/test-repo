@@ -1,7 +1,7 @@
 import PackingPhotoTasks from './PackingPhotoTasks';
 import { readResourceSnapshot, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
-import { useEffect, useRef, useState } from 'react';
-import { getSupabase, yen, loadInvoiceReceipts, releaseReceiptImages } from '@bussan/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getSupabase, yen } from '@bussan/shared';
 import type { InvoiceReceipt, Staff } from '@bussan/shared';
 import MalfunctionTasks from './MalfunctionTasks';
 import SpareShippingTasks from './SpareShippingTasks';
@@ -10,13 +10,9 @@ import PhotoReviewTasks from './PhotoReviewTasks';
 import ShippingReminderTasks from './ShippingReminderTasks';
 import ReceiptEvaluationTasks from './ReceiptEvaluationTasks';
 import { adminTaskNotice } from '../taskNotice';
-import InvoiceEditor from './InvoiceEditor';
-import type { InvoiceEditDraft } from './InvoiceEditor';
-import InvoiceSheet, { groupedInvoiceLines } from '../../../delivery/src/components/InvoiceSheet';
-import ReceiptSheets from '../../../delivery/src/components/ReceiptSheets';
-import DocumentPreview from '../../../delivery/src/components/DocumentPreview';
+import DeliveryInvoices from '../../../delivery/src/pages/Invoices';
+import type { InvoiceReviewState } from '../../../delivery/src/pages/Invoices';
 import type { InvoiceSnapshot } from '../../../delivery/src/invoices';
-import '../../../delivery/src/invoice-document.css';
 import './InvoiceReview.css';
 
 
@@ -37,66 +33,28 @@ async function fetchTasks():Promise<Task[]> {
  return [...await readResourceSnapshot<Task>('invoice_tasks')].sort((a,b)=>b.updated.localeCompare(a.updated));
 }
 
-function AttachmentPreview({file}:{file:InvoiceReceipt}) {
- return file.mime_type.startsWith('image/')?<img className="invoice-review-attachment" src={file.url} alt={file.original_name}/>:<object className="invoice-review-pdf" data={file.url} type="application/pdf" aria-label={file.original_name}><a href={file.url} target="_blank" rel="noreferrer">{file.original_name}</a></object>;
-}
-
-function InvoiceReview({ task,onClose,onApproved,onSaved }:{task:Task;onClose:()=>void;onApproved:()=>void;onSaved?:()=>void}) {
+const ignoreInvoiceNavigation = () => {};
+function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:Staff;onClose:()=>void;onApproved:()=>void;onSaved?:()=>void}) {
  const dialog=useRef<HTMLDialogElement>(null);
- const [date]=useState(()=>monthEnd(task.month));
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');
- const [images,setImages]=useState<InvoiceReceipt[]>([]);const [imagesLoading,setImagesLoading]=useState(true);const [imageError,setImageError]=useState('');
- const [invoice,setInvoice]=useState(task.invoice);const approved=approval(invoice);
- const [receiptVersion,setReceiptVersion]=useState(task.receipts?.version??null);
- const [draft,setDraft]=useState<InvoiceEditDraft|null>(null);
- const saving=useRef(false);
- const visibleInvoice=invoice&&draft?{...invoice,issued_on:draft.issued,note:draft.note,snapshot:{...invoice.snapshot,lines:draft.lines,extras:draft.extras,receipt_lines:draft.receipts,review_edited:true}}:invoice;
- // Keep the submitted amounts/details; only resolve attachments from the loaded files.
- const receiptRows=(visibleInvoice?.snapshot.receipt_lines??[]).map(row=>({...row,url:images.find(file=>file.id===row.id)?.url??''}));
+ const [documents,setDocuments]=useState<InvoiceReviewState>({invoice:null,receiptVersion:task.receipts?.version??null,busy:false,dirty:false,ready:false});
+ const updateDocuments=useCallback((state:InvoiceReviewState)=>setDocuments(state),[]);
+ const invoice=documents.invoice;const approved=approval(task.invoice)||invoice?.approved_at;
+ const close=()=>{if(busy||documents.busy)return;if(documents.dirty&&!window.confirm('保存していない変更を破棄しますか？'))return;onClose();};
  useEffect(()=>{const el=dialog.current;el?.showModal();return()=>el?.close();},[]);
- useEffect(()=>{
-  let active=true;let loaded:InvoiceReceipt[]=[];setImagesLoading(true);setImageError('');
-  void loadInvoiceReceipts(task.staff_id,task.month.slice(0,7)).then(rows=>{loaded=rows;if(active)setImages(rows);else releaseReceiptImages(rows);})
-   .catch(e=>{if(active)setImageError(messageOf(e));}).finally(()=>{if(active)setImagesLoading(false);});
-  return()=>{active=false;releaseReceiptImages(loaded);};
- },[task.staff_id,task.month]);
- function startEditing(){
-  if(!invoice)return;
-  const all=groupedInvoiceLines(invoice.snapshot,invoice.snapshot.extras??[]);
-  setError('');setDraft({issued:invoice.issued_on,note:invoice.note,lines:all.filter(line=>!line.extra),extras:all.filter(line=>line.extra),receipts:(invoice.snapshot.receipt_lines??[]).map(row=>({...row}))});
- }
- async function save(){
-  if(!invoice||!draft||saving.current)return;
-  saving.current=true;setBusy(true);setError('');
-  try{
-   const {data,error}=await getSupabase().rpc('admin_edit_invoice',{p_invoice:invoice.id,p_version:invoice.version,p_receipt_version:receiptVersion,p_issued:draft.issued,p_lines:draft.lines,p_extras:draft.extras,p_receipts:draft.receipts,p_note:draft.note});
-   if(error)throw error;
-   if(!data?.invoice)throw new Error('保存結果を取得できませんでした。開き直して確認してください。');
-   setInvoice({...data.invoice,delivery_invoice_approvals:null});setReceiptVersion(data.receipt_version??null);setDraft(null);onSaved?.();
-  }catch(e){setError(messageOf(e));}finally{saving.current=false;setBusy(false);}
- }
  async function approve(){
-  if(!invoice)return;setBusy(true);setError('');
+  if(!invoice||!documents.ready||documents.dirty||busy||documents.busy)return;
+  setBusy(true);setError('');
   try{
-   const {error}=await getSupabase().rpc('approve_invoice_documents',{p_invoice:invoice.id,p_version:invoice.version,p_receipt_version:receiptVersion,p_incurred_on:date});
+   const {error}=await getSupabase().rpc('approve_invoice_documents',{p_invoice:invoice.id,p_version:invoice.version,p_receipt_version:documents.receiptVersion,p_incurred_on:monthEnd(task.month)});
    if(error)throw error;onApproved();
   }catch(e){setError(messageOf(e));}finally{setBusy(false);}
  }
- return <dialog ref={dialog} className="monthly-detail invoice-review" aria-labelledby="invoice-review-title" onCancel={e=>{if(busy)e.preventDefault();else onClose();}}>
- <div className="toolbar"><h2 id="invoice-review-title">{staffDisplayName(task.name)} · {task.month.slice(0,7)}</h2><span style={{flex:1}}/>{invoice&&!approved&&!draft&&<button className="btn" disabled={busy||imagesLoading||!!imageError} onClick={startEditing}>編集</button>}<button className="btn" disabled={busy} onClick={onClose} autoFocus>閉じる</button></div>
- {draft&&<InvoiceEditor value={draft} onChange={setDraft} onSave={()=>void save()} onCancel={()=>{setDraft(null);setError('');}} busy={busy}/>}
- <div className="invoice-review-documents">
- <section aria-label="請求書"><h3>請求書</h3>{visibleInvoice?<DocumentPreview><InvoiceSheet snapshot={visibleInvoice.snapshot} month={task.month.slice(0,7)} issued={visibleInvoice.issued_on} extras={visibleInvoice.snapshot.extras??[]} note={visibleInvoice.note} receipts={receiptRows}/></DocumentPreview>:<p>請求書はまだ送信されていません。</p>}
- {images.filter(file=>file.document_type==='invoice').map(file=><AttachmentPreview key={file.id} file={file}/>)}</section>
- <section aria-label="領収書"><h3>領収書</h3>{receiptRows.length>0&&<DocumentPreview><ReceiptSheets rows={receiptRows} month={task.month.slice(0,7)} name={invoice?.snapshot.profile.issuer_name??task.name} part="summary"/></DocumentPreview>}
- {images.filter(file=>file.document_type==='receipt').map(file=><AttachmentPreview key={file.id} file={file}/>)}</section>
- <section aria-label="領収書の写真PDF"><h3>領収書の写真PDF</h3>{receiptRows.some(row=>row.mime_type.startsWith('image/'))&&<DocumentPreview><ReceiptSheets rows={receiptRows} month={task.month.slice(0,7)} name={invoice?.snapshot.profile.issuer_name??task.name} part="photos"/></DocumentPreview>}
- {images.filter(file=>file.document_type==='receipt_photo'&&!receiptRows.some(row=>row.id===file.id&&row.mime_type.startsWith('image/'))).map(file=><AttachmentPreview key={file.id} file={file}/>)}</section>
- {imagesLoading&&<p role="status">読み込み中…</p>}{imageError&&<p className="error" role="alert">{imageError}</p>}
- </div>
- {error&&<div className="error" role="alert">{error}</div>}
- {invoice&&!approved&&!draft&&<form onSubmit={e=>{e.preventDefault();void approve();}}><div className="toolbar"><button className="btn primary" disabled={busy||imagesLoading||!!imageError||invoice.total<=0}>{busy?'承認中…':'承認'}</button></div></form>}
- {approved&&<p className="ok">承認済み・経費に追加済みです。</p>}
+ return <dialog ref={dialog} className="monthly-detail invoice-review" aria-labelledby="invoice-review-title" onCancel={e=>{e.preventDefault();close();}}>
+  <div className="toolbar"><h2 id="invoice-review-title">{staffDisplayName(task.name)} · {task.month.slice(0,7)}</h2><span style={{flex:1}}/><button className="btn" disabled={busy||documents.busy} onClick={close} autoFocus>閉じる</button></div>
+  <fieldset className="invoice-review-content" disabled={busy}><DeliveryInvoices staff={staff} onNavigationChange={ignoreInvoiceNavigation} review={{staffId:task.staff_id,month:task.month.slice(0,7),receiptVersion:task.receipts?.version??null,onStateChange:updateDocuments,onSaved}}/></fieldset>
+  {error&&<div className="error" role="alert">{error}</div>}
+  <div className="toolbar invoice-review-approval">{!approved&&<button className="btn primary" disabled={busy||documents.busy||documents.dirty||!documents.ready||!invoice||invoice.total<=0} onClick={()=>void approve()}>{busy?'承認中…':'承認'}</button>}<button className="btn" disabled={busy||documents.busy} onClick={close}>閉じる</button></div>
  </dialog>;
 }
 
@@ -122,7 +80,7 @@ export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;sta
  return <section className="card invoice-tasks" aria-label="やること">
  {error&&<div className="error" role="alert">{error}<button className="btn" onClick={()=>setRevision(n=>n+1)}>再読み込み</button></div>}{message&&<p className="ok" role="status">{message}</p>}
  {loading?<p>読み込み中…</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id} className="admin-task-card admin-simple-task admin-invoice-task"><div className="task-action-details"><strong>{row.invoice?'請求書':'領収書'}</strong><span>【{staffDisplayName(row.name)}】</span><span>【{row.month.slice(0,7)}】</span><small>{row.invoice?yen(row.invoice.total):'領収書のみ'}</small></div><button type="button" className="btn" onClick={()=>setSelected(row)}>確認</button></li>)}<PhotoReviewTasks mode="photos" onReviewed={()=>setPhotoRevision(value=>value+1)}/>{staff.role==='admin'&&<PackingPhotoTasks/>}<MalfunctionTasks staff={staff} /><ReceiptEvaluationTasks/><PhotoReviewTasks mode="listing" refreshRevision={photoRevision}/><ShippingReminderTasks /><SpareShippingTasks staff={staff} management /></ul>}
- {selected&&<InvoiceReview key={selected.id} task={selected} onClose={()=>setSelected(null)} onSaved={()=>setRevision(n=>n+1)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費の外注費に追加しました。');onApproved();}}/>}
+ {selected&&<InvoiceReview key={selected.id} task={selected} staff={staff} onClose={()=>setSelected(null)} onSaved={()=>setRevision(n=>n+1)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費の外注費に追加しました。');onApproved();}}/>}
  </section>;
 }
 

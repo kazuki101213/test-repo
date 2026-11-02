@@ -5,9 +5,9 @@ import type { InvoiceReceipt, ReceiptDetails } from '@bussan/shared';
 import DateInput from './DateInput';
 const blank = (): ReceiptDetails => ({ spent_on: '', description: '', amount: null, payee: '', memo: '', include_in_invoice: true });
 const messageOf = (e: unknown) => (e as { message?: string })?.message ?? '保存できませんでした。';
-export default function InvoiceReceipts({ staffId, month, approved, tableTarget, onBusyChange, onRowsChange, onChanged }: {
+export default function InvoiceReceipts({ staffId, month, approved, tableTarget, onBusyChange, onRowsChange, onChanged, onSavingChange }: {
   staffId: string; month: string; approved: boolean; tableTarget: HTMLElement | null; onBusyChange: (busy: boolean) => void;
-  onRowsChange: (rows: InvoiceReceipt[]) => void; onChanged: () => void;
+  onRowsChange: (rows: InvoiceReceipt[]) => void; onChanged: () => void; onSavingChange?: (saving: boolean) => void;
 }) {
   const [rows, setRows] = useState<InvoiceReceipt[]>([]);
   const [draft, setDraft] = useState<ReceiptDetails>(blank);
@@ -21,6 +21,7 @@ export default function InvoiceReceipts({ staffId, month, approved, tableTarget,
   const editorForm = useRef<HTMLFormElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const [attachmentMenu, setAttachmentMenu] = useState(false);
+  useEffect(() => { onSavingChange?.(busy); return () => onSavingChange?.(false); }, [busy, onSavingChange]);
   useEffect(() => { onBusyChange(busy || loading || !!error); return () => onBusyChange(false); }, [busy, loading, error, onBusyChange]);
   useEffect(() => { onRowsChange(rows); }, [rows, onRowsChange]);
   useEffect(() => {
