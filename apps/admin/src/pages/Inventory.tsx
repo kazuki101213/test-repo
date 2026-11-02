@@ -147,7 +147,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
 
   return (
-    <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}`}>
+    <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}${fullEditFor ? ' with-full-edit' : ''}`}>
       <section className="inventory-list" aria-label="在庫">
 
 
@@ -156,7 +156,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
       <div className="inventory-controls">
       <div className="inventory-registration-actions">
-        <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => { if (purchaseOpen) setSelectedPurchaseDraft(null); setPurchaseOpen(open => !open); }}>
+        <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => { setFullEditFor(null); if (purchaseOpen) setSelectedPurchaseDraft(null); setPurchaseOpen(open => !open); }}>
           在庫登録
         </button>
         {me.role === 'admin' && <AmazonSalesSync onApplied={() => void load()} />}
@@ -188,6 +188,8 @@ export default function Inventory({ me }: { me: Staff }) {
       {purchaseOpen && <section ref={purchasePanel} id="inventory-purchase-panel" className="card inventory-purchase-panel registration-sidebar" aria-label="在庫登録" style={{ minWidth: 0 }}>
         <NewPurchase key={selectedPurchaseDraft?.id ?? 'new'} me={me} draft={selectedPurchaseDraft} onSaved={() => { setSelectedPurchaseDraft(null); setPurchaseOpen(false); loadPurchaseDrafts(); void load(); }} />
       </section>}
+
+      {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} canDelete={me.role === 'admin'} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}
 
       <div className="inventory-data">
       <details className="card purchase-draft-panel" onToggle={event => setDraftsOpen(event.currentTarget.open)}>
@@ -251,7 +253,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryField: InventoryField = i.is_accessory || (!i.model_no && i.marketplace !== '動作品Amazon返品') ? 'title' : 'model_no';
                 return (
                 <tr key={i.id} className={rowTone} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
-                  <td><button type="button" className="inventory-photo" onClick={() => setFullEditFor(sharedSaleItem)} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>
+                  <td><button type="button" className="inventory-photo" onClick={() => { setPurchaseOpen(false); setFullEditFor(sharedSaleItem); }} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>
                     {i.amazon_image_url ? <img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /> : <span className="inventory-photo-empty">—</span>}
                   </button></td>
                   <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
@@ -299,7 +301,6 @@ export default function Inventory({ me }: { me: Staff }) {
 
 
       {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
-      {fullEditFor && <InventoryFullEditDialog key={fullEditFor.id} item={fullEditFor} staff={staff} canDelete={me.role === 'admin'} onClose={() => setFullEditFor(null)} onSaved={() => { setFullEditFor(null); void load(); }} />}
       {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} {expandedComment.label}</h3><p>{expandedComment.text}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
     </div>
   );
@@ -313,6 +314,14 @@ const fullEditFields: (keyof InventoryEdit)[] = [
 ];
 
 function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onClose: () => void; onSaved: () => void }) {
+  const [sidebar, setSidebar] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width:1280px)').matches);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const screen = window.matchMedia('(min-width:1280px)');
+    const update = () => setSidebar(screen.matches);
+    update(); screen.addEventListener('change', update);
+    return () => screen.removeEventListener('change', update);
+  }, []);
   const hasUsage = item.is_accessory && canDelete && !productSerial(item.sku,item.lot_seq).endsWith('c');
   const [usageContext,setUsageContext]=useState<AccessoryUsageContext|null>(null);
   const [usageSerial,setUsageSerial]=useState('');
@@ -415,9 +424,9 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     try { await deleteInventoryItem(item); onSaved(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : '削除できませんでした。'); setBusy(false); }
   }
-  return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報編集">
+  return <div className="inventory-edit-overlay inventory-full-edit-container" role={sidebar ? 'region' : 'dialog'} aria-modal={sidebar ? undefined : true} aria-label="商品情報編集">
     <div className="card inventory-full-edit-panel"><h3>商品情報編集</h3><p className="sku">{item.sku}</p>
-      <div className="grid cols2">
+      <div className="grid cols2 inventory-full-edit-fields">
         <label className="field"><span>通番号</span><input type="number" min={1} step={1} value={identity.lot_seq} onChange={event => setIdentity(current => ({ ...current, lot_seq: Number(event.target.value) }))} /></label>
         <label className="field"><span>SKU</span><input type="text" value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
         {hasUsage&&<label className="field"><span>利用記録</span><input type="text" maxLength={32} value={usageSerial} disabled={!usageContext||busy} onChange={event=>setUsageSerial(event.target.value)}/></label>}
@@ -429,7 +438,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         </select></label>
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
-        return <label className="field" key={field}><span>{fieldLabels[field]}</span>
+        return <label className={`field${field === 'memo' ? ' inventory-full-edit-memo' : ''}`} key={field}><span>{fieldLabels[field]}</span>
           {options ? <ColoredSelect value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
             : dateFields.has(field)

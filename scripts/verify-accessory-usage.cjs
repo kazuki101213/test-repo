@@ -32,5 +32,10 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  await mount();field('利用記録').props.onChange({target:{value:'2448'}});field('仕入担当者からのコメント').props.onChange({target:{value:'updated memo'}});await flush();save();await flush();
  assert.equal(writes[0].type,'fields');assert.equal(writes[0].fields.memo,'updated memo');assert.equal(writes[1].type,'usage');assert.equal(writes[1].args[2],'after-edit');finish();await flush();assert.equal(saved,1);
  await mount();field('利用記録').props.onChange({target:{value:'invalid'}});await flush();save();await flush();assert.equal(writes.length,0);assert(all(tree).some(n=>n.props?.role==='alert'));
- console.log('Inline photo-detail usage field: typing has no side effects; normal Save transfers once, preserves parent fields, combines explicit edits and validates before writes');
+ ctx.window={matchMedia:()=>({matches:true,addEventListener(){},removeEventListener(){}})};
+ await mount();assert.equal(tree.props.role,'region');assert.equal(tree.props['aria-modal'],undefined,'Desktop sidebar must not block the inventory');
+ assert.equal(field('仕入担当者からのコメント').props.rows,undefined,'Preserve comment textarea height settings');
+ ctx.window={matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}})};
+ await mount();assert.equal(tree.props.role,'dialog');assert.equal(tree.props['aria-modal'],true);
+ console.log('Inline photo-detail usage preserves saves and parent fields; desktop sidebar/mobile dialog and comment height settings passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

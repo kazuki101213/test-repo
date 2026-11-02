@@ -98,6 +98,21 @@ html:has(.registration-workspace) { scrollbar-gutter:stable; }
  .layout .inventory-registration-fields > .inventory-product-search { grid-column:auto; width:100%; }
 }
 .layout .inventory-purchase-panel .registration-actions { margin:16px 0 0; }
+.layout .inventory-full-edit-panel > .inventory-full-edit-fields { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.layout .inventory-full-edit-fields > .field { min-width:0; }
+.layout .inventory-full-edit-fields > .field > :is(input,select,.colored-select),
+.layout .inventory-full-edit-fields .colored-select select { width:100%; min-width:0; max-width:100%; box-sizing:border-box; }
+.layout .inventory-full-edit-fields .calendar-control { width:100%; }
+.layout .inventory-full-edit-memo { grid-column:1 / -1; }
+@media screen and (min-width:1280px) {
+ .layout .inventory-workspace.with-full-edit { grid-template-columns:minmax(0,1fr); overflow:visible; }
+ .layout .with-full-edit > .inventory-list { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,380px); grid-template-rows:max-content minmax(0,1fr); gap:18px; align-items:start; }
+ .layout .with-full-edit .inventory-controls { grid-column:1; grid-row:1; display:flex; flex-wrap:wrap; }
+ .layout .with-full-edit .inventory-data { grid-column:1; grid-row:2; min-width:0; }
+ .layout .with-full-edit .inventory-full-edit-container { position:sticky; inset:auto; top:16px; grid-column:2; grid-row:1 / span 2; display:block; background:transparent; z-index:auto; min-width:0; }
+ .layout .inventory-full-edit-container > .inventory-full-edit-panel { width:100%; max-width:100%; box-sizing:border-box; max-height:calc(100dvh - 32px); margin:0; }
+ .layout .inventory-full-edit-memo > textarea { width:calc(100% - 22px); max-width:calc(100% - 22px); }
+}
 @media screen and (min-width:1280px) {
  .layout .inventory-purchase-panel { box-sizing:border-box; max-height:calc(100dvh - var(--purchase-panel-top, 146px) - 16px); }
 }
