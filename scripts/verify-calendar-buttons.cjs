@@ -13,6 +13,9 @@ for(const app of ['admin','delivery']){
  assert.equal(tree.props.className,'calendar-control');assert.equal(button.props.className,'calendar-button');
  assert.equal(inputs[0].props.value,'2026-10-02');assert.equal(inputs[0].props.required,true);
  assert.equal(inputs[1].props.type,'date');assert.equal(inputs[1].props.min,props.min);assert.equal(inputs[1].props.max,props.max);
+ assert.equal(inputs[1].props.className,'calendar-native-picker');
+ assert.notEqual(inputs[1].props['aria-hidden'],true,'The native picker remains exposed for direct touch');
+ inputs[1].props.onChange({currentTarget:{value:'2026-10-04'}});assert.equal(changed,'2026-10-04','Native touch selection does not depend on showPicker');
  date.ref.current={showPicker(){opened++}};button.props.onClick();assert.equal(opened,1);
  const target={value:'20261003',selectionStart:8,setSelectionRange(){}};
  inputs[0].props.onChange({currentTarget:target});assert.equal(changed,'2026-10-03','Manual date formatting must remain usable');
@@ -24,7 +27,8 @@ for(const app of ['admin','delivery']){
  const native=nodes(tree).find(n=>n.type==='input');button=nodes(tree).find(n=>n.type==='button');
  assert.equal(native.props.type,'month');assert.equal(native.props.required,true);assert.equal(native.props.min,'2026-01');
  assert.equal(native.props.max,'2026-12');assert.equal(button.props.className,'calendar-button');
- assert(!tree.props.children[0].props.children.includes(button),'The native month overlay cannot cover its adjacent button');
+ assert(native.props.className.includes('calendar-native-month-picker'),'Month selection receives direct taps including over its icon');
+ assert(tree.props.children.includes(native),'Native touch area belongs to the whole month control');
  native.props.onChange({target:{value:'2026-11'}});assert.equal(monthChanged,'2026-11');
  month.ref.current={showPicker(){opened++}};button.props.onClick();assert.equal(opened,2);
  tree=month.render({value:'2026-10',disabled:true});nodes(tree).find(n=>n.type==='button').props.onClick();assert.equal(opened,2);

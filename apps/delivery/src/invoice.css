@@ -1,5 +1,7 @@
 @import './invoice-document.css';
 .invoice-tabs { margin:16px 0; }
+.invoice-auction-add { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0; }
+.invoices .invoice-auction-add > .calendar-control { flex:0 0 170px; width:170px; max-width:100%; }
 .invoice-auction-day { display:grid; grid-template-columns:max-content 80px 32px; align-items:center; gap:8px; margin:8px 0; }
 .invoice-auction-day > span { white-space:nowrap; }
 .invoice-auction-day > input { box-sizing:border-box; width:80px; padding-inline:6px; }
