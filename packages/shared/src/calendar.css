@@ -14,7 +14,6 @@
 .calendar-month-control:focus-within .calendar-month-value { outline:2px solid var(--accent); outline-offset:2px; }
 .calendar-month-control:has(input:disabled) .calendar-month-value { opacity:.55; }
 @media screen and (max-width:1023px) {
- :is(.layout,.app,.inventory-column-filter) .calendar-control { gap:2px; }
  :is(.layout,.app,.inventory-column-filter) .calendar-control > button.calendar-button { flex-basis:24px; width:24px; }
  :is(.layout,.app,.inventory-column-filter) .calendar-control > input.calendar-native-picker:not(.calendar-native-month-picker) { width:24px; }
 }
