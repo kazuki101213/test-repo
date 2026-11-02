@@ -2,7 +2,8 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),asser
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
 const jsx=(type,props)=>({type,props});
 const money=value=>'¥'+value.toLocaleString('ja-JP');
-const context={exports:{},require:name=>name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='../invoices'?{yen:money}:{} };
+const pagination={exports:{}};vm.runInNewContext(compile('apps/delivery/src/invoicePagination.ts'),pagination);
+const context={exports:{},require:name=>name==='react'?{useRef:()=>({current:null}),useState:initial=>[initial,()=>{}],useLayoutEffect:()=>{}}:name==='../invoicePagination'?pagination.exports:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='../invoices'?{yen:money}:{} };
 vm.runInNewContext(compile('apps/delivery/src/components/InvoiceSheet.tsx'),context);
 function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}
@@ -101,3 +102,12 @@ function testExtraRows(){
  monthRef.current={focus:()=>opened++};
  all(ctx.exports.default(props)).find(n=>n.type==='button').props.onClick();assert.equal(opened,2);
 }
+
+// Real row heights fit in the current sheet; the footer must not force an arbitrary ten-row split.
+assert.equal(pagination.exports.invoicePageEnds(Array(13).fill(22),720,900,200).length,1);
+assert.deepEqual(Array.from(pagination.exports.invoicePageEnds(Array(35).fill(30),720,900,200)),[24,35]);
+const compact=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:0},month:'2026-10',issued:'2026-11-02',extras:Array.from({length:13},(_,i)=>({date:null,description:'短い明細'+i,quantity:1,unit_price:100})),note:'備考',receipts:[]});
+assert.equal(all(compact).filter(n=>n.props?.className==='invoice-sheet').length,1);
+assert.equal(all(manySheet).filter(n=>n.props?.className==='invoice-parties').length,1,'Recipient and issuer only appear on the first page');
+assert.equal(all(manySheet).filter(n=>n.props?.className==='invoice-total').length,1,'Total header only appears on the first page');
+const corrected=context.exports.default({snapshot:{profile:profileFields,lines:[{date:null,description:'修正した明細名',quantity:2,unit_price:300}],review_edited:true,tax_percent:0},month:'2026-10',issued:'2026-11-02',extras:[],note:'',receipts:[]});assert(text(corrected).includes('修正した明細名'));assert(text(corrected).includes('¥600'));

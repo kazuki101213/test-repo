@@ -1,9 +1,12 @@
+import { useLayoutEffect, useRef, useState } from 'react';
+import { invoicePageEnds } from '../invoicePagination';
 import type { InvoiceReceipt } from '@bussan/shared';
 import type { InvoiceDetails, InvoiceLine, InvoiceSnapshot } from '../invoices';
 import { yen } from '../invoices';
 
 type PrintLine = InvoiceLine & { extra?: boolean; taxIncluded?: boolean };
-function groupedLines(snapshot: InvoiceSnapshot, extras: InvoiceLine[]): PrintLine[] {
+export function groupedInvoiceLines(snapshot: InvoiceSnapshot, extras: InvoiceLine[]): PrintLine[] {
+  if (snapshot.review_edited) return [...snapshot.lines.map(line => ({...line})), ...extras.map(line => ({...line,extra:true}))];
   const grouped = new Map<string, PrintLine>();
   for (const line of snapshot.lines) {
     const description = line.description === 'Amazon返品対応' ? line.description : '納品外注費';
@@ -31,35 +34,54 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
   snapshot: InvoiceSnapshot; month: string; issued: string; extras: InvoiceLine[]; note: string; receipts?: InvoiceReceipt[];
 }) {
   const p = snapshot.profile;
-  const lines: PrintLine[] = [...groupedLines(snapshot, extras), ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true }))];
+  const lines: PrintLine[] = [...groupedInvoiceLines(snapshot, extras), ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true }))];
   const subtotal = lines.filter(line => !line.taxIncluded).reduce((sum, l) => sum + (Number.isFinite(l.quantity * l.unit_price) ? l.quantity * l.unit_price : 0), 0);
   const reimbursement = receipts.reduce((sum, row) => sum + (row.amount ?? 0), 0);
   const total = subtotal + Math.floor(subtotal * snapshot.tax_percent / 100) + reimbursement;
   const quantities = snapshot.lines.reduce((sum, l) => sum + l.quantity, 0);
   // Long descriptions consume more space while keeping every item on the PDF.
   const rowUnits = (line: PrintLine) => Math.max(1, Math.ceil(Array.from(line.description).reduce((width, char) => width + (/[^\x00-\x7f]/.test(char) ? 1 : .55), 0) / 28));
-  const pages: PrintLine[][] = [[]]; let used = 0;
-  for (const line of lines) {
-    const units = rowUnits(line);
-    if (used + units > 20 && pages[pages.length - 1]!.length) { pages.push([]); used = 0; }
-    pages[pages.length - 1]!.push(line); used += units;
-  }
-  const finalPage = pages[pages.length - 1]!;
-  if (finalPage.reduce((sum, line) => sum + rowUnits(line), 0) > 10 && finalPage.length > 1) {
-    const tail: PrintLine[] = []; let tailUnits = 0;
-    while (finalPage.length > 1 && tailUnits + rowUnits(finalPage[finalPage.length - 1]!) <= 10) {
-      const line = finalPage.pop()!; tail.unshift(line); tailUnits += rowUnits(line);
-    }
-    if (tail.length) pages.push(tail);
-  }
-  return <div className="invoice-document" aria-label={`${month}の請求書プレビュー`}>{pages.map((page, pageIndex) => {
+  const root = useRef<HTMLDivElement>(null);
+  const [measuredEnds, setMeasuredEnds] = useState<number[] | null>(null);
+  const ends = measuredEnds ?? invoicePageEnds(lines.map(line => rowUnits(line) * 22), 720, 900, 200);
+  const pageEnds = [...ends.filter(end => end > 0 && end < lines.length), lines.length];
+  const pages = pageEnds.map((end, index) => lines.slice(index ? pageEnds[index - 1]! : 0, end));
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    let active = true;
+    const height = (node: Element | null) => {
+      if (!(node instanceof HTMLElement)) return 0;
+      const css = getComputedStyle(node);
+      return node.offsetHeight + (parseFloat(css.marginTop) || 0) + (parseFloat(css.marginBottom) || 0);
+    };
+    const measure = () => {
+      if (!active) return;
+      const first = element.querySelector<HTMLElement>('.invoice-sheet');
+      if (!first || !first.offsetWidth) return;
+      const css = getComputedStyle(first);
+      const usable = first.offsetWidth * 270 / 190 - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom) - 4;
+      const heading = height(first.querySelector('.document-heading'));
+      const header = heading + height(first.querySelector('.invoice-parties')) + height(first.querySelector('.invoice-total'));
+      const tableHead = height(first.querySelector('thead'));
+      const footer = height(element.querySelector('tfoot')) + height(element.querySelector('.invoice-reimbursement')) + height(element.querySelector('.invoice-footer'));
+      const rows = Array.from(element.querySelectorAll<HTMLElement>('.invoice-lines > tbody > tr'), row => row.offsetHeight);
+      if (rows.length !== lines.length) return;
+      const next = invoicePageEnds(rows, usable - header - tableHead, usable - heading - tableHead, footer);
+      setMeasuredEnds(current => current?.join(',') === next.join(',') ? current : next);
+    };
+    measure();
+    void document.fonts.ready.then(measure);
+    return () => { active = false; };
+  });
+  return <div ref={root} className="invoice-document" aria-label={`${month}の請求書プレビュー`}>{pages.map((page, pageIndex) => {
     const last = pageIndex === pages.length - 1;
     return <article className="invoice-sheet" key={pageIndex}>
       <header className="document-heading"><h1>請求書</h1></header>
-      <div className="invoice-parties"><div><div className="invoice-recipient">{p.recipient}</div><p className="invoice-greeting">下記の通り、ご請求申し上げます。</p></div>
+      {pageIndex === 0 && <><div className="invoice-parties"><div><div className="invoice-recipient">{p.recipient}</div><p className="invoice-greeting">下記の通り、ご請求申し上げます。</p></div>
         <div className="invoice-issuer"><div className="invoice-issued">{issued.replaceAll('-', '/')}{pages.length > 1 && `　${pageIndex + 1} / ${pages.length}`}</div><div><span>氏名：</span><span>{p.issuer_name}</span></div><div><span>住所：</span><span>{p.postal}<br />{p.address}</span></div><div><span>TEL：</span><span>{p.phone}</span></div><div><span>E-Mail：</span><span>{p.email}</span></div></div>
       </div>
-      <div className="invoice-total"><span>合計金額</span><strong>{money(total)}</strong></div>
+      <div className="invoice-total"><span>合計金額</span><strong>{money(total)}</strong></div></>}
       <table className="invoice-lines"><colgroup><col style={{ width: '12.5%' }} /><col style={{ width: '50%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /></colgroup>
         <thead><tr><th>日付</th><th>名称</th><th>数量</th><th>単価（円）</th><th>金額（円）</th></tr></thead>
         <tbody>{page.map((line, i) => <tr key={i}><td>{shortDate(line.date)}</td><td>{!line.extra && i > 0 && page[i - 1]?.description === line.description ? '〃' : line.description}</td><td>{line.extra && line.quantity === 1 ? '' : Number.isFinite(line.quantity) ? line.quantity : ''}</td><td>{money(line.unit_price)}</td><td>{money(line.quantity * line.unit_price)}</td></tr>)}
