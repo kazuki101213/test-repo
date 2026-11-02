@@ -138,6 +138,10 @@
 }
 
 .invoice-recipient-save { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:end; }
+@media screen and (max-width:1023px) {
+ :is(.layout,.app) .invoices .invoice-toolbar { display:flex; flex-wrap:wrap; min-width:0; }
+ :is(.layout,.app) .invoices .invoice-toolbar > .invoice-staff-field { width:100%; }
+}
 .invoice-recipient-save > .btn { justify-self:start; }
 
 @media screen and (min-width:1024px) {
