@@ -90,7 +90,7 @@ html:has(.registration-workspace) { scrollbar-gutter:stable; }
 .layout .inventory-registration-entry .field > span:has(> .registration-date) { display:flex; width:100%; min-width:0; }
 .layout .inventory-registration-entry .registration-date { flex:1 1 0; width:0; min-width:0; max-width:none; box-sizing:border-box; }
 
-.layout .inventory-product-search { width:calc((100% - 12px) / 2); }
+.layout .inventory-product-search { width:calc((100% - 8px) / 2); }
 .layout .inventory-registration-fields > .inventory-product-search { grid-column:1 / -1; }
 @media screen and (max-width:1023px) {
  .layout .inventory-registration-fields:has(> .inventory-product-search) > .inventory-purchase-url { grid-column:auto; }

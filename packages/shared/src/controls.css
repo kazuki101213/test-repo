@@ -1,0 +1,16 @@
+/* One screen-control palette and horizontal rhythm in both apps and at every width. */
+:root { --control-gap:8px; --calendar-gap:4px; }
+@media screen {
+ :is(.layout,.app,.inventory-column-filter,.workflow-confirmation) :is(div,span,form,fieldset,nav,label):has(> :is(button,.btn,input,select,textarea,.calendar-control,.colored-select,label:has(input,select,textarea))):not(.calendar-control):not(.calendar-month-field),
+ :is(.layout,.app) :is(.inventory-controls,.invoice-extra-scroll,.registration-fields,.inventory-registration-fields,.inventory-full-edit-fields) {
+  column-gap:var(--control-gap) !important;
+ }
+ :is(.layout,.app,.inventory-column-filter) .calendar-control { column-gap:var(--calendar-gap) !important; }
+ :is(.layout,.app,.inventory-column-filter,.workflow-confirmation) :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]):not([type=reset]):not([type=hidden]) {
+  background-color:var(--surface-2) !important; color:var(--text) !important; border-color:var(--border) !important;
+ }
+ :is(.layout,.app) :is(input[type=checkbox],input[type=radio]) { accent-color:var(--accent); }
+ .layout .management-navigation { justify-content:flex-start !important; }
+ .app .delivery-navigation > .btn { background:transparent !important; color:var(--text) !important; border-color:transparent; }
+ .app .delivery-navigation > .btn[aria-current=page] { color:var(--accent) !important; border-bottom-color:var(--accent); }
+}
