@@ -1,4 +1,7 @@
 /* Screen layout only. Document templates and print rules remain in invoice.css. */
+@media screen {
+ .app > nav.delivery-navigation { margin:4px 0 8px; }
+}
 .spare-desktop-table { display:none; }
 @media screen and (max-width:1279px) {
   .workflow-action-form:has(.workflow-report-photo) { grid-template-columns:minmax(0,1fr) auto; }
