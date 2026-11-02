@@ -1,3 +1,4 @@
+import MonthInput from './MonthInput';
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
 interface Packed { id:string; lot_seq:number; purchased_at:string; packed_on:string; title:string; sku:string }
@@ -17,7 +18,7 @@ export default function PackedSummary({ staffId, initialMonth, billedCount }: { 
  },[staffId,month,all]);
  const compare=billedCount!==undefined&&!all&&month===initialMonth;
  return <section className="packed-summary no-print"><h3>納品実績</h3>
- <div className="row toolbar"><label>作業完了月 <input type="month" value={month} disabled={all} onChange={e=>{if(e.target.value)setMonth(e.target.value);}}/></label>
+ <div className="row toolbar"><label>作業完了月 <MonthInput value={month} disabled={all} onChange={e=>{if(e.target.value)setMonth(e.target.value);}}/></label>
  <label><input type="checkbox" checked={all} onChange={e=>setAll(e.target.checked)}/> 全期間</label></div>
  {error&&<p className="error" role="alert">{error}</p>}
  {loading?<p>読み込み中…</p>:!error&&<><p><strong>納品 {rows.length} 点</strong>{compare&&<span> ／ 請求書 {billedCount} 点　{billedCount===rows.length?'一致':'差があります'}</span>}</p>

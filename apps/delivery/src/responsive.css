@@ -229,21 +229,6 @@
   .seller-photos { grid-template-columns:repeat(8,minmax(0,1fr)); }
 }
 
-/* Native month selection with the same visible calendar control as the issue date. */
-@media screen {
-  .app .invoice-toolbar .invoice-month-control { position:relative; display:inline-flex; align-items:center; gap:4px; min-width:0; width:100%; }
-  .app .invoice-toolbar .invoice-month-value { display:flex; align-items:center; flex:1 1 0; min-width:0; height:42px; box-sizing:border-box; padding:8px 6px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); color:var(--text); font:inherit; white-space:nowrap; overflow:hidden; }
-  .app .invoice-toolbar .invoice-month-control > input[type="month"] { position:absolute; inset:0; width:100%; height:100%; min-height:0; padding:0; margin:0; opacity:0; cursor:pointer; }
-  .invoice-month-control:focus-within .invoice-month-value { outline:2px solid var(--accent); outline-offset:2px; }
-  .invoice-month-control:has(input:disabled) .invoice-month-value { opacity:0.6; }
-}
-@media screen and (max-width:1023px) {
-  .app .invoice-toolbar .invoice-month-value { height:44px; padding-inline:4px; }
-}
-
-@media screen and (max-width:1023px) {
-  .app .invoice-toolbar .invoice-month-value { font-size:14px; }
-}
 @media screen and (max-width:359px) {
   .invoice-toolbar { grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); }
   .invoice-toolbar > .invoice-settings-button { grid-column:2; grid-row:3; justify-self:end; }

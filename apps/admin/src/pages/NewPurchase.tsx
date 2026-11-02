@@ -392,15 +392,15 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
               <label className="field"><span>{isWorkingAmazonReturn ? 'FNSKU' : '追跡番号'}</span>
                 <input type="text" value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} />
               </label>
-              <label className="field registration-wide"><span>仕入先URL</span>
+              <label className="field registration-wide inventory-purchase-url"><span>仕入先URL</span>
                 <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} />
               </label>
+              {!isWorkingAmazonReturn && <label className="field inventory-product-search"><span>商品リスト検索</span>
+                <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
+              </label>}
             </div>
             {!isWorkingAmazonReturn && marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           <div>
-            {!isWorkingAmazonReturn && <label className="field inventory-product-search"><span>商品リスト検索</span>
-                <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
-              </label>}
             {!isWorkingAmazonReturn && matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
               {matchingProducts.slice(0, 20).map(p => <button type="button" role="option" aria-selected={productId === p.id} key={p.id} onClick={() => { setProductId(p.id); setProductSearch(`${p.model_no ?? ''} / ${p.asin ?? ''}`); }}>
                 {p.model_no ?? '型番なし'} / {p.asin ?? 'ASINなし'} / 目標 {p.target_cost ? yen(p.target_cost) : '—'}

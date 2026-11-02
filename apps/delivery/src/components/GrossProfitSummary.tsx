@@ -1,3 +1,4 @@
+import MonthInput from './MonthInput';
 import { staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
@@ -50,7 +51,7 @@ export default function GrossProfitSummary({ staff }: { staff: Staff }) {
       {canSelectPurchaser && <label>担当者<select value={purchaserId} onChange={event => setPurchaserId(event.target.value)}>
         {people.map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}
       </select></label>}
-      <label>対象月<input type="month" value={month} onChange={event => setMonth(event.target.value)} /></label>
+      <label>対象月<MonthInput value={month} onChange={event => setMonth(event.target.value)} /></label>
     </div>
     {error && <p className="error" role="alert">{error}</p>}
     {loading ? <p>読み込み中…</p> : !error && <>
