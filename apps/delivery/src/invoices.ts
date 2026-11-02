@@ -12,6 +12,7 @@ export interface InvoiceLine {
   lot_seq?: number; item_id?: string; title?: string; packed_on?: string;
 }
 export interface InvoiceSnapshot {
+  review_edited?: boolean;
   profile: InvoiceDetails; lines: InvoiceLine[]; extras?: InvoiceLine[];
   receipt_lines?: InvoiceReceipt[]; receipt_subtotal?: number; subtotal: number; tax_percent: number; tax?: number;
 }

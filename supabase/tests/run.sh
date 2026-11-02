@@ -128,3 +128,4 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_accessory_receipt_rea
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_receipt_purchase_groups.sql"
 
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/admin_invoice_edit.sql"
