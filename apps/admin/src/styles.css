@@ -405,7 +405,9 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 
 
 .inventory-multi-filter { position:relative; flex:0 0 auto; }
-.inventory-multi-filter summary { cursor:pointer; padding:10px 12px; border:1px solid var(--border); border-radius:8px; }
+.inventory-multi-filter summary { cursor:pointer; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); }
+.layout .inventory-registration-actions > .btn,
+.layout .amazon-sales-update > .btn { background:var(--surface-2); color:var(--text); border-color:var(--border); }
 .inventory-multi-filter-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:30; width:min(300px, calc(100vw - 32px)); max-height:60dvh; overflow:auto; padding:12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 6px 20px #0002; }
 .inventory-multi-filter-panel fieldset { margin:12px 0 0; padding:8px; border:1px solid var(--border); min-width:0; }
 .inventory-multi-filter-panel label { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; }
