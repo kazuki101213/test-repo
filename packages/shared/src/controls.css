@@ -1,7 +1,7 @@
 /* One screen-control palette and horizontal rhythm in both apps and at every width. */
 :root { --control-gap:8px; --calendar-gap:4px; --search-field-width:260px; --search-item-width:132px; --date-field-width:150px; }
 @media screen {
- :is(.layout,.app,.inventory-column-filter,.workflow-confirmation) :is(div,span,form,fieldset,nav,label):has(> :is(button,.btn,input,select,textarea,.calendar-control,.colored-select,label:has(input,select,textarea))):not(.calendar-control):not(.calendar-month-field),
+ :is(.layout,.app,.inventory-column-filter,.workflow-confirmation) :is(div,span,form,fieldset,nav,label):has(> :is(button,.btn,input,select,textarea,.calendar-control,.colored-select,label:has(input,select,textarea))):not(.calendar-control):not(.calendar-month-field):not(.management-navigation):not(.delivery-navigation),
  :is(.layout,.app) :is(.inventory-controls,.invoice-extra-scroll,.registration-fields,.inventory-registration-fields,.inventory-full-edit-fields) {
   column-gap:var(--control-gap) !important;
  }
@@ -11,6 +11,7 @@
  }
  :is(.layout,.app) :is(input[type=checkbox],input[type=radio]) { accent-color:var(--accent); }
  .layout .management-navigation { justify-content:flex-start !important; }
+ :is(.layout .management-navigation,.app .delivery-navigation) { column-gap:var(--control-gap) !important; }
  .app .delivery-navigation > .btn { background:transparent !important; color:var(--text) !important; border-color:transparent; }
  .app .delivery-navigation > .btn[aria-current=page] { color:var(--accent) !important; border-bottom-color:var(--accent); }
  :is(.layout,.app,.inventory-column-filter) input[type=search] { width:var(--search-field-width) !important; max-width:100%; flex:0 0 var(--search-field-width); box-sizing:border-box; }
