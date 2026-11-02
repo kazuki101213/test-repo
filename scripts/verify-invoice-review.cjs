@@ -72,7 +72,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
  all(auctionReload.tree).find(n=>n.type==='button'&&text(n)==='作業日を追加').props.onClick();await auctionReload.settle();
  assert.equal(fee(auctionReload,'2026-10-07').props.value,4500);
  const section=all(auctionReload.tree).find(n=>n.props?.className==='invoice-auction-workdays');
- all(section).find(n=>n.type==='div'&&n.props.className==='row'&&text(n).includes('2026-10-05')).props.children.at(-1).props.onClick();await auctionReload.settle();
+ all(section).find(n=>n.type==='div'&&n.props.className==='invoice-auction-day'&&text(n).includes('2026-10-05')).props.children.at(-1).props.onClick();await auctionReload.settle();
  assert(!fee(auctionReload,'2026-10-05'));assert.equal(fee(auctionReload,'2026-10-02').props.value,6000);
  console.log('Shared invoice save/reload, editable workday fees, defaults, removal, gross-profit adjustment and adjacent close passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});

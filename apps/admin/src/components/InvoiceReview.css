@@ -9,7 +9,7 @@
 .invoice-review .invoice-sheet th,.invoice-review .invoice-sheet td,.invoice-review .receipt-summary-sheet th,.invoice-review .receipt-summary-sheet td { background:transparent; }
 .invoice-review-pdf { display:block; width:100%; height:75vh; min-height:360px; border:0; background:#fff; }
 .invoice-review-attachment { display:block; width:100%; height:auto; margin:12px 0; }
-.invoice-review-approval { margin-top:20px; }
+.invoice-review-approval { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; justify-content:flex-start; gap:8px; margin-top:20px; }
 .invoice-review-documents > p { grid-column:1 / -1; }
 @media(max-width:900px) { .invoice-review-documents { grid-template-columns:minmax(0,1fr); } }
 .invoice-review .invoice-workspace { border:0; padding:0; background:transparent; }
