@@ -141,6 +141,7 @@
 .invoice-recipient-save > .btn { justify-self:start; }
 
 @media screen and (min-width:1024px) {
+ :is(.layout,.app) .invoices .invoice-toolbar { display:flex; flex-wrap:nowrap; min-width:max-content; }
  .invoices .invoice-toolbar > .invoice-staff-field { display:flex; flex-direction:column; align-items:flex-start; width:fit-content; flex:none; }
  .invoices .invoice-staff-field > select { align-self:flex-start; }
  .invoices .invoice-extra > label:nth-child(2) > input,

@@ -18,7 +18,7 @@
  :is(.layout,.app) :is(.inventory-search,.delivery-inventory-search,.spare-search) { display:flex !important; flex-wrap:wrap; width:max-content; max-width:100%; align-items:center; }
  :is(.layout,.app) :is(.inventory-search,.delivery-inventory-search,.spare-search) > select:not(:first-of-type) { width:var(--search-field-width) !important; max-width:100%; flex:0 0 var(--search-field-width); }
  :is(.layout,.app,.inventory-column-filter) .calendar-control { width:var(--date-field-width) !important; max-width:100%; flex:0 0 var(--date-field-width) !important; }
- :is(.layout,.app) label:has(> .calendar-control) { width:var(--date-field-width); max-width:100%; }
+ :is(.layout,.app) label:has(> .calendar-control) { width:var(--date-field-width) !important; max-width:100%; }
 }
 @media screen and (min-width:1024px) {
  /* Desktop tabs are the requested exception to the 8px control rhythm. */
