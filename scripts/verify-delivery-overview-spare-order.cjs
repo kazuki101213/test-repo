@@ -38,10 +38,15 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  stateFilter().props.onChange({});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
  tasks[1].status='販売済';stateFilter().props.onChange({status:['販売済']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['LL-item']);tasks[1].status='受取前';stateFilter().props.onChange({});await settle();
  assert(stateFilter().props.assignee,'AA has assignee inside the existing filter');
- stateFilter().props.assignee.onChange('II');await settle();assert.equal(lastPageFilters.delivererId,'II');assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['II-item']);
+ stateFilter().props.assignee.onChange(['II']);await settle();assert.deepEqual(Array.from(lastPageFilters.delivererIds),['II']);assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['II-item']);
+ stateFilter().props.assignee.onChange(['II','LL']);await settle();assert.deepEqual(Array.from(lastPageFilters.delivererIds),['II','LL']);assert.equal(all(tree).filter(n=>n.props?.task).length,2,'Assignees combine with OR');
+ stateFilter().props.assignee.onChange(['II']);await settle();
+ const dates=()=>all(tree).filter(n=>['仕入日・開始日','仕入日・終了日'].includes(n.props?.['aria-label']));
+ dates()[0].props.onChange({target:{value:'2026-10-01'}});dates()[1].props.onChange({target:{value:'2026-10-31'}});await settle();assert.equal(lastPageFilters.from,'2026-10-01');assert.equal(lastPageFilters.to,'2026-10-31');
+ assert(!text(tree).includes('Amazon出品ファイル'));
  stateFilter().props.onChange({marketplace:['動作品Amazon返品']});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,0,'Assignee and source filters combine with AND');
- stateFilter().props.onChange({});await settle();selector().props.onChange({target:{value:'sku'}});await settle();assert.equal(lastPageFilters.delivererId,'II','Switching text search fields preserves the integrated assignee filter');
- stateFilter().props.assignee.onChange('');selector().props.onChange({target:{value:'serial'}});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
+ stateFilter().props.onChange({});await settle();selector().props.onChange({target:{value:'sku'}});await settle();assert.deepEqual(Array.from(lastPageFilters.delivererIds),['II'],'Switching text search fields preserves the integrated assignee filter');
+ stateFilter().props.assignee.onChange([]);selector().props.onChange({target:{value:'serial'}});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
  selector().props.onChange({target:{value:'deliverer'}});await settle();assert(!input());
  all(tree).find(n=>n.props?.['aria-label']==='納品担当者で検索').props.onChange({target:{value:'LL'}});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['LL-item']);
  selector().props.onChange({target:{value:'serial'}});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2,'Changing fields clears hidden owner filtering');
@@ -54,9 +59,10 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  stateFilter().props.onChange({marketplace:['動作品Amazon返品']});await settle();
  stateFilter().props.onChange({});selector().props.onChange({target:{value:'serial'}});input().props.onChange({target:{value:''}});await settle();
  const card=all(tree).find(n=>n.props?.task?.id==='II-item');card.props.onDetailOpened('II-item');await settle();assert.deepEqual(acknowledged,['II-item']);assert(!text(all(tree).find(n=>n.type==='section')).includes('写真が承認されました'));
- hooks=[];pending=[];staff={id:'II',code:'II',role:'deliverer',name:'久保田真由'};dirty=true;await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2,'Delivery staff default to the work group including awaiting receipt');assert.equal(stateFilter().props.assignee,undefined);assert.equal(lastPageFilters.delivererId,'');assert(!text(all(tree).find(n=>n.type==='section')).includes('動作不良の報告が届きました'));
+ hooks=[];pending=[];staff={id:'II',code:'II',role:'deliverer',name:'久保田真由'};dirty=true;await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2,'Delivery staff default to the work group including awaiting receipt');assert.equal(stateFilter().props.assignee,undefined);assert.equal(lastPageFilters.delivererIds.length,0);assert(!text(all(tree).find(n=>n.type==='section')).includes('動作不良の報告が届きました'));
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
  hooks=[];pending=[];staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};context.window.location.search='?itemId=II-item';dirty=true;await settle();
  assert.equal(selector().props.value,'sku');assert.equal(input().props.value,tasks[0].sku);assert.equal(all(tree).filter(n=>n.props?.task).length,1,'Deep links use SKU search');
+ for(const identity of [{id:'EE',code:'EE',role:'admin',name:'other admin'},{id:'AA',code:'AA',role:'purchaser',name:'AA purchaser'}]){hooks=[];pending=[];staff=identity;dirty=true;await settle();assert.equal(stateFilter().props.assignee,undefined,'Only AA admin sees assignee checkboxes');}
  console.log('Ordered owners/manufacturers, unset last, AA all notice/report display, resolved exclusion, detail routing/acknowledgement and II scope passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

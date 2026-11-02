@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react';
 import { INVENTORY_FILTER_GROUPS } from '@bussan/shared';
 import type { InventoryFilters } from '@bussan/shared';
 
-type AssigneeFilter = { value: string; options: { id: string; name: string }[]; onChange: (id: string) => void };
+type AssigneeFilter = { value: string[]; options: { id: string; name: string }[]; onChange: (ids: string[]) => void };
 export default function InventoryStateFilter({ value, onChange, assignee }: { value: InventoryFilters; onChange: (value: InventoryFilters) => void; assignee?: AssigneeFilter }) {
   const container = useRef<HTMLDetailsElement>(null);
-  const count = Object.values(value).reduce((sum, values) => sum + (values?.length ?? 0), 0) + (assignee?.value ? 1 : 0);
+  const count = Object.values(value).reduce((sum, values) => sum + (values?.length ?? 0), 0) + (assignee?.value.length ?? 0);
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => { if (container.current && !container.current.contains(event.target as Node)) container.current.open = false; };
     const closeEscape = (event: KeyboardEvent) => { if (event.key === 'Escape' && container.current?.open) { container.current.open = false; container.current.querySelector('summary')?.focus(); } };
@@ -17,12 +17,10 @@ export default function InventoryStateFilter({ value, onChange, assignee }: { va
     <summary>フィルター{count > 0 ? `（${count}）` : ''}</summary>
     <div className="inventory-multi-filter-panel">
       <div className="inventory-multi-filter-actions">
-      <button type="button" className="btn" onClick={() => { onChange({}); assignee?.onChange(''); }}>すべて解除</button>
+      <button type="button" className="btn" onClick={() => { onChange({}); assignee?.onChange([]); }}>すべて解除</button>
       </div>
       {assignee && <fieldset className="inventory-assignee-filter"><legend>納品担当者</legend>
-        <select aria-label="納品担当者で絞り込み" value={assignee.value} onChange={event => assignee.onChange(event.target.value)}>
-          <option value="">全員</option>{assignee.options.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
-        </select>
+        {assignee.options.map(person => <label key={person.id}><input type="checkbox" checked={assignee.value.includes(person.id)} onChange={event => assignee.onChange(event.target.checked ? [...assignee.value, person.id] : assignee.value.filter(id => id !== person.id))} /><span>{person.name}</span></label>)}
       </fieldset>}
       {INVENTORY_FILTER_GROUPS.map(group => <fieldset key={group.field}>
         <legend>{group.label}</legend>

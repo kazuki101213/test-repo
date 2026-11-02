@@ -1,5 +1,5 @@
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
-import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES, noticeProductUrl } from '@bussan/shared';
+import { canViewDeliveryAssignee, staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES, noticeProductUrl } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
@@ -63,13 +63,14 @@ export default function Inventory({ me }: { me: Staff }) {
   const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
+  const [assigneeFilterIds, setAssigneeFilterIds] = useState<string[]>([]);
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({});
   const [openColumn, setOpenColumn] = useState<{ field: string; anchor: HTMLElement } | null>(null);
   const closeColumn = useCallback(() => setOpenColumn(null), []);
   const activeColumnCount=Object.values(columnFilters).filter(isColumnFilterActive).length;
-  const inventory=useInventoryPage<InventoryItem>('management',me.id,{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters},!!openColumn||activeColumnCount>0);
+  const inventory=useInventoryPage<InventoryItem>('management',me.id,{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters,delivererIds:canViewDeliveryAssignee(me)?assigneeFilterIds:[]},!!openColumn||activeColumnCount>0);
   const items=inventory.rows,count=inventory.total,loading=inventory.loading;
   const viewItems=useMemo(()=>filterInventoryColumns(items.filter(item=>matchesInventoryFilters(item,inventoryFilters)),columnFilters),[items,columnFilters,inventoryFilters]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -136,7 +137,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
   function clearFilters() {
     setInventoryFilters({}); setColumnFilters({}); setOpenColumn(null); setQueryField('serial');
-    setQuery(''); setPurchasedFrom(''); setPurchasedTo('');
+    setQuery(''); setPurchasedFrom(''); setPurchasedTo(''); setAssigneeFilterIds([]);
   }
   const filterHeading = (field: string) => <button type="button" className={`inventory-column-heading${isColumnFilterActive(columnFilters[field]) ? ' active' : ''}`}
     aria-label={`${inventoryColumns[field]!.label}のフィルター`} aria-expanded={openColumn?.field === field}
@@ -168,8 +169,7 @@ export default function Inventory({ me }: { me: Staff }) {
           </select>
           <input type="search" placeholder="検索" value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
         </div>
-        <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} />
-        <button type="button" className="btn inventory-clear-filters" onClick={clearFilters}>フィルター解除</button>
+        <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} assignee={canViewDeliveryAssignee(me) ? {value:assigneeFilterIds,options:deliveryStaffOptions(staff).map(person=>({id:person.id,name:staffDisplayName(person)})),onChange:setAssigneeFilterIds} : undefined} />
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field">
             <DateInput aria-label="仕入日・開始日" placeholder="YY-MM-DD" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
@@ -179,8 +179,8 @@ export default function Inventory({ me }: { me: Staff }) {
             <DateInput aria-label="仕入日・終了日" placeholder="YY-MM-DD" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
           </label>
         </div>
-        {(purchasedFrom || purchasedTo) && <button className="btn inventory-clear-dates" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
-        <div className="inventory-count-desktop" aria-label="在庫の商品件数" aria-live="polite"><span>{countLabel}</span></div>
+        <button type="button" className="btn inventory-clear-filters" onClick={clearFilters}>全て解除</button>
+        <div className="inventory-count" aria-label="在庫の商品件数" aria-live="polite"><span>{countLabel}</span></div>
         {activeColumnCount > 0 && <span className="sub">項目フィルター {activeColumnCount}件</span>}
 
       </div>
@@ -209,7 +209,6 @@ export default function Inventory({ me }: { me: Staff }) {
         </tbody></table></div> : !draftError && !draftsLoading && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
-      <div className="toolbar inventory-count-mobile" aria-label="在庫の商品件数" aria-live="polite"><span>{countLabel}</span></div>
 
       {inventory.error&&<div className="error">{inventory.error}</div>}
       {loading && items.length === 0 && <div className="empty">読み込み中…</div>}

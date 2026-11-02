@@ -138,4 +138,16 @@
 }
 
 .invoice-recipient-save { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:end; }
+@media screen and (max-width:1023px) {
+ :is(.layout,.app) .invoices .invoice-toolbar { display:flex; flex-wrap:wrap; min-width:0; }
+ :is(.layout,.app) .invoices .invoice-toolbar > .invoice-staff-field { width:100%; }
+}
 .invoice-recipient-save > .btn { justify-self:start; }
+
+@media screen and (min-width:1024px) {
+ :is(.layout,.app) .invoices .invoice-toolbar { display:flex; flex-wrap:nowrap; min-width:max-content; }
+ .invoices .invoice-toolbar > .invoice-staff-field { display:flex; flex-direction:column; align-items:flex-start; width:fit-content; flex:none; }
+ .invoices .invoice-staff-field > select { align-self:flex-start; }
+ .invoices .invoice-extra > label:nth-child(2) > input,
+ .invoices .receipt-entry-row > label:nth-child(2) > input { width:312px; min-width:312px; max-width:312px; field-sizing:fixed; }
+}

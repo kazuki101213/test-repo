@@ -23,18 +23,13 @@ for(const app of ['admin','delivery']){
  listeners.pointerdown({target:'inside'});assert(ref.current.open);listeners.pointerdown({target:'outside'});assert(!ref.current.open);
  ref.current.open=true;listeners.keydown({key:'Escape'});assert(!ref.current.open);assert(focused);
  all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除').props.onClick();render();assert.equal(Object.keys(value).length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
- if(app==='delivery'){
-  assignee={value:'',options:[{id:'II',name:'II 久保田 真由'}],onChange:id=>{assignee.value=id;}};render();
-  const personSelect=all(tree).find(n=>n.props?.['aria-label']==='納品担当者で絞り込み');assert(personSelect);personSelect.props.onChange({target:{value:'II'}});render();
-  assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（1）');assert.equal(assignee.value,'II');
-  toggle('仕入先','ヤフオク',true);ref.current.open=true;focused=false;
-  const filterActions=all(tree).find(n=>n.props?.className==='inventory-multi-filter-actions');
-  assert.deepEqual(all(filterActions).filter(n=>n.type==='button').map(text),['すべて解除']);
-  listeners.pointerdown({target:'outside'});render();
-  assert(!ref.current.open);assert.equal(assignee.value,'II');assert.equal(value.marketplace.join(','),'ヤフオク','Closing preserves the selected filters');
-  ref.current.open=true;assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（2）','Reopening keeps the selected filters');
-  all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除').props.onClick();render();assert.equal(assignee.value,'');assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
- }
+ assignee={value:[],options:[{id:'II',name:'II 久保田 真由'},{id:'LL',name:'LL 土井 花菜'}],onChange:ids=>{assignee.value=ids;}};render();
+ toggle('納品担当者','II 久保田 真由',true);toggle('納品担当者','LL 土井 花菜',true);
+ assert.deepEqual(Array.from(assignee.value),['II','LL']);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（2）');
+ toggle('納品担当者','II 久保田 真由',false);assert.deepEqual(Array.from(assignee.value),['LL']);
+ toggle('仕入先','ヤフオク',true);ref.current.open=true;listeners.pointerdown({target:'outside'});render();
+ assert(!ref.current.open);assert.deepEqual(Array.from(assignee.value),['LL']);assert.equal(value.marketplace.join(','),'ヤフオク','Closing preserves the selected filters');
+ all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除').props.onClick();render();assert.equal(assignee.value.length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
  cleanup();assert.equal(Object.keys(listeners).length,0);
 }
 console.log('Both real filter components: one menu, multi-select OR/AND, exact return matching, clear, keyboard, outside click and cleanup passed');

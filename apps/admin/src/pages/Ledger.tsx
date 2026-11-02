@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { jpDate, yen } from '@bussan/shared';
 import { fetchLedger } from '../api';
 import type { LedgerDisplayRow } from '../api';
@@ -17,46 +17,38 @@ export default function Ledger() {
   const [rows, setRows] = useState<LedgerDisplayRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    fetchLedger(from, to)
-      .then(setRows)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [from, to]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // 1万円以上の買受で相手方が特定できていない行は、古物台帳として不備になる
-  const incomplete = rows.filter(
-    (r) => r.取引区分 === '買受' && r.代価 >= 10000 && !r.相手方住所,
-  ).length;
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let active = true;
+    const valid = (value: string) => {
+      const parsed = new Date(value + 'T00:00:00Z');
+      return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10) === value;
+    };
+    if (!valid(from) || !valid(to) || from > to) {
+      setRows([]); setLoading(false); setError(from && to && from > to ? '終了日は開始日以降の日付を選んでください。' : null);
+      return;
+    }
+    setLoading(true); setError(null);
+    void fetchLedger(from, to).then(data=>{if(active)setRows(data);})
+      .catch(e=>{if(active){setRows([]);setError(e instanceof Error ? e.message : String(e));}})
+      .finally(()=>{if(active)setLoading(false);});
+    return ()=>{active=false;};
+  }, [from,to]);
 
   return (
     <>
 
-      <p className="sub">
-        古物営業法施行規則 第16条の記載事項に対応した帳簿です。最終取引日から3年間は保存してください。
-      </p>
-
       <div className="toolbar ledger-toolbar">
-        <DateInput value={from} onChange={(e) => setFrom(e.target.value)} />
-        <span className="sub" style={{ margin: 0 }}>〜</span>
-        <DateInput value={to} onChange={(e) => setTo(e.target.value)} />
-        <button className="btn" onClick={load}>表示</button>
-        <span className="sub" style={{ margin: 0 }}>{rows.length} 件</span>
-        <span style={{ flex: 1 }} />
-        <button className="btn primary" onClick={() => downloadCsv(`古物台帳_${from}_${to}.csv`, rows.map(r => ({ ...r, 商品URL: r.取引区分 === '買受' ? purchaseItemUrl(r.仕入先, r.商品ID, r.取引記録リンク) : null })) as unknown as Record<string, unknown>[])}>
-          CSV出力
-        </button>
+        <div className="ledger-date-range" role="group" aria-label="取引日の期間">
+          <DateInput aria-label="取引日・開始日" value={from} max={to || undefined} onChange={e=>setFrom(e.target.value)} />
+          <span className="ledger-date-separator" aria-hidden="true">〜</span>
+          <DateInput aria-label="取引日・終了日" value={to} min={from || undefined} onChange={e=>setTo(e.target.value)} />
+        </div>
+        <button className="btn" disabled={loading || !!error || !rows.length} onClick={() => downloadCsv(`古物台帳_${from}_${to}.csv`, rows.map(r => ({ ...r, 商品URL: r.取引区分 === '買受' ? purchaseItemUrl(r.仕入先, r.商品ID, r.取引記録リンク) : null })) as unknown as Record<string, unknown>[])}>CSV</button>
+        <span className="ledger-count" aria-live="polite">{loading ? '読み込み中…' : `${rows.length.toLocaleString()} 件`}</span>
       </div>
 
       {error && <div className="error">{error}</div>}
-      {incomplete > 0 && (
-        <div className="error">
-          1万円以上の買受のうち {incomplete} 件で相手方の住所が未記入です。
-          非対面取引の記録（取引ID・URL）だけでは不足する場合があるため、確認をおすすめします。
-        </div>
-      )}
-
       <div className="scroll">
         <table>
           <thead>

@@ -2,7 +2,7 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),asser
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
 const notice={exports:{},URL};vm.runInNewContext(compile('packages/shared/src/noticeUrl.ts'),notice);
-const shared={...notice.exports,HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
+const shared={...notice.exports,canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);Object.assign(shared,stateSearch.exports);
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
 const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);
@@ -40,7 +40,7 @@ const jsx=(type,props)=>({type,props});const api={fetchItems:async (q,signal,pro
 const draftsModule={exports:{},require:()=>react,Date};vm.runInNewContext(compile('apps/admin/src/hooks/usePurchaseDrafts.ts'),draftsModule);
 const context={exports:{},require:name=>name==='../hooks/usePurchaseSync'?{usePurchaseSync:()=>({syncing:false,message:'',error:null,startSync:async()=>{}})}:name==='../hooks/usePurchaseDrafts'?draftsModule.exports:name==='../hooks/useInventoryPage'?{useInventoryPage:(_scope,_owner,q)=>{lastRequest=q;return {rows,total:2,loading:initialRead,more:false,error:null,refresh:async()=>{},loadMore:()=>{}};}}:name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:name==='../inventorySearch'?search.exports:{default:name.includes('InventoryStateFilter')?'state-filter':name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
 vm.runInNewContext(compile('apps/admin/src/pages/Inventory.tsx'),context);
-function render(){cursor=0;dirty=false;tree=context.exports.default({me:{role:'admin',id:'AA'}});pending.splice(0).forEach(fn=>fn());}
+function render(){cursor=0;dirty=false;tree=context.exports.default({me:{role:'admin',id:'AA',code:'AA'}});pending.splice(0).forEach(fn=>fn());}
 async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.resolve();}}
 function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)){n.forEach(v=>all(v,out));return out;}out.push(n);all(n.props?.children,out);return out;}
 (async()=>{
@@ -66,7 +66,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert(stateFilter());assert(!all(tree).some(n=>['仕入先フィルター','販売先フィルター','販売状態フィルター'].includes(n.props?.['aria-label'])));
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1);
- all(tree).find(n=>n.type==='button'&&n.props.children==='フィルター解除').props.onClick();await settle();assert.equal(Object.keys(stateFilter().props.value).length,0);
+ all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();assert.equal(Object.keys(stateFilter().props.value).length,0);
  const accessoryRow=all(tree).find(n=>n.type==='tr'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
  const saleCell=all(accessoryRow).filter(n=>n.type==='td')[11];
  const moneyButtons=all(saleCell).filter(n=>n.type==='button');
@@ -86,10 +86,11 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1,'Keep headings with zero matching rows');
  selector().props.onChange({target:{value:'serial'}});await settle();
  all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.onChange({target:{value:'search'}});await settle();
- all(tree).find(n=>n.type==='button'&&n.props.children==='フィルター解除').props.onClick();await settle();
+ all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();
  assert.equal(lastRequest.queryField,'serial');assert.equal(selector().props.value,'serial');
- assert.equal(lastRequest.query,'');assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds,undefined);assert.equal(lastRequest.from,'');assert.equal(lastRequest.to,'');
+ assert.equal(lastRequest.query,'');assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds.length,0);assert.equal(lastRequest.from,'');assert.equal(lastRequest.to,'');
  assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
+ const assignee=all(tree).find(n=>n.type==='state-filter').props.assignee;assert(assignee,'AA management has the assignee filter');assignee.onChange(['II','LL']);await settle();assert.deepEqual(Array.from(lastRequest.delivererIds),['II','LL']);all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();assert.equal(lastRequest.delivererIds.length,0);
  console.log('34 headings, combined filters, signed ranges, dates, empty values, all fetched rows, zero-match recovery and clear-all UI passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
