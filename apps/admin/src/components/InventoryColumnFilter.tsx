@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { InventoryItem } from '../api';
 import { columnValue, inventoryColumns, type ColumnFilter } from '../inventoryFilters';
+import DateInput from './DateInput';
 
 export default function InventoryColumnFilter({ field, anchor, items, current, onApply, onClose }:
   { field: string; anchor: HTMLElement; items: InventoryItem[]; current?: ColumnFilter; onApply: (filter: ColumnFilter | null) => void; onClose: () => void }) {
@@ -38,8 +39,12 @@ export default function InventoryColumnFilter({ field, anchor, items, current, o
     <div className="toolbar"><strong>{column.label}</strong><button type="button" className="btn" onClick={onClose}>閉じる</button></div>
     <input ref={searchInput} type="search" aria-label="フィルター候補を検索" placeholder="候補を検索" value={search} onChange={e => { setSearch(e.target.value); setLimit(100); }} />
     {column.kind && <div className="inventory-column-range">
-      <label>開始<input type={column.kind === 'date' ? 'date' : 'number'} step="any" value={draft.from} onChange={e => setDraft(d => ({ ...d, from: e.target.value }))} /></label>
-      <span>〜</span><label>終了<input type={column.kind === 'date' ? 'date' : 'number'} step="any" value={draft.to} onChange={e => setDraft(d => ({ ...d, to: e.target.value }))} /></label>
+      <label>開始{column.kind === 'date'
+        ? <DateInput aria-label={`${column.label}の開始日`} value={draft.from} max={draft.to || undefined} onChange={e => setDraft(d => ({ ...d, from: e.target.value }))} />
+        : <input type="number" step="any" value={draft.from} onChange={e => setDraft(d => ({ ...d, from: e.target.value }))} />}</label>
+      <span>〜</span><label>終了{column.kind === 'date'
+        ? <DateInput aria-label={`${column.label}の終了日`} value={draft.to} min={draft.from || undefined} onChange={e => setDraft(d => ({ ...d, to: e.target.value }))} />
+        : <input type="number" step="any" value={draft.to} onChange={e => setDraft(d => ({ ...d, to: e.target.value }))} />}</label>
     </div>}
     <div className="inventory-column-values">
       <label><input type="checkbox" checked={draft.values === null} onChange={e => setDraft(d => ({ ...d, values: e.target.checked ? null : [] }))} />すべて</label>

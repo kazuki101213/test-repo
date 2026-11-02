@@ -32,9 +32,8 @@
  .layout .spare-workspace.with-spare-entry > .spare-list { grid-column:1; grid-row:2; }
  .layout .spare-workspace.with-spare-entry > .spare-entry { grid-column:2; grid-row:1 / span 2; margin:0; }
  .layout .registration-sidebar { position:sticky; top:16px; max-height:calc(100dvh - 180px); overflow-y:auto; }
- .layout .with-purchase .inventory-controls { display:flex; flex-wrap:wrap; }
- .layout .with-purchase .inventory-controls .inventory-search { width:200px; }
- .layout .with-purchase .inventory-controls .inventory-date-range { width:282px; }
+ .layout .with-purchase .inventory-controls { grid-column:1 / -1; }
+ .layout .with-purchase .inventory-purchase-panel { grid-row:2; }
 }
 @media screen and (max-width:1279px) {
  .layout .inventory-workspace.with-purchase { grid-template-columns:minmax(0,1fr); overflow:visible; }
@@ -107,9 +106,9 @@ html:has(.registration-workspace) { scrollbar-gutter:stable; }
 @media screen and (min-width:1280px) {
  .layout .inventory-workspace.with-full-edit { grid-template-columns:minmax(0,1fr); overflow:visible; }
  .layout .with-full-edit > .inventory-list { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,380px); grid-template-rows:max-content minmax(0,1fr); gap:18px; align-items:start; }
- .layout .with-full-edit .inventory-controls { grid-column:1; grid-row:1; display:flex; flex-wrap:wrap; }
+ .layout .with-full-edit .inventory-controls { grid-column:1 / -1; grid-row:1; }
  .layout .with-full-edit .inventory-data { grid-column:1; grid-row:2; min-width:0; }
- .layout .with-full-edit .inventory-full-edit-container { position:sticky; inset:auto; top:16px; grid-column:2; grid-row:1 / span 2; display:block; background:transparent; z-index:auto; min-width:0; }
+ .layout .with-full-edit .inventory-full-edit-container { position:sticky; inset:auto; top:16px; grid-column:2; grid-row:2; display:block; background:transparent; z-index:auto; min-width:0; }
  .layout .inventory-full-edit-container > .inventory-full-edit-panel { width:100%; max-width:100%; box-sizing:border-box; max-height:calc(100dvh - 32px); margin:0; }
  .layout .inventory-full-edit-memo { display:grid; grid-template-columns:minmax(0,1fr); }
  .layout .inventory-full-edit-memo > textarea { width:auto; min-width:0; max-width:none; justify-self:stretch; }
