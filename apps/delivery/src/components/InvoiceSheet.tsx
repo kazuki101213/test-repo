@@ -7,15 +7,20 @@ import { yen } from '../invoices';
 type PrintLine = InvoiceLine & { extra?: boolean; taxIncluded?: boolean };
 export function groupedInvoiceLines(snapshot: InvoiceSnapshot, extras: InvoiceLine[]): PrintLine[] {
   if (snapshot.review_edited) return [...snapshot.lines.map(line => ({...line})), ...extras.map(line => ({...line,extra:true}))];
-  const grouped = new Map<string, PrintLine>();
+  const grouped = new Map<string, { line: PrintLine; serials: string[] }>();
   for (const line of snapshot.lines) {
     const description = line.description === 'Amazon返品対応' ? line.description : '納品外注費';
     const key = `${line.date}|${line.unit_price}|${description}`;
+    const serial = line.serial?.trim() || (line.lot_seq != null ? String(line.lot_seq) : '');
     const previous = grouped.get(key);
-    if (previous) previous.quantity += line.quantity;
-    else grouped.set(key, { ...line, description });
+    if (previous) {
+      previous.line.quantity += line.quantity;
+      if (serial) previous.serials.push(serial);
+    } else grouped.set(key, { line: { ...line, description }, serials: serial ? [serial] : [] });
   }
-  return [...grouped.values(), ...extras.map(line => ({ ...line, extra: true }))];
+  return [...grouped.values()].map(({ line, serials }) => ({
+    ...line, description: serials.length ? `${line.description}(${serials.join('、')})` : line.description,
+  })).concat(extras.map(line => ({ ...line, extra: true })));
 }
 const money = (value: number) => yen(Number.isFinite(value) ? value : 0);
 const shortDate = (date: string | null) => date ? date.slice(5).replace('-', '/') : '';
@@ -84,7 +89,7 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
       <div className="invoice-total"><span>合計金額</span><strong>{money(total)}</strong></div></>}
       <table className="invoice-lines"><colgroup><col style={{ width: '12.5%' }} /><col style={{ width: '50%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /></colgroup>
         <thead><tr><th>日付</th><th>名称</th><th>数量</th><th>単価（円）</th><th>金額（円）</th></tr></thead>
-        <tbody>{page.map((line, i) => <tr key={i}><td>{shortDate(line.date)}</td><td>{!line.extra && i > 0 && page[i - 1]?.description === line.description ? '〃' : line.description}</td><td>{line.extra && line.quantity === 1 ? '' : Number.isFinite(line.quantity) ? line.quantity : ''}</td><td>{money(line.unit_price)}</td><td>{money(line.quantity * line.unit_price)}</td></tr>)}
+        <tbody>{page.map((line, i) => <tr key={i}><td>{shortDate(line.date)}</td><td>{line.description}</td><td>{line.extra && line.quantity === 1 ? '' : Number.isFinite(line.quantity) ? line.quantity : ''}</td><td>{money(line.unit_price)}</td><td>{money(line.quantity * line.unit_price)}</td></tr>)}
         </tbody>
         {last && <tfoot><tr><td colSpan={2}>合計</td><td>{quantities}</td><td /><td>{money(total)}</td></tr></tfoot>}
       </table>
