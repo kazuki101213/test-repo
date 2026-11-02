@@ -2,10 +2,10 @@ import ReturnTasks from '../components/ReturnTasks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
 import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
-import { fetchAmazonFeed, fetchDeliveryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
+import { fetchDeliveryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import {fetchTask} from '../api';
-import { downloadTsv } from '../csv';
+import DateInput from '../components/DateInput';
 import { deliveryErrorMessage } from '../errors';
 import InventoryStateFilter from '../components/InventoryStateFilter';
 import TaskCard from '../components/TaskCard';
@@ -46,7 +46,9 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
   const [allProducts, setAllProducts] = useState(false);
   const [delivererId, setDelivererId] = useState('');
-  const [assigneeFilterId, setAssigneeFilterId] = useState('');
+  const [assigneeFilterIds, setAssigneeFilterIds] = useState<string[]>([]);
+  const [purchasedFrom, setPurchasedFrom] = useState('');
+  const [purchasedTo, setPurchasedTo] = useState('');
   const [filter, setFilter] = useState<Filter>(() => canViewDeliveryAssignee(staff) ? 'all' : 'work');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
@@ -55,16 +57,15 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [error, setError] = useState<string | null>(null);
   const [replyTaskError, setReplyTaskError] = useState<string | null>(null);
   const [notices, setNotices] = useState<DeliveryItemNotice[]>([]);
-  const effectiveDelivererId = canViewDeliveryAssignee(staff) ? assigneeFilterId || (queryField === 'deliverer' ? delivererId : '') : '';
+  const effectiveDelivererIds = canViewDeliveryAssignee(staff) ? (assigneeFilterIds.length ? assigneeFilterIds : queryField === 'deliverer' && delivererId ? [delivererId] : []) : [];
   const groupedStatuses = GROUP_STATUSES[filter];
   // Use the existing server-side status array, retaining all other filter fields.
   // For disjoint detailed statuses, keep both conditions so the server returns zero.
   const overlappingStatuses = groupedStatuses?.filter(status => !inventoryFilters.status?.length || inventoryFilters.status.includes(status));
   const requestStates = overlappingStatuses?.length ? {...inventoryFilters, status: overlappingStatuses} : inventoryFilters;
   const requestStatus = groupedStatuses ? (overlappingStatuses?.length ? 'all' : groupedStatuses[0]) : filter;
-  const inventory=useInventoryPage<DeliveryTask>(allProducts?'delivery-all':'delivery',staff.id,{status:requestStatus,states:requestStates,queryField,query:queryField==='deliverer'?'':query,delivererId:effectiveDelivererId});
+  const inventory=useInventoryPage<DeliveryTask>(allProducts?'delivery-all':'delivery',staff.id,{status:requestStatus,states:requestStates,queryField,query:queryField==='deliverer'?'':query,delivererIds:effectiveDelivererIds,from:purchasedFrom,to:purchasedTo});
   const tasks=inventory.rows,loading=inventory.loading;
-  const [exporting, setExporting] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const detailRevision = 0;
   const deepLinkItemId = new URLSearchParams(window.location.search).get('itemId');
@@ -80,24 +81,10 @@ export default function TaskList({ staff }: { staff: Staff }) {
     let active=true;
     void fetchTask(deepLinkItemId,canViewDeliveryAssignee(staff)).then(item=>{
       if(!active||!item)return;deepLinkHandled.current=true;
-      setFilter('all');setInventoryFilters({});setAssigneeFilterId('');setDelivererId('');setQueryField('sku');setQuery(item.sku);setExpandedId(item.id);
+      setFilter('all');setInventoryFilters({});setAssigneeFilterIds([]);setDelivererId('');setQueryField('sku');setQuery(item.sku);setExpandedId(item.id);
     }).catch(cause=>{if(active)setError(deliveryErrorMessage(cause));});
     return()=>{active=false;};
   },[deepLinkItemId,staff.id]);
-  async function exportAmazon() {
-    if (exporting || selected.size === 0) return;
-    setExporting(true); setError(null);
-    try {
-      const rows = await fetchAmazonFeed();
-      const chosen = rows.filter(row => selected.has(String(row.item_id)));
-      if (chosen.length !== selected.size) throw new Error('選択した商品に出品準備が済んでいない商品が含まれています。商品登録・写真登録などを完了してから出力してください。');
-      const cleaned = chosen.map(({ item_id: _id, status: _status, deliverer_id: _deliverer, ...rest }) => rest);
-      if (!cleaned.length) throw new Error('出品対象（写真登録まで完了した商品）がありません。');
-      downloadTsv(`amazon-listing-${new Date().toISOString().slice(0, 10)}.txt`, cleaned);
-    } catch (e) { setError(deliveryErrorMessage(e)); }
-    finally { setExporting(false); }
-  }
-
   useEffect(()=>{
     let active=true,busy=false;
     const refresh=async()=>{if(busy)return;busy=true;try{const rows=await fetchDeliveryItemNotices();if(active){setNotices(rows);setReplyTaskError(null);}}catch(cause){if(active)setReplyTaskError(deliveryErrorMessage(cause));}finally{busy=false;}};
@@ -105,8 +92,9 @@ export default function TaskList({ staff }: { staff: Staff }) {
     return()=>{active=false;window.clearInterval(timer);};
   },[staff.id]);
   useEffect(() => {
-    if (staff.role === 'admin') void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(deliveryErrorMessage(e)));
-  }, [staff.role]);
+    if (canViewDeliveryAssignee(staff)) void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(deliveryErrorMessage(e)));
+    else setDeliverers([]);
+  }, [staff.id,staff.role,staff.code]);
 
   const shown = useMemo(() => {
     const q = normalizeSearch(query);
@@ -120,7 +108,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     }
     const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
     for (const task of tasks) {
-      if (effectiveDelivererId && task.deliverer_id !== effectiveDelivererId) continue;
+      if (effectiveDelivererIds.length && !effectiveDelivererIds.includes(task.deliverer_id ?? '')) continue;
       const key = serialNumber(task);
       const members = groups.get(key);
       if (members) members.push(task);
@@ -135,15 +123,16 @@ export default function TaskList({ staff }: { staff: Staff }) {
       return filter === 'all' || (groupedStatuses ? groupedStatuses.includes(t.status) : t.status === filter);
     });
     return { rows, originalIds };
-  }, [tasks, filter, groupedStatuses, query, queryField, staff.role, staff.code, effectiveDelivererId, inventoryFilters]);
+  }, [tasks, filter, groupedStatuses, query, queryField, staff.role, staff.code, effectiveDelivererIds.join(','), inventoryFilters]);
   const shownRows = shown.rows;
   const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
   const selectableRows = allProducts ? [] : shownRows.filter(({members}) => members.every(canOperate));
+  const allShownSelected = selectableRows.length>0 && selectableRows.every(group=>selected.has(group.task.id));
   function selectState(next: Filter) {
     setAllProducts(false);setFilter(next);setExpandedId(null);setSelected(new Set());
   }
   function toggleAllProducts() {
-    setAllProducts(current => !current);setFilter('all');setInventoryFilters({});setAssigneeFilterId('');setDelivererId('');setQuery('');setQueryField('serial');setExpandedId(null);setSelected(new Set());
+    setAllProducts(current => !current);setPurchasedFrom('');setPurchasedTo('');setFilter('all');setInventoryFilters({});setAssigneeFilterIds([]);setDelivererId('');setQuery('');setQueryField('serial');setExpandedId(null);setSelected(new Set());
   }
   const noticeRef = useRef(notices);
   noticeRef.current = notices;
@@ -175,12 +164,18 @@ export default function TaskList({ staff }: { staff: Staff }) {
           {deliverySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
         </select>
         {queryField === 'deliverer' && canViewDeliveryAssignee(staff)
-          ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setAssigneeFilterId(''); setExpandedId(null); setSelected(new Set()); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
+          ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setAssigneeFilterIds([]); setExpandedId(null); setSelected(new Set()); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
           : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
         <InventoryStateFilter value={inventoryFilters} assignee={canViewDeliveryAssignee(staff) ? {
-          value: assigneeFilterId, options: deliverers.map(person => ({ id: person.id, name: staffDisplayName(person) })),
-          onChange: id => { setAssigneeFilterId(id); if (queryField === 'deliverer') setDelivererId(id); setExpandedId(null); setSelected(new Set()); },
+          value: assigneeFilterIds, options: deliverers.map(person => ({ id: person.id, name: staffDisplayName(person) })),
+          onChange: ids => { setAssigneeFilterIds(ids); setDelivererId(''); setExpandedId(null); setSelected(new Set()); },
         } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); setSelected(new Set()); }} />
+      </div>
+
+      <div className="delivery-inventory-date-range" role="group" aria-label="仕入日の期間">
+        <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e=>{setPurchasedFrom(e.target.value);setSelected(new Set());}} />
+        <span aria-hidden="true">〜</span>
+        <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e=>{setPurchasedTo(e.target.value);setSelected(new Set());}} />
       </div>
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">やること</h3>
@@ -205,9 +200,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       </div>
       <div className="export-actions">
         <span>{shownRows.length} / {inventory.total}商品</span>
-        <button className="btn" disabled={exporting || selected.size === 0} onClick={() => void exportAmazon()}><span className="inventory-desktop-label">{exporting ? '出力中…' : `Amazon出品ファイル（${selected.size}件）`}</span><span className="inventory-mobile-label">{exporting ? '出力中…' : 'Amazon出品ファイル'}</span></button>
-        <button className="btn" disabled={exporting || selectableRows.length === 0} onClick={() => setSelected(current => new Set([...current, ...selectableRows.map(group => group.task.id)]))}><span className="inventory-desktop-label">表示中を選択</span><span className="inventory-mobile-label">全選択</span></button>
-        <button className="btn" disabled={exporting || selected.size === 0} onClick={() => setSelected(new Set())}>選択解除</button>
+        <button type="button" className="btn" aria-pressed={allShownSelected} disabled={selectableRows.length===0 && selected.size===0} onClick={()=>setSelected(current=>allShownSelected || selectableRows.length===0 ? new Set() : new Set([...current,...selectableRows.map(group=>group.task.id)]))}>{allShownSelected || (selectableRows.length===0 && selected.size>0) ? '選択解除' : '表示中を選択'}</button>
       </div>
 
       {replyTaskError && <div className="error">{replyTaskError}</div>}
@@ -215,7 +208,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={exporting} onSelect={() => setSelected(current => {
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={false} onSelect={() => setSelected(current => {
         const next = new Set(current);
         if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
         return next;

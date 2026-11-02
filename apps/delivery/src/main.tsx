@@ -1,4 +1,5 @@
 import { initialApplication, applicationModeKey } from '../../../packages/shared/src/applicationSwitch';
+import '@bussan/shared/controlViewport';
 document.documentElement.dataset.appHost = 'unified';
 let stored: string | null = null;
 try { stored = window.sessionStorage.getItem(applicationModeKey); } catch { /* Use the delivery entry when storage is unavailable. */ }

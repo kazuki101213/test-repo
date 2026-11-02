@@ -139,3 +139,10 @@
 
 .invoice-recipient-save { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:end; }
 .invoice-recipient-save > .btn { justify-self:start; }
+
+@media screen and (min-width:1024px) {
+ .invoices .invoice-toolbar > .invoice-staff-field { display:flex; flex-direction:column; align-items:flex-start; width:fit-content; flex:none; }
+ .invoices .invoice-staff-field > select { align-self:flex-start; }
+ .invoices .invoice-extra > label:nth-child(2) > input,
+ .invoices .receipt-entry-row > label:nth-child(2) > input { width:312px; min-width:312px; max-width:312px; field-sizing:fixed; }
+}

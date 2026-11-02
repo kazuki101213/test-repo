@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./typography.css": "./src/typography.css",
     "./calendar.css": "./src/calendar.css",
-    "./controls.css": "./src/controls.css"
+    "./controls.css": "./src/controls.css",
+    "./controlViewport": "./src/controlViewport.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

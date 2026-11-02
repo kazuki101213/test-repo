@@ -1,4 +1,5 @@
 import React from 'react';
+import '@bussan/shared/controlViewport';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './responsive.css';
