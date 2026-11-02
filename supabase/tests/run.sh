@@ -130,3 +130,4 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_receipt_purchase_grou
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/admin_invoice_edit.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/shared_invoice_entry.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/auction_workday_fee.sql"
