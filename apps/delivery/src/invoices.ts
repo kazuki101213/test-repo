@@ -9,7 +9,7 @@ export interface InvoiceDetails {
 export interface InvoiceProfile { staff_id: string; details: InvoiceDetails; unit_price: number; enabled: boolean }
 export interface InvoiceLine {
   date: string | null; description: string; quantity: number; unit_price: number; amount?: number;
-  lot_seq?: number; item_id?: string; title?: string; packed_on?: string;
+  lot_seq?: number; serial?: string; item_id?: string; title?: string; packed_on?: string;
 }
 export interface InvoiceSnapshot {
   review_edited?: boolean;

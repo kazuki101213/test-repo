@@ -5,6 +5,23 @@ const money=value=>'¥'+value.toLocaleString('ja-JP');
 const pagination={exports:{}};vm.runInNewContext(compile('apps/delivery/src/invoicePagination.ts'),pagination);
 const context={exports:{},require:name=>name==='react'?{useRef:()=>({current:null}),useState:initial=>[initial,()=>{}],useLayoutEffect:()=>{}}:name==='../invoicePagination'?pagination.exports:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='../invoices'?{yen:money}:{} };
 vm.runInNewContext(compile('apps/delivery/src/components/InvoiceSheet.tsx'),context);
+// Grouped PDF rows retain every exact serial, including return/accessory suffixes.
+const numberedLines=[
+ {date:'2026-10-01',description:'小物',serial:'2219b',lot_seq:2219,quantity:1,unit_price:250},
+ {date:'2026-10-01',description:'小物',serial:'1894aa',lot_seq:1894,quantity:1,unit_price:250},
+ {date:'2026-10-01',description:'小物',lot_seq:2421,quantity:1,unit_price:500},
+ {date:'2026-10-02',description:'Amazon返品対応',serial:'2417b',quantity:1,unit_price:500},
+];
+const numberedSnapshot={profile:{},lines:numberedLines,tax_percent:0};
+const numberedBefore=JSON.stringify(numberedSnapshot);
+const numbered=context.exports.groupedInvoiceLines(numberedSnapshot,[{date:null,description:'保管料',quantity:1,unit_price:3000}]);
+assert.equal(numbered[0].description,'納品外注費(2219b、1894aa)');
+assert.equal(numbered[0].quantity,2);assert.equal(numbered[1].description,'納品外注費(2421)');
+assert.equal(numbered[2].description,'Amazon返品対応(2417b)');assert.equal(numbered[3].description,'保管料');
+assert.equal(numbered.reduce((sum,row)=>sum+row.quantity*row.unit_price,0),4500);
+assert.equal(JSON.stringify(numberedSnapshot),numberedBefore,'PDF formatting must not mutate source invoice data');
+const numberedSheet=context.exports.default({snapshot:numberedSnapshot,month:'2026-10',issued:'2026-11-02',extras:[],note:''});
+for(const row of numbered.slice(0,3))assert(text(numberedSheet).includes(row.description));
 function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}
 const receipt=(id,amount,type='receipt_photo')=>({id,original_name:id+'.pdf',spent_on:'2026-10-01',description:'資材費',amount,mime_type:type==='receipt'?'application/pdf':'image/jpeg',document_type:type,url:'blob:'+id,include_in_invoice:true});
