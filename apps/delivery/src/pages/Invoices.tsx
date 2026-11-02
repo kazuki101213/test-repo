@@ -66,7 +66,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [snapshot, setSnapshot] = useState<InvoiceSnapshot | null>(null);
   const [extras, setExtras] = useState<InvoiceLine[]>([]);
-  const [workdays, setWorkdays] = useState<string[]>([]);
+  const [workdays, setWorkdays] = useState<InvoiceLine[]>([]);
   const [newWorkday, setNewWorkday] = useState('');
   const [grossProfit, setGrossProfit] = useState<number | null>(null);
   const [grossProfitLoading, setGrossProfitLoading] = useState(false);
@@ -113,7 +113,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
 
   useEffect(() => {
     let cancelled = false;
-    setSnapshot(null); setInvoice(null); setReceiptRows([]); setExtras([]); setWorkdays([]); setNewWorkday(''); setGrossProfit(null); setNote(''); setDirty(false); setSettings(false); setMessage('');
+    setSnapshot(null); setInvoice(null); setReceiptRows([]); setExtras([]); setWorkdays([]); setNewWorkday(''); setNote(''); setDirty(false); setSettings(false); setMessage('');
     if (profileLoading) return;
     if (!profile || !month) { setLoading(false); return; }
     setLoading(true); setError('');
@@ -122,10 +122,10 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       const preview = saved?.snapshot ?? await prepareInvoice(staffId, month);
       if (cancelled) return;
       const savedExtras = saved?.extras ?? [];
-      const savedWorkdays = savedExtras.filter(line => line.description === 'ヤフオク入札作業日').map(line => line.date).filter((date): date is string => !!date);
+      const savedWorkdays = savedExtras.filter(line => line.description === 'ヤフオク入札作業日');
       setInvoice(saved); setSnapshot(preview);
       setExtras(savedExtras.filter(line => line.description !== 'ヤフオク入札作業日' && line.description !== '粗利益連動調整'));
-      setWorkdays(profile.details.issuer_name === '石川秀樹' ? (saved ? savedWorkdays : defaultAuctionDays(month)) : []);
+      setWorkdays(profile.details.issuer_name === '石川秀樹' ? (saved ? savedWorkdays : defaultAuctionDays(month).map(auctionWorkdayLine)) : []);
       setNote(saved?.note ?? ''); setIssued(saved?.issued_on ?? japanToday());
     })().catch(e => { if (!cancelled) setError(errorText(e)); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -134,6 +134,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
   useEffect(() => {
     if (!isIshikawa || !month) { setGrossProfit(null); return; }
     let cancelled = false;
+    setGrossProfit(null);
     setGrossProfitLoading(true);
     void monthlyGrossProfit(staffId, month).then(value => { if (!cancelled) setGrossProfit(value.total); })
       .catch(e => { if (!cancelled) setError(errorText(e)); })
@@ -150,11 +151,11 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
 
   const leave = () => !dirty || window.confirm('保存していない変更を破棄しますか？');
   const addWorkday = () => {
-    if (!newWorkday || !newWorkday.startsWith(`${month}-`) || workdays.includes(newWorkday)) return;
-    setWorkdays(rows => [...rows, newWorkday].sort()); setNewWorkday(''); setDirty(true); setMessage('');
+    if (!newWorkday || !newWorkday.startsWith(`${month}-`) || workdays.some(row => row.date === newWorkday)) return;
+    setWorkdays(rows => [...rows, auctionWorkdayLine(newWorkday)].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))); setNewWorkday(''); setDirty(true); setMessage('');
   };
-  const editableExtras: InvoiceLine[] = [...extras, ...workdays.map(auctionWorkdayLine)];
-  const auctionBasePay = workdays.length * 4500;
+  const editableExtras: InvoiceLine[] = [...extras, ...workdays];
+  const auctionBasePay = workdays.reduce((sum, row) => sum + (Number.isFinite(row.unit_price) ? row.quantity * row.unit_price : 0), 0);
   const auctionProfitPay = Math.floor(Math.max(grossProfit ?? 0, 0) * 0.1);
   const auctionAdjustment = Math.max(0, auctionProfitPay - auctionBasePay);
   const previewExtras: InvoiceLine[] = [...editableExtras, ...(auctionAdjustment > 0 ? [{ date: null, description: '粗利益連動調整', quantity: 1, unit_price: auctionAdjustment }] : [])];
@@ -181,7 +182,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       if (saved) {
         setInvoice(saved); setSnapshot(saved.snapshot);
         setExtras(saved.extras.filter(line => line.description !== 'ヤフオク入札作業日' && line.description !== '粗利益連動調整'));
-        setWorkdays(saved.extras.filter(line => line.description === 'ヤフオク入札作業日').map(line => line.date).filter((date): date is string => !!date));
+        setWorkdays(saved.extras.filter(line => line.description === 'ヤフオク入札作業日'));
         setDirty(false); review?.onSaved?.();
       }
       setMessage(review ? '請求書を保存しました。' : '請求書を送信しました。');
@@ -215,11 +216,10 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       <div className="invoice-section">
       {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
       <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save(); }}>
-        <h3>追加項目登録</h3>
         {isIshikawa && <section className="invoice-auction-workdays">
-          <h3>ヤフオク入札作業日</h3><p className="muted">対象月の月・水・金を初期設定しています。作業した日を個別に追加・削除できます。</p>
-          <div className="row"><DateInput aria-label="作業日を追加" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.includes(newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
-          {workdays.map(date => <div className="row" key={date}><span>{date}　¥4,500</span><button type="button" className="btn ghost" disabled={busy} onClick={() => { setWorkdays(rows => rows.filter(row => row !== date)); setDirty(true); }}>削除</button></div>)}
+          <h3>ヤフオク入札作業日</h3>
+          <div className="row"><DateInput aria-label="作業日を追加" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.some(row => row.date === newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
+          {workdays.map((line, index) => <div className="row" key={line.date}><span>{line.date}</span><label>料金(円)<input aria-label={`${line.date}の料金(円)`} required type="number" min="0" max="10000000" step="1" value={Number.isFinite(line.unit_price) ? line.unit_price : ''} disabled={busy || receiptBusy || pdfBusy} onChange={e => { const price = e.target.valueAsNumber; setWorkdays(rows => rows.map((row, i) => i === index ? { ...row, unit_price: price } : row)); setDirty(true); setMessage(''); }} /></label><button type="button" className="btn ghost" disabled={busy} onClick={() => { setWorkdays(rows => rows.filter((_, i) => i !== index)); setDirty(true); }}>削除</button></div>)}
           <p>作業日分：¥{auctionBasePay.toLocaleString('ja-JP')}　粗利益の10%：{grossProfitLoading ? '計算中…' : `¥${auctionProfitPay.toLocaleString('ja-JP')}`}</p>
           {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
         </section>}
