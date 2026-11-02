@@ -151,6 +151,7 @@
 }
 
 @media screen and (max-width:1023px) {
+  .layout { align-content:start; }
   .layout .sidebar { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:4px 8px; padding:12px; border:0; background:transparent; }
   .layout .sidebar h1, .layout .management-role, .layout .management-desktop-logout, .layout .management-switch-actions { display:none; }
   .layout .sidebar .who { grid-column:1; margin:0; font-size:13px; }
