@@ -88,7 +88,7 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
       </div>
       <div className="invoice-total"><span>合計金額</span><strong>{money(total)}</strong></div></>}
       <table className="invoice-lines"><colgroup><col style={{ width: '12.5%' }} /><col style={{ width: '50%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /></colgroup>
-        <thead><tr><th>日付</th><th>名称</th><th>数量</th><th>単価（円）</th><th>金額（円）</th></tr></thead>
+        <thead><tr><th>日付</th><th>内容</th><th>数量</th><th>単価（円）</th><th>金額（円）</th></tr></thead>
         <tbody>{page.map((line, i) => <tr key={i}><td>{shortDate(line.date)}</td><td>{line.description}</td><td>{line.extra && line.quantity === 1 ? '' : Number.isFinite(line.quantity) ? line.quantity : ''}</td><td>{money(line.unit_price)}</td><td>{money(line.quantity * line.unit_price)}</td></tr>)}
         </tbody>
         {last && <tfoot><tr><td colSpan={2}>合計</td><td>{quantities}</td><td /><td>{money(total)}</td></tr></tfoot>}
