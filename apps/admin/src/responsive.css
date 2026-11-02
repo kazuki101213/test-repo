@@ -15,7 +15,6 @@
   .layout .inventory-controls .inventory-toolbar > .inventory-clear-filters { grid-column:5; grid-row:1; }
   .layout .inventory-controls .inventory-toolbar > .inventory-count-desktop { display:block; grid-column:7; grid-row:1; white-space:nowrap; }
   .layout .inventory-data > .inventory-count-mobile { display:none; }
-  .layout .inventory-controls .inventory-multi-filter > summary { background:var(--accent); border-color:var(--accent); color:#fffdf7; font-weight:600; }
   .layout .inventory-controls .inventory-toolbar > .inventory-clear-dates { grid-column:6; grid-row:2; }
   .layout .inventory-controls .inventory-toolbar > .sub { grid-column:1 / -1; grid-row:3; }
 }
