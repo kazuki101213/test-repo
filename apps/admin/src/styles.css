@@ -1,4 +1,5 @@
 @import "@bussan/shared/typography.css";
+@import "@bussan/shared/calendar.css";
 
 :root {
   --bg: #f3efe5;

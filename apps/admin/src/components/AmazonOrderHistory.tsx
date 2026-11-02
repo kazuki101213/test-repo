@@ -1,3 +1,4 @@
+import MonthInput from './MonthInput';
 import { useEffect, useMemo, useState } from 'react';
 import { getSupabase, yen } from '@bussan/shared';
 
@@ -133,7 +134,7 @@ export default function AmazonOrderHistory() {
       <span>アプリのみ販売済 {unmatchedBaseSales.length}</span>
     </div>
     <div className="toolbar">
-      <label className="field"><span>注文月</span><input type="month" value={month} onChange={e => setMonth(e.target.value)} /></label>
+      <label className="field"><span>注文月</span><MonthInput value={month} onChange={e => setMonth(e.target.value)} /></label>
       <label className="field"><span>照合結果</span><select value={status} onChange={e => setStatus(e.target.value)}><option>要確認</option><option value="">すべて</option>{['商品未登録', '同一SKU複数注文', 'アプリ未販売', '価格相違', '金額未確定', '複数個', '日付差', '一致', '対象外'].map(key => <option key={key}>{key}</option>)}</select></label>
       <input type="search" aria-label="Amazon SKUを検索" placeholder="SKUを検索" value={search} onChange={e => setSearch(e.target.value)} />
       <span>{filtered.length.toLocaleString()}件</span>
