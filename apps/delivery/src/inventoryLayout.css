@@ -400,7 +400,7 @@
 
 @media screen {
  .app .delivery-inventory-search { height:auto; flex:none; }
- .app .delivery-inventory-date-range { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; width:max-content; max-width:100%; overflow-x:auto; margin-top:8px; }
+ .app .delivery-inventory-date-range { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; width:max-content; max-width:100%; overflow-x:auto; margin:0; }
  .app .delivery-inventory-date-range > span:not(.calendar-control) { flex:none; white-space:nowrap; }
  .app .export-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
  .app .export-actions > span { margin-left:0; white-space:nowrap; }

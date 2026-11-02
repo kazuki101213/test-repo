@@ -172,12 +172,6 @@ export default function TaskList({ staff }: { staff: Staff }) {
         } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); setSelected(new Set()); }} />
       </div>
 
-      <div className="delivery-inventory-date-range" role="group" aria-label="仕入日の期間">
-        <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e=>{setPurchasedFrom(e.target.value);setSelected(new Set());}} />
-        <span aria-hidden="true">〜</span>
-        <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e=>{setPurchasedTo(e.target.value);setSelected(new Set());}} />
-      </div>
-
       <h3 className="delivery-task-heading" id="delivery-task-heading">やること</h3>
       <section ref={sectionRef} className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading" tabIndex={0} style={{ maxHeight: viewportHeight }}>
         <ul className="invoice-task-rows" aria-label="差し戻し"><ReturnTasks staffId={staff.id}/></ul>
@@ -199,6 +193,11 @@ export default function TaskList({ staff }: { staff: Staff }) {
       </div>
       </div>
       <div className="export-actions">
+      <div className="delivery-inventory-date-range" role="group" aria-label="仕入日の期間">
+        <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e=>{setPurchasedFrom(e.target.value);setSelected(new Set());}} />
+        <span aria-hidden="true">〜</span>
+        <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e=>{setPurchasedTo(e.target.value);setSelected(new Set());}} />
+      </div>
         <span>{shownRows.length} / {inventory.total}商品</span>
         <button type="button" className="btn" aria-pressed={allShownSelected} disabled={selectableRows.length===0 && selected.size===0} onClick={()=>setSelected(current=>allShownSelected || selectableRows.length===0 ? new Set() : new Set([...current,...selectableRows.map(group=>group.task.id)]))}>{allShownSelected || (selectableRows.length===0 && selected.size>0) ? '選択解除' : '表示中を選択'}</button>
       </div>
