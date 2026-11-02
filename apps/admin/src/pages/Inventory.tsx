@@ -143,9 +143,9 @@ export default function Inventory({ me }: { me: Staff }) {
     onClick={event => { const anchor = event.currentTarget; setOpenColumn(current => current?.field === field ? null : { field, anchor }); }}>
     {inventoryColumns[field]!.label}<span aria-hidden="true">{isColumnFilterActive(columnFilters[field]) ? ' ▾✓' : ' ▾'}</span>
   </button>;
-
-
-
+  const countLabel = loading
+    ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…')
+    : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`;
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}${fullEditFor ? ' with-full-edit' : ''}`}>
       <section className="inventory-list" aria-label="在庫">
@@ -169,6 +169,7 @@ export default function Inventory({ me }: { me: Staff }) {
           <input type="search" placeholder="検索" value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
         </div>
         <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} />
+        <button type="button" className="btn inventory-clear-filters" onClick={clearFilters}>フィルター解除</button>
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field">
             <DateInput aria-label="仕入日・開始日" placeholder="YY-MM-DD" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
@@ -179,7 +180,7 @@ export default function Inventory({ me }: { me: Staff }) {
           </label>
         </div>
         {(purchasedFrom || purchasedTo) && <button className="btn inventory-clear-dates" onClick={() => { setPurchasedFrom(''); setPurchasedTo(''); }}>期間を解除</button>}
-        <button type="button" className="btn inventory-clear-filters" onClick={clearFilters}>フィルター解除</button>
+        <div className="inventory-count-desktop" aria-label="在庫の商品件数" aria-live="polite"><span>{countLabel}</span></div>
         {activeColumnCount > 0 && <span className="sub">項目フィルター {activeColumnCount}件</span>}
 
       </div>
@@ -208,7 +209,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </tbody></table></div> : !draftError && !draftsLoading && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
-      <div className="toolbar" aria-label="在庫の商品件数" aria-live="polite"><span>{loading ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…') : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`}</span></div>
+      <div className="toolbar inventory-count-mobile" aria-label="在庫の商品件数" aria-live="polite"><span>{countLabel}</span></div>
 
       {inventory.error&&<div className="error">{inventory.error}</div>}
       {loading && items.length === 0 && <div className="empty">読み込み中…</div>}
