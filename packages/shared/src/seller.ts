@@ -5,6 +5,7 @@ export interface SellerDraft {
  category:'ブルーレイレコーダー'|'テレビ'|'モニター'|'小物';listingCategory?:string;size:string;weightKg?:string;dropoff:string;auctionDays:number;closingHour:number;autoExtend:boolean;autoRelist:boolean;
 }
 export const SMALL_PACKAGES=[
+ {name:'ネコポス',dimensions:'3辺合計60cm以内・長辺34cm以内・厚さ3cm以内・1kg以内（最小23×11.5cm）'},
  {name:'宅急便コンパクト',dimensions:'専用BOX：25×20×5cm'},
  {name:'ゆうパケットプラス',dimensions:'専用箱：24×17×7cm・2kg以内'},
  {name:'ゆうパケットポストmini',dimensions:'専用封筒内寸：21.1×16.8cm・2kg以内・郵便ポストに入る厚さ'},
@@ -39,7 +40,7 @@ export function sellerShippingPlaces(method:string):string[]{
 }
 export function sellerShippingSizes(method:string):string[]{
  const postal=/日本郵便|ゆうゆう/.test(method);
- return ['100','140',...SMALL_PACKAGES.filter(value=>postal?value.name.startsWith('ゆう'):value.name==='宅急便コンパクト').map(value=>value.name)];
+ return ['100','140',...SMALL_PACKAGES.filter(value=>postal?value.name.startsWith('ゆう'):value.name==='宅急便コンパクト'||method==='らくらくメルカリ便'&&value.name==='ネコポス').map(value=>value.name)];
 }
 export function sellerShippingError(draft:{shippingMethod?:unknown;size?:unknown;dropoff?:unknown}):string{
  if(typeof draft.shippingMethod!=='string'||!draft.shippingMethod)return '配送方法を確認してください';
