@@ -4,9 +4,11 @@ import ColoredLabel from '../components/ColoredLabel';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import SpareLinks from '../components/SpareLinks';
+import '../components/ExpenseSelection.css';
+import './SpareSelection.css';
 import {useTaskConfirmation} from '../components/TaskConfirmation';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { MARKETPLACES, deleteSpareAccessory, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
+import { MARKETPLACES, deleteSpareAccessories, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
 import { createSpareAccessory, findInventoryAccessoryForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory } from '../api';
 import type { SpareAccessoryField, SpareAccessoryInput } from '../api';
@@ -34,7 +36,10 @@ export default function Spares({ me }: { me: Staff }) {
   const [referenceFound, setReferenceFound] = useState(false);
   const [referenceMessage, setReferenceMessage] = useState('');
   const [editFor, setEditFor] = useState<{ row: SpareAccessory; field: SpareAccessoryField } | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [deleting, setDeleting] = useState(false);
+  const deleteLock = useRef(false);
+  const [message, setMessage] = useState('');
 
   const fetching = useRef(false);
   const reload = useCallback(async () => {
@@ -119,31 +124,41 @@ export default function Spares({ me }: { me: Staff }) {
     finally { setSaving(false); }
   }
 
-  async function remove(row: SpareAccessory) {
-    setDeletingId(row.id); setError('');
-    try {
-      await deleteSpareAccessory(row.id);
-      setRows(current => current.filter(item => item.id !== row.id));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setDeletingId(null); }
+  const selectedRows = filtered.filter(row => selected.has(row.id));
+  function askDelete() {
+    if (me.role !== 'admin' || !selectedRows.length || deleting) return;
+    let remaining = selectedRows.map(row => row.id);
+    confirmation.ask(`予備 ${remaining.length}件の削除：${selectedRows.map(row => `${row.title}${row.source_sku ? `（${row.source_sku}）` : ''}`).join('、')}`, async () => {
+      if (deleteLock.current) return;
+      deleteLock.current = true; setDeleting(true); setError(''); setMessage('');
+      try {
+        const deleted = new Set(await deleteSpareAccessories(remaining));
+        setRows(current => current.filter(row => !deleted.has(row.id)));
+        setSelected(current => new Set([...current].filter(id => !deleted.has(id))));
+        remaining = remaining.filter(id => !deleted.has(id));
+        if (remaining.length) throw new Error(`${remaining.length}件は削除できません。すでに使用・割当済みか、削除権限がありません。`);
+        setMessage('選択した予備を削除しました。');
+      } finally { deleteLock.current = false; setDeleting(false); }
+    }, 'この操作は取り消せません。');
   }
-
-  const deleteButton = (row: SpareAccessory) => me.role === 'admin' && <button type="button" className="btn danger spare-row-delete" disabled={deletingId !== null || confirmation.pending} onClick={() => confirmation.ask(`予備の削除：${row.title}${row.source_sku ? `（${row.source_sku}）` : ''}`, () => remove(row), 'この操作は取り消せません。')}>{deletingId === row.id ? '削除中…' : '削除'}</button>;
+  const selection = (row: SpareAccessory) => me.role === 'admin' && <label className="expense-selection"><input type="checkbox" aria-label={`${row.title}${row.source_sku ? `（${row.source_sku}）` : ''}を選択`} checked={selected.has(row.id)} disabled={deleting || confirmation.pending} onChange={event => { const checked = event.target.checked; setSelected(current => { const next = new Set(current); if (checked) next.add(row.id); else next.delete(row.id); return next; }); }} /></label>;
 
 
   return <section className="dashboard-workspace with-expense registration-workspace spare-workspace">
     {confirmation.confirmation}
     <div className="card dashboard-content spare-list">
     <div className="spare-search spare-toolbar" role="group" aria-label="予備検索">
-      <select aria-label="予備の検索項目" value={queryField} onChange={event => { setQueryField(event.target.value as SpareSearchField); setQuery(''); setOwnerId(''); }}>
+      <select aria-label="予備の検索項目" value={queryField} onChange={event => { setSelected(new Set()); setQueryField(event.target.value as SpareSearchField); setQuery(''); setOwnerId(''); }}>
         {spareSearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
       </select>
       {queryField === 'owner'
-        ? <select aria-label="保管担当者で検索" value={ownerId} onChange={event => setOwnerId(event.target.value)}><option value="">全員</option>{deliveryStaffOptions(staff).map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select>
-        : <input type="search" aria-label="予備を検索" value={query} onChange={event => setQuery(event.target.value)} placeholder="検索" />}
+        ? <select aria-label="保管担当者で検索" value={ownerId} onChange={event => { setSelected(new Set()); setOwnerId(event.target.value); }}><option value="">全員</option>{deliveryStaffOptions(staff).map(owner => <option key={owner.id} value={owner.id}>{staffDisplayName(owner)}</option>)}</select>
+        : <input type="search" aria-label="予備を検索" value={query} onChange={event => { setSelected(new Set()); setQuery(event.target.value); }} placeholder="検索" />}
+      {me.role === 'admin' && <button type="button" className="btn" disabled={loading || deleting || confirmation.pending || !selectedRows.length} onClick={askDelete}>削除</button>}
     </div>
 
 
+    {message && <p role="status">{message}</p>}
     {loading ? <p>読み込み中…</p> : <><div className="management-spare-mobile-list">{filtered.map(row => <div className="management-spare-card" key={row.id}>
       <div className="management-spare-heading"><strong><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></strong> <span className="badge">{spareState(row)}</span></div>
       <div>保管担当者：<EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{staffDisplayName(row.owner_name) || '未設定'}</EditableSpare></div>
@@ -154,10 +169,10 @@ export default function Spares({ me }: { me: Staff }) {
       <div>商品ID：<span className="reference-value"><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare><SpareLinks row={row} kind="product" /></span></div>
       <div>追跡番号：<EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></div>
       <div>利用記録：<span className="reference-value"><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || '—'}</EditableSpare><SpareLinks row={row} kind="usage" /></span></div>
-      {deleteButton(row)}
+      {selection(row)}
     </div>)}</div>
     <div className="scroll spare-table-scroll"><table aria-label="予備一覧"><thead><tr>
-      <th>保管担当者</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th>操作</th>}
+      <th>保管担当者</th><th>品名</th><th>メーカー</th><th>購入日</th><th>仕入金額</th><th>仕入先</th><th>商品ID</th><th>追跡番号</th><th>利用記録</th>{me.role === 'admin' && <th aria-label="選択" />}
     </tr></thead><tbody>{filtered.map(row => <tr key={row.id}>
       <td><EditableSpare row={row} field="owner_name" onEdit={setEditFor}>{staffDisplayName(row.owner_name) || '未設定'}</EditableSpare></td>
       <td><EditableSpare row={row} field="title" onEdit={setEditFor}>{row.title}</EditableSpare></td>
@@ -168,7 +183,7 @@ export default function Spares({ me }: { me: Staff }) {
       <td><span className="reference-value"><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare><SpareLinks row={row} kind="product" /></span></td>
       <td><EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></td>
       <td><span className="reference-value"><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || (row.used_for_item_id ? '商品へ割当済み' : '—')}</EditableSpare><SpareLinks row={row} kind="usage" /></span></td>
-      {me.role === 'admin' && <td>{deleteButton(row)}</td>}
+      {me.role === 'admin' && <td>{selection(row)}</td>}
     </tr>)}</tbody></table></div></>}
     </div>
     {<form className="card spare-entry registration-entry registration-sidebar registration-form" onSubmit={event => void add(event)}>

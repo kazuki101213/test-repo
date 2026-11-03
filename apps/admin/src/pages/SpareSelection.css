@@ -1,0 +1,5 @@
+.layout .spare-toolbar > .btn { flex:none; white-space:nowrap; }
+@media (max-width:1023px) {
+  .layout .spare-search.spare-toolbar { width:100%; flex-wrap:nowrap; }
+  .layout .spare-search.spare-toolbar > :is(input,select:not(:first-of-type)) { flex:1 1 0 !important; width:0 !important; min-width:0; }
+}
