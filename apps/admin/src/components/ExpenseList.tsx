@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
-import { fetchExpenses, fetchExpenseDrafts, updateExpenseField, type ExpenseField } from '../api';
+import { deleteExpenses, fetchExpenses, fetchExpenseDrafts, updateExpenseField, type ExpenseField } from '../api';
 import type { ExpenseInput, ExpenseDraft } from '../expenses';
 import { expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
+import './ExpenseSelection.css';
 
 const columns = ['固定費', '変動費', '外注費'] as const;
 const displayCategory = (row: ExpenseInput) => row.category === '固定費' ? '固定費' : row.category === '給与' || row.category === '外注費' ? '外注費' : '変動費';
@@ -25,6 +26,25 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const [expenseBusy, setExpenseBusy] = useState(false);
   const [savedRevision, setSavedRevision] = useState(0);
   const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [deletion, setDeletion] = useState<{ rows: ExpenseInput[]; requestId: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [message, setMessage] = useState('');
+  const deleteLock = useRef(false);
+  async function removeSelected() {
+    if (!deletion || deleteLock.current) return;
+    deleteLock.current = true; setDeleting(true); setDeleteError('');
+    try {
+      const count = await deleteExpenses(deletion.rows, deletion.requestId);
+      const ids = new Set(deletion.rows.map(row => row.id));
+      setRows(current => current.filter(row => !ids.has(row.id)));
+      setDrafts(current => current.filter(row => !ids.has(row.id)));
+      setSelected(new Set()); setDeletion(null); setMessage(`${count}件の経費を削除しました。`);
+      setSavedRevision(value => value + 1);
+    } catch (cause) { setDeleteError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { deleteLock.current = false; setDeleting(false); }
+  }
   const [fieldEdit, setFieldEdit] = useState<{ row: ExpenseInput; field: ExpenseField; value: string } | null>(null);
   async function saveField() {
     if (!fieldEdit) return;
@@ -33,11 +53,11 @@ export default function ExpenseList({ revision }: { revision: number }) {
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setExpenseBusy(false); }
   }
-  const editCell = (row: ExpenseInput, field: ExpenseField, label: string) => <button type="button" className="expense-edit" disabled={expenseBusy} onClick={() => { setFieldEdit({ row, field, value: field === 'category' ? displayCategory(row) : String(row[field]) }); setError(''); }}>{label}</button>;
+  const editCell = (row: ExpenseInput, field: ExpenseField, label: string) => <button type="button" className="expense-edit" disabled={expenseBusy || !!deletion} onClick={() => { setFieldEdit({ row, field, value: field === 'category' ? displayCategory(row) : String(row[field]) }); setError(''); }}>{label}</button>;
   useEffect(() => {
     let active = true;
     setLoading(true); setError('');
-    Promise.all([fetchExpenses(), fetchExpenseDrafts()]).then(([data, pending]) => { if (active) { setRows(data); setDrafts(pending); } })
+    Promise.all([fetchExpenses(), fetchExpenseDrafts()]).then(([data, pending]) => { if (active) { setRows(data); setDrafts(pending); setSelected(new Set()); } })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -48,8 +68,10 @@ export default function ExpenseList({ revision }: { revision: number }) {
   return <div className="dashboard-workspace with-expense registration-workspace">
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費">
     <div className="toolbar expense-search-toolbar">
-      <input aria-label="経費を検索" placeholder="検索" type="search" value={query} onChange={e => setQuery(e.target.value)} />
+      <input aria-label="経費を検索" placeholder="検索" type="search" value={query} disabled={!!deletion} onChange={e => { setQuery(e.target.value); setSelected(new Set()); }} />
+      <button type="button" className="btn" disabled={loading || expenseBusy || !!deletion || !selected.size} onClick={() => { setDeleteError(''); setMessage(''); setDeletion({ rows: filtered.filter(row => selected.has(row.id)).map(row => ({...row})), requestId: crypto.randomUUID() }); }}>削除</button>
     </div>
+    {message && <p className="ok" role="status">{message}</p>}
     {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
       <div className="expense-columns-scroll"><div className="expense-columns">{columns.map(category => {
         const entries = filtered.filter(row => displayCategory(row) === category);
@@ -58,9 +80,9 @@ export default function ExpenseList({ revision }: { revision: number }) {
         return <section className="expense-column" key={category} aria-label={category}>
           <header><h3>{category}</h3><p>{entries.length}件 · <strong>{yen(entries.reduce((sum, row) => sum + row.amount, 0))}</strong></p></header>
           {months.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{months.map(month => <li key={month} className="expense-month-group"><h4>{month.replace('-', '年')}月 · {yen(entries.filter(row => row.incurred_on.startsWith(month)).reduce((sum, row) => sum + row.amount, 0))}</h4><ul className="expense-entries">{entries.filter(row => row.incurred_on.startsWith(month)).map(row => <li key={row.id}>
-            <div className="expense-entry-top"><time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time><strong>{editCell(row, 'amount', yen(row.amount))}</strong></div>
+            <div className="expense-entry-top"><time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time><label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!deletion} onChange={e => { const checked=e.target.checked; setSelected(current => { const next=new Set(current); checked ? next.add(row.id) : next.delete(row.id); return next; }); }} /></label></div>
             <div>{editCell(row, 'name', row.name)}</div>
-            <span className="expense-hint">{editCell(row, 'category', expenseCategoryLabel(row.category))}</span>
+            <div className="expense-entry-bottom"><span className="expense-hint">{editCell(row, 'category', expenseCategoryLabel(row.category))}</span><strong>{editCell(row, 'amount', yen(row.amount))}</strong></div>
           </li>)}{categoryDrafts.filter(row => row.target_month.startsWith(month)).map(row => <li key={row.id}>
             <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.name}の金額と日付を入力`} onClick={() => { setEditing(undefined); setDraft(row); }}>
               <div>{row.name}</div><span className="expense-hint">日付・金額の入力待ち</span>
@@ -78,5 +100,19 @@ export default function ExpenseList({ revision }: { revision: number }) {
     {error && <div className="error" role="alert">{error}</div>}
     <div className="toolbar"><button className="btn primary" disabled={expenseBusy} onClick={() => void saveField()}>保存</button><button className="btn" disabled={expenseBusy} onClick={() => setFieldEdit(null)}>閉じる</button></div>
   </div></div>}
+  {deletion && <ExpenseDeleteConfirmation rows={deletion.rows} busy={deleting} error={deleteError} onDelete={() => void removeSelected()} onClose={() => { if (!deleteLock.current) setDeletion(null); }} />}
   </div>;
+}
+
+function ExpenseDeleteConfirmation({ rows, busy, error, onDelete, onClose }: { rows: ExpenseInput[]; busy: boolean; error: string; onDelete: () => void; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const element=dialog.current; element?.showModal(); return () => element?.close(); }, []);
+  return <dialog ref={dialog} className="expense-delete-confirmation" aria-label="経費の削除" onCancel={e => { e.preventDefault(); if (!busy) onClose(); }}>
+    <h3>経費の削除</h3><p>選択した{rows.length}件の経費を削除しますか？</p>
+    <ul>{rows.map(row => <li key={row.id}>{row.incurred_on}　{row.name}　{yen(row.amount)}</li>)}</ul>
+    <p>合計 {yen(rows.reduce((total,row) => total+row.amount,0))}</p>
+    {rows.some(row => row.memo?.startsWith('納品請求書 ')) && <p>請求書の承認記録は変更されません。</p>}
+    {error && <p className="error" role="alert">{error}</p>}
+    <div className="toolbar"><button type="button" className="btn primary" disabled={busy} onClick={onDelete}>{busy ? '削除中…' : '削除'}</button><button type="button" className="btn" autoFocus disabled={busy} onClick={onClose}>閉じる</button></div>
+  </dialog>;
 }

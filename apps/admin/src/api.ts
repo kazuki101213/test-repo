@@ -167,7 +167,7 @@ export async function saveExpense(input: ExpenseInput): Promise<void> {
 export async function updateExpense(input: ExpenseInput, original: ExpenseInput): Promise<void> {
   validateExpense(input);
   const { id, ...fields } = input;
-  let request = getSupabase().from('expenses').update(fields).eq('id', id);
+  let request = getSupabase().from('expenses').update(fields).eq('id', id).is('deleted_at', null);
   for (const [key, value] of Object.entries(original)) {
     if (key === 'id') continue;
     request = value === null ? request.is(key, null) : request.eq(key, value);
@@ -184,7 +184,7 @@ export async function saveExpenses(inputs: ExpenseInput[]): Promise<void> {
   if (!error) return;
   // Reuse the form's UUID after an uncertain network result, without duplicating an expense.
   if (error.code === '23505') {
-    const { data, error: readError } = await getSupabase().from('expenses').select('*').in('id', inputs.map(input => input.id));
+    const { data, error: readError } = await getSupabase().from('expenses').select('*').is('deleted_at', null).in('id', inputs.map(input => input.id));
     if (!readError && data?.length === inputs.length && inputs.every(input => {
       const saved = data.find(row => row.id === input.id);
       return saved && Object.entries(input).every(([key, value]) => saved[key] === value);
@@ -198,6 +198,7 @@ export async function fetchExpenses(): Promise<ExpenseInput[]> {
   return readAllRows<ExpenseInput>(async (from, to) => {
     const { data, error } = await getSupabase().from('expenses')
       .select('id,incurred_on,category,name,amount,card_id,staff_id,memo')
+      .is('deleted_at', null)
       .order('incurred_on', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as ExpenseInput[];
@@ -207,10 +208,18 @@ export async function fetchExpenses(): Promise<ExpenseInput[]> {
 export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
   return readAllRows<ExpenseDraft>(async (from, to) => {
     const { data, error } = await getSupabase().from('expense_drafts')
-      .select('id,target_month,category,name,card_id').order('target_month').order('id').range(from, to);
+      .select('id,target_month,category,name,card_id').is('deleted_at', null).order('target_month').order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as ExpenseDraft[];
   });
+}
+
+export async function deleteExpenses(rows: ExpenseInput[], requestId: string): Promise<number> {
+  if (!rows.length || rows.length > 1000) throw new Error('削除する経費を1〜1,000件選択してください。');
+  const { data, error } = await getSupabase().rpc('delete_expenses', { p_rows: rows, p_request_id: requestId });
+  if (error) throw new Error(error.message);
+  if (data !== rows.length) throw new Error('削除結果を確認できません。同じ確認画面から再試行してください。');
+  return data;
 }
 
 export type MonthlyDetailItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'is_accessory' | 'title' | 'marketplace' | 'purchased_at' | 'sold_on' | 'cost_amount' | 'sold_price' | 'payout_amount' | 'refund_amount' | 'profit'> & { shipping_cost: number; other_cost: number };
@@ -230,7 +239,7 @@ export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale
   const expenses = kind !== 'expense' && kind !== 'profit' ? Promise.resolve([] as ExpenseInput[]) : readAllRows<ExpenseInput>(async (start, end) => {
     const { data, error } = await getSupabase().from('expenses')
       .select('id,incurred_on,category,name,amount,card_id,staff_id,memo')
-      .gte('incurred_on', from).lte('incurred_on', to).order('incurred_on').order('id').range(start, end);
+      .is('deleted_at', null).gte('incurred_on', from).lte('incurred_on', to).order('incurred_on').order('id').range(start, end);
     if (error) throw new Error(error.message);
     return (data ?? []) as ExpenseInput[];
   });
@@ -463,7 +472,7 @@ export async function updateExpenseField(row: ExpenseInput, field: ExpenseField,
   const revised = { ...row, [field]: next } as ExpenseInput;
   validateExpense(revised);
   const { data, error } = await getSupabase().from('expenses').update({ [field]: next })
-    .eq('id', row.id).eq(field, row[field]).select('id').maybeSingle();
+    .eq('id', row.id).is('deleted_at', null).eq(field, row[field]).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('明細が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
