@@ -63,3 +63,8 @@ assert.equal(sellerExports.sellerDefaults({title:"RODE VideoMic GO",sales_channe
 for(const listingCategory of [undefined,"","  "])assert.match(sellerExports.sellerListingCategoryError({category:"小物",listingCategory},"メルカリ"),/出品カテゴリを入力/);
 assert.equal(sellerExports.sellerDefaults({title:"RODE microphone",sales_channel:"メルカリ"}).listingCategory,"");
 console.log("VideoMic Mercari condenser category and visible missing-category reason passed");
+
+for(const dropoff of ['ヤマト営業所','セブンイレブン']) assert.equal(sellerExports.sellerShippingError({shippingMethod:'らくらくメルカリ便',size:'ネコポス',dropoff}),'');
+for(const shippingMethod of ['ゆうゆうメルカリ便','おてがる配送（日本郵便）','おてがる配送（ヤマト運輸）'])assert(sellerExports.sellerShippingError({shippingMethod,size:'ネコポス',dropoff:'ヤマト営業所'}));
+assert.equal(sellerExports.sellerShippingDraft(sellerExports.sellerDefaults({title:'DC04PRO',sales_channel:'メルカリ'}),{shippingMethod:'らくらくメルカリ便',size:'ネコポス',dropoff:'セブンイレブン'}).size,'ネコポス');
+console.log('Nekopos visible, retained after load, valid for Mercari Yamato only');

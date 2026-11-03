@@ -15,7 +15,7 @@ const selects=()=>all(tree).filter(n=>n.type==='select');
 const options=n=>all(n).filter(o=>o.type==='option').map(o=>o.props.children);
 const button=()=>all(tree).find(n=>n.type==='button'&&n.props.children==='発送コード表示');
 async function choose(index,value){selects()[index].props.onChange({target:{value}});await render();}
-function allOptions(){for(const place of ['セブンイレブン','ヤマト営業所','ローソン','郵便局'])assert(options(selects()[2]).includes(place),place);for(const size of ['宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'])assert(options(selects()[1]).includes(size),size);}
+function allOptions(){for(const place of ['セブンイレブン','ヤマト営業所','ローソン','郵便局'])assert(options(selects()[2]).includes(place),place);for(const size of ['ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'])assert(options(selects()[1]).includes(size),size);}
 (async()=>{
  await render();allOptions();assert(!button().props.disabled);
  assert(!all(tree).some(n=>n.type==='button'&&['店舗での受付を確認','発送通知'].includes(n.props?.children)));
@@ -23,8 +23,8 @@ function allOptions(){for(const place of ['セブンイレブン','ヤマト営�
  await choose(1,'ゆうパケットプラス');await choose(2,'ローソン');allOptions();assert(!button().props.disabled);
  await choose(2,'ヤマト営業所');assert(button().props.disabled);assert(all(tree).some(n=>n.props?.role==='alert'));
  await choose(0,'らくらくメルカリ便');assert(button().props.disabled);
- await choose(1,'宅急便コンパクト');assert(!button().props.disabled);allOptions();
- await choose(2,'セブンイレブン');assert(!button().props.disabled);button().props.onClick();for(let i=0;i<12;i++)await Promise.resolve();assert.equal(calls.length,1);assert.equal(calls[0].kind,'shipping_code');assert.equal(calls[0].payload.dropoff,'セブンイレブン');
+ await choose(1,'ネコポス');assert(!button().props.disabled);allOptions();
+ await choose(2,'セブンイレブン');assert(!button().props.disabled);button().props.onClick();for(let i=0;i<12;i++)await Promise.resolve();assert.equal(calls.length,1);assert.equal(calls[0].kind,'shipping_code');assert.equal(calls[0].payload.dropoff,'セブンイレブン');assert.equal(calls[0].payload.size,'ネコポス');
  await choose(0,'ゆうゆうメルカリ便');await choose(1,'ゆうパケットポストmini');await choose(2,'ローソン');assert(!all(tree).some(n=>n.type==='button'&&n.props?.children==='発送通知'));assert.equal(calls.length,1);
  console.log('PASS: all small parcel sizes and four places remain visible; incompatible combinations block codes; only explicit valid code request is queued');
 })().catch(e=>{console.error(e);process.exitCode=1;});

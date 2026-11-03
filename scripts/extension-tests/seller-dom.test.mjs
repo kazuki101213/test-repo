@@ -480,3 +480,9 @@ test('コード取消後は発行せず同じ取引の発送方法変更リン�
 });
 
 test('実一覧の受取評価待ちを購入者への評価待ちと混同しない',async()=>{const p=await page('<h1>出品した商品</h1><ul><li><a href="/transaction/m12345678901">【2121b】商品</a><p>受取評価待ち</p></li><li><a href="/transaction/m12345678902">【2404】商品</a><p>評価してください</p></li></ul>');const r=await p.evaluate(readSellerPage,{site:'mercari',phase:'取引中'});assert.equal(r.rows.find(r=>r.serial==='2121b').feedback_pending,undefined);assert.equal(r.rows.find(r=>r.serial==='2404').feedback_pending,true);await p.close();});
+
+test('ネコポスをらくらくメルカリ便のサイズ画面で選び、他キャリアでは停止する',async()=>{
+ const p=await page('<h1>サイズ（１／２）</h1><label><input type="radio" value="ネコポス">ネコポス</label><label><input type="radio" value="宅急便コンパクト">宅急便コンパクト</label><button onclick="document.body.dataset.next=1">選択して次へ</button><button onclick="document.body.dataset.shipped=1">発送通知をする</button>','https://jp.mercari.com/transaction/m99125688368/shipping_class');
+ const bad=await p.evaluate(advanceMercariShippingSize,{itemId:'m99125688368',size:'ネコポス',shippingMethod:'ゆうゆうメルカリ便'});assert.match(bad.__error,/配送サイズ/);assert.equal(await p.evaluate(()=>document.body.dataset.next),undefined);
+ await p.evaluate(advanceMercariShippingSize,{itemId:'m99125688368',size:'ネコポス',shippingMethod:'らくらくメルカリ便'});await p.waitForFunction(()=>document.body.dataset.next==='1');assert.equal(await p.locator('input[value="ネコポス"]').isChecked(),true);assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+});
