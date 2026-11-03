@@ -1,0 +1,14 @@
+.layout .expense-selection { display:flex; align-items:center; justify-content:center; width:44px; height:44px; }
+.layout .expense-selection input[type=checkbox] { appearance:none; -webkit-appearance:none; width:18px; height:18px; min-width:18px; padding:0; margin:0; background:var(--surface-2); border:1px solid var(--border); border-radius:3px; cursor:pointer; }
+.layout .expense-selection input[type=checkbox]:checked { background:var(--accent); border-color:var(--accent); }
+.layout .expense-selection input[type=checkbox]:checked::after { content:''; display:block; width:4px; height:9px; margin:1px 0 0 5px; border:solid #fffdf7; border-width:0 2px 2px 0; transform:rotate(45deg); }
+.layout .expense-selection input[type=checkbox]:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.layout .expense-selection input[type=checkbox]:disabled { opacity:.55; cursor:default; }
+.layout .expense-entry-bottom { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.layout .expense-entry-bottom .expense-hint { margin-top:0; }
+.layout .expense-entry-bottom > strong { flex:none; }
+.layout .expense-entry-bottom > strong .expense-edit { width:auto; text-align:right; white-space:nowrap; }
+.expense-delete-confirmation { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:20px; width:520px; max-width:calc(100vw - 24px); max-height:85vh; overflow:auto; }
+.expense-delete-confirmation::backdrop { background:#0006; }
+.expense-delete-confirmation ul { padding-left:20px; overflow-wrap:anywhere; }
+.expense-delete-confirmation .toolbar { display:flex; flex-wrap:wrap; gap:8px; }
