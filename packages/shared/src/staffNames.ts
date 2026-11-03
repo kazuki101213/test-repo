@@ -22,6 +22,6 @@ export function staffDisplayName(value: string | Pick<Staff, 'name'> & Partial<P
   if (typeof value !== 'string') return (value.code && STAFF_DISPLAY_NAMES[value.code]) || value.display_name || staffDisplayName(value.name);
   return labelsByName.get(value.replace(/\s/g, '')) || value;
 }
-export function canViewDeliveryAssignee(staff: Pick<Staff, 'code' | 'role'>): boolean {
-  return staff.code === 'AA' && staff.role === 'admin';
+export function canViewDeliveryAssignee(staff: Pick<Staff, 'role'>): boolean {
+  return staff.role === 'admin';
 }

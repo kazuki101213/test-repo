@@ -18,7 +18,7 @@ async function testScope(staff,expectedTarget,canSelect){
  await view.settle();assert.equal(calls.at(-1)[0],expectedTarget);assert.equal(calls.at(-1)[1],'2026-10');
  const selector=all(view.tree).find(n=>n.type==='select');assert.equal(!!selector,canSelect);assert.equal(queries,canSelect?1:0);
  assert(all(view.tree).some(n=>n.type==='h3'&&text(n)==='粗利益'));assert(!text(view.tree).includes('販売日を基準に'));
- if(canSelect){selector.props.onChange({target:{value:'osabe'}});await view.settle();assert.equal(calls.at(-1)[0],'osabe','AA can switch between purchasers')}
+ if(canSelect){selector.props.onChange({target:{value:'osabe'}});await view.settle();assert.equal(calls.at(-1)[0],'osabe','Administrators can switch between purchasers')}
 }
 async function testSubmission(receipts,expectedReceipts){
  const staff={id:'worker',code:'DD',name:'担当者',role:'deliverer'};let sent;
@@ -32,8 +32,8 @@ async function testSubmission(receipts,expectedReceipts){
 (async()=>{
  await testScope({id:'osabe',code:'AA',name:'長部一輝',role:'admin'},'ishikawa',true);
  await testScope({id:'ishikawa',code:'EE',name:'石川秀樹',role:'purchaser'},'ishikawa',false);
- await testScope({id:'other-admin',code:'XX',name:'別管理者',role:'admin'},'other-admin',false);
+ await testScope({id:'other-admin',code:'XX',name:'別管理者',role:'admin'},'ishikawa',true);
  await testScope({id:'worker',code:'DD',name:'担当者',role:'deliverer'},null,false);
  await testSubmission([],false);await testSubmission([{document_type:'receipt_photo',include_in_invoice:true,spent_on:'2026-10-01'}],true);await testSubmission([{document_type:'invoice'}],false);
- console.log('Gross profit owner scope/AA selector and combined invoice-receipt submission passed');
+ console.log('Gross profit owner scope/administrator selector and combined invoice-receipt submission passed');
 })().catch(e=>{console.error(e);process.exitCode=1});

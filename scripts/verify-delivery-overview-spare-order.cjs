@@ -63,6 +63,8 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
  hooks=[];pending=[];staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};context.window.location.search='?itemId=II-item';dirty=true;await settle();
  assert.equal(selector().props.value,'sku');assert.equal(input().props.value,tasks[0].sku);assert.equal(all(tree).filter(n=>n.props?.task).length,1,'Deep links use SKU search');
- for(const identity of [{id:'EE',code:'EE',role:'admin',name:'other admin'},{id:'AA',code:'AA',role:'purchaser',name:'AA purchaser'}]){hooks=[];pending=[];staff=identity;dirty=true;await settle();assert.equal(stateFilter().props.assignee,undefined,'Only AA admin sees assignee checkboxes');}
- console.log('Ordered owners/manufacturers, unset last, AA all notice/report display, resolved exclusion, detail routing/acknowledgement and II scope passed');
+ context.window.location.search='';
+ for(const code of ['EE','XX']){hooks=[];pending=[];staff={id:code,code,role:'admin',name:'管理者'};dirty=true;await settle();assert(stateFilter().props.assignee,'Every administrator sees assignee checkboxes');assert.equal(all(tree).filter(n=>n.props?.task).length,2,'Every administrator defaults to all states');stateFilter().props.assignee.onChange(['II','LL']);await settle();assert.deepEqual(Array.from(lastPageFilters.delivererIds),['II','LL']);}
+ for(const role of ['purchaser','deliverer']){hooks=[];pending=[];staff={id:'AA',code:'AA',role,name:'長部一輝'};dirty=true;await settle();assert.equal(stateFilter().props.assignee,undefined,'A staff name/code never grants administrator capabilities');assert.equal(lastPageFilters.delivererIds.length,0);}
+ console.log('Ordered owners/manufacturers, unset last, administrator all notice/report display, resolved exclusion, detail routing/acknowledgement and II scope passed');
 })().catch(e=>{console.error(e);process.exitCode=1;});

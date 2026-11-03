@@ -101,11 +101,11 @@ export default function TaskDetail({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (!task || autoOpenedMessages.current || params.get('itemId') !== itemId || params.get('openMessages') !== '1'
-      || staff.role !== 'admin' || staff.name !== '長部一輝') return;
+      || !canViewDeliveryAssignee(staff)) return;
     autoOpenedMessages.current = true;
     const timer = window.setTimeout(() => { void displayMarketplaceMessages(); }, 0);
     return () => window.clearTimeout(timer);
-  }, [task, itemId, staff.id, staff.name, staff.role]);
+  }, [task, itemId, staff.id, staff.role]);
   async function onPhotoPick(files: FileList | null) {
     if (!files?.length || !task || photoOperation.current) return;
     photoOperation.current = true;

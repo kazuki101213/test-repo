@@ -1,5 +1,5 @@
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
-import { canViewDeliveryAssignee, staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES, noticeProductUrl } from '@bussan/shared';
+import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES, noticeProductUrl } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
@@ -70,7 +70,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [openColumn, setOpenColumn] = useState<{ field: string; anchor: HTMLElement } | null>(null);
   const closeColumn = useCallback(() => setOpenColumn(null), []);
   const activeColumnCount=Object.values(columnFilters).filter(isColumnFilterActive).length;
-  const inventory=useInventoryPage<InventoryItem>('management',me.id,{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters,delivererIds:canViewDeliveryAssignee(me)?assigneeFilterIds:[]},!!openColumn||activeColumnCount>0);
+  const inventory=useInventoryPage<InventoryItem>('management',me.id,{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters,delivererIds:assigneeFilterIds},!!openColumn||activeColumnCount>0);
   const items=inventory.rows,count=inventory.total,loading=inventory.loading;
   const viewItems=useMemo(()=>filterInventoryColumns(items.filter(item=>matchesInventoryFilters(item,inventoryFilters)),columnFilters),[items,columnFilters,inventoryFilters]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -169,7 +169,7 @@ export default function Inventory({ me }: { me: Staff }) {
           </select>
           <input type="search" placeholder="検索" value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
         </div>
-        <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} assignee={canViewDeliveryAssignee(me) ? {value:assigneeFilterIds,options:deliveryStaffOptions(staff).map(person=>({id:person.id,name:staffDisplayName(person)})),onChange:setAssigneeFilterIds} : undefined} />
+        <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} assignee={{value:assigneeFilterIds,options:deliveryStaffOptions(staff).map(person=>({id:person.id,name:staffDisplayName(person)})),onChange:setAssigneeFilterIds}} />
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field">
             <DateInput aria-label="仕入日・開始日" placeholder="YY-MM-DD" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
