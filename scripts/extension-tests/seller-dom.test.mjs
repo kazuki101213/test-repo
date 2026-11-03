@@ -486,3 +486,16 @@ test('ネコポスをらくらくメルカリ便のサイズ画面で選び、�
  const bad=await p.evaluate(advanceMercariShippingSize,{itemId:'m99125688368',size:'ネコポス',shippingMethod:'ゆうゆうメルカリ便'});assert.match(bad.__error,/配送サイズ/);assert.equal(await p.evaluate(()=>document.body.dataset.next),undefined);
  await p.evaluate(advanceMercariShippingSize,{itemId:'m99125688368',size:'ネコポス',shippingMethod:'らくらくメルカリ便'});await p.waitForFunction(()=>document.body.dataset.next==='1');assert.equal(await p.locator('input[value="ネコポス"]').isChecked(),true);assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
 });
+
+test('ネコポスは内部値が数値でも表示ラベルで選び、別グループの選択と次へ活性化待ちに対応する',async()=>{
+ const p=await page('<h1>サイズ（１／２）</h1><label><input type="radio" name="parcel" value="宅配便(~160cm)" checked>宅配便(~160cm)</label><label><input type="radio" name="size" value="1">宅急便60 - 160</label><label><input type="radio" name="size" value="2" onclick="setTimeout(()=>document.getElementById(\'next\').disabled=false,100)"><span>ネコポス</span><p>厚さ3cm・1kg以内</p></label><label><input type="radio" name="size" value="3" checked>宅急便コンパクト</label><button id="next" disabled onclick="document.body.dataset.next=1">選択して<br>次へ</button><button onclick="document.body.dataset.shipped=1">発送通知をする</button>','https://jp.mercari.com/transaction/m23448763807/shipping_class');
+ const r=await p.evaluate(advanceMercariShippingSize,{itemId:'m23448763807',size:'ネコポス'});assert.equal(r.__error,undefined);await p.waitForFunction(()=>document.body.dataset.next==='1');assert.equal(await p.locator('input[name=size][value="2"]').isChecked(),true);assert.equal(await p.locator('input[name=parcel]').isChecked(),true);assert.equal(await p.locator('input[name=size][value="3"]').isChecked(),false);assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+});
+test('ネコポスは装飾で非表示のradioとaria-labelledbyに対応し、同名複数は押さない',async()=>{
+ for(const mode of ['hidden','aria','duplicate']){
+  const choice=mode==='aria'?'<span id="neko">ネコポス</span><input type="radio" name="size" value="2" aria-labelledby="neko">':'<label><input type="radio" name="size" value="2" style="display:none"><span>ネコポス</span></label>';
+  const p=await page('<h1>サイズ（１／２）</h1>'+choice+(mode==='duplicate'?'<label><input type="radio" name="size" value="9">ネコポス</label>':'')+'<button onclick="document.body.dataset.next=1">選択して次へ</button>','https://jp.mercari.com/transaction/m23448763807/shipping_class');
+  const r=await p.evaluate(advanceMercariShippingSize,{itemId:'m23448763807',size:'ネコポス'});
+  if(mode==='duplicate'){assert.match(r.__error,/1件/);assert.equal(await p.evaluate(()=>document.body.dataset.next),undefined);assert.equal(await p.locator('input[value="2"]').isChecked(),false);}else{assert.equal(r.__error,undefined);await p.waitForFunction(()=>document.body.dataset.next==='1');assert.equal(await p.locator('input[value="2"]').isChecked(),true);}await p.close();
+ }
+});
