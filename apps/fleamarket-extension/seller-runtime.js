@@ -80,10 +80,28 @@ export function returnMercariListingForm(){
  const buttons=[...document.querySelectorAll('button')].filter(e=>e.getClientRects().length&&!e.disabled&&e.innerText.trim()==='出品画面に戻る');if(buttons.length!==1)return {__error:'出品画面へ戻る操作を1件に確認できません'};const before={url:location.href};setTimeout(()=>buttons[0].click(),100);return before;
 }
 /** Advance only the size step, never the place confirmation or QR issuance. */
-export function advanceMercariShippingSize({itemId,size,shippingMethod='らくらくメルカリ便'}){
+export async function advanceMercariShippingSize({itemId,size,shippingMethod='らくらくメルカリ便'}){
  if(location.hostname!=='jp.mercari.com'||location.pathname!=='/transaction/'+itemId+'/shipping_class'||!/^m[0-9]{8,14}$/.test(itemId))throw Error('対象取引のサイズ選択画面ではありません');
  const norm=s=>String(s||'').replace(/\s/g,'').replace(/[〜～−–]/g,'-'),visible=e=>e.getClientRects().length>0;
  const wanted=size==='ネコポス'?(shippingMethod==='らくらくメルカリ便'?'ネコポス':null):['100','140'].includes(String(size))?shippingMethod==='らくらくメルカリ便'?'宅急便60-160':shippingMethod==='ゆうゆうメルカリ便'?'ゆうパック':null:['宅急便コンパクト','ゆうパケットプラス','ゆうパケット'].includes(size)?size:null;if(!wanted)throw Error('配送サイズを確認できません');
+ // Mercari uses opaque radio values and may keep a separate parcel-group radio selected.
+ // Resolve only the requested option by its own visible label, never the page's selected radio.
+ if(size==='ネコポス'){
+  try{
+   const rendered=e=>!!e&&visible(e)&&getComputedStyle(e).visibility!=='hidden'&&getComputedStyle(e).display!=='none';
+   const labelRoots=e=>[...(e.labels||[]),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)).filter(Boolean)].filter(root=>[...root.querySelectorAll('input[type=radio]')].every(r=>r===e));
+   const names=e=>[e.getAttribute('aria-label'),...labelRoots(e).flatMap(root=>[root,...root.querySelectorAll('span,p,strong,b')].filter(rendered).flatMap(n=>[n.innerText,...[...n.childNodes].filter(c=>c.nodeType===Node.TEXT_NODE).map(c=>c.textContent)]))].filter(Boolean).map(norm);
+   const candidates=[...document.querySelectorAll('input[type=radio]')].filter(e=>!e.disabled&&!e.matches(':disabled')&&(rendered(e)||labelRoots(e).some(rendered))&&(names(e).includes('ネコポス')||!names(e).some(n=>/^(?:宅急便|ゆうパケット|ゆうパック)/.test(n))&&norm(e.value)==='ネコポス'));
+   const next=[...document.querySelectorAll('button')].filter(e=>rendered(e)&&norm(e.innerText)==='選択して次へ');
+   if(candidates.length!==1||next.length!==1)throw Error('ネコポスの選択肢と次へボタンを1件に確認できません');
+   const before={url:location.href,text:document.body.innerText,controls:''},chosen=candidates[0];
+   if(!chosen.checked){const target=rendered(chosen)?chosen:labelRoots(chosen).find(rendered);target.click();}
+   const end=Date.now()+3000;while((!chosen.checked||next[0].disabled)&&Date.now()<end)await new Promise(resolve=>setTimeout(resolve,50));
+   if(!chosen.checked||next[0].disabled)throw Error('ネコポスの選択反映を確認できません');
+   setTimeout(()=>next[0].click(),100);return before;
+  }catch(error){return {__error:error.message};}
+ }
+
  const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&(norm(e.value)===wanted||wanted==='ゆうパック'&&/^ゆうパック60-170$/.test(norm(e.value))));
  const buttons=[...document.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled&&e.innerText.trim()==='選択して次へ');if(radios.length!==1||buttons.length!==1)throw Error('サイズ選択の項目を1件に確認できません');
  const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('サイズ選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
