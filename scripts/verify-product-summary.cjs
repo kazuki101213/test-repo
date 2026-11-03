@@ -3,11 +3,11 @@ const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOpt
 const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);}return out;};
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
 let cursor=0,hooks=[],effects=[],dirty=true,tree,historyCalls=[];
-const react={useState(initial){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof initial==='function'?initial():initial};return[hooks[i].value,v=>{hooks[i].value=typeof v==='function'?v(hooks[i].value):v;dirty=true;}];},useEffect(fn,deps){const i=cursor++;if(!hooks[i]||deps.some((x,j)=>x!==hooks[i].deps[j])){hooks[i]?.cleanup?.();hooks[i]={deps};effects.push(()=>{hooks[i].cleanup=fn();});}}};
+const react={useState(initial){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof initial==='function'?initial():initial};return[hooks[i].value,v=>{hooks[i].value=typeof v==='function'?v(hooks[i].value):v;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useEffect(fn,deps){const i=cursor++;if(!hooks[i]||deps.some((x,j)=>x!==hooks[i].deps[j])){hooks[i]?.cleanup?.();hooks[i]={deps};effects.push(()=>{hooks[i].cleanup=fn();});}}};
 const product={id:'p',asin:'BTEST00001',model_no:'MODEL',amazon_url:'https://www.amazon.co.jp/dp/BTEST00001'};
 let history=[{id:'sale',product_id:'p',sku:'sale-SKU',sold_on:'2026-10-10',sold_price:301,payout_amount:270,sales_channel:'FBA'}];
 const api={fetchProducts:async()=>[product],fetchProductSaleSummaries:async()=>[{product_id:'p',history_count:5,amazon_count:3,amazon_average:301}],fetchProductSaleHistory:async rows=>{historyCalls.push(rows);return history;}};
-const jsx=(type,props)=>({type,props});const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>n==null?'—':'¥'+n}:id==='../api'?api:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
+const jsx=(type,props)=>({type,props});const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>n==null?'—':'¥'+n}:id==='../components/TaskConfirmation'?{useTaskConfirmation:()=>({pending:false,confirmation:null})}:id==='../api'?api:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
 vm.runInNewContext(compile('apps/admin/src/pages/Products.tsx'),ctx);
 async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default();effects.splice(0).forEach(f=>f());}await Promise.resolve();}}
 (async()=>{

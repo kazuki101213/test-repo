@@ -1,0 +1,36 @@
+const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
+const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const jsx=(type,props)=>({type,props});
+const all=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(n.props?.children)];
+const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
+let hooks=[],cursor=0,effects=[],dirty=true,tree,request=null,release,fail=true,calls=[];
+let rows=[1,2,3].map(n=>({id:'p'+n,asin:'B00000000'+n,model_no:'MODEL'+n,amazon_url:'https://www.amazon.co.jp/dp/B00000000'+n}));
+const react={useState(initial){const i=cursor++;hooks[i]??={value:typeof initial==='function'?initial():initial};return[hooks[i].value,v=>{hooks[i].value=typeof v==='function'?v(hooks[i].value):v;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useEffect(fn,deps){const i=cursor++;if(!hooks[i]||deps.some((v,j)=>v!==hooks[i].deps[j])){hooks[i]?.cleanup?.();const h=hooks[i]={deps};effects.push(()=>h.cleanup=fn());}}};
+const confirmation={useTaskConfirmation:()=>({pending:!!request,confirmation:null,ask(label,action,notice){request={label,action,notice};dirty=true;}})};
+const api={fetchProducts:async query=>rows.filter(row=>!query||row.model_no.includes(query)),fetchProductSaleSummaries:async()=>[],deleteProducts:async ids=>{calls.push([...ids]);await new Promise(r=>release=r);if(fail)throw Error('通信エラー');rows=rows.filter(row=>!ids.includes(row.id));return ids;}};
+const ctx={exports:{},Error,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='../api'?api:id==='../components/TaskConfirmation'?confirmation:id==='@bussan/shared'?{yen:n=>String(n??'—')}:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
+vm.runInNewContext(compile('apps/admin/src/pages/Products.tsx'),ctx);
+async function settle(){for(let i=0;i<30;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default();effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
+const checks=()=>all(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox');
+const remove=()=>all(tree).find(n=>n.type==='button'&&text(n)==='削除');
+(async()=>{
+ await settle();assert(remove().props.disabled);assert.equal(checks().length,3);
+ const toolbar=all(tree).find(n=>n.props?.className==='toolbar product-search-toolbar');assert.equal(all(toolbar).filter(n=>n.type==='button').map(text).join(','),'CSV,削除');
+ const headers=all(tree).filter(n=>n.type==='thead')[0];assert.equal(all(headers).filter(n=>n.type==='th').at(-2).props.children,'実績');assert.equal(all(headers).filter(n=>n.type==='th').at(-1).props['aria-label'],'選択');
+ checks()[0].props.onChange({target:{checked:true}});checks()[1].props.onChange({target:{checked:true}});await settle();assert(!remove().props.disabled);
+ remove().props.onClick();await settle();assert.equal(calls.length,0);assert(request.label.includes('2件'));assert(request.label.includes('MODEL1'));assert(request.label.includes('MODEL2'));assert(!request.label.includes('MODEL3'));
+ request=null;dirty=true;await settle();assert.equal(calls.length,0,'Cancel has no writes');
+ remove().props.onClick();await settle();const pending=request.action();await request.action();assert.equal(calls.length,1,'Double submit is locked');release();await assert.rejects(pending,/通信エラー/);await settle();assert.equal(checks().filter(n=>n.props.checked).length,2);
+ fail=false;const retry=request.action();release();await retry;request=null;dirty=true;await settle();assert.equal(calls.length,2);assert.equal(calls[1].join(','),'p1,p2');assert.equal(checks().length,1);assert(remove().props.disabled);assert(text(tree).includes('1 件'));
+ checks()[0].props.onChange({target:{checked:true}});await settle();all(tree).find(n=>n.props?.['aria-label']==='商品リストを検索').props.onChange({target:{value:'MODEL'}});await settle();assert.equal(checks().filter(n=>n.props.checked).length,0);assert(remove().props.disabled);
+ const operations=[];let result={data:[{id:'p1'},{id:'p2'}],error:null};
+ const query={update(data){operations.push(['update',data.is_active]);return query;},in(field,ids){operations.push([field,...ids]);return query;},eq(field,value){operations.push([field,value]);return query;},select:async field=>{assert.equal(field,'id');return result;}};
+ const mod={exports:{},Error,require:id=>id==='@bussan/shared'?{getSupabase:()=>({from:table=>{assert.equal(table,'products');return query;}})}:{}};
+ vm.runInNewContext(compile('apps/admin/src/api.ts'),mod);
+ assert.equal((await mod.exports.deleteProducts([])).length,0);assert.equal(operations.length,0);
+ assert.equal((await mod.exports.deleteProducts(['p1','p2','p1'])).join(','),'p1,p2');assert.deepEqual(operations,[['update',false],['id','p1','p2']]);
+ assert.equal((await mod.exports.deleteProducts(['p1','p2'])).join(','),'p1,p2','Retry can safely repeat an already-completed deactivation');
+ result={data:null,error:Error('permission denied')};await assert.rejects(mod.exports.deleteProducts(['p1']),/permission denied/);
+ await assert.rejects(mod.exports.deleteProducts(Array.from({length:1001},(_,i)=>String(i))),/1000/);
+ console.log('Product bulk selection placement, confirmation/cancel, failure retry, double-submit lock, search reset, count refresh and inventory-preserving API passed');
+})().catch(e=>{console.error(e);process.exitCode=1;});

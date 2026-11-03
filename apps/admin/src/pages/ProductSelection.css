@@ -1,0 +1,8 @@
+.layout .toolbar.product-search-toolbar { display:flex; flex-wrap:nowrap !important; justify-content:flex-start; gap:8px; }
+.layout .product-search-toolbar > .btn { flex:none; white-space:nowrap; }
+.layout .product-list .product-catalog-table { width:max-content; min-width:0; }
+.layout .product-catalog-table :is(th,td) { padding:8px 4px; white-space:nowrap; }
+.layout .product-catalog-table .expense-selection { width:28px; }
+@media (max-width:1023px) {
+  .layout .toolbar.product-search-toolbar > input[type=search] { width:0 !important; flex:1 1 0 !important; min-width:0; }
+}
