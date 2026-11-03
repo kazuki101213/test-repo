@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { Product } from '@bussan/shared';
-import { createProduct, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductSaleSummary, fetchProducts, updateProductField, type ProductField, type ProductSaleHistory } from '../api';
+import { createProduct, deleteProducts, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductSaleSummary, fetchProducts, updateProductField, type ProductField, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
 import ColoredLabel from '../components/ColoredLabel';
+import { useTaskConfirmation } from '../components/TaskConfirmation';
+import '../components/ExpenseSelection.css';
+import './ProductSelection.css';
 
 export default function Products() {
+  const confirmation = useTaskConfirmation();
   const [rows, setRows] = useState<Product[]>([]);
   const [salesByProduct, setSalesByProduct] = useState<Record<string, ProductSaleHistory[]>>({});
   const [summaries,setSummaries]=useState<Record<string,ProductSaleSummary>>({});
@@ -18,9 +22,15 @@ export default function Products() {
   const [newProduct, setNewProduct] = useState({ asin: '', model_no: '', maker: '', product_no: '' });
   const [editing, setEditing] = useState<{ product: Product; field: ProductField; value: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const deleteLock = useRef(false);
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     const id = setTimeout(() => {
       fetchProducts(query || undefined)
         .then(async products => {
@@ -31,7 +41,8 @@ export default function Products() {
           setSummaries(Object.fromEntries(summaries.map(row=>[row.product_id,row])));
           setError(null);
         })
-        .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+        .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
+        .finally(() => { if (!cancelled) setLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(id); };
   }, [query, revision]);
@@ -61,6 +72,25 @@ export default function Products() {
     finally { setBusy(false); }
   }
 
+  const selectedRows = rows.filter(row => selected.has(row.id));
+  function askDelete() {
+    if (!selectedRows.length || loading || busy || deleting) return;
+    let remaining = selectedRows.map(row => row.id);
+    confirmation.ask(`商品リスト ${remaining.length}件の削除：${selectedRows.map(row => `${row.model_no || row.asin}（${row.asin}）`).join('、')}`, async () => {
+      if (deleteLock.current) return;
+      deleteLock.current = true; setDeleting(true); setError(null); setMessage('');
+      try {
+        const deleted = new Set(await deleteProducts(remaining));
+        setRows(current => current.filter(row => !deleted.has(row.id)));
+        setSelected(current => new Set([...current].filter(id => !deleted.has(id))));
+        remaining = remaining.filter(id => !deleted.has(id));
+        setRevision(n => n + 1);
+        if (remaining.length) throw new Error(`${remaining.length}件は削除できません。すでに削除済みか、削除権限がありません。`);
+        setMessage('選択した商品を商品リストから削除しました。');
+      } finally { deleteLock.current = false; setDeleting(false); }
+    }, '登録済みの在庫・販売履歴は残ります。');
+  }
+
   const fieldLabels: Record<ProductField, string> = {
     product_no: '品番', asin: 'ASIN', model_no: '型番', maker: 'メーカー', genre: 'ジャンル',
     turnover: '回転', list_price: '販売想定金額', payout_estimate: '振込想定金額', target_cost: '仕入れ目標金額',
@@ -75,28 +105,30 @@ export default function Products() {
 
   return (
     <>
-
+      {confirmation.confirmation}
       <div className="dashboard-workspace with-expense product-workspace registration-workspace"><section className="card dashboard-content product-list">
       <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
       <div className="toolbar product-search-toolbar">
-        <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} onChange={event => setQuery(event.target.value)} />
+        <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} disabled={deleting || confirmation.pending} onChange={event => { setSelected(new Set()); setQuery(event.target.value); }} />
         <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
+        <button type="button" className="btn" disabled={loading || busy || deleting || confirmation.pending || !selectedRows.length} onClick={askDelete}>削除</button>
       </div>
       <p className="sub">{rows.length} 件</p>
 
 
 
       {error && <div className="error">{error}</div>}
+      {message && <p role="status">{message}</p>}
 
       <div className="scroll">
-        <table className="products-table">
+        <table className="products-table product-catalog-table" aria-label="商品リスト">
           <thead>
             <tr>
               <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th>
               <th>ジャンル</th><th>回転</th><th>Amazon販売金額（直近3件平均）</th>
               <th className="num">販売想定金額</th><th className="num">振込想定金額</th>
-              <th className="num">仕入れ目標金額</th><th>実績</th>
+              <th className="num">仕入れ目標金額</th><th>実績</th><th aria-label="選択" />
             </tr>
           </thead>
           <tbody>
@@ -121,6 +153,7 @@ export default function Products() {
                 <td className="num">{cell(p, 'payout_estimate', yen(p.payout_estimate))}</td>
                 <td className="num" style={{ color: 'var(--accent)' }}>{cell(p, 'target_cost', yen(p.target_cost))}</td>
                 <td>{cell(p, 'has_sold_before', p.has_sold_before ? '有' : '無')}</td>
+                <td><label className="expense-selection"><input type="checkbox" aria-label={`${p.model_no || p.asin}（${p.asin}）を選択`} checked={selected.has(p.id)} disabled={loading || busy || deleting || confirmation.pending} onChange={event => { const checked = event.target.checked; setSelected(current => { const next = new Set(current); if (checked) next.add(p.id); else next.delete(p.id); return next; }); }} /></label></td>
               </tr>
             ))}
           </tbody>

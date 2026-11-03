@@ -590,6 +590,17 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
 export type ProductField = 'asin' | 'model_no' | 'product_no' | 'maker' | 'genre' | 'turnover' |
   'list_price' | 'payout_estimate' | 'target_cost' | 'has_sold_before';
 
+/** Remove catalog entries from active lists without breaking historical inventory links. */
+export async function deleteProducts(ids: string[]): Promise<string[]> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  if (unique.length > 1000) throw new Error('一度に削除できる商品は1000件までです。');
+  const { data, error } = await getSupabase().from('products').update({ is_active: false })
+    .in('id', unique).eq('is_active', true).select('id');
+  if (error) throw error;
+  return (data ?? []).map(row => row.id);
+}
+
 export async function updateProductField(product: Product, field: ProductField, value: string): Promise<void> {
   const next = field === 'asin' ? value.trim().toUpperCase() : value.trim();
   if (field === 'asin' && !/^[A-Z0-9]{10}$/.test(next)) throw new Error('ASINは英数字10文字で入力してください。');
