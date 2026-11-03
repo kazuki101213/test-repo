@@ -21,7 +21,7 @@ for(const app of ['admin','delivery']){
   };
   let now=1000000,tick,intervalMs,reads=0,usageReads=[],opened;
   let fixtures=[task,{...task,id:'other',owner_staff_id:'II'},{...task,id:'sent',sent_at:'now'}],focus;
-  const shared={canViewDeliveryAssignee:s=>s.code==='AA'&&s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>{reads++;return fixtures;},
+  const shared={canViewDeliveryAssignee:s=>s.role==='admin',staffDisplayName:p=>p.code+' '+p.name,fetchSpareShippingTasks:async()=>{reads++;return fixtures;},
     sendSpareShipping:async(id,tracking)=>{if(failed)throw{message:'送信に失敗しました'};sent={id,tracking};},
     completeSpareShipping:async id=>{if(failed)throw{message:'完了に失敗しました'};completed=id;},resolveSpareUsageItem:async serial=>{usageReads.push(serial);return 'usage-'+serial;}};
   const context={encodeURIComponent,Date:{now:()=>now},exports:{},require:id=>id==='../appUrls'?{deliveryAppUrl:'https://test-repo-delivery.vercel.app/'}:id==='../purchaseUrl'?{purchaseItemUrl:(site,id)=>id==='m123'?'https://jp.mercari.com/item/m123':null}:id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared,
@@ -70,7 +70,7 @@ for(const app of ['admin','delivery']){
     all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
     assert.equal(sent.id,'task');assert.equal(sent.tracking,'admin-tracking');assert.equal(changed,1);changed=0;
     await mount(context.exports.ShippingRow,{task,staff:{id:'II',code:'II',role:'deliverer'},management:false,onChanged:()=>changed++});assert(!button('発送'));
-    await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:false,onChanged:()=>changed++});assert(!button('発送'));
+    await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:false,onChanged:()=>changed++});assert(button('発送'),'Every administrator can handle shipping requests');
     await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('発送済み'));assert(text(tree).includes('追跡番号：12345'));assert(!button('完了'));
   }
@@ -120,7 +120,7 @@ for(const app of ['admin','delivery']){
     failed=true;button('完了').props.onClick();await settle();assert.equal(completed,undefined);assert(all(tree).some(n=>n.props?.role==='alert'));
     failed=false;button('完了').props.onClick();button('完了').props.onClick();await settle();assert.equal(completed,'task');assert.equal(changed,2);
     await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:true,onChanged:()=>changed++});
-    assert(!button('発送'),'Other administrators retain the holder-only permission');
+    assert(!button('発送'),'The management progress view never performs shipment, including for other administrators');
   }
   await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('発送済み'));assert(text(tree).includes('通番号：2392'));assert(text(tree).includes('追跡番号：12345'));assert(!text(tree).includes('利用記録'));
