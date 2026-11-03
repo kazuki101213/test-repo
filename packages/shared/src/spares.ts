@@ -61,6 +61,17 @@ export async function deleteSpareAccessory(id: string): Promise<void> {
   if (!data) throw new Error('この予備は削除できません。すでに使用・割当済みか、削除権限がありません。');
 }
 
+/** Delete only selected, unused spares under the caller's existing RLS permissions. */
+export async function deleteSpareAccessories(ids: string[]): Promise<string[]> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  if (unique.length > 1000) throw new Error('一度に削除できる予備は1000件までです。');
+  const { data, error } = await getSupabase().from('spare_accessories').delete()
+    .in('id', unique).is('used_for_item_id', null).select('id');
+  if (error) throw error;
+  return (data ?? []).map(row => row.id);
+}
+
 export function spareState(spare: SpareAccessory): string {
   if (spare.used_for_item_id) return '使用済';
   if (spare.usage_note) return '使用記録あり';

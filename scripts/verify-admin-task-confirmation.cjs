@@ -41,16 +41,30 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
 async function spareDeleteConfirmation() {
- let hooks=[],cursor=0,effects=[],dirty=true,tree,deletes=0,release;
+ let hooks=[],cursor=0,effects=[],dirty=true,tree,deletes=0,release,fail=true;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useRef:v=>hooks[cursor++]??={current:v},useCallback(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i]))hooks[n]={deps,fn};return hooks[n].fn;},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};effects.push(fn);}}};
  const confirm={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx'),confirm);
- const shared={staffDisplayName:()=>'',deliveryStaffOptions:x=>x,MARKETPLACES:[],spareSearchFields:[],matchesSpareSearch:()=>true,spareState:()=>'予備',yen:v=>String(v),fetchSpareAccessories:async()=>[{id:'spare-1',title:'確認用リモコン',source_sku:'2508-test'}],deleteSpareAccessory:async id=>{assert.equal(id,'spare-1');deletes++;await new Promise(r=>release=r);}};
+ const shared={staffDisplayName:()=>'',deliveryStaffOptions:x=>x,MARKETPLACES:[],spareSearchFields:[],matchesSpareSearch:()=>true,spareState:()=>'予備',yen:v=>String(v),fetchSpareAccessories:async()=>[1,2,3].map(n=>({id:'spare-'+n,title:'確認用リモコン'+n,source_sku:'2508-test'+n})),deleteSpareAccessories:async ids=>{assert.equal(ids.join(','),'spare-1,spare-2');deletes++;await new Promise(r=>release=r);if(fail)throw Error('通信エラー');return ids;}};
  const ctx={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../components/TaskConfirmation'?confirm.exports:id==='../api'?{fetchStaff:async()=>[]}: {default:'input'},window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
  vm.runInNewContext(compile('apps/admin/src/pages/Spares.tsx'),ctx);
  async function settle(){for(let n=0;n<20;n++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me:{id:'AA',role:'admin'}});effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
- const modal=()=>all(tree).find(n=>n.props?.request?.label?.startsWith('予備の削除'));
- await settle();const remove=()=>all(tree).find(n=>n.props?.className==='btn danger spare-row-delete');remove().props.onClick();await settle();assert(modal());assert.equal(deletes,0);assert(modal().props.request.label.includes('2508-test'));assert(modal().props.request.notice.includes('取り消せません'));
- modal().props.onClose();await settle();assert(!modal());assert.equal(deletes,0);remove().props.onClick();await settle();assert(remove().props.disabled);const action=modal().props.request.action;const pending=action();assert.equal(deletes,1);release();await pending;await settle();assert(!remove(),'Only the selected spare disappears after successful deletion');
+ const modal=()=>all(tree).find(n=>n.props?.request?.label?.startsWith('予備 2件の削除'));
+ await settle();const remove=()=>all(tree).find(n=>n.type==='button'&&n.props.children==='削除');assert(remove().props.disabled);all(tree).find(n=>n.type==='input'&&n.props.type==='checkbox').props.onChange({target:{checked:true}});await settle();all(tree).find(n=>n.type==='input'&&n.props['aria-label']==='確認用リモコン2（2508-test2）を選択').props.onChange({target:{checked:true}});await settle();assert(!remove().props.disabled);remove().props.onClick();await settle();assert(modal());assert.equal(deletes,0);assert(modal().props.request.label.includes('2508-test'));assert(modal().props.request.notice.includes('取り消せません'));
+ modal().props.onClose();await settle();assert(!modal());assert.equal(deletes,0);remove().props.onClick();await settle();assert(remove().props.disabled);const action=modal().props.request.action;const pending=action();await action();assert.equal(deletes,1);release();await assert.rejects(pending,/通信エラー/);await settle();assert.equal(all(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox'&&n.props.checked).length,4);fail=false;const retry=action();release();await retry;await settle();assert(remove().props.disabled);assert.equal(all(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox').length,2,'Only the selected spare disappears after successful deletion');
  console.log('PASS: spare deletion opens confirmation, cancel does not delete, approved action targets its own row');
 }
 spareDeleteConfirmation().catch(e=>{console.error(e);process.exitCode=1;});
+
+async function spareBulkApi() {
+ const calls=[];let result={data:[{id:'one'},{id:'two'}],error:null};
+ const query={delete(){calls.push('delete');return query;},in(key,ids){calls.push([key,...ids]);return query;},is(key,value){calls.push([key,value]);return query;},select:async key=>{assert.equal(key,'id');return result;}};
+ const ctx={exports:{},Error,Intl,require:id=>id==='./supabase'?{getSupabase:()=>({from:table=>{assert.equal(table,'spare_accessories');return query;}})}:{}};
+ vm.runInNewContext(compile('packages/shared/src/spares.ts'),ctx);
+ assert.equal((await ctx.exports.deleteSpareAccessories([])).length,0);assert.equal(calls.length,0);
+ assert.equal((await ctx.exports.deleteSpareAccessories(['one','two','one'])).join(','),'one,two');
+ assert.deepEqual(calls,['delete',['id','one','two'],['used_for_item_id',null]]);
+ result={data:null,error:Error('denied')};await assert.rejects(ctx.exports.deleteSpareAccessories(['one']),/denied/);
+ await assert.rejects(ctx.exports.deleteSpareAccessories(Array.from({length:1001},(_,i)=>String(i))),/1000/);
+ console.log('PASS: spare bulk API limits deletion to unique selected IDs and unused rows; empty requests and API failures handled');
+}
+spareBulkApi().catch(e=>{console.error(e);process.exitCode=1;});
