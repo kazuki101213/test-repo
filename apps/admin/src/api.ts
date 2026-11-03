@@ -596,7 +596,7 @@ export async function deleteProducts(ids: string[]): Promise<string[]> {
   if (!unique.length) return [];
   if (unique.length > 1000) throw new Error('一度に削除できる商品は1000件までです。');
   const { data, error } = await getSupabase().from('products').update({ is_active: false })
-    .in('id', unique).eq('is_active', true).select('id');
+    .in('id', unique).select('id');
   if (error) throw error;
   return (data ?? []).map(row => row.id);
 }
