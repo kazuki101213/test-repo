@@ -67,12 +67,13 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
       const css = getComputedStyle(first);
       const usable = first.offsetWidth * 270 / 190 - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom) - 4;
       const heading = height(first.querySelector('.document-heading'));
+      const continuationDate = height(element.querySelector('.invoice-continuation-issued'));
       const header = heading + height(first.querySelector('.invoice-parties')) + height(first.querySelector('.invoice-total'));
       const tableHead = height(first.querySelector('thead'));
       const footer = height(element.querySelector('tfoot')) + height(element.querySelector('.invoice-reimbursement')) + height(element.querySelector('.invoice-footer'));
       const rows = Array.from(element.querySelectorAll<HTMLElement>('.invoice-lines > tbody > tr'), row => row.offsetHeight);
       if (rows.length !== lines.length) return;
-      const next = invoicePageEnds(rows, usable - header - tableHead, usable - heading - tableHead, footer);
+      const next = invoicePageEnds(rows, usable - header - tableHead, usable - heading - continuationDate - tableHead, footer);
       setMeasuredEnds(current => current?.join(',') === next.join(',') ? current : next);
     };
     measure();
@@ -81,10 +82,12 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
   });
   return <div ref={root} className="invoice-document" aria-label={`${month}の請求書プレビュー`}>{pages.map((page, pageIndex) => {
     const last = pageIndex === pages.length - 1;
+    const issuedLabel = issued.replaceAll('-', '/') + (pages.length > 1 ? `　${pageIndex + 1} / ${pages.length}` : '');
     return <article className="invoice-sheet" key={pageIndex}>
       <header className="document-heading"><h1>請求書</h1></header>
+      {pageIndex > 0 && <div className="invoice-issued invoice-continuation-issued">{issuedLabel}</div>}
       {pageIndex === 0 && <><div className="invoice-parties"><div><div className="invoice-recipient">{p.recipient}</div><p className="invoice-greeting">下記の通り、ご請求申し上げます。</p></div>
-        <div className="invoice-issuer"><div className="invoice-issued">{issued.replaceAll('-', '/')}{pages.length > 1 && `　${pageIndex + 1} / ${pages.length}`}</div><div><span>氏名：</span><span>{p.issuer_name}</span></div><div><span>住所：</span><span>{p.postal}<br />{p.address}</span></div><div><span>TEL：</span><span>{p.phone}</span></div><div><span>E-Mail：</span><span>{p.email}</span></div></div>
+        <div className="invoice-issuer"><div className="invoice-issued">{issuedLabel}</div><div><span>氏名：</span><span>{p.issuer_name}</span></div><div><span>住所：</span><span>{p.postal}<br />{p.address}</span></div><div><span>TEL：</span><span>{p.phone}</span></div><div><span>E-Mail：</span><span>{p.email}</span></div></div>
       </div>
       <div className="invoice-total"><span>合計金額</span><strong>{money(total)}</strong></div></>}
       <table className="invoice-lines"><colgroup><col style={{ width: '12.5%' }} /><col style={{ width: '50%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /><col style={{ width: '12.5%' }} /></colgroup>

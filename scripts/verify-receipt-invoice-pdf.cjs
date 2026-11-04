@@ -127,4 +127,14 @@ const compact=context.exports.default({snapshot:{profile:profileFields,lines:[],
 assert.equal(all(compact).filter(n=>n.props?.className==='invoice-sheet').length,1);
 assert.equal(all(manySheet).filter(n=>n.props?.className==='invoice-parties').length,1,'Recipient and issuer only appear on the first page');
 assert.equal(all(manySheet).filter(n=>n.props?.className==='invoice-total').length,1,'Total header only appears on the first page');
+for (const sheet of [manySheet,longSheet,compact]) {
+ const invoicePages=all(sheet).filter(n=>n.props?.className==='invoice-sheet');
+ invoicePages.forEach((page,index)=>{
+  const dates=all(page).filter(n=>n.props?.className?.split(' ').includes('invoice-issued'));
+  assert.equal(dates.length,1,'Every invoice page must show its date exactly once');
+  const issued=sheet===compact?'2026/11/02':'2026/10/15';
+  assert.equal(text(dates[0]),issued+(invoicePages.length>1?`　${index+1} / ${invoicePages.length}`:''));
+  if(index>0)assert.equal(all(page).filter(n=>n.props?.className==='invoice-parties').length,0);
+ });
+}
 const corrected=context.exports.default({snapshot:{profile:profileFields,lines:[{date:null,description:'修正した明細名',quantity:2,unit_price:300}],review_edited:true,tax_percent:0},month:'2026-10',issued:'2026-11-02',extras:[],note:'',receipts:[]});assert(text(corrected).includes('修正した明細名'));assert(text(corrected).includes('¥600'));
