@@ -36,6 +36,7 @@ async function fetchTasks():Promise<Task[]> {
 const ignoreInvoiceNavigation = () => {};
 function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:Staff;onClose:()=>void;onApproved:()=>void;onSaved?:()=>void}) {
  const dialog=useRef<HTMLDialogElement>(null);
+ const pdfButton=useRef<HTMLButtonElement>(null);
  const [busy,setBusy]=useState(false);const [error,setError]=useState('');
  const [documents,setDocuments]=useState<InvoiceReviewState>({invoice:null,receiptVersion:task.receipts?.version??null,busy:false,dirty:false,ready:false});
  const updateDocuments=useCallback((state:InvoiceReviewState)=>setDocuments(state),[]);
@@ -52,9 +53,9 @@ function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:
  }
  return <dialog ref={dialog} className="monthly-detail invoice-review" aria-labelledby="invoice-review-title" onCancel={e=>{e.preventDefault();close();}}>
   <div className="toolbar"><h2 id="invoice-review-title">{staffDisplayName(task.name)} · {task.month.slice(0,7)}</h2><span style={{flex:1}}/><button className="btn" disabled={busy||documents.busy} onClick={close} autoFocus>閉じる</button></div>
-  <fieldset className="invoice-review-content" disabled={busy}><DeliveryInvoices staff={staff} onNavigationChange={ignoreInvoiceNavigation} review={{staffId:task.staff_id,month:task.month.slice(0,7),receiptVersion:task.receipts?.version??null,onStateChange:updateDocuments,onSaved}}/></fieldset>
+  <fieldset className="invoice-review-content" disabled={busy}><DeliveryInvoices staff={staff} onNavigationChange={ignoreInvoiceNavigation} review={{staffId:task.staff_id,month:task.month.slice(0,7),receiptVersion:task.receipts?.version??null,onStateChange:updateDocuments,onSaved,pdfButtonRef:pdfButton}}/></fieldset>
   {error&&<div className="error" role="alert">{error}</div>}
-  <div className="invoice-review-approval">{!approved&&<button className="btn primary" disabled={busy||documents.busy||documents.dirty||!documents.ready||!invoice||invoice.total<=0} onClick={()=>void approve()}>{busy?'承認中…':'承認'}</button>}<button className="btn" disabled={busy||documents.busy} onClick={close}>閉じる</button></div>
+  <div className="invoice-review-approval">{!approved&&<button className="btn primary" disabled={busy||documents.busy||documents.dirty||!documents.ready||!invoice||invoice.total<=0} onClick={()=>void approve()}>{busy?'承認中…':'承認'}</button>}<button type="button" className="btn" disabled={busy||documents.busy||!documents.ready} onClick={()=>pdfButton.current?.click()}>PDF保存</button><button className="btn" disabled={busy||documents.busy} onClick={close}>閉じる</button></div>
  </dialog>;
 }
 

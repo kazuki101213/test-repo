@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { RefObject } from 'react';
 
 import type { Staff, InvoiceReceipt } from '@bussan/shared';
 import { staffDisplayName, deliveryStaffOptions, invoiceReceiptDetails, downloadInvoicePdf } from '@bussan/shared';
@@ -57,7 +58,7 @@ export interface InvoiceReviewState {
 }
 export interface InvoiceReviewContext {
   staffId: string; month: string; receiptVersion: number | null;
-  onStateChange: (state: InvoiceReviewState) => void; onSaved?: () => void;
+  onStateChange: (state: InvoiceReviewState) => void; onSaved?: () => void; pdfButtonRef?: RefObject<HTMLButtonElement>;
 }
 export default function Invoices({ staff, onNavigationChange, review }: { staff: Staff; onNavigationChange: (state: 'busy' | 'dirty' | null) => void; review?: InvoiceReviewContext }) {
   const [profiles, setProfiles] = useState<InvoiceProfile[]>([]);
@@ -200,7 +201,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
         <label>作成日<DateInput form="invoice-submit-form" required value={issued} disabled={busy || receiptBusy || pdfBusy || loading || settings || !!invoice?.approved_at} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label>
         {!review && profile && <button type="button" className="btn invoice-settings-button" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
         <div className="invoice-toolbar-actions">
-        {snapshot && <button type="button" className="btn invoice-pdf-button" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>請求書PDF保存</button>}
+        {snapshot && <button ref={review?.pdfButtonRef} type="button" className="btn invoice-pdf-button" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>請求書PDF保存</button>}
         {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn primary invoice-send-button" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>{review ? '保存' : '請求書送信'}</button>}
         </div>
       </div></div>
