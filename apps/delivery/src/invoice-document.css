@@ -7,6 +7,7 @@
 .invoice-issuer { font-size:11px; justify-self:end; width:max-content; max-width:100%; min-width:0; }
 .invoice-issuer > div { display:grid; grid-template-columns:16mm minmax(0,1fr); margin-bottom:1mm; }
 .invoice-issuer > .invoice-issued { display:block; text-align:right; margin-bottom:5mm; font-size:11px; }
+.invoice-continuation-issued { text-align:right; margin-bottom:5mm; font-size:11px; }
 .invoice-total { display:flex; justify-content:space-between; align-items:baseline; gap:6mm; width:62.5%; border:0; border-bottom:1px solid #222; margin:0 0 5mm; padding:1.5mm 1mm; font-size:17px; }
 .invoice-total span { padding:0; border:0; background:none; }
 .invoice-total strong { text-align:right; font-size:22px; font-weight:500; font-variant-numeric:tabular-nums; }
