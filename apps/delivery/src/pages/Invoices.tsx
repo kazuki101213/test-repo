@@ -54,7 +54,7 @@ function ProfileEditor({ profile, onSave }: { profile: InvoiceProfile; onSave: (
 }
 
 export interface InvoiceReviewState {
-  invoice: Invoice | null; receiptVersion: number | null; busy: boolean; dirty: boolean; ready: boolean;
+  invoice: Invoice | null; receiptVersion: number | null; busy: boolean; dirty: boolean; ready: boolean; pdfReady?: boolean;
 }
 export interface InvoiceReviewContext {
   staffId: string; month: string; receiptVersion: number | null;
@@ -89,6 +89,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
   const [pdfBusy, setPdfBusy] = useState(false);
   useEffect(() => {
     review?.onStateChange({invoice,receiptVersion,busy:busy || receiptSaving || pdfBusy,dirty,
+      pdfReady:!!snapshot && !loading && !profileLoading && !receiptBusy && !settings,
       ready:!!invoice && !!snapshot && !loading && !profileLoading && !receiptBusy && !error && !settings});
   }, [invoice,receiptVersion,busy,receiptSaving,pdfBusy,dirty,snapshot,loading,profileLoading,receiptBusy,error,settings,review?.onStateChange]);
   const profile = profiles.find(p => p.staff_id === staffId);
