@@ -139,6 +139,14 @@ create trigger zz_items_refresh_family_sku_costs after insert or update or delet
 
 -- Existing records follow the same rule. The normal alias/audit triggers keep
 -- all old SKUs resolvable; no prices, costs, state, or external listings change.
-update app.items i set sku=app.sku_with_total_cost(i)
-where i.sku is distinct from app.sku_with_total_cost(i);
+do $backfill$
+declare before_hash text;after_hash text;
+begin
+ select md5(string_agg((to_jsonb(i)-'sku'-'updated_at')::text,'|' order by i.id)) into before_hash from app.items i;
+ update app.items i set sku=app.sku_with_total_cost(i)
+ where i.sku is distinct from app.sku_with_total_cost(i);
+ select md5(string_agg((to_jsonb(i)-'sku'-'updated_at')::text,'|' order by i.id)) into after_hash from app.items i;
+ if before_hash is distinct from after_hash then
+  raise exception 'SKU補正で他の在庫情報が変更されたため処理を取り消しました';end if;
+end $backfill$;
 notify pgrst,'reload schema';
