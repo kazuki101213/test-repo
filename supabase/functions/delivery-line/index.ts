@@ -113,9 +113,13 @@ Deno.serve(async req => {
               await rpc('finish_delivery_line', { p_id: row.id, p_lease: row.lease, p_state: 'cancelled', p_status: null });
               continue;
             }
+            // A deliberate resend gets a new key; transport retries of that
+            // resend keep the same key from the outbox row.
+            const retryKey = row.payload.lineRetryKey;
+            if (typeof retryKey !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(retryKey)) throw new Error('Missing LINE retry key');
             try {
               const result = await fetch('https://api.line.me/v2/bot/message/push', { method: 'POST', signal: AbortSignal.timeout(8000), headers: {
-                Authorization: `Bearer ${accessToken()}`, 'Content-Type': 'application/json', 'X-Line-Retry-Key': row.id,
+                Authorization: `Bearer ${accessToken()}`, 'Content-Type': 'application/json', 'X-Line-Retry-Key': retryKey,
               }, body: JSON.stringify({ to: row.recipient, messages }) });
               status = result.status; state = dispatchState(status);
             } catch { state = 'pending'; }
