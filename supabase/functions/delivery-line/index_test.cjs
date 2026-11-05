@@ -47,10 +47,11 @@ test('Missing supplier URL omits that line but preserves exact item and three ph
 
 test('Yahoo Fleamarket purchase links survive dispatch with the original item and retry key',async()=>{
  const payload={itemId:'f076528b-da2d-44e2-8a61-c49002e3bff6',serial:'2118a',sku:'2118a-AAII-18991230-1200',supplierUrl:'https://paypayfleamarket.yahoo.co.jp/item/z657512394',images:['front','model','code'].map(x=>'https://fixture.invalid/'+x+'.png')};
- const row={id:'10b4980a-22db-4b59-9b30-49ab2e431282',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload};
+ const retryKey='a0cb5c8e-e286-4919-9081-2e571260ac11';
+ const row={id:'10b4980a-22db-4b59-9b30-49ab2e431282',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload:{...payload,lineRetryKey:retryKey}};
  const f=fixture({rows:[row]});await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
  const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push,'Yahoo Fleamarket purchase must not stop before LINE push');
- const sent=JSON.parse(push.init.body);assert.equal(sent.messages.length,4);assert(sent.messages[0].text.includes('［仕入れ先］'+payload.supplierUrl));assert.equal(push.init.headers['X-Line-Retry-Key'],row.id);
+ const sent=JSON.parse(push.init.body);assert.equal(sent.messages.length,4);assert(sent.messages[0].text.includes('［仕入れ先］'+payload.supplierUrl));assert.equal(push.init.headers['X-Line-Retry-Key'],retryKey);
  assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,'sent');
  for(const supplierUrl of ['https://paypayfleamarket.yahoo.co.jp.evil.invalid/item/z657512394','http://paypayfleamarket.yahoo.co.jp/item/z657512394'])assert.throws(()=>validation.shippingMessages({...payload,supplierUrl}));
 });
@@ -64,12 +65,13 @@ test('Private connection check never sends messages or exposes credentials; inva
 
 test('Dispatch preserves retry key/body, handles accepted duplicate and retries network/server limits only',async()=>{
  const payload={itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2392',sku:'2392-EEMM-20261002-591',supplierUrl:'https://auctions.yahoo.co.jp/jp/auction/c1236938625',images:['front','model'].map(x=>'https://fixture.invalid/'+x+'.jpg'),withoutBarcode:'size_unset'};
- const row={id:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload};
+ const retryKey='c8b8391d-b7b2-4de8-a62e-e910410bf7b9';
+ const row={id:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload:{...payload,lineRetryKey:retryKey}};
  for(const [status,state]of[[200,'sent'],[409,'sent'],[429,'pending'],[503,'pending'],[400,'failed'],[0,'pending']]){
   const f=fixture({rows:[row],pushStatus:status});const result=await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert.equal(result.status,200);
-  const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);assert.equal(push.init.headers['X-Line-Retry-Key'],row.id);assert.equal(JSON.parse(push.init.body).messages.length,3);
+  const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);assert.equal(push.init.headers['X-Line-Retry-Key'],retryKey);assert.equal(JSON.parse(push.init.body).messages.length,3);
   assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,state);
-  const before=push.init.body;await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert.equal(f.state.calls.filter(x=>x.url.endsWith('/push')).at(-1).init.body,before);
+  const before=push.init.body;await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});const repeated=f.state.calls.filter(x=>x.url.endsWith('/push')).at(-1);assert.equal(repeated.init.body,before);assert.equal(repeated.init.headers['X-Line-Retry-Key'],retryKey);
  }
 });
 test('Dispatch stops after trade/assignee recheck, media failure or disabled setting without LINE push',async()=>{
@@ -78,6 +80,13 @@ test('Dispatch stops after trade/assignee recheck, media failure or disabled set
   const f=fixture(options);assert.equal((await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'})).status,200);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
  }
 });
+test('A missing stored retry key never produces a misleading sent result',async()=>{
+ const payload={itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2392',sku:'2392-EEMM-20261002-591',supplierUrl:null,images:['front','model','code'].map(x=>'https://fixture.invalid/'+x+'.jpg')};
+ const row={id:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload};
+ const f=fixture({rows:[row]});await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
+ assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
+ assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,'failed');
+});
 
 test('Listing photo recovery is not available through a user or public request',async()=>{
  const f=fixture();assert.equal((await f.request('recover-listing-photo-files')).status,401);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
@@ -85,8 +94,9 @@ test('Listing photo recovery is not available through a user or public request',
 
 test('Automatic media failure still sends one exact-item request using the same retry key',async()=>{
  const media={automatic:true,itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2392',sku:'2392-EEMM-20261002-591',supplierUrl:null,photoPaths:[],codeOperationId:null};
- const row={id:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload:{media}};
+ const retryKey='2768b1fd-64d5-4c3c-a9b7-9a9ad6a20d9c';
+ const row={id:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload:{media,lineRetryKey:retryKey}};
  const f=fixture({rows:[row],mediaFail:true});await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
- const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);const body=JSON.parse(push.init.body);assert.equal(body.messages.length,1);assert.equal(body.to,'fixture-recipient');assert(body.messages[0].text.includes('?itemId='+media.itemId));assert.equal(push.init.headers['X-Line-Retry-Key'],row.id);assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,'sent');
+ const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);const body=JSON.parse(push.init.body);assert.equal(body.messages.length,1);assert.equal(body.to,'fixture-recipient');assert(body.messages[0].text.includes('?itemId='+media.itemId));assert.equal(push.init.headers['X-Line-Retry-Key'],retryKey);assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,'sent');
  const stopped=fixture({rows:[row],mediaFail:true,prepare:false});await stopped.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert(!stopped.state.calls.some(x=>x.url.endsWith('/push')),'Trade/assignee recheck is still mandatory');
 });
