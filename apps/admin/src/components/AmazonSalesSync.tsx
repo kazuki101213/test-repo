@@ -25,9 +25,10 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     let saved = 0;
     try {
       const { data: earliest, error: earliestError } = await getSupabase().from('items').select('purchased_at')
-        .not('purchased_at', 'is', null).order('purchased_at', { ascending: true }).limit(1).maybeSingle();
+        .not('purchased_at', 'is', null).gte('purchased_at', '2010-01-01').order('purchased_at', { ascending: true }).limit(1).maybeSingle();
       if (earliestError) throw earliestError;
-      // 期間入力は設けず、在庫の最古の仕入日から現在までを自動で処理する。
+      // Match the existing 2010 fallback; legacy years such as 0026 must not
+      // start thousands of obsolete API windows. Never rewrite the source date.
       const after = earliest?.purchased_at ? Date.parse(`${earliest.purchased_at.slice(0, 10)}T00:00:00+09:00`) : Date.UTC(2010, 0, 1);
       const before = Date.now() - 180000;
       if (!Number.isFinite(after) || before <= after) throw new Error('更新対象期間を取得できませんでした。');

@@ -26,9 +26,9 @@ function mount(path,sb,props={}) {
  button(inventory,'次のページ').props.onClick();await inventory.settle();
  assert.equal(calls[1].accountId,'amazon-2');assert.equal(calls[1].nextToken,undefined);assert.equal(calls[2].nextToken,'amazon-2-next');
 
- const actions=[];let applied=0;
+ const actions=[];let applied=0,validDateFilter=false;
  const sync=mount('apps/admin/src/components/AmazonSalesSync.tsx',{
-  from(){return{select(){return this},not(){return this},order(){return this},limit(){return this},async maybeSingle(){return{data:{purchased_at:new Date(Date.now()-86400000).toISOString().slice(0,10)}}}}},
+  from(){return{select(){return this},not(){return this},gte(field,value){assert.equal(field,'purchased_at');assert.equal(value,'2010-01-01');validDateFilter=true;return this},order(){return this},limit(){return this},async maybeSingle(){return{data:{purchased_at:validDateFilter?new Date(Date.now()-86400000).toISOString().slice(0,10):'0026-09-13'}}}}},
   functions:{async invoke(name,{body}){
    assert.equal(name,'amazon-payments');actions.push({...body});
    if(body.action==='accounts')return{data:{accounts:[{id:'amazon-1',label:'Amazon1',hasConfiguration:true},{id:'amazon-2',label:'Amazon2',hasConfiguration:true}]}};
@@ -41,6 +41,8 @@ function mount(path,sb,props={}) {
  },{onApplied(){applied++}});
  await sync.settle();button(sync,'Amazon情報更新').props.onClick();button(sync,'Amazon情報更新').props.onClick();await sync.settle();
  assert.equal(actions.filter(row=>row.action==='accounts').length,1,'Double click restarted synchronization');
+ assert(validDateFilter,'Ancient purchase date was used as the API start');
+ assert(actions.filter(row=>row.postedAfter).every(row=>Date.parse(row.postedAfter)>=Date.UTC(2010,0,1)),'API request used an invalid legacy year');
  assert(actions.some(row=>row.action==='sync'&&row.accountId==='amazon-2'&&row.nextToken==='second-next'),'Second account pagination missing');
  assert(actions.some(row=>row.action==='history'&&row.accountId==='amazon-2'&&row.offset===100),'Second account history paging missing');
  assert(actions.some(row=>row.action==='reconcile'&&row.accountId==='amazon-2'&&row.transactionId==='only-second'));
