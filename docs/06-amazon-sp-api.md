@@ -24,7 +24,7 @@ https://supabase.com/dashboard/project/xgoppuqoqeppckyunnvx/functions/secrets
 
 同じAmazon開発アプリを両出品者アカウントで認可した場合、Client IDとClient Secretは同じ値を両方へ登録できます。Refresh TokenとSeller IDはそれぞれの出品者アカウントに対応させます。Amazon2の未設定値をAmazon1から自動補完することはありません。同じSeller IDを両方へ登録した場合はAmazon2の処理を停止します。
 
-「Amazon FBA」のアカウント欄でAmazon1 / Amazon2を選択します。切り替え時に前の表示とページ情報を破棄し、選択先の「最新の在庫を取得」を押します。APIのリクエストでは `accountId: "amazon-1" | "amazon-2"` を指定し、省略時は従来互換のAmazon1になります。アカウント別の認証設定を返したり、ブラウザーへ渡したりしません。
+管理アプリの現在の入口は「在庫」→「Amazon情報更新」で、設定済みのアカウントを順に処理します。FBA在庫取得エンドポイントのリクエストでは `accountId: "amazon-1" | "amazon-2"` を指定し、省略時は従来互換のAmazon1になります。`AmazonInventory.tsx` は現行メニューへ接続されていないため、「Amazon FBA」メニューが存在すると案内しないでください。アカウント別の認証設定を返したり、ブラウザーへ渡したりしません。
 
 実値はチャット・Git・Vercel・VITE_環境変数に入れません。
 Supabaseのsb_publishableキーはAmazon認証情報ではありません。
@@ -52,7 +52,7 @@ mainを最新状態と突き合わせ、対象変更だけをpushします。Ver
 
 ## 検証とエラー
 
-- 管理者で「Amazon FBA」→「最新の在庫を取得」。次ページも確認。
+- 管理者の通常入口は「在庫」→「Amazon情報更新」。FBA取得のみの確認はサーバー側の読み取り専用診断で行い、実在庫へ販売情報を反映する操作と区別する。
 - 401: Supabaseログイン切れ。再ログイン。
 - 403: 有効な管理者ではない。
 - 503: Secrets不足、またはappスキーマの権限照会失敗。表示された原因を確認。
