@@ -167,7 +167,7 @@
 @media screen and (max-width:1023px) {
   .layout .sidebar { min-width:0; }
   .layout .management-navigation { width:100%; max-width:100%; }
-  .layout .management-navigation > .nav { padding-inline:0 !important; }
+  .layout .management-navigation > .nav { padding-inline:4px !important; }
   .invoice-task-rows .malfunction-task-row:has(> .malfunction-task-content) { flex-direction:column; }
   .invoice-task-rows .malfunction-task-row > .malfunction-task-content { width:100%; }
   .invoice-task-rows .malfunction-task-row > .workflow-buttons { display:grid; grid-template-columns:repeat(2,max-content); justify-content:end; gap:8px; width:100%; flex:none; }
