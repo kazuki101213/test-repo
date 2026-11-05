@@ -2,7 +2,7 @@
 -- Each accessory retains its own purchase cost. Do not rewrite marketplace SKUs.
 create function app.sku_with_total_cost(p_item app.items) returns text
 language plpgsql stable security definer set search_path='' as $$
-declare family text; body_cost bigint; accessory_cost bigint;
+declare family text; body_cost bigint; accessory_cost bigint;normalized text;persisted_sku text;
 begin
  if p_item.sku !~ '^[0-9]+[a-z]*-[A-Z]{2,4}-[0-9]{8}-[0-9]+$' then return p_item.sku;end if;
  if p_item.is_accessory then
@@ -23,7 +23,16 @@ begin
  select coalesce(sum(a.cost_amount),0)::bigint into accessory_cost from app.items a
  where a.is_accessory and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
   and app.financial_product_serial(a.sku,a.lot_seq)=family;
- return regexp_replace(p_item.sku,'-[0-9]+$','-'||((body_cost+accessory_cost)/10)::text);
+ normalized:=regexp_replace(p_item.sku,'-[0-9]+$','-'||((body_cost+accessory_cost)/10)::text);
+ -- Legacy bodies and accessories sometimes share the entire SKU prefix.
+ -- A reserved historical/live SKU must never switch to another item ID.
+ select i.sku into persisted_sku from app.items i where i.id=p_item.id;
+ if persisted_sku is not null and regexp_replace(persisted_sku,'-[0-9]+$','')=regexp_replace(normalized,'-[0-9]+$','')
+  and (exists(select 1 from app.items i where i.sku=normalized and i.id<>p_item.id)
+   or exists(select 1 from app.item_sku_aliases a where a.sku=normalized and a.item_id<>p_item.id)) then
+  return persisted_sku;
+ end if;
+ return normalized;
 end $$;
 revoke all on function app.sku_with_total_cost(app.items) from public,anon,authenticated;
 
@@ -44,6 +53,10 @@ begin
   patched:=replace(source,'new.sku=app.return_sku_original_cost(old.sku,old.lot_seq)',
    'new.sku=app.sku_with_total_cost(new)');
   if source=patched then raise exception 'SKU correction guard anchor changed: %',name;end if;
+  -- Generated columns are computed after BEFORE triggers. Exclude their
+  -- transient NEW null, while still checking every input business field.
+  patched:=replace(patched,$oldguard$to_jsonb(new)-'sku'-'updated_at'=to_jsonb(old)-'sku'-'updated_at'$oldguard$,
+   $newguard$to_jsonb(new)-'sku'-'updated_at'-'profit'=to_jsonb(old)-'sku'-'updated_at'-'profit'$newguard$);
   execute patched;
  end loop;
  -- Usage reassignment is accessory-specific: preserve its own cost during
@@ -61,8 +74,32 @@ end $migration$;
 
 create function app.normalize_item_sku_total_cost() returns trigger
 language plpgsql security definer set search_path='' as $$
+declare parent app.items;projected_cost bigint;old_accessory_cost bigint:=0;candidate text;attempt integer:=0;
 begin
  new.sku:=app.sku_with_total_cost(new);
+ if new.is_accessory and not app.is_standalone_accessory_serial(new.sku,new.lot_seq) then
+  select i.* into parent from app.items i where i.id=new.parent_item_id and not i.is_accessory;
+  if parent.id is not null then
+   if tg_op='UPDATE' and old.is_accessory and not app.is_standalone_accessory_serial(old.sku,old.lot_seq)
+    and app.financial_product_serial(old.sku,old.lot_seq)=app.financial_product_serial(parent.sku,parent.lot_seq) then
+    old_accessory_cost:=old.cost_amount;
+   end if;
+   select f.family_cost+new.cost_amount-old_accessory_cost into projected_cost from app.v_financial_families f
+    where f.family_key=app.financial_product_serial(parent.sku,parent.lot_seq);
+   candidate:=regexp_replace(parent.sku,'-[0-9]+$','-'||(projected_cost/10)::text);
+   -- Reserve the body's future total-cost SKU before inserting a zero-cost
+   -- body's same-prefix accessory. New accessories have no old SKU to lose.
+   if new.sku=candidate and (tg_op='INSERT' or new.parent_item_id is distinct from old.parent_item_id) then
+    loop
+     new.sku:=regexp_replace(new.sku,'^([0-9]+[a-z]*)(-)','\1a\2');
+     attempt:=attempt+1;
+     exit when not exists(select 1 from app.items i where i.sku=new.sku and i.id<>new.id)
+      and not exists(select 1 from app.item_sku_aliases a where a.sku=new.sku and a.item_id<>new.id);
+     if attempt>30 then raise exception '付属品SKUを確保できません' using errcode='23505';end if;
+    end loop;
+   end if;
+  end if;
+ end if;
  if exists(select 1 from app.item_sku_aliases a where a.sku=new.sku and a.item_id<>new.id) then
   raise exception 'このSKUは別商品の旧SKUとして使われています' using errcode='23505';end if;
  return new;

@@ -1,7 +1,7 @@
 begin;
 do $test$
 declare buyer uuid;worker uuid;body app.items;other_body app.items;accessory app.items;extra uuid;returned uuid;
- before_body jsonb;answer jsonb;old_sku text;actual text;
+ before_body jsonb;answer jsonb;old_sku text;actual text;zero_body app.items;zero_accessory app.items;
 begin
  select id into buyer from app.staff where code='AA';
  select id into worker from app.staff where code='DD';
@@ -46,9 +46,19 @@ begin
  if (select split_part(sku,'-',4) from app.items where id=returned)<>'1200' then raise exception 'Return was not refreshed after accessory deletion';end if;
  delete from app.items where id=accessory.id;
  if (select split_part(sku,'-',4) from app.items where id=other_body.id)<>'500' then raise exception 'Other family did not remove accessory cost';end if;
- insert into app.items(sku,lot_seq,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
- values('998911c-AADD-20261005-123',998911,true,buyer,worker,'2026-10-05','Standalone accessory fixture',1234,'ヤフオク','メルカリ');
+ insert into app.items(sku,lot_seq,parent_item_id,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
+ values('998911c-AADD-20261005-123',998911,body.id,true,buyer,worker,'2026-10-05','Standalone accessory fixture',1234,'ヤフオク','メルカリ');
  if (select split_part(sku,'-',4) from app.items where id=body.id)<>'1200' then raise exception 'Standalone accessory was added to another sale';end if;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
+ values(998913,buyer,worker,'2026-10-01','Zero cost body',0,'メルカリ','メルカリ') returning * into zero_body;
+ insert into app.items(sku,lot_seq,parent_item_id,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
+ values('998913-AADD-20261001-60',998913,zero_body.id,true,buyer,worker,'2026-10-01','Same prefix accessory',600,'ヤフオク','メルカリ') returning * into zero_accessory;
+ if (select sku from app.items where id=zero_body.id)<>'998913-AADD-20261001-60'
+  or zero_accessory.sku<>'998913a-AADD-20261001-60' then raise exception 'New accessory stole its body total-cost SKU';end if;
+ -- A live/historical SKU belonging to another item must not be reassigned.
+ insert into app.item_sku_aliases(sku,item_id) values('998913-AADD-20261001-160',zero_accessory.id);
+ update app.items set cost_amount=1000 where id=zero_body.id;
+ if (select sku from app.items where id=zero_body.id)<>'998913-AADD-20261001-60' then raise exception 'Reserved historical SKU switched owners';end if;
  if has_function_privilege('authenticated','app.sku_with_total_cost(app.items)','execute')
   or has_function_privilege('anon','app.sku_with_total_cost(app.items)','execute') then raise exception 'Internal cost lookup was exposed';end if;
 end $test$;
