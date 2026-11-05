@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
 import type { Product } from '@bussan/shared';
-import { createProduct, deleteProducts, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductSaleSummary, fetchProducts, updateProductField, type ProductField, type ProductSaleHistory } from '../api';
+import { createProduct, deleteProducts, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, type ProductDetailsInput, type ProductField, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
 import ColoredLabel from '../components/ColoredLabel';
 import { useTaskConfirmation } from '../components/TaskConfirmation';
@@ -21,6 +21,8 @@ export default function Products() {
   const [revision, setRevision] = useState(0);
   const [newProduct, setNewProduct] = useState({ asin: '', model_no: '', maker: '', product_no: '' });
   const [editing, setEditing] = useState<{ product: Product; field: ProductField; value: string } | null>(null);
+  const [fullEditProduct, setFullEditProduct] = useState<Product | null>(null);
+  const [fullEditDraft, setFullEditDraft] = useState<ProductDetailsInput | null>(null);
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
@@ -68,6 +70,25 @@ export default function Products() {
   async function addProduct() {
     setBusy(true); setError(null);
     try { await createProduct(newProduct); setNewProduct({ asin: '', model_no: '', maker: '', product_no: '' }); setRevision(n => n + 1); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+
+  function startFullEdit(product: Product) {
+    setError(null);
+    setFullEditProduct(product);
+    setFullEditDraft({
+      product_no: String(product.product_no ?? ''), asin: product.asin, model_no: product.model_no ?? '', maker: product.maker ?? '', genre: product.genre ?? '',
+      turnover: product.turnover ?? '', shipping_category: product.shipping_category ?? '', shipping_size: product.shipping_size ?? '',
+      list_price: String(product.list_price ?? ''), payout_estimate: String(product.payout_estimate ?? ''), target_cost: String(product.target_cost ?? ''),
+      has_sold_before: String(product.has_sold_before),
+    });
+  }
+
+  async function saveFullEdit() {
+    if (!fullEditProduct || !fullEditDraft) return;
+    setBusy(true); setError(null);
+    try { await updateProductDetails(fullEditProduct, fullEditDraft); setFullEditProduct(null); setFullEditDraft(null); setRevision(n => n + 1); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -128,13 +149,13 @@ export default function Products() {
               <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th>
               <th>ジャンル</th><th>回転</th><th>Amazon販売金額（直近3件平均）</th>
               <th className="num">販売想定金額</th><th className="num">振込想定金額</th>
-              <th className="num">仕入れ目標金額</th><th>実績</th><th aria-label="選択" />
+              <th className="num">仕入れ目標金額</th><th>実績</th><th>サイズ</th><th aria-label="選択" />
             </tr>
           </thead>
           <tbody>
             {rows.map((p) => (
               <tr key={p.id}>
-                <td className="num">{cell(p, 'product_no', String(p.product_no ?? '—'))}</td>
+                <td className="num"><button type="button" className="inventory-cell-edit" title="クリックして商品情報全体を編集" onClick={() => startFullEdit(p)}>{String(p.product_no ?? '—')}</button></td>
                 <td><span className="reference-value">{cell(p, 'asin', p.asin)}<a className="inline-reference-link" href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}>↗</a></span></td>
                 <td>{cell(p, 'model_no', p.model_no ?? '—')}</td>
                 <td>{cell(p, 'maker', p.maker ?? '—')}</td>
@@ -153,6 +174,7 @@ export default function Products() {
                 <td className="num">{cell(p, 'payout_estimate', yen(p.payout_estimate))}</td>
                 <td className="num" style={{ color: 'var(--accent)' }}>{cell(p, 'target_cost', yen(p.target_cost))}</td>
                 <td>{cell(p, 'has_sold_before', p.has_sold_before ? '有' : '無')}</td>
+                <td><button type="button" className="inventory-cell-edit" title="クリックして配送区分・サイズを変更" onClick={() => startFullEdit(p)}>{p.shipping_category ? `${p.shipping_category} ${p.shipping_size ? `${p.shipping_size}サイズ` : '未設定'}` : '未設定'}</button></td>
                 <td><label className="expense-selection"><input type="checkbox" aria-label={`${p.model_no || p.asin}（${p.asin}）を選択`} checked={selected.has(p.id)} disabled={loading || busy || deleting || confirmation.pending} onChange={event => { const checked = event.target.checked; setSelected(current => { const next = new Set(current); if (checked) next.add(p.id); else next.delete(p.id); return next; }); }} /></label></td>
               </tr>
             ))}
@@ -169,6 +191,18 @@ export default function Products() {
         {error && <div className="error" role="alert">{error}</div>}
       </form>
       </div>
+      {fullEditProduct && fullEditDraft && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報全体を編集"><div className="card inventory-comment-panel product-full-edit-panel">
+        <h3>商品情報を編集</h3><p className="sub">品番 {fullEditDraft.product_no || '未設定'} ・ {fullEditDraft.model_no || fullEditDraft.asin}</p>
+        <div className="product-full-edit-grid">
+          {([['product_no','品番'],['asin','ASIN'],['model_no','型番'],['maker','メーカー'],['genre','ジャンル'],['list_price','販売想定金額'],['payout_estimate','振込想定金額'],['target_cost','仕入れ目標金額']] as const).map(([key,label]) => <label className="field" key={key}><span>{label}</span><input type={['product_no','list_price','payout_estimate','target_cost'].includes(key) ? 'number' : 'text'} min={key === 'product_no' ? 1 : 0} value={fullEditDraft[key]} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, [key]: e.target.value }))} /></label>)}
+          <label className="field"><span>回転</span><select value={fullEditDraft.turnover} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, turnover: e.target.value }))}><option value="">未設定</option>{['高','中','低'].map(v => <option key={v}>{v}</option>)}</select></label>
+          <label className="field"><span>実績</span><select value={fullEditDraft.has_sold_before} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, has_sold_before: e.target.value }))}><option value="false">無</option><option value="true">有</option></select></label>
+          <label className="field"><span>サイズ区分</span><select value={fullEditDraft.shipping_category} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, shipping_category: e.target.value, shipping_size: e.target.value === 'モ' ? '140' : e.target.value === 'ブ' ? '100' : e.target.value === '小' ? '' : current.shipping_size }))}><option value="">未設定</option><option value="モ">モニター（モ）</option><option value="ブ">ブルーレイレコーダー（ブ）</option><option value="小">小物（小）</option></select></label>
+          <label className="field"><span>配送サイズ</span><select value={fullEditDraft.shipping_size} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, shipping_size: e.target.value }))}><option value="">未設定</option>{['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'].map(v => <option key={v} value={v}>{v}{/^\d+$/.test(v) ? 'サイズ' : ''}</option>)}</select></label>
+        </div>
+        {error && <div className="error" role="alert">{error}</div>}
+        <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveFullEdit()}>{busy ? '保存中…' : '保存'}</button><button className="btn" disabled={busy} onClick={() => { setFullEditProduct(null); setFullEditDraft(null); }}>閉じる</button></div>
+      </div></div>}
       {editing && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品リストの項目を編集"><div className="card inventory-comment-panel">
         <h3>{fieldLabels[editing.field]}を編集</h3>
         <label className="field"><span>{fieldLabels[editing.field]}</span>

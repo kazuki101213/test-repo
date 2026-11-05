@@ -38,6 +38,8 @@ export interface Product {
   product_no: number | null;
   asin: string;
   model_no: string | null;
+  shipping_category: 'モ' | 'ブ' | '小' | null;
+  shipping_size: string | null;
   maker: string | null;
   genre: string | null;
   list_price: number | null;

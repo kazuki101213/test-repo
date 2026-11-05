@@ -3,6 +3,10 @@
 .layout .product-list .product-catalog-table { width:100%; min-width:0; }
 .layout .product-catalog-table :is(th,td) { padding:8px 4px; white-space:nowrap; }
 .layout .product-catalog-table .expense-selection { width:28px; }
+.layout .product-full-edit-panel { width:min(760px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; }
+.layout .product-full-edit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 12px; }
+.layout .product-full-edit-grid .field { min-width:0; }
 @media (max-width:1023px) {
   .layout .toolbar.product-search-toolbar > input[type=search] { width:0 !important; flex:1 1 0 !important; min-width:0; }
+  .layout .product-full-edit-grid { grid-template-columns:1fr; }
 }
