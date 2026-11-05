@@ -26,6 +26,7 @@ begin
  insert into app.items(lot_seq,parent_item_id,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
  values(body.lot_seq,body.id,true,buyer,worker,'2026-10-03','Cable cost fixture',205,'ヤフオク','メルカリ') returning id into extra;
  if (select split_part(sku,'-',4) from app.items where id=body.id)<>'1283' then raise exception 'Multiple accessory costs were not summed';end if;
+ update app.items set status='返品処理' where id=body.id;
  insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel)
  values('998911b-AADD-20261004-0',body.lot_seq,buyer,worker,'2026-10-04','Returned body fixture',0,'動作品Amazon返品','メルカリ') returning id into returned;
  if (select split_part(sku,'-',4) from app.items where id=returned)<>'1283' then raise exception 'Return did not inherit original body plus accessory cost';end if;
