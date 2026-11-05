@@ -77,9 +77,13 @@ export async function handler(req: Request): Promise<Response> {
       if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
       actorId = user.user.id;
     }
-    if (!['accounts', 'history', 'sync', 'reconcile', 'daily', 'diagnose'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
     if (body.action === 'accounts') return respond(200, { accounts: amazonAccounts() });
     const accountId = amazonAccountId(body.accountId);
+    if (body.action === 'identity') {
+      if (!scheduled) throw new SafeError(403, '出品者IDの確認はサービス認証が必要です。');
+      return respond(200, { accountId, sellerId: amazonCredentials(accountId, false).sellerId });
+    }
     if (body.action === 'daily' && body.accountId === undefined) {
       if (!scheduled) throw new SafeError(403, '定期更新からのみ実行できます。');
       const configured = amazonAccounts().filter(account => account.hasConfiguration);

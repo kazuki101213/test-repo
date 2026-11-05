@@ -111,3 +111,14 @@ Deno.test('diagnosis checks seller-bound listings and non-PII order lookup witho
   assert(!text.includes('123-1234567-1234567') && !text.includes('second-AMAZON') && !text.includes('token-second'), 'Order identity or credentials leaked');
   assert(calls.every(call => !call.url.includes('/amazon_payment_transactions') && !call.url.includes('/rpc/apply_amazon_')), 'Diagnosis persisted or reconciled data');
 }));
+
+Deno.test('seller identity requires service authorization and returns only the selected seller ID', () => fixture(async calls => {
+  assert((await payments(request({ action: 'identity', accountId: 'amazon-1' }))).status === 403, 'Browser session accessed service-only identity');
+  for (const accountId of ['amazon-1','amazon-2']) {
+    const response = await payments(request({ action: 'identity', accountId },true));
+    const data = await response.json();
+    assert(response.ok && data.accountId === accountId && data.sellerId === (accountId==='amazon-1'?'first-AMAZON_SELLER_ID':'second-AMAZON_2_SELLER_ID'), 'Incorrect seller identity');
+    assert(Object.keys(data).sort().join(',') === 'accountId,sellerId', 'Identity included unrelated credentials');
+  }
+  assert(calls.every(call=>call.url.startsWith('https://test.supabase.co/')), 'Identity contacted Amazon or stored business data');
+}));
