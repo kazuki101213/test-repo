@@ -109,7 +109,8 @@ export function advanceMercariShippingEditor({itemId,shippingMethod}){
   const radios=[...root.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&radioName(e).startsWith(shippingMethod));
   if(location.pathname!==path&&radios.length===1&&/配送|発送/.test(body)){
    const next=buttons.filter(e=>['変更する','更新する','選択して次へ','選択して完了する'].includes(norm(e.innerText)));if(next.length!==1)return {__error:'配送方法の確定ボタンを1件に確認できません',shippingEvidence:{editor:{buttons:buttons.map(e=>norm(e.innerText)),radios:[...root.querySelectorAll('input[type=radio]')].map(radioName)}}};
-   const state=before();if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('配送方法の選択を確認できません');setTimeout(()=>next[0].click(),100);return state;
+   if(radios[0].checked)return {methodAlreadySelected:true};
+   const state=before();radios[0].click();if(!radios[0].checked)throw Error('配送方法の選択を確認できません');setTimeout(()=>next[0].click(),100);return state;
   }
   if(location.pathname===path){
    const revise=buttons.filter(e=>norm(e.innerText)==='商品サイズや発送方法を修正する');
@@ -126,7 +127,7 @@ export function advanceMercariShippingEditor({itemId,shippingMethod}){
  if(!/配送|発送|サイズ/.test(text)||/発送通知|発送しました|取引をキャンセル|購入する|支払う/.test(text))return stop();
  const radios=[...dialog.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&norm([e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText)].join(' ')).startsWith(shippingMethod));
  let candidates;
- if(radios.length===1){candidates=buttons.filter(e=>['変更する','更新する','選択して次へ'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();if(!radios[0].checked)radios[0].click();if(!radios[0].checked)return stop();}
+ if(radios.length===1){if(radios[0].checked)return {methodAlreadySelected:true};candidates=buttons.filter(e=>['変更する','更新する','選択して次へ'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();radios[0].click();if(!radios[0].checked)return stop();}
  else {if(radios.length||dialog.querySelector('input:not([type=hidden]):not([type=button]):not([type=submit]),textarea,select')||!(/コード|商品サイズ/.test(text)||text==='発送方法を変更しますか？ キャンセル 変更する'))return stop();candidates=buttons.filter(e=>['修正する','変更する','はい'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();}
  const state=before();setTimeout(()=>candidates[0].click(),100);return state;
  }catch(error){return {__error:error.message};}
@@ -390,7 +391,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
     if(view.trade_tab_url){await session.go(sellerUrl(account,view.trade_tab_url));view=await session.operation(job,phase);}
     if(view.ready!==true)throw Error('ヤフオクの配送コード発行画面を確認できません');
    }
-   if(job.kind==='shipping_code'&&job.payload?.read_only_code_recovery!==true&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor){mutating=true;await session.prepareShipping(job);shippingPrepared=true;}else if(preflight.readyForCode){if(preflight.configuredDropoff!==job.payload.dropoff)throw Error('サイトの発送場所がアプリ設定と一致しません');shippingPrepared=true;}}
+   if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor&&job.payload?.read_only_code_recovery!==true){mutating=true;await session.prepareShipping(job);}const verified=preflight.needsEditor&&job.payload?.read_only_code_recovery!==true?await session.operation(job,'shipping_preflight'):preflight;if(verified.methodMatches!==true)throw Error('サイトの配送方法がアプリ設定と一致しません');if(verified.sizeMatches!==true)throw Error('サイトの配送サイズがアプリ設定と一致しません。既存の配送コードも使用しません');if(verified.configuredDropoff!==job.payload?.dropoff)throw Error('サイトの発送場所がアプリ設定と一致しません');shippingPrepared=true;}
    let notice;
    if(job.kind==='ship_notice'){phase='ship_notice_preflight';notice=await session.operation(job,phase);}
    if(job.kind==='shipping_code'&&job.payload?.read_only_code_recovery===true){phase='read_shipping_code';result=await session.operation(job,phase,{waitForShippingCode:true});if(typeof result.qr_code!=='string'||!result.qr_code)throw Error('既存の配送コードを確認できません。発行操作はしていません');result={...result,recovered_read_only:true};}
@@ -502,7 +503,7 @@ export async function openSellerSession(account,{tabs,scripting,windows,identity
   },
   inspectionTarget:serial=>execute(readInspectionTarget,serial),
   inspectionShippingTarget:target=>execute(readShippingInspectionTarget,target),
-  prepareShipping:async job=>{if(account.site!=='mercari')throw Error('メルカリの配送設定ではありません');let sizeReady=false;for(let step=0;step<8;step++){const editor=await execute(advanceMercariShippingEditor,{itemId:job.external_id,shippingMethod:job.payload.shippingMethod});if(editor.sizeReady){sizeReady=true;break;}await finishChoice(editor);}if(!sizeReady)throw Error('配送設定の画面遷移を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
+  prepareShipping:async job=>{if(account.site!=='mercari')throw Error('メルカリの配送設定ではありません');let sizeReady=false;for(let step=0;step<8;step++){const editor=await execute(advanceMercariShippingEditor,{itemId:job.external_id,shippingMethod:job.payload.shippingMethod});if(editor.sizeReady){sizeReady=true;break;}if(editor.methodAlreadySelected){await go('https://jp.mercari.com/transaction/'+job.external_id+'/shipping_class');await loaded();continue;}await finishChoice(editor);}if(!sizeReady)throw Error('配送設定の画面遷移を確認できません');await finishChoice(await execute(advanceMercariShippingSize,{itemId:job.external_id,size:job.payload.size,shippingMethod:job.payload.shippingMethod}),'shipping-place');await finishChoice(await execute(advanceMercariShippingPlace,{itemId:job.external_id,dropoff:job.payload.dropoff}),'shipping-code-ready');},
   inspectionTrades:()=>execute(function(){return [...document.querySelectorAll('a[href]')].filter(a=>a.getClientRects().length&&/^(取引ナビ|取引画面|取引情報|取引連絡|発送する)$/.test(a.innerText.trim())).map(a=>({url:a.href})).filter((entry,index,all)=>all.findIndex(other=>other.url===entry.url)===index).slice(0,20);},null),
   links:async()=> (await raw()).links.map(link=>{const u=new URL(link.url);return u.hostname==='salesmanagement.yahoo.co.jp'&&u.pathname==='/list'&&/^売上金管理(?:\s+Yahoo!かんたん決済)?$/.test(link.text)?{...link,text:'売上金管理'}:link;}).filter(link=>/^(出品した商品|出品一覧|出品中|取引中|売却済み|出品終了分|売上金管理|落札者なし|出品|出品する|出品フォーム)$/.test(link.text)),
   read:phase=>readSellerListWithRecovery({site:account.site,read:()=>execute(readSellerPage,{site:account.site,phase,reportErrors:true}),reload:()=>go(last)}),
