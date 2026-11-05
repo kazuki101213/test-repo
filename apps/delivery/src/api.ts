@@ -440,6 +440,10 @@ export async function queueSellerOperation(itemId:string,kind:string,payload:Rec
  if(['shipping_code','register_package'].includes(kind)){const issue=sellerShippingError(payload);if(issue)throw new Error(issue);}
  const {data,error}=await getSupabase().rpc('queue_seller_operation',{p_item_id:itemId,p_kind:kind,p_payload:payload,p_request_id:requestId});if(error)throw error;return data as string;
 }
+export async function retryUncertainShippingCode(itemId:string,payload:Record<string,unknown>,requestId:string):Promise<string>{
+ const issue=sellerShippingError(payload);if(issue)throw new Error(issue);
+ const {data,error}=await getSupabase().rpc('retry_uncertain_shipping_code',{p_item_id:itemId,p_payload:payload,p_request_id:requestId});if(error)throw error;return data as string;
+}
 export async function fetchSupplierConversation(itemId:string):Promise<MarketplaceConversation&{account_id?:string|null}>{
  const {data,error}=await getSupabase().rpc('supplier_conversation',{p_item_id:itemId});if(error)throw error;return data;
 }

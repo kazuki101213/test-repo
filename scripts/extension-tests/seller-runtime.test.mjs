@@ -3,6 +3,12 @@ import {sellerScheduleReady,sellerAccounts,sellerTarget,parseSellerSaleDetail,se
 import {sellerDaily,sellerQueuedOperations,openSellerSession,runSellerSaleRepair,readMercariTransactionPage} from '../../tools/fleamarket-extension/seller-runtime.js';
 const day='2026-10-16',settings={mode:'tracking',purchaseImportEnabled:true,accounts:[{id:'mercari-2',site:'mercari',label:'メルカリ2',enabled:true},{id:'mercari-1',site:'mercari',enabled:true},{id:'auctions-1',site:'auctions',label:'ヤフオク1',enabled:true}]};
 const records=()=>({scheduledRuns:{tracking:{day},purchases:{day}},lastRun:{tracking:{day},purchases:{day}}});
+test('サイズ選択後に表示が遅れる場合は発行後の照合が一致した時だけ成功する',async()=>{
+ for(const matches of [true,false]){let checks=0,finished;const calls=[];const job={id:'deferred-size',account_id:'mercari-2',kind:'shipping_code',url:'https://jp.mercari.com/transaction/m123',payload:{shippingMethod:'ゆうゆうメルカリ便',size:'140',dropoff:'ローソン'}};
+  await sellerQueuedOperations({settings,rpc:async(name,args)=>name==='extension_seller_queue'?[job]:name==='extension_claim_seller_operation'?true:finished=args,log:async()=>{},openSession:async()=>({go:async()=>{},prepareShipping:async()=>calls.push('edit'),operation:async(j,phase)=>{calls.push(phase);if(phase==='shipping_preflight'){checks++;return {needsEditor:checks===1,readyForCode:true,configuredSize:checks===3?'ゆうパック120-170':null,sizeMatches:checks===3&&matches,methodMatches:true,configuredDropoff:'ローソン'};}if(phase==='shipping_code')return {qr_code:'qr'};throw Error('予期しない操作');},close:async()=>{}})});
+  assert.deepEqual(calls,['shipping_preflight','edit','shipping_preflight','shipping_code','shipping_preflight']);assert.equal(finished.p_status,matches?'succeeded':'uncertain');
+ }
+});
 test('発送コードを先に処理し、claim拒否時はサイトを開かず、LINE専用実行は自動依頼だけ選ぶ',async()=>{
  const queue=[{id:'notice',kind:'ship_notice',account_id:'mercari-2'},{id:'manual-code',kind:'shipping_code',account_id:'mercari-2'},{id:'line-code',kind:'shipping_code',account_id:'mercari-2',payload:{automatic_line:true}}];
  for(const onlyAutomaticLine of [false,true]){const claims=[];await sellerQueuedOperations({settings,onlyAutomaticLine,rpc:async(name,args)=>{if(name==='extension_seller_queue')return queue;claims.push(args.p_id);return false;},openSession:async()=>assert.fail('claim拒否後にサイトを開かない'),log:async()=>{}});assert.deepEqual(claims,[onlyAutomaticLine?'line-code':'manual-code']);}
