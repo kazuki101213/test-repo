@@ -616,6 +616,44 @@ export async function updateProductField(product: Product, field: ProductField, 
   if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
 }
 
+export type ProductDetailsInput = {
+  product_no: string; asin: string; model_no: string; maker: string; genre: string;
+  turnover: string; shipping_category: string; shipping_size: string;
+  list_price: string; payout_estimate: string; target_cost: string; has_sold_before: string;
+};
+
+export async function updateProductDetails(product: Product, input: ProductDetailsInput): Promise<void> {
+  const asin = input.asin.trim().toUpperCase();
+  if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは英数字10文字で入力してください。');
+  const parseNumber = (key: 'product_no'|'list_price'|'payout_estimate'|'target_cost', min: number) => {
+    const raw = input[key].trim(); if (!raw) return null;
+    const value = Number(raw); if (!Number.isSafeInteger(value) || value < min) throw new Error(`${key === 'product_no' ? '品番' : '金額'}を確認してください。`); return value;
+  };
+  const productNo = parseNumber('product_no', 1);
+  const listPrice = parseNumber('list_price', 0);
+  const payout = parseNumber('payout_estimate', 0);
+  const targetCost = parseNumber('target_cost', 0);
+  if (input.turnover && !['高','中','低'].includes(input.turnover)) throw new Error('回転を選択してください。');
+  if (input.shipping_category && !['モ','ブ','小'].includes(input.shipping_category)) throw new Error('サイズ区分を選択してください。');
+  const sizes = ['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'];
+  if (input.shipping_size && !sizes.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+  const next = {
+    product_no: productNo, asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
+    genre: input.genre.trim() || null, turnover: input.turnover || null,
+    shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null,
+    list_price: listPrice, payout_estimate: payout, target_cost: targetCost, has_sold_before: input.has_sold_before === 'true',
+  };
+  const previous = product as Product & Record<string, unknown>;
+  let query = getSupabase().from('products').update(next).eq('id', product.id);
+  for (const key of Object.keys(next) as (keyof typeof next)[]) {
+    const value = previous[key] ?? null;
+    query = value === null ? query.is(key, null) : query.eq(key, value as never);
+  }
+  const { data, error } = await query.select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
+}
+
 export async function createProduct(input: { asin: string; model_no: string; maker: string; product_no: string }): Promise<void> {
   const asin = input.asin.trim().toUpperCase();
   if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは英数字10文字で入力してください。');
