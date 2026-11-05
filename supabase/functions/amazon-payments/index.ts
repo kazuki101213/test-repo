@@ -175,12 +175,30 @@ export async function handler(req: Request): Promise<Response> {
       const financeParams = new URLSearchParams({ ...range, marketplaceId: marketplace });
       const financeResponse = await fetch(`https://sellingpartnerapi-fe.amazon.com/finances/2024-06-19/transactions?${financeParams}`, { headers: commonHeaders, signal: AbortSignal.timeout(20000) });
       const financeBody = await financeResponse.json().catch(() => null);
-      const [inventoryResponse, financeLegacyResponse] = await Promise.all([
+      const orderParams = new URLSearchParams({ createdAfter: range.postedAfter, createdBefore: range.postedBefore, marketplaceIds: marketplace, includedData: 'PROCEEDS', maxResultsPerPage: '1' });
+      const listingParams = new URLSearchParams({ marketplaceIds: marketplace, includedData: 'summaries', pageSize: '1' });
+      // Fixed, non-PII read probes. A failed probe must not discard the others.
+      const probe = (url: string) => fetch(url, { headers: commonHeaders, signal: AbortSignal.timeout(20000) }).catch(() => new Response('{}', { status: 599 }));
+      const [inventoryResponse, financeLegacyResponse, listingsResponse, ordersResponse] = await Promise.all([
         fetch(`https://sellingpartnerapi-fe.amazon.com/fba/inventory/v1/summaries?granularityType=Marketplace&granularityId=${encodeURIComponent(marketplace)}&marketplaceIds=${encodeURIComponent(marketplace)}`, { headers: commonHeaders, signal: AbortSignal.timeout(20000) }),
         fetch('https://sellingpartnerapi-fe.amazon.com/finances/v0/financialEventGroups?MaxResultsPerPage=1', { headers: commonHeaders, signal: AbortSignal.timeout(20000) }),
+        probe(`https://sellingpartnerapi-fe.amazon.com/listings/2021-08-01/items/${encodeURIComponent(seller)}?${listingParams}`),
+        probe(`https://sellingpartnerapi-fe.amazon.com/orders/2026-01-01/orders?${orderParams}`),
       ]);
       const inventoryBody = await inventoryResponse.json().catch(() => null);
       const financeLegacyBody = await financeLegacyResponse.json().catch(() => null);
+      const listingsBody = await listingsResponse.json().catch(() => null);
+      const ordersBody = await ordersResponse.json().catch(() => null);
+      const orders = list(obj(ordersBody).orders);
+      const firstOrderId = str(obj(orders[0]).orderId);
+      let orderLookupStatus: number | null = null;
+      let orderLookupShape: boolean | null = null;
+      if (ordersResponse.ok && firstOrderId && /^\d{3}-\d{7}-\d{7}$/.test(firstOrderId)) {
+        const lookup = await probe(`https://sellingpartnerapi-fe.amazon.com/orders/2026-01-01/orders/${encodeURIComponent(firstOrderId)}?includedData=PROCEEDS`);
+        orderLookupStatus = lookup.status;
+        const lookupBody = await lookup.json().catch(() => null);
+        orderLookupShape = lookup.ok && obj(obj(lookupBody).order).orderId === firstOrderId && Array.isArray(obj(obj(lookupBody).order).orderItems);
+      }
       const detailClass = (body: unknown) => {
         const detail = str(list(obj(body).errors).map(obj)[0]?.details, 500);
         if (detail === 'The LWA secret token you provided has expired.') return 'client_secret_expired';
@@ -191,6 +209,12 @@ export async function handler(req: Request): Promise<Response> {
       return respond(200, {
         lwa: 'ok', sellerStatus: sellerResponse.status, financeStatus: financeResponse.status, otherRegions,
         inventoryStatus: inventoryResponse.status, financeLegacyStatus: financeLegacyResponse.status,
+        listingsStatus: listingsResponse.status, ordersStatus: ordersResponse.status, orderLookupStatus, orderLookupShape,
+        orderSampleCount: ordersResponse.ok ? orders.length : null,
+        listingsRequestId: str(listingsResponse.headers.get('x-amzn-requestid'), 100),
+        ordersRequestId: str(ordersResponse.headers.get('x-amzn-requestid'), 100),
+        listingsCode: str(list(obj(listingsBody).errors).map(obj)[0]?.code, 80),
+        ordersCode: str(list(obj(ordersBody).errors).map(obj)[0]?.code, 80),
         sellerRequestId: str(sellerResponse.headers.get('x-amzn-requestid'), 100),
         financeRequestId: str(financeResponse.headers.get('x-amzn-requestid'), 100),
         inventoryRequestId: str(inventoryResponse.headers.get('x-amzn-requestid'), 100),

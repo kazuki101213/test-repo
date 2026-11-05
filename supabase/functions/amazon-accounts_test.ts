@@ -29,6 +29,13 @@ async function fixture(run: (calls: { url: string; init?: RequestInit }[]) => Pr
         if (init?.method === 'POST') return new Response(null, { status: 201 });
         return json([]);
       }
+      if (url.includes('/sellers/v1/marketplaceParticipations')) return json({ payload: [{ marketplace: { id: 'A1VC38T7YXB528' } }] });
+      if (url.includes('/orders/2026-01-01/orders/')) return json({ order: { orderId: '123-1234567-1234567', orderItems: [] } });
+      if (url.includes('/orders/2026-01-01/orders?')) {
+        const params = new URL(url).searchParams;
+        assert(params.get('includedData') === 'PROCEEDS' && params.get('maxResultsPerPage') === '1', 'Probe requested excessive or personal data');
+        return json({ orders: [{ orderId: '123-1234567-1234567' }] });
+      }
       const second = new Headers(init?.headers).get('x-amz-access-token') === 'token-second';
       if (url.includes('/fba/inventory/')) return json({ payload: { inventorySummaries: [{ sellerSku: 'same-sku', asin: 'B0TEST', productName: second ? 'second' : 'first', totalQuantity: second ? 2 : 1 }] }, pagination: { nextToken: second ? 'page-second' : 'page-first' } });
       if (url.includes('/listings/')) {
@@ -94,4 +101,13 @@ Deno.test('unconfigured Amazon2 and invalid IDs never call Amazon', () => fixtur
     assert((await handler(request({ action: 'sync', accountId: 'amazon-3', ...range }))).status === 400, 'Unknown ID accepted');
   }
   assert(calls.every(call => call.url.startsWith('https://test.supabase.co/')), 'Amazon called with incomplete settings');
+}));
+
+Deno.test('diagnosis checks seller-bound listings and non-PII order lookup without persisting data', () => fixture(async calls => {
+  const response = await payments(request({ action: 'diagnose', accountId: 'amazon-2' }, true));
+  const data = await response.json();
+  assert(response.ok && data.listingsStatus === 200 && data.ordersStatus === 200 && data.orderLookupStatus === 200 && data.orderLookupShape, 'Application order flow not checked');
+  const text = JSON.stringify(data);
+  assert(!text.includes('123-1234567-1234567') && !text.includes('second-AMAZON') && !text.includes('token-second'), 'Order identity or credentials leaked');
+  assert(calls.every(call => !call.url.includes('/amazon_payment_transactions') && !call.url.includes('/rpc/apply_amazon_')), 'Diagnosis persisted or reconciled data');
 }));
