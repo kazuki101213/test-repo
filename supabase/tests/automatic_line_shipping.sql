@@ -14,7 +14,7 @@ update app.delivery_line_settings set enabled=true;
 update app.items set status='取引中' where lot_seq in(998741,998742);
 do $$begin
  if (select count(*) from app.delivery_line_outbox)<>2 then raise exception 'Old requests were broadcast or new requests missing';end if;
- if exists(select 1 from line_probe where lot_seq in(998741,998742) and app.line_shipping_media((select o.id from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=line_probe.id))->>'automatic' is distinct from 'true') then raise exception 'Missing photos blocked notification';end if;
+ if exists(select 1 from line_probe where lot_seq in(998741,998742) and app.line_shipping_media((select o.id from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=line_probe.id)) is not null) then raise exception 'Missing explicit photos did not block notification';end if;
 end $$;
 insert into app.item_photos(item_id,storage_path,uploaded_by,photo_kind)
  select p.id,'fixture/'||p.lot_seq||'-'||v||'.jpg',(select id from app.staff where code='DD'),'product' from line_probe p cross join generate_series(1,2) v;
