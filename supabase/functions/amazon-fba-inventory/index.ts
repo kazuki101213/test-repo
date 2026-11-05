@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { amazonAccountId, amazonCredentials, AmazonAccountError } from '../_shared/amazonAccounts.ts';
 
 const marketplace = 'A1VC38T7YXB528';
 const endpoint = 'https://sellingpartnerapi-fe.amazon.com';
@@ -34,13 +35,12 @@ export async function handler(req: Request): Promise<Response> {
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new SafeError(400, 'リクエストの形式が不正です。');
     const nextToken = body.nextToken;
     if (nextToken !== undefined && (typeof nextToken !== 'string' || nextToken.length > 10000)) throw new SafeError(400, 'ページ指定が不正です。');
-    const names = ['AMAZON_LWA_CLIENT_ID', 'AMAZON_LWA_CLIENT_SECRET', 'AMAZON_LWA_REFRESH_TOKEN', 'AMAZON_SELLER_ID'] as const;
-    const missing = names.filter(name => !Deno.env.get(name)?.trim());
-    if (missing.length) throw new SafeError(503, `Supabase Edge Function Secretsが未設定です: ${missing.join(', ')}`);
+    const accountId = amazonAccountId(body.accountId);
+    const credentials = amazonCredentials(accountId);
     const lwa = await fetch('https://api.amazon.com/auth/o2/token', {
       method: 'POST', signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'refresh_token', client_id: Deno.env.get(names[0])!, client_secret: Deno.env.get(names[1])!, refresh_token: Deno.env.get(names[2])! }),
+      body: new URLSearchParams({ grant_type: 'refresh_token', client_id: credentials.clientId, client_secret: credentials.clientSecret, refresh_token: credentials.refreshToken }),
     });
     if (!lwa.ok) {
       const failure = await lwa.json().catch(() => null);
@@ -101,7 +101,7 @@ export async function handler(req: Request): Promise<Response> {
       const listingParams = new URLSearchParams({ marketplaceIds: marketplace, identifiersType: 'SKU', identifiers: skus.slice(offset, offset + 20).join(','), includedData: 'summaries', pageSize: '20' });
       let pageCount = 0;
       do {
-        const listings = await get(`/listings/2021-08-01/items/${encodeURIComponent(Deno.env.get(names[3])!)}`, listingParams);
+        const listings = await get(`/listings/2021-08-01/items/${encodeURIComponent(credentials.sellerId)}`, listingParams);
         if (!Array.isArray(listings.items)) throw new SafeError(502, 'Listings Itemsの応答が不正です。');
         for (const item of listings.items as Listing[]) {
           const summary = item.summaries?.find(s => s.marketplaceId === marketplace);
@@ -114,13 +114,14 @@ export async function handler(req: Request): Promise<Response> {
       } while (true);
     }
     return respond(200, {
+      accountId,
       rows: summaries.map(item => ({ sku: item.sellerSku, asin: item.asin, name: item.productName, total: item.totalQuantity,
         fulfillable: item.inventoryDetails?.fulfillableQuantity ?? null, reserved: item.inventoryDetails?.reservedQuantity?.totalReservedQuantity ?? null, status: statuses.get(item.sellerSku) ?? null })),
       nextToken: inventory.pagination?.nextToken, fetchedAt: new Date().toISOString(),
     });
   } catch (error) {
     // Never echo upstream payloads, request headers, tokens, or raw exceptions.
-    return respond(error instanceof SafeError ? error.status : 502, { error: error instanceof SafeError ? error.message : '外部サービスとの通信に失敗しました。時間をおいて再試行してください。' });
+    return respond(error instanceof SafeError || error instanceof AmazonAccountError ? error.status : 502, { error: error instanceof SafeError || error instanceof AmazonAccountError ? error.message : '外部サービスとの通信に失敗しました。時間をおいて再試行してください。' });
   }
 }
 if (import.meta.main) Deno.serve(handler);

@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { candidates } from './reconcile.ts';
+import { amazonAccountId, amazonAccounts, amazonCredentials, AmazonAccountError } from '../_shared/amazonAccounts.ts';
 
 const marketplace = 'A1VC38T7YXB528';
 const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
@@ -76,13 +77,32 @@ export async function handler(req: Request): Promise<Response> {
       if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
       actorId = user.user.id;
     }
-    if (!['history', 'sync', 'reconcile', 'daily', 'diagnose'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (!['accounts', 'history', 'sync', 'reconcile', 'daily', 'diagnose'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (body.action === 'accounts') return respond(200, { accounts: amazonAccounts() });
+    const accountId = amazonAccountId(body.accountId);
+    if (body.action === 'daily' && body.accountId === undefined) {
+      if (!scheduled) throw new SafeError(403, '定期更新からのみ実行できます。');
+      const configured = amazonAccounts().filter(account => account.hasConfiguration);
+      const targets = configured.length ? configured : [{ id: 'amazon-1', label: 'Amazon1' }];
+      const results = [];
+      for (const account of targets) {
+        try {
+          const response = await handler(new Request(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-amazon-cron-token': cronToken! }, body: JSON.stringify({ action: 'daily', accountId: account.id }) }));
+          const result = await response.json();
+          results.push({ accountId: account.id, label: account.label, ok: response.ok, ...result });
+        } catch {
+          results.push({ accountId: account.id, label: account.label, ok: false, error: 'Amazonの定期更新に失敗しました。' });
+        }
+      }
+      const succeeded = results.filter(result => result.ok).length;
+      return respond(succeeded === results.length ? 200 : succeeded ? 207 : 503, { accounts: results });
+    }
     if (body.action === 'daily') {
       if (!scheduled) throw new SafeError(403, '定期更新からのみ実行できます。');
       const now = Date.now();
       const range = { postedAfter: new Date(now - 7 * 86400000).toISOString(), postedBefore: new Date(now - 180000).toISOString() };
       const call = async (action: string, extra: Obj = {}) => {
-        const response = await handler(new Request(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-amazon-cron-token': cronToken! }, body: JSON.stringify({ action, ...range, ...extra }) }));
+        const response = await handler(new Request(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-amazon-cron-token': cronToken! }, body: JSON.stringify({ action, accountId, ...range, ...extra }) }));
         const result = await response.json();
         if (!response.ok) throw new SafeError(response.status, result.error || '定期更新に失敗しました。');
         return result;
@@ -116,8 +136,8 @@ export async function handler(req: Request): Promise<Response> {
     const range = body.action === 'diagnose'
       ? { postedAfter: new Date(Date.now() - 4 * 86400000).toISOString(), postedBefore: new Date(Date.now() - 180000).toISOString() }
       : dateRange(body);
-    const seller = Deno.env.get('AMAZON_SELLER_ID')?.trim();
-    if (!seller) throw new SafeError(503, 'AMAZON_SELLER_IDが未設定です。');
+    const credentials = amazonCredentials(accountId, body.action !== 'history');
+    const seller = credentials.sellerId;
     // Separate histories by seller without persisting the credential itself.
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seller));
     const accountKey = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
@@ -132,12 +152,9 @@ export async function handler(req: Request): Promise<Response> {
       return respond(200, { rows: data.slice(0, 100), hasMore: data.length > 100 });
     }
     if (body.nextToken !== undefined && (typeof body.nextToken !== 'string' || !body.nextToken || body.nextToken.length > 10000)) throw new SafeError(400, 'ページ指定が不正です。');
-    const names = ['AMAZON_LWA_CLIENT_ID', 'AMAZON_LWA_CLIENT_SECRET', 'AMAZON_LWA_REFRESH_TOKEN'] as const;
-    const missing = names.filter(name => !Deno.env.get(name)?.trim());
-    if (missing.length) throw new SafeError(503, `Supabase Secretsが未設定です: ${missing.join(', ')}`);
     const lwa = await fetch('https://api.amazon.com/auth/o2/token', {
       method: 'POST', signal: AbortSignal.timeout(15000), headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'refresh_token', client_id: Deno.env.get(names[0])!, client_secret: Deno.env.get(names[1])!, refresh_token: Deno.env.get(names[2])! }),
+      body: new URLSearchParams({ grant_type: 'refresh_token', client_id: credentials.clientId, client_secret: credentials.clientSecret, refresh_token: credentials.refreshToken }),
     });
     if (!lwa.ok) {
       const failure = await lwa.json().catch(() => null);
@@ -266,7 +283,7 @@ export async function handler(req: Request): Promise<Response> {
     }
     return respond(200, { saved: unique.length, nextToken: nextToken || undefined, fetchedAt, ...range });
   } catch (e) {
-    return respond(e instanceof SafeError ? e.status : 502, { error: e instanceof SafeError ? e.message : '外部サービスとの通信に失敗しました。時間をおいて再試行してください。' });
+    return respond(e instanceof SafeError || e instanceof AmazonAccountError ? e.status : 502, { error: e instanceof SafeError || e instanceof AmazonAccountError ? e.message : '外部サービスとの通信に失敗しました。時間をおいて再試行してください。' });
   }
 }
 if (import.meta.main) Deno.serve(handler);

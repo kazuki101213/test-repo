@@ -15,6 +15,17 @@ https://supabase.com/dashboard/project/xgoppuqoqeppckyunnvx/functions/secrets
 - AMAZON_LWA_REFRESH_TOKEN
 - AMAZON_SELLER_ID
 
+上記はAmazon1として引き続き使用します。Amazon2は上書きせず、次の別名で4項目を追加します。
+
+- AMAZON_2_LWA_CLIENT_ID
+- AMAZON_2_LWA_CLIENT_SECRET
+- AMAZON_2_LWA_REFRESH_TOKEN
+- AMAZON_2_SELLER_ID
+
+同じAmazon開発アプリを両出品者アカウントで認可した場合、Client IDとClient Secretは同じ値を両方へ登録できます。Refresh TokenとSeller IDはそれぞれの出品者アカウントに対応させます。Amazon2の未設定値をAmazon1から自動補完することはありません。同じSeller IDを両方へ登録した場合はAmazon2の処理を停止します。
+
+「Amazon FBA」のアカウント欄でAmazon1 / Amazon2を選択します。切り替え時に前の表示とページ情報を破棄し、選択先の「最新の在庫を取得」を押します。APIのリクエストでは `accountId: "amazon-1" | "amazon-2"` を指定し、省略時は従来互換のAmazon1になります。アカウント別の認証設定を返したり、ブラウザーへ渡したりしません。
+
 実値はチャット・Git・Vercel・VITE_環境変数に入れません。
 Supabaseのsb_publishableキーはAmazon認証情報ではありません。
 Amazon開発者プロフィールでProduct Listingロールの承認を取得し、アプリ登録でも選択します。

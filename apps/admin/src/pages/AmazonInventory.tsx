@@ -5,13 +5,14 @@ type Row = { sku: string; asin: string; name: string; total: number; fulfillable
 type Result = { rows: Row[]; nextToken?: string; fetchedAt: string };
 
 export default function AmazonInventory() {
+  const [accountId, setAccountId] = useState('amazon-1');
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   async function load(nextToken?: string) {
     setLoading(true); setError('');
     try {
-      const { data, error: failure } = await getSupabase().functions.invoke('amazon-fba-inventory', { body: { nextToken } });
+      const { data, error: failure } = await getSupabase().functions.invoke('amazon-fba-inventory', { body: { accountId, nextToken } });
       if (failure) {
         let message = '取得できませんでした。ログイン状態とEdge Functionのデプロイ・設定を確認してください。';
         if (failure.context instanceof Response) {
@@ -28,6 +29,7 @@ export default function AmazonInventory() {
     <h2>Amazon FBA</h2>
     <p className="sub">Amazon.co.jpのFBA在庫・出品状態を読み取り専用で確認します。Amazonへの更新やデータの保存は行いません。</p>
     <div className="toolbar">
+      <label>アカウント<select value={accountId} disabled={loading} onChange={event => { setAccountId(event.target.value); setResult(null); setError(''); }}><option value="amazon-1">Amazon1</option><option value="amazon-2">Amazon2</option></select></label>
       <button className="btn" disabled={loading} onClick={() => void load()}>最新の在庫を取得</button>
       {result?.nextToken && <button className="btn" disabled={loading} onClick={() => void load(result.nextToken)}>次のページ</button>}
     </div>
