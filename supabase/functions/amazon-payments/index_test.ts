@@ -24,7 +24,7 @@ for (const mode of ['apply', 'orders403', 'rpcFailure', 'unknownTransaction', 'r
     const originalFetch = globalThis.fetch;
     const names = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'AMAZON_SELLER_ID', 'AMAZON_LWA_CLIENT_ID', 'AMAZON_LWA_CLIENT_SECRET', 'AMAZON_LWA_REFRESH_TOKEN'];
     const saved = names.map(n => Deno.env.get(n));
-    let applied = 0, orders = 0;
+    let applied = 0, orders = 0, refunds = 0;
     try {
       for (const n of names) Deno.env.set(n, n === 'SUPABASE_URL' ? 'https://test.supabase.co' : 'fake-secret');
       globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -47,13 +47,18 @@ for (const mode of ['apply', 'orders403', 'rpcFailure', 'unknownTransaction', 'r
           assert(body.p_sku === 'sample-sku' && body.p_actor === 'test-admin' && body.p_sold_on === '2026-08-02' && body.p_price === 10000 && body.p_payout === 8200, 'Incorrect sale payload');
           return mode === 'rpcFailure' ? json({ message:'do-not-echo' },500) : json({ status:'applied', reason:'ok' });
         }
+        if (url.includes('/rpc/apply_amazon_refund')) {
+          const body = JSON.parse(String(init?.body)); refunds++;
+          assert(body.p_sku === 'sample-sku' && body.p_transaction === 'test-transaction' && body.p_actor === 'test-admin', 'Incorrect refund payload');
+          return json({ status: 'applied', reason: 'ok' });
+        }
         throw new Error(`Unexpected request: ${url}`);
       }) as typeof fetch;
       const response = await handler(new Request('https://test/function', { method:'POST', headers:{ Authorization:'Bearer fake-session' }, body: JSON.stringify({ action:'reconcile', transactionId:'test-transaction', ...range }) }));
       const expected = mode === 'orders403' ? 502 : mode === 'rpcFailure' ? 503 : mode === 'unknownTransaction' ? 404 : 200;
       assert(response.status === expected, `Wrong status ${response.status}`);
       assert(applied === (mode === 'apply' || mode === 'rpcFailure' ? 1 : 0), 'Unexpected item write');
-      if (mode === 'refund') assert(orders === 0, 'Refund unnecessarily fetched order');
+      if (mode === 'refund') assert(orders === 0 && refunds === 1, 'Refund must use its existing dedicated RPC without fetching order');
       assert(!/fake-secret|fake-token|fake-session|do-not-echo/.test(await response.text()), 'Sensitive response');
     } finally {
       globalThis.fetch=originalFetch;

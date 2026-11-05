@@ -32,36 +32,47 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
       const before = Date.now() - 180000;
       if (!Number.isFinite(after) || before <= after) throw new Error('更新対象期間を取得できませんでした。');
       let processed = 0;
-      for (let cursor = after; cursor < before; cursor += 179 * 86400000) {
-        const range: Range = {
-          postedAfter: new Date(cursor).toISOString(),
-          postedBefore: new Date(Math.min(cursor + 179 * 86400000, before)).toISOString(),
-        };
-        let nextToken: string | undefined;
-        const seen = new Set<string>();
-        do {
-          const page = await invoke({ action: 'sync', ...range, ...(nextToken ? { nextToken } : {}) });
-          saved += page.saved;
-          setNotice(`Amazon情報を更新しています… ${saved}件取得済み（${day(new Date(cursor))}から）`);
-          nextToken = page.nextToken;
-          if (nextToken && seen.has(nextToken)) throw new Error('Amazonのページ情報が重複しました。もう一度実行してください。');
-          if (nextToken) { seen.add(nextToken); await new Promise(resolve => setTimeout(resolve, 2100)); }
-        } while (nextToken);
+      const configuration = await invoke({ action: 'accounts' });
+      const accounts = (configuration.accounts as { id: string; label: string; hasConfiguration: boolean }[]).filter(account => account.hasConfiguration);
+      if (!accounts.length) throw new Error('Amazonアカウントが未設定です。Supabase Secretsへ登録してください。');
+      const failures: string[] = [];
+      for (const account of accounts) {
+        try {
+          for (let cursor = after; cursor < before; cursor += 179 * 86400000) {
+            const range: Range = {
+              postedAfter: new Date(cursor).toISOString(),
+              postedBefore: new Date(Math.min(cursor + 179 * 86400000, before)).toISOString(),
+            };
+            let nextToken: string | undefined;
+            const seen = new Set<string>();
+            do {
+              const page = await invoke({ action: 'sync', accountId: account.id, ...range, ...(nextToken ? { nextToken } : {}) });
+              saved += page.saved;
+              setNotice(`${account.label}を更新しています… ${saved}件取得済み（${day(new Date(cursor))}から）`);
+              nextToken = page.nextToken;
+              if (nextToken && seen.has(nextToken)) throw new Error('Amazonのページ情報が重複しました。もう一度実行してください。');
+              if (nextToken) { seen.add(nextToken); await new Promise(resolve => setTimeout(resolve, 2100)); }
+            } while (nextToken);
 
-        let offset = 0, more = true;
-        while (more) {
-          const history = await invoke({ action: 'history', ...range, offset });
-          more = history.hasMore; offset += 100;
-          for (const row of history.rows as { transaction_id: string }[]) {
-            const match = await invoke({ action: 'reconcile', ...range, transactionId: row.transaction_id });
-            processed++;
-            if (match.results.some((result: { status: string }) => result.status === 'applied')) onApplied();
-            if (processed % 20 === 0) setNotice(`Amazon情報を更新しています… ${saved}件取得・${processed}件照合済み`);
-            await new Promise(resolve => setTimeout(resolve, 2100));
+            let offset = 0, more = true;
+            while (more) {
+              const history = await invoke({ action: 'history', accountId: account.id, ...range, offset });
+              more = history.hasMore; offset += 100;
+              for (const row of history.rows as { transaction_id: string }[]) {
+                const match = await invoke({ action: 'reconcile', accountId: account.id, ...range, transactionId: row.transaction_id });
+                processed++;
+                if (match.results.some((result: { status: string }) => result.status === 'applied')) onApplied();
+                if (processed % 20 === 0) setNotice(`Amazon情報を更新しています… ${saved}件取得・${processed}件照合済み`);
+                await new Promise(resolve => setTimeout(resolve, 2100));
+              }
+            }
           }
+        } catch (e) {
+          failures.push(`${account.label}: ${e instanceof Error ? e.message : '更新に失敗しました。'}`);
         }
       }
-      setNotice(`更新完了（${saved}件取得、${processed}件照合）`);
+      setNotice(`${failures.length ? '更新結果' : '更新完了'}（${saved}件取得、${processed}件照合）`);
+      setError(failures.join(' ／ '));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Amazon情報を更新できませんでした。');
       setNotice('');

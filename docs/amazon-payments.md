@@ -4,6 +4,10 @@
 - Finances API v2024-06-19 `listTransactions`、日本マーケットプレイスを使用。
 - 出品者用 Finance and Accounting（財務会計）ロールと、そのロールを含むアプリ認可が必要。
 - Amazonの認証値はEdge Function Secretsのみで管理する。既存の4項目を使用する。
+- Amazon1は既存の4項目、Amazon2は `AMAZON_2_LWA_CLIENT_ID` / `AMAZON_2_LWA_CLIENT_SECRET` / `AMAZON_2_LWA_REFRESH_TOKEN` / `AMAZON_2_SELLER_ID` を使用する。詳細は `06-amazon-sp-api.md`。
+- 「Amazon情報更新」と日次更新は、設定があるアカウントを順に処理する。一方の失敗で他方を停止せず、失敗したアカウントを表示する。未完成の設定も失敗として知らせ、黙って飛ばさない。
+- 全アクションの `accountId` で対象を固定し、ページ情報・保存履歴・照合はSeller IDのハッシュごとに分離する。省略時はAmazon1。`accounts` は管理者認証後、名前・設定有無のみを返す。秘密値は返さない。
+- 日次の全アカウント処理は、全成功200、一部失敗207、全失敗503とアカウント別結果を返す。`diagnose` は既存の日次認証が必要な読み取り専用の接続診断で、データの反映はしない。
 - `supabase/migrations/20260927063022_amazon_payment_history.sql` を適用し、`amazon-payments` をデプロイする。
 - `verify_jwt=false` は関数内で `Auth.getUser` と `app.is_admin` を検証するため。検証前にAmazonの呼び出しや履歴の読み書きをしない。
 
