@@ -20,6 +20,7 @@ export const STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依�
 
 export const HELD_STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","動作不良"];
 
+
 export const STATUS_COLORS: Record<ItemStatus,string> = {
   '受取前': '#cbd5e1',
   '検品中': '#fbbf24',

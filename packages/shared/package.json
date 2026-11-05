@@ -10,6 +10,7 @@
     "./typography.css": "./src/typography.css",
     "./calendar.css": "./src/calendar.css",
     "./controls.css": "./src/controls.css",
+    "./inventory-status.css": "./src/inventory-status.css",
     "./controlViewport": "./src/controlViewport.ts"
   },
   "scripts": {

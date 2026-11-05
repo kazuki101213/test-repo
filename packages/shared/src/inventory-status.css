@@ -1,0 +1,9 @@
+/* Use the same box color for a product in both inventory apps and at every viewport. */
+:is(.inventory-table tr, .app .task-card):is([data-item-status="受取前"], [data-item-status="検品中"], [data-item-status="商品登録前"]) { --inventory-status-background: #dce7f1; }
+:is(.inventory-table tr, .app .task-card):is([data-item-status="出品中"], [data-item-status="取引中"]) { --inventory-status-background: #dce9d3; }
+:is(.inventory-table tr, .app .task-card)[data-item-status="動作不良"] { --inventory-status-background: #f8dfc8; }
+:is(.inventory-table tr, .app .task-card):is([data-item-status="返品処理"], [data-item-status="Amazon返送依頼"], [data-item-status="Amazon補填申請中"]) { --inventory-status-background: #eadcec; }
+:is(.inventory-table tr, .app .task-card)[data-item-status="販売済"] { --inventory-status-background: #e6e4df; }
+
+.inventory-table tr[data-item-status] > td,
+.app .task-card[data-item-status] { background-color: var(--inventory-status-background); }
