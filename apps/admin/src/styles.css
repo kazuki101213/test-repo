@@ -1,6 +1,7 @@
 @import "@bussan/shared/typography.css";
 @import "@bussan/shared/controls.css";
 @import "@bussan/shared/calendar.css";
+@import "@bussan/shared/inventory-status.css";
 
 :root {
   --bg: #f3efe5;
@@ -307,13 +308,6 @@ input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid v
 .photo-review-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
 .photo-review-gallery img { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--surface-2); border-radius: 8px; }
 
-.inventory-table tr.inventory-row-amazon-return > td { background-color: #eee5f4; }
-.inventory-table tr.inventory-row-return-processing > td { background-color: #e4eef9; }
-.inventory-table tr.inventory-row-working-overdue > td { background-color: #fff6d9; }
-.inventory-table tr.inventory-row-listed > td { background-color: #e8f2e3; }
-.inventory-table tr.inventory-row-listed-15 > td { background-color: #fbe9d9; }
-.inventory-table tr.inventory-row-listed-30 > td { background-color: #f5dfdd; }
-.inventory-table tr.inventory-row-sold > td { background-color: #e8e8e8; }
 
 .product-history-panel { width: min(860px, 100vw); max-height: calc(100dvh - 32px); overflow: auto; margin: auto; }
 @media (max-width: 700px) { .product-history-panel { width: 100vw; max-height: 100dvh; margin: 0; } }

@@ -1,5 +1,5 @@
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
-import { staffDisplayName, productModelText, deliveryStaffOptions, HELD_STATUSES, noticeProductUrl } from '@bussan/shared';
+import { staffDisplayName, productModelText, deliveryStaffOptions, inventoryStatusTone, noticeProductUrl } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
@@ -29,32 +29,6 @@ function inventoryError(cause: unknown): string {
     if (parts.length) return parts.join(' ');
   }
   return '保存できませんでした。';
-}
-
-function elapsedJstDays(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const date = value.slice(0, 10);
-  const start = Date.parse(`${date}T00:00:00+09:00`);
-  if (!Number.isFinite(start)) return null;
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo' }).format(new Date());
-  return Math.floor((Date.parse(`${today}T00:00:00+09:00`) - start) / 86400000);
-}
-
-function inventoryRowTone(item: InventoryItem): string {
-  if (item.status === '販売済') return 'inventory-row-sold';
-  if (item.status === '返品処理') return 'inventory-row-return-processing';
-  if (HELD_STATUSES.includes(item.status)) {
-    const days = elapsedJstDays(item.purchased_at);
-    return days !== null && days >= 7 ? 'inventory-row-working-overdue' : '';
-  }
-  if (item.status === '出品中') {
-    const days = elapsedJstDays(item.purchased_at);
-    if (days === null || days < 0) return '';
-    if (days >= 30) return 'inventory-row-listed-30';
-    if (days >= 15) return 'inventory-row-listed-15';
-    return 'inventory-row-listed';
-  }
-  return '';
 }
 
 export default function Inventory({ me }: { me: Staff }) {
@@ -245,14 +219,13 @@ export default function Inventory({ me }: { me: Staff }) {
                 const edit = (field: InventoryField) => setEditFor({ item: ['sold_on','sold_price','payout_amount','sales_channel'].includes(field) ? sharedSaleItem : i, field });
                 const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
                 const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
-                const rowTone = inventoryRowTone(i);
                 const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
 
                 const soldDays = saleDays(i);
                 const modelOrAccessoryName = i.is_accessory ? i.title : productModelText(i);
                 const modelOrAccessoryField: InventoryField = i.is_accessory || (!i.model_no && i.marketplace !== '動作品Amazon返品') ? 'title' : 'model_no';
                 return (
-                <tr key={i.id} className={rowTone} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
+                <tr key={i.id} data-inventory-tone={inventoryStatusTone(i.status)} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
                   <td><button type="button" className="inventory-photo" onClick={() => { setPurchaseOpen(false); setFullEditFor(sharedSaleItem); }} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>
                     {i.amazon_image_url ? <img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /> : <span className="inventory-photo-empty">—</span>}
                   </button></td>

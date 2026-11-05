@@ -1,6 +1,7 @@
 @import "@bussan/shared/typography.css";
 @import "@bussan/shared/controls.css";
 @import "@bussan/shared/calendar.css";
+@import "@bussan/shared/inventory-status.css";
 
 :root {
   --bg: #f3efe5;

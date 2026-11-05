@@ -1,0 +1,9 @@
+/* Use the same box color for a product in both inventory apps and at every viewport. */
+:is(.inventory-table tr, .app .task-card)[data-inventory-tone="work"] { --inventory-status-background: #dce7f1; }
+:is(.inventory-table tr, .app .task-card)[data-inventory-tone="selling"] { --inventory-status-background: #dce9d3; }
+:is(.inventory-table tr, .app .task-card)[data-inventory-tone="malfunction"] { --inventory-status-background: #f8dfc8; }
+:is(.inventory-table tr, .app .task-card)[data-inventory-tone="return"] { --inventory-status-background: #eadcec; }
+:is(.inventory-table tr, .app .task-card)[data-inventory-tone="sold"] { --inventory-status-background: #e6e4df; }
+
+.inventory-table tr[data-inventory-tone] > td,
+.app .task-card[data-inventory-tone] { background-color: var(--inventory-status-background); }

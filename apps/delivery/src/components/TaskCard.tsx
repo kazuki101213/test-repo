@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, type SyntheticEvent, type KeyboardEvent } from 'react';
-import { jpDate, canViewDeliveryAssignee, productModelText } from '@bussan/shared';
+import { jpDate, canViewDeliveryAssignee, productModelText, inventoryStatusTone } from '@bussan/shared';
 import type { DeliveryTask, Staff, ProductPanel } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
 import WorkflowControls from './WorkflowControls';
@@ -79,7 +79,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   ].filter(Boolean)));
 
   return (
-    <div id={`delivery-task-${task.id}`} className="card task-card" data-expanded={!!expandedId} data-item-status={task.status}>
+    <div id={`delivery-task-${task.id}`} className="card task-card" data-expanded={!!expandedId} data-item-status={task.status} data-inventory-tone={inventoryStatusTone(task.status)}>
       {members.some(member => unreadItemIds.has(member.id)) && <span className="photo-approval-mark" role="img" aria-label="未確認のメッセージまたは写真承認があります" />}
       <input type="checkbox" aria-label={`${task.sku}を出力対象に選択`} checked={selected} disabled={disabled || readOnly} onChange={onSelect} />
       <div className="task-content">
