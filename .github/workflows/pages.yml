@@ -72,6 +72,9 @@ jobs:
           printf '<!doctype html><html lang="ja"><meta charset="utf-8"><title>管理・納品アプリ</title><a href="./admin/">管理アプリ</a><br><a href="./delivery/">納品アプリ</a></html>' > _site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: _site
       - uses: actions/deploy-pages@v4
         id: deploy
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
