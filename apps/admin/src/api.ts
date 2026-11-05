@@ -622,6 +622,19 @@ export type ProductDetailsInput = {
   list_price: string; payout_estimate: string; target_cost: string; has_sold_before: string;
 };
 
+export async function updateProductShippingSettings(product: Product, input: { shipping_category: string; shipping_size: string }): Promise<void> {
+  if (input.shipping_category && !['モ', 'ブ', '小'].includes(input.shipping_category)) throw new Error('サイズ区分を選択してください。');
+  const sizes = ['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'];
+  if (input.shipping_size && !sizes.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+  const next = { shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null };
+  let query = getSupabase().from('products').update(next).eq('id', product.id);
+  query = product.shipping_category === null ? query.is('shipping_category', null) : query.eq('shipping_category', product.shipping_category);
+  query = product.shipping_size === null ? query.is('shipping_size', null) : query.eq('shipping_size', product.shipping_size);
+  const { data, error } = await query.select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('商品リストのサイズ設定が更新されたため、編集を中止しました。再読み込みしてください。');
+}
+
 export async function updateProductDetails(product: Product, input: ProductDetailsInput): Promise<void> {
   const asin = input.asin.trim().toUpperCase();
   if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは英数字10文字で入力してください。');
