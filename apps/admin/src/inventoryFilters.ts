@@ -30,7 +30,7 @@ export const inventoryColumns: Record<string, InventoryColumn> = {
   shipped_on: { label: '出荷日', kind: 'date', value: i => i.shipped_on },
   planned_price: { label: '販売予定金額', kind: 'number', value: i => i.planned_price },
   planned_payout: { label: '振込予定金額', kind: 'number', value: i => i.planned_payout },
-  expected_profit: { label: '見込利益額', kind: 'number', value: i => i.expected_profit },
+  expected_profit: { label: '予定利益額', kind: 'number', value: i => i.expected_profit },
   expected_rate: { label: '予定利益率', kind: 'number', value: i => i.planned_price && i.expected_profit !== null ? Number((i.expected_profit / i.planned_price * 100).toFixed(1)) : null },
   sold_on: { label: '販売日', kind: 'date', value: i => i.product_sale_conflict ? i.sold_on : i.product_sold_on },
   sold_days: { label: '販売日数', kind: 'number', value: saleDays },
