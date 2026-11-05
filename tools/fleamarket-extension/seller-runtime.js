@@ -359,7 +359,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
   try{await rpc('extension_finish_listing_result_check',{p_id:job.id,p_result:result});}catch(error){await rpc('extension_finish_listing_result_check',{p_id:job.id,p_result:{note:error.message}});}return;
  }
  if(!await rpc('extension_claim_seller_operation',{p_id:job.id,p_account_id:account.id}))return;
- let session,status='failed',result={},mutating=false,phase='prepare',confirmationTrace=[];
+ let session,status='failed',result={},mutating=false,phase='prepare',confirmationTrace=[],verifyMercariAfterCode=false;
  try{session=await openSession(account);
   if(job.kind==='listing'){
    const links=await session.links(),listing=links.find(link=>/^(出品|出品する|出品フォーム)$/.test(link.text));if(!listing)throw Error('出品フォームへのリンクを確認できません');await session.go(listing.url);
@@ -391,7 +391,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
     if(view.trade_tab_url){await session.go(sellerUrl(account,view.trade_tab_url));view=await session.operation(job,phase);}
     if(view.ready!==true)throw Error('ヤフオクの配送コード発行画面を確認できません');
    }
-   if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');if(preflight.needsEditor&&job.payload?.read_only_code_recovery!==true){mutating=true;await session.prepareShipping(job);}const verified=preflight.needsEditor&&job.payload?.read_only_code_recovery!==true?await session.operation(job,'shipping_preflight'):preflight;if(verified.methodMatches!==true)throw Error('サイトの配送方法がアプリ設定と一致しません');if(verified.sizeMatches!==true)throw Error('サイトの配送サイズがアプリ設定と一致しません。既存の配送コードも使用しません');if(verified.configuredDropoff!==job.payload?.dropoff)throw Error('サイトの発送場所がアプリ設定と一致しません');shippingPrepared=true;}
+   if(job.kind==='shipping_code'&&account.site==='mercari'&&session.prepareShipping){const preflight=await session.operation(job,'shipping_preflight');const edited=preflight.needsEditor&&job.payload?.read_only_code_recovery!==true;if(edited){mutating=true;await session.prepareShipping(job);}const verified=edited?await session.operation(job,'shipping_preflight'):preflight;if(verified.methodMatches!==true)throw Error('サイトの配送方法がアプリ設定と一致しません');if(verified.configuredDropoff!==job.payload?.dropoff)throw Error('サイトの発送場所がアプリ設定と一致しません');if(verified.sizeMatches!==true){if(edited&&verified.configuredSize==null&&verified.readyForCode===true)verifyMercariAfterCode=true;else throw Error('サイトの配送サイズがアプリ設定と一致しません。既存の配送コードも使用しません');}shippingPrepared=true;}
    let notice;
    if(job.kind==='ship_notice'){phase='ship_notice_preflight';notice=await session.operation(job,phase);}
    if(job.kind==='shipping_code'&&job.payload?.read_only_code_recovery===true){phase='read_shipping_code';result=await session.operation(job,phase,{waitForShippingCode:true});if(typeof result.qr_code!=='string'||!result.qr_code)throw Error('既存の配送コードを確認できません。発行操作はしていません');result={...result,recovered_read_only:true};}
@@ -402,6 +402,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
      if(job.kind==='shipping_code'&&result.code_requested){await session.loaded();if(account.site==='auctions'){phase='confirm_shipping_code';result=await session.operation(job,phase);}if(!result.qr_code){phase='read_shipping_code';result=await session.operation(job,phase,{waitForShippingCode:true});}}
    }
   }
+  if(verifyMercariAfterCode){const confirmed=await session.operation(job,'shipping_preflight');if(confirmed.sizeMatches!==true||confirmed.methodMatches!==true||confirmed.configuredDropoff!==job.payload?.dropoff)throw Error('発行後の配送サイズと発送場所を確認できません。コードは使用しません');}
   status='succeeded';
  }catch(error){status=error.existingListing||mutating&&!error.stoppedBeforePublish||job.kind==='shipping_code'&&job.payload?.read_only_code_recovery===true?'uncertain':'failed';result={note:error.message,phase,...(confirmationTrace.length?{confirmation_trace:confirmationTrace}:{}),...(error.stoppedBeforePublish?{stopped_before_publish:true,confirmation_evidence:error.confirmationEvidence}:{}),...(error.shippingEvidence?{shipping_evidence:error.shippingEvidence}:{})};
   if(job.kind==='listing'&&phase==='listing_choices'&&session?.listingChoiceEvidence){try{result.choice_evidence=await session.listingChoiceEvidence();}catch{}}
