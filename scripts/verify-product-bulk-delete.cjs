@@ -16,7 +16,7 @@ const remove=()=>all(tree).find(n=>n.type==='button'&&text(n)==='削除');
 (async()=>{
  await settle();assert(remove().props.disabled);assert.equal(checks().length,3);
  const toolbar=all(tree).find(n=>n.props?.className==='toolbar product-search-toolbar');assert.equal(all(toolbar).filter(n=>n.type==='button').map(text).join(','),'CSV,削除');
- const headers=all(tree).filter(n=>n.type==='thead')[0];assert.equal(all(headers).filter(n=>n.type==='th').at(-2).props.children,'実績');assert.equal(all(headers).filter(n=>n.type==='th').at(-1).props['aria-label'],'選択');
+  const headers=all(tree).filter(n=>n.type==='thead')[0];const labels=all(headers).filter(n=>n.type==='th');assert.equal(labels.at(-3).props.children,'実績');assert.equal(labels.at(-2).props.children,'サイズ');assert.equal(labels.at(-1).props['aria-label'],'選択');
  checks()[0].props.onChange({target:{checked:true}});checks()[1].props.onChange({target:{checked:true}});await settle();assert(!remove().props.disabled);
  remove().props.onClick();await settle();assert.equal(calls.length,0);assert(request.label.includes('2件'));assert(request.label.includes('MODEL1'));assert(request.label.includes('MODEL2'));assert(!request.label.includes('MODEL3'));
  request=null;dirty=true;await settle();assert.equal(calls.length,0,'Cancel has no writes');
