@@ -4,6 +4,7 @@ import type {SellerDraft} from '@bussan/shared';
 import {fetchPhotoUrls} from '../api';
 import type {ItemPhoto} from '../api';
 import {linePhotoOrder} from '../linePhotoOrder';
+import {deliveryErrorMessage} from '../errors';
 type Context={overviewPhotoId:string|null;modelPhotoId:string|null;photoOrder?:string[];shipping:Record<string,string>;state:string|null;message:string;enabled:boolean};
 export default function LineShippingSettings({itemId,draft,overviewId,listing=false}:{itemId:string;draft:SellerDraft;overviewId?:string;listing?:boolean}){
  const [context,setContext]=useState<Context|null>(null),[photos,setPhotos]=useState<ItemPhoto[]|null>(null),[overview,setOverview]=useState(''),[model,setModel]=useState(''),[open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -17,12 +18,15 @@ export default function LineShippingSettings({itemId,draft,overviewId,listing=fa
   const {error}=await getSupabase().rpc('save_line_shipping_preferences',{p_item_id:itemId,p_overview:overview||null,p_model:model||null,p_shipping:shipping});if(error)throw error;
   const result=await getSupabase().rpc('line_shipping_context',{p_item_id:itemId});if(result.error)throw result.error;
   if(active.current){setContext(result.data as Context);setOpen(false);}
- }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'LINE発送設定を保存できませんでした');}finally{lock.current=false;if(active.current)setBusy(false);}}
+ }catch(cause){if(active.current)setError(deliveryErrorMessage(cause));}finally{lock.current=false;if(active.current)setBusy(false);}}
  async function resend(){if(lock.current)return;lock.current=true;setBusy(true);setError('');setNotice('');try{
   const {data,error}=await getSupabase().rpc('request_delivery_line_resend',{p_item_id:itemId});if(error)throw error;
-  const result=await getSupabase().rpc('line_shipping_context',{p_item_id:itemId});if(result.error)throw result.error;
-  if(active.current){setContext(result.data as Context);setNotice(data?.codeRequired?'配送コードを含むLINE再送を受け付けました':'全体写真と型番写真のLINE再送を受け付けました');}
- }catch(cause){if(active.current)setError(cause instanceof Error?cause.message:'LINE再送を受け付けられませんでした');}finally{lock.current=false;if(active.current)setBusy(false);}}
+  if(active.current){setContext(current=>current?{...current,state:'pending'}:current);setNotice(data?.codeRequired?'配送コードを含むLINE再送を受け付けました':'全体写真と型番写真のLINE再送を受け付けました');}
+  try{
+   const result=await getSupabase().rpc('line_shipping_context',{p_item_id:itemId});if(result.error)throw result.error;
+   if(active.current)setContext(result.data as Context);
+  }catch(cause){if(active.current)setError('再送は受け付けました。表示の更新に失敗しました。'+deliveryErrorMessage(cause));}
+ }catch(cause){if(active.current)setError(deliveryErrorMessage(cause));}finally{lock.current=false;if(active.current)setBusy(false);}}
  return <section className="line-shipping-settings" aria-label="LINE発送依頼の設定">
   <div className="row"><span>LINE発送依頼</span><button type="button" className="btn ghost" disabled={busy||!context} onClick={()=>void edit()}>通知写真を設定</button>{!listing&&<button type="button" className="btn ghost" disabled={busy} onClick={()=>void save()}>配送設定を保存</button>}</div>
   {context?.state==='sent'&&<><p role="status">LINEへ送信済み</p><button type="button" className="btn ghost" disabled={busy} onClick={()=>void resend()}>LINEを再送</button></>}{notice&&<p role="status">{notice}</p>}{error&&<p className="error" role="alert">{error}</p>}
