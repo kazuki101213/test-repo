@@ -20,24 +20,6 @@ export const STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依�
 
 export const HELD_STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","動作不良"];
 
-export type InventoryStatusTone = 'work' | 'selling' | 'malfunction' | 'return' | 'sold';
-
-const INVENTORY_STATUS_TONES: Record<ItemStatus, InventoryStatusTone> = {
-  '受取前': 'work',
-  '検品中': 'work',
-  '商品登録前': 'work',
-  '出品中': 'selling',
-  '取引中': 'selling',
-  '動作不良': 'malfunction',
-  '返品処理': 'return',
-  'Amazon返送依頼': 'return',
-  'Amazon補填申請中': 'return',
-  '販売済': 'sold',
-};
-
-export function inventoryStatusTone(status: ItemStatus): InventoryStatusTone {
-  return INVENTORY_STATUS_TONES[status];
-}
 
 export const STATUS_COLORS: Record<ItemStatus,string> = {
   '受取前': '#cbd5e1',

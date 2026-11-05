@@ -1,5 +1,5 @@
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
-import { staffDisplayName, productModelText, deliveryStaffOptions, inventoryStatusTone, noticeProductUrl } from '@bussan/shared';
+import { staffDisplayName, productModelText, deliveryStaffOptions, noticeProductUrl } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
@@ -225,7 +225,7 @@ export default function Inventory({ me }: { me: Staff }) {
                 const modelOrAccessoryName = i.is_accessory ? i.title : productModelText(i);
                 const modelOrAccessoryField: InventoryField = i.is_accessory || (!i.model_no && i.marketplace !== '動作品Amazon返品') ? 'title' : 'model_no';
                 return (
-                <tr key={i.id} data-inventory-tone={inventoryStatusTone(i.status)} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
+                <tr key={i.id} data-item-status={i.status} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
                   <td><button type="button" className="inventory-photo" onClick={() => { setPurchaseOpen(false); setFullEditFor(sharedSaleItem); }} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>
                     {i.amazon_image_url ? <img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /> : <span className="inventory-photo-empty">—</span>}
                   </button></td>
