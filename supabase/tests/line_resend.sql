@@ -43,6 +43,7 @@ do $$begin
 end $$;
 update app.delivery_line_outbox set state='sent',sent_at=now() where id=(select id from resend_key_probe);
 set local role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111',true);
 do $$declare r jsonb;begin
  r:=app.request_delivery_line_resend((select id from resend_probe));
  if r->>'queued'<>'true' then raise exception 'Second deliberate resend was rejected';end if;
