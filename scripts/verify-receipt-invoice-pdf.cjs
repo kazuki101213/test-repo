@@ -33,15 +33,20 @@ for(const review_edited of [false,true]){
  const ordered=context.exports.default({snapshot,month:'2026-10',issued:'2026-11-02',extras,note:'',receipts});
  const descriptions=all(ordered).filter(n=>n.props?.className==='invoice-lines').flatMap(table=>all(table).filter(n=>n.type==='tbody').flatMap(body=>all(body).filter(n=>n.type==='tr').map(row=>text(row.props.children[1]))));
  assert.deepEqual(descriptions,[review_edited?'小物':'納品外注費(9001)','領収書の費用（税込）','追加費用']);
- assert(text(ordered).includes('¥1,705'),'Receipt reimbursement remains tax-inclusive; additional fees retain the original tax calculation');
+ assert(text(ordered).includes('作業費：¥1,000'));assert(text(ordered).includes('手当：¥250'));assert(text(ordered).includes('¥1,705'),'Receipt reimbursement remains tax-inclusive; additional fees retain the original tax calculation');
  assert.equal(JSON.stringify({snapshot,extras,receipts}),original,'Changing the printed order must not alter saved invoice data');
 }
 const rows=Array.from({length:5},(_,i)=>receipt(String(i),1100));rows.push(receipt('pdf',2200,'receipt'));
 const sheet=context.exports.default({snapshot:{profile:{},lines:[{date:'2026-10-01',description:'ブルーレイレコーダー',quantity:1,unit_price:1000}],tax_percent:10},month:'2026-10',issued:'2026-10-14',extras:[],note:'',receipts:rows});
-assert(text(sheet).includes('¥8,800'));assert(text(sheet).includes('消費税：¥100'));assert(text(sheet).includes('立替経費（税込）：¥7,700'));
+assert(text(sheet).includes('作業費：¥1,000'));assert(text(sheet).includes('手当：¥0'));assert(text(sheet).includes('¥8,800'));assert(text(sheet).includes('消費税：¥100'));assert(text(sheet).includes('立替経費（税込）：¥7,700'));
 assert.equal(all(sheet).find(n=>n.type==='tfoot').props.children.props.children[1].props.children,1,'Receipt rows must not add delivery quantity');
 const photos={exports:{},require:name=>name==='react/jsx-runtime'?{jsx,jsxs:jsx}:{} };vm.runInNewContext(compile('apps/delivery/src/components/ReceiptSheets.tsx'),photos);
 const tree=photos.exports.default({rows,month:'2026-10',name:'Test'});const pages=all(tree).filter(n=>n.props?.className==='receipt-photo-sheet');assert.equal(pages.length,2);assert.equal(all(pages[0]).filter(n=>n.type==='img').length,4);assert.equal(all(pages[1]).filter(n=>n.type==='img').length,1);assert.equal(all(tree).filter(n=>n.type==='img').length,5,'PDFs must not become images');
+const captionRows=[{...receipt('caption',1848),spent_on:'2026-10-15',description:'巻きダンボール'},receipt('zero',0),receipt('unset',null)];
+const captionSheet=photos.exports.default({rows:captionRows,month:'2026-10',name:'Test',part:'photos'});
+const captions=all(captionSheet).filter(n=>n.type==='figcaption').map(text);
+assert.equal(captions[0],'No.1 2026-10-15 巻きダンボール ¥1,848');
+assert(captions[1].endsWith('¥0'));assert(captions[2].endsWith('金額未登録'));
 
 const profileFields={issuer_name:'氏名保持',postal:'100-0000',address:'住所保持',phone:'000-0000-0000',email:'sample@example.com',recipient:'請求先保持',bank:'銀行名保持',branch:'支店名保持',bank_code:'0000',branch_code:'001',account_type:'普通',account_number:'1234567',holder:'口座名義保持',holder_kana:'メイギカナ'};
 const manyExtras=Array.from({length:45},(_,i)=>({date:'2026-10-01',description:'明細保持'+i,quantity:1,unit_price:1000}));

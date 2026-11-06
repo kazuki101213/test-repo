@@ -14,6 +14,6 @@ export default function ReceiptSheets({ rows, month, name, part = 'all' }: { row
       <table><thead><tr><th>No.</th><th>日付</th><th>内容</th><th>金額（円）</th></tr></thead><tbody>{page.map(row => <tr key={row.id}><td>{rows.findIndex(record => record.id === row.id) + 1}</td><td>{row.spent_on}</td><td>{row.description || row.original_name}{row.payee && <>　{row.payee}</>}</td><td>{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td></tr>)}</tbody></table>
       {pageIndex === pages.length - 1 && <p className="receipt-summary-total">合計（税込）　¥{rows.reduce((sum, row) => sum + (row.amount ?? 0), 0).toLocaleString('ja-JP')}</p>}
     </article>)}
-    {part !== 'summary' && photos.map((page, pageIndex) => <article className="receipt-photo-sheet" key={`photos-${pageIndex}`}>{page.map(row => <figure key={row.id}><figcaption>No.{rows.findIndex(record => record.id === row.id) + 1}　{row.spent_on}　{row.description || row.original_name}</figcaption><img src={row.url} alt={row.description || row.original_name} /></figure>)}</article>)}
+    {part !== 'summary' && photos.map((page, pageIndex) => <article className="receipt-photo-sheet" key={`photos-${pageIndex}`}>{page.map(row => <figure key={row.id}><figcaption>No.{rows.findIndex(record => record.id === row.id) + 1} {row.spent_on} {row.description || row.original_name} {row.amount == null ? '金額未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</figcaption><img src={row.url} alt={row.description || row.original_name} /></figure>)}</article>)}
   </div>;
 }
