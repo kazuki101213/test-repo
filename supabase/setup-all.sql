@@ -16894,7 +16894,7 @@ begin
 end $patch$;
 
 
--- ▼▼▼ 20261106235028_line_shipping_photo_fallback.sql ▼▼▼
+-- ▼▼▼ 20261106235708_line_shipping_photo_fallback.sql ▼▼▼
 
 -- Photo selection is optional for automatic shipping requests. Keep the
 -- current-trade code requirement for catalog products with a configured size.
