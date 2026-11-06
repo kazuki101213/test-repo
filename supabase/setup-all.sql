@@ -16837,8 +16837,8 @@ begin
  execute patched;
 end $migration$;
 
--- CREATE OR REPLACE preserves each view's existing security_invoker/barrier
--- options and grants; output channel values retain their account suffix.
+-- Reapply each view's existing security options explicitly. Output channel
+-- values and grants retain their existing meaning and account suffix.
 do $migration$
 declare v text; source text; patched text;
 begin
@@ -16849,7 +16849,8 @@ begin
   patched:=replace(patched,'i.sales_channel = ANY','app.sales_channel_family(i.sales_channel) = ANY');
   patched:=replace(patched,'CASE i.sales_channel','CASE app.sales_channel_family(i.sales_channel)');
   if source=patched then raise exception 'Amazon channel predicate not found in view %',v; end if;
-  execute format('create or replace view app.%I as %s',v,patched);
+  execute format('create or replace view app.%I with (security_invoker=true%s) as %s',
+    v,case when v='v_deliverer_workload' then ',security_barrier=true' else '' end,patched);
  end loop;
 end $migration$;
 notify pgrst,'reload schema';

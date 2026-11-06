@@ -8,6 +8,7 @@ const react={useState(initial){const i=cursor++;states[i]??={value:initial};retu
 const task={id:'item',sku:'sample',status:'取引中',sales_channel:'メルカリ'},draft={size:'100',dropoff:'セブンイレブン',shippingMethod:'らくらくメルカリ便',category:'小物'},context={revision:'now',listing:{trade_key:'current'},operations:[]};
 const api={fetchTask:async()=>task,fetchSellerContext:async()=>context,queueSellerOperation:async(id,kind,payload)=>{calls.push({id,kind,payload});}};
 const shared={...shipping,sellerDefaults:()=>draft,sellerShippingDraft:v=>v,canViewDeliveryAssignee:()=>true};
+const channelPredicates={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/salesChannels.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,channelPredicates);Object.assign(shared,channelPredicates.exports);
 const c={exports:{},crypto,window:{setInterval(){return 1;},clearInterval(){}},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:{}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/delivery/src/components/SellerPanel.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);
 async function render(){for(let i=0;i<8;i++){cursor=0;tree=c.exports.default({mode:'shipping',task,staff:{id:'staff',role:'deliverer'},onClose(){},onChanged(){}});effects.splice(0).forEach(fn=>fn());await Promise.resolve();}}
