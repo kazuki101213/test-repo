@@ -12,7 +12,7 @@ declare i record; family app.sales_channel; expected text;
 begin
  for i in select id,lot_seq,sales_channel,status from app.items where lot_seq between 997801 and 997804 order by lot_seq loop
   family:=app.sales_channel_family(i.sales_channel);
-  if family::text is distinct from case when i.lot_seq<=997802 then 'FBA' else '自己発送' end then raise exception 'Wrong fulfillment family'; end if;
+  if family::text is distinct from (case when i.lot_seq<=997802 then 'FBA' else '自己発送' end) then raise exception 'Wrong fulfillment family'; end if;
   expected:=case when i.lot_seq in (997801,997803) then '0488eda5964421b790fc7dade17b3cbdeea0ced17af746e1f58da2e8199929fb'
    else 'aa469f79b88e99c9cce7a392cd506259919bc673e727044662747cca96304957' end;
   if app.amazon_channel_account_key(i.sales_channel) is distinct from expected then raise exception 'Wrong seller mapping'; end if;
