@@ -466,6 +466,15 @@ test('配送修正の入れ子ダイアログは最内側だけ確認し、空�
  const q=await page('<button>無関係な操作</button>','https://jp.mercari.com/transaction/m24285629702');const result=await q.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'});assert.equal(result.shippingEvidence.editor.dialogCount,0);assert.deepEqual(result.shippingEvidence.editor.buttons,['無関係な操作']);await q.close();
 });
 
+test('roleのない配送修正確認もキャンセルとの組で特定し、背後の修正ボタンを再度押さない',async()=>{
+ const p=await page('<main><h1>取引画面</h1><p>らくらくメルカリ便</p><button onclick="document.body.dataset.reopened=1">商品サイズや発送方法を修正する</button><textarea>取引メッセージ</textarea><button onclick="document.body.dataset.shipped=1">商品を発送したので、発送通知をする</button></main><div><p>発送方法を変更しますか？</p><div><button>キャンセル</button><button onclick="location.href=\'/transaction/m24285629702/shipping_class\'">変更する</button></div></div>','https://jp.mercari.com/transaction/m24285629702');
+ const r=await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'らくらくメルカリ便'});assert.equal(r.__error,undefined);await p.waitForURL('https://jp.mercari.com/transaction/m24285629702/shipping_class');assert.equal(await p.evaluate(()=>document.body.dataset.reopened),undefined);assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+});
+
+test('roleのない発送通知確認を配送修正確認として送信しない',async()=>{
+ const p=await page('<h1>取引画面</h1><div><p>商品の発送通知を送信しますか</p><button>キャンセル</button><button onclick="document.body.dataset.shipped=1">変更する</button></div>','https://jp.mercari.com/transaction/m24285629702');const r=await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'らくらくメルカリ便'});assert(r.__error);assert.equal(await p.evaluate(()=>document.body.dataset.shipped),undefined);await p.close();
+});
+
 test('2389の実画面はスタンプ案内を除外し発送方法変更の確認だけを進める',async()=>{
  const p=await page('<div role="dialog">スタンプが追加されました <button onclick="document.body.dataset.stamp=1">閉じる</button> ワンタップでかんたんに挨拶や返信ができるようになりました</div><div role="dialog">発送方法を変更しますか？ <button>キャンセル</button> <button onclick="location.href=\'/transaction/m24285629702/shipping_class\'">変更する</button></div>','https://jp.mercari.com/transaction/m24285629702');
  assert.equal((await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'})).__error,undefined);await p.waitForURL('https://jp.mercari.com/transaction/m24285629702/shipping_class');assert.equal(await p.evaluate(()=>document.body.dataset.stamp),undefined);await p.close();
