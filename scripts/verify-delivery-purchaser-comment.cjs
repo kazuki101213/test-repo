@@ -3,6 +3,7 @@ const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOpt
 const names={exports:{}},presentation={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNames.ts'),names);vm.runInNewContext(compile('packages/shared/src/inventoryPresentation.ts'),presentation);
 const jsx=(type,props)=>({type,props}),shared={...names.exports,...presentation.exports,jpDate:v=>v||'—',productModelText:t=>t.title};
 const notices={exports:{},URL};vm.runInNewContext(compile('packages/shared/src/noticeUrl.ts'),notices);Object.assign(shared,notices.exports);
+const channelLabels={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/salesChannels.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,channelLabels);Object.assign(shared,channelLabels.exports);
 const context={exports:{},window:{location:{search:''}},URL,URLSearchParams,require:id=>id==='react'?{useState:v=>[typeof v==='function'?v():v,()=>{}],lazy:()=> 'seller-panel',Suspense:'suspense'}:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id.endsWith('/WorkflowControls')?{default:'workflow'}:id.endsWith('/TaskDetail')?{default:'detail'}:{}};
 vm.runInNewContext(compile('apps/delivery/src/components/TaskCard.tsx'),context);
 const nodes=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>nodes(x,out));else if(n&&typeof n==='object'){out.push(n);nodes(n.props?.children,out)}return out};const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props.children):String(n);
