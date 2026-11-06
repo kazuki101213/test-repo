@@ -33,7 +33,7 @@ jobs:
           deno-version: v2.5.6
 
       - name: Amazon account isolation and API guards
-        run: deno test --no-config --no-lock --node-modules-dir=none --allow-env supabase/functions/amazon-accounts_test.ts supabase/functions/amazon-fba-inventory/index_test.ts supabase/functions/amazon-payments/index_test.ts supabase/functions/amazon-listing-price/index_test.ts && node scripts/verify-amazon-accounts.cjs && node scripts/verify-inventory-presentation.cjs && node scripts/verify-amazon-channel-listing.cjs
+        run: deno test --no-config --no-lock --node-modules-dir=none --allow-env supabase/functions/amazon-accounts_test.ts supabase/functions/amazon-fba-inventory/index_test.ts supabase/functions/amazon-payments/index_test.ts supabase/functions/amazon-listing-price/index_test.ts supabase/functions/amazon-listing-submit/index_test.ts && node scripts/verify-amazon-accounts.cjs && node scripts/verify-inventory-presentation.cjs && node scripts/verify-amazon-channel-listing.cjs
 
       - name: Accessory receipt parent readiness
         run: node --test scripts/extension-tests/accessory-receipt.test.mjs
