@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel,isFbaChannel} from '@bussan/shared';
+import {sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
 import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,retryUncertainShippingCode,requestListingResultCheck,submitAmazonListing} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
@@ -65,7 +65,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
   {error&&<p className="error" role="alert">{error}</p>}
   {mode==='listing'&&context&&context.photo_review_approved!==true&&<p role="status">管理アプリで商品写真の承認が必要です。</p>}
   {!draft?<p>読み込み中…</p>:mode==='listing'?<>
-   {descriptionSource&&<DescriptionEditor task={descriptionSource.task} listingSkus={listingSkus} onSaved={descriptionSaved} embedded={{value:draft,manufacturer:descriptionSource.maker,disabled,onSaving:setBusy,onChange:updateDescription}}/>}
+   {descriptionSource&&<DescriptionEditor task={descriptionSource.task} listingSkus={listingSkus} onSaved={descriptionSaved} embedded={{value:draft,manufacturer:descriptionSource.maker,disabled,onSaving:setBusy,onChange:updateDescription,actions:amazonListing?<button type="button" className="btn primary" disabled={disabled} onClick={()=>setConfirming('listing_complete')}>出品</button>:undefined}}/>}
    {!amazonListing&&<>
    <div className="seller-form">
     <label className="seller-short">{task.sales_channel==='ヤフオク'?'開始価格':'価格'}<input type="number" min={1} step={1} value={draft.price} disabled={disabled} onChange={event=>change('price',Number(event.target.value))}/></label>
@@ -85,8 +85,6 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <button type="button" className="btn primary" disabled={disabled||!!categoryError||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||task.sales_channel==='ヤフオク'&&(!(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).includes(draft.size)||/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&!draft.weightKg)||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
    </>}
    {!amazonListing&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
-   {amazonListing&&<p>{task.sales_channel==='FBA2'||task.sales_channel==='自己発送2'?'Amazon2':'Amazon1'} ／ {isFbaChannel(task.sales_channel)?'FBA':'自己発送'} ／ 予定販売価格 ¥{task.planned_price?.toLocaleString('ja-JP')??'未登録'}</p>}
-   {amazonListing&&<button type="button" className="btn primary" disabled={disabled} onClick={()=>setConfirming('listing_complete')}>{isFbaChannel(task.sales_channel)?'出品':'出品完了'}</button>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
    <div className="seller-form">{draft.category==='小物'&&<label>配送方法<select value={draft.shippingMethod} disabled={disabled} onChange={event=>change('shippingMethod',event.target.value)}>{(task.sales_channel==='ヤフオク'?['おてがる配送（ヤマト運輸）','おてがる配送（日本郵便）']:['らくらくメルカリ便','ゆうゆうメルカリ便']).map(value=><option key={value}>{value}</option>)}</select></label>}<label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{(draft.category==='小物'?['100','140',...SMALL_PACKAGES.map(value=>value.name)]:sellerShippingSizes(draft.shippingMethod)).map(value=><option key={value}>{value}</option>)}</select></label><label>発送場所<select value={draft.dropoff} disabled={disabled} onChange={event=>change('dropoff',event.target.value)}><option value="">選択</option>{(draft.category==='小物'?['セブンイレブン','ヤマト営業所','ローソン','郵便局']:sellerShippingPlaces(draft.shippingMethod)).map(value=><option key={value}>{value}</option>)}</select></label></div>
    {draft.size&&sellerShippingError(draft)&&<p className="error" role="alert">{sellerShippingError(draft)}</p>}

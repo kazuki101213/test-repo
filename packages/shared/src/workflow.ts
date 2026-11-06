@@ -18,7 +18,7 @@ export function deliveryWorkflowButtons(task:DeliveryTask):WorkflowButton[]{
  case '商品登録前':return [
   {key:'photos',label:'商品写真'},
   ...(canAddPackingPhotos(task)?[{key:'packingPhotos' as const,label:'梱包写真'}]:[]),
-  ...(task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク'?[{key:'listing' as const,label:'出品'}]:/^FBA(?:[12１２])?$/.test(task.sales_channel??'')||/^自己発送(?:[12１２])?$/.test(task.sales_channel??'')?[{key:'listing_complete' as const,label:/^FBA(?:[12１２])?$/.test(task.sales_channel??'')?'出品':'出品完了'}]:[]),
+  ...(task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク'?[{key:'listing' as const,label:'出品'}]:/^FBA(?:[12１２])?$/.test(task.sales_channel??'')||/^自己発送(?:[12１２])?$/.test(task.sales_channel??'')?[{key:'listing_complete' as const,label:'出品'}]:[]),
   ...(task.workflow_decision==='yahoo'?[{key:'yahoo_instruction_cancel' as const,label:'販売不可取消'},...(task.has_malfunction_reply?[{key:'comments' as const,label:'仕入担当者へメッセージ'}]:[])]:!task.workflow_decision?[{key:'inspection_cancel' as const,label:'検品完了取消'}]:[])];
  case '出品中':return [...(canAddPackingPhotos(task)?[{key:'packingPhotos' as const,label:'梱包写真'}]:[]),...(task.seller_message_attention?[{key:'messages' as const,label:'取引メッセージを確認'}]:[]),{key:'listing_cancel',label:'出品中完了取消',note:true,confirmation:'実際に出品されていないことを確認しましたか？ サイトの出品は取り下げません。'}];
  case '取引中':return [...(task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク'?[{key:'shipping' as const,label:'発送'},{key:'messages' as const,label:task.seller_message_attention?'取引メッセージを確認':'取引メッセージ'}]:[]),{key:'trade_cancel',label:'出品中へ',note:true,confirmation:'アプリ内だけを出品中へ戻します。サイトのキャンセル手続きは行いません。'},{key:'resell',label:'商品登録前へ',note:true,confirmation:'購入者からの返品を確認し、商品登録前へ戻します。'}];

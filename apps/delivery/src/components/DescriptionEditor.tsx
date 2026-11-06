@@ -1,6 +1,6 @@
 import ColoredSelect from './ColoredSelect';
 import { useListingKeywords } from '../useListingKeywords';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { productListingName, type DeliveryTask, type SellerDraft } from '@bussan/shared';
 import { fetchProductMaker, saveDeliveryDescription } from '../api';
 import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, withReportedDamage, type DescriptionTarget } from '../description';
@@ -36,7 +36,7 @@ function CopyIconButton({ label, copied, disabled, onClick, className = '' }: {
   </button>;
 }
 
-export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void} }) {
+export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {actions?:ReactNode;value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void} }) {
   const [product, setProduct] = useState(embedded?.value.category??task.description_template ?? (task.work_stream === 'テレビ' ? 'テレビ' : task.work_stream === 'ブルーレイ' ? 'ブルーレイレコーダー' : ''));
   const [target, setTarget] = useState<DescriptionTarget>(() => embedded?(task.sales_channel==='メルカリ'?'mercari':task.sales_channel==='ヤフオク'?'yahoo-auction':'amazon'):initialTarget(task));
   const [condition, setCondition] = useState(() => embedded?.value.condition??conditionForTarget(initialTarget(task), task.condition));
@@ -156,10 +156,11 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
           <textarea className="description-text marketplace-body-text" maxLength={embedded?5000:10000} value={listing.body} onChange={e => updateListing(listingTitle, e.target.value)} /></label>
       </div> : description ? <label>商品名・説明文（自動生成）<textarea className="description-text" maxLength={10000} value={description} onChange={e => { embedded?.onChange({description:e.target.value});setManual(e.target.value); setSaved(false); setNotice(''); }} /></label>
         : <p className="muted">販売先・商品・コンディションを選ぶと、商品名と説明文を生成します。</p>}
-      {manual !== null && description && <div className="row"><span className="muted">手入力の文章を表示しています。</span><button type="button" className="btn" disabled={!generated} onClick={updateSelection}>選択内容から再生成</button></div>}
-      <div className="description-actions">
+      <div className={`description-actions${embedded?.actions?' description-listing-actions':''}`}>
+      {manual !== null && description && <button type="button" className="btn" disabled={!generated} onClick={updateSelection}>選択内容から再生成</button>}
       {target !== 'amazon' && <button className="btn primary" type="button" disabled={ai.busy||!listingTitle.trim()||!product} onClick={()=>void ai.generate(true)}>{ai.busy?'生成中…':'関連キーワードを生成'}</button>}
       <button className="btn primary" type="submit">{busy ? '保存中…' : saved ? '上書き保存' : '説明文を保存'}</button>
+      {embedded?.actions}
       </div>
       {target !== 'amazon' && ai.message && <p className="description-ai-message muted" role="status">{ai.message}</p>}
       {listingLayout && options}
