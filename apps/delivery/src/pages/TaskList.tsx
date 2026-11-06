@@ -50,7 +50,6 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
   const [filter, setFilter] = useState<Filter>(() => canViewDeliveryAssignee(staff) ? 'all' : 'work');
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
   const [queryField, setQueryField] = useState<DeliverySearchField | 'deliverer'>('serial');
@@ -126,13 +125,11 @@ export default function TaskList({ staff }: { staff: Staff }) {
   }, [tasks, filter, groupedStatuses, query, queryField, staff.role, staff.code, effectiveDelivererIds.join(','), inventoryFilters]);
   const shownRows = shown.rows;
   const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
-  const selectableRows = allProducts ? [] : shownRows.filter(({members}) => members.every(canOperate));
-  const allShownSelected = selectableRows.length>0 && selectableRows.every(group=>selected.has(group.task.id));
   function selectState(next: Filter) {
-    setAllProducts(false);setFilter(next);setExpandedId(null);setSelected(new Set());
+    setAllProducts(false);setFilter(next);setExpandedId(null);
   }
   function toggleAllProducts() {
-    setAllProducts(current => !current);setPurchasedFrom('');setPurchasedTo('');setFilter('all');setInventoryFilters({});setAssigneeFilterIds([]);setDelivererId('');setQuery('');setQueryField('serial');setExpandedId(null);setSelected(new Set());
+    setAllProducts(current => !current);setPurchasedFrom('');setPurchasedTo('');setFilter('all');setInventoryFilters({});setAssigneeFilterIds([]);setDelivererId('');setQuery('');setQueryField('serial');setExpandedId(null);
   }
   const noticeRef = useRef(notices);
   noticeRef.current = notices;
@@ -159,17 +156,17 @@ export default function TaskList({ staff }: { staff: Staff }) {
       <div className="delivery-inventory-workspace">
       <div className="delivery-inventory-sidebar">
       <div className="delivery-inventory-search" role="group" aria-label="在庫検索">
-        <select aria-label="検索項目" data-search-field={queryField} value={queryField} onChange={event => { setQueryField(event.target.value as DeliverySearchField | 'deliverer'); setDelivererId(''); setQuery(''); setExpandedId(null); setSelected(new Set()); }}>
+        <select aria-label="検索項目" data-search-field={queryField} value={queryField} onChange={event => { setQueryField(event.target.value as DeliverySearchField | 'deliverer'); setDelivererId(''); setQuery(''); setExpandedId(null); }}>
           {canViewDeliveryAssignee(staff) && <option value="deliverer">納品担当者</option>}
           {deliverySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
         </select>
         {queryField === 'deliverer' && canViewDeliveryAssignee(staff)
-          ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setAssigneeFilterIds([]); setExpandedId(null); setSelected(new Set()); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
+          ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setAssigneeFilterIds([]); setExpandedId(null); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
           : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
         <InventoryStateFilter value={inventoryFilters} assignee={canViewDeliveryAssignee(staff) ? {
           value: assigneeFilterIds, options: deliverers.map(person => ({ id: person.id, name: staffDisplayName(person) })),
-          onChange: ids => { setAssigneeFilterIds(ids); setDelivererId(''); setExpandedId(null); setSelected(new Set()); },
-        } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); setSelected(new Set()); }} />
+          onChange: ids => { setAssigneeFilterIds(ids); setDelivererId(''); setExpandedId(null);  },
+        } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); }} />
       </div>
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">やること</h3>
@@ -194,12 +191,11 @@ export default function TaskList({ staff }: { staff: Staff }) {
       </div>
       <div className="export-actions">
       <div className="delivery-inventory-date-range" role="group" aria-label="仕入日の期間">
-        <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e=>{setPurchasedFrom(e.target.value);setSelected(new Set());}} />
+        <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e=>{setPurchasedFrom(e.target.value);}} />
         <span aria-hidden="true">〜</span>
-        <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e=>{setPurchasedTo(e.target.value);setSelected(new Set());}} />
+        <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e=>{setPurchasedTo(e.target.value);}} />
       </div>
         <span>{shownRows.length} / {inventory.total}商品</span>
-        <button type="button" className="btn" aria-pressed={allShownSelected} disabled={selectableRows.length===0 && selected.size===0} onClick={()=>setSelected(current=>allShownSelected || selectableRows.length===0 ? new Set() : new Set([...current,...selectableRows.map(group=>group.task.id)]))}>{allShownSelected || (selectableRows.length===0 && selected.size>0) ? '選択解除' : '表示中を選択'}</button>
       </div>
 
       {replyTaskError && <div className="error">{replyTaskError}</div>}
@@ -207,11 +203,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={false} onSelect={() => setSelected(current => {
-        const next = new Set(current);
-        if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
-        return next;
-      })} onOpen={() => toggleExpanded(t.id)} />)}
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} onOpen={() => toggleExpanded(t.id)} />)}
       {inventory.more&&<button type="button" className="btn" disabled={loading} onClick={inventory.loadMore}>さらに表示</button>}
     </>
   );
