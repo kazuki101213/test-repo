@@ -119,7 +119,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     })).filter(({ task: t, members }) => {
       if (queryField !== 'deliverer' && q && !members.some(member => matchesDeliverySearch(deliverySearchValue(member, queryField, originalIds), queryField, query))) return false;
       if (!members.some(member => matchesInventoryFilters(member, inventoryFilters))) return false;
-      return filter === 'all' || (groupedStatuses ? groupedStatuses.includes(t.status) : t.status === filter);
+      return filter === 'all' || members.some(member=>groupedStatuses?groupedStatuses.includes(member.status):member.status===filter);
     });
     return { rows, originalIds };
   }, [tasks, filter, groupedStatuses, query, queryField, staff.role, staff.code, effectiveDelivererIds.join(','), inventoryFilters]);
@@ -203,6 +203,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {loading && <div className="empty">読み込み中…</div>}
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
+      {shownRows.length>0&&<div className="approved-delivery-head" aria-hidden="true"><div className="delivery-head-main"><div>販売状況 / 写真・通番号<br/>型番・ASIN / SKU<br/>追跡番号 / 商品ID</div><div>納品担当者<br/>仕入担当者<br/>仕入先<br/>販売先</div><div>コンディション<br/>仕入日<br/>作業完了日</div></div><div className="delivery-head-bundled"><div>付属品<br/>通番号・品名 / 商品ID<br/>追跡番号 / 仕入日・利用記録</div><div>納品担当者<br/>仕入担当者<br/>仕入先<br/>販売先</div></div><div>操作</div></div>}
       {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} onOpen={() => toggleExpanded(t.id)} />)}
       {inventory.more&&<button type="button" className="btn" disabled={loading} onClick={inventory.loadMore}>さらに表示</button>}
     </>

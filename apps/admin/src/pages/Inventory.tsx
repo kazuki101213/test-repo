@@ -1,11 +1,12 @@
+import InventoryOverview from '../components/InventoryOverview';
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
-import { staffDisplayName, productModelText, deliveryStaffOptions, noticeProductUrl } from '@bussan/shared';
+import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, jpDate, yen, matchesInventoryFilters } from '@bussan/shared';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, yen, matchesInventoryFilters } from '@bussan/shared';
 import type { PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
@@ -15,7 +16,7 @@ import AmazonSalesSync from '../components/AmazonSalesSync';
 import ColoredLabel from '../components/ColoredLabel';
 import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { productCount, productSerial } from '../inventory';
-import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, salePrice, salePayout, saleDays, type ColumnFilters } from '../inventoryFilters';
+import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, type ColumnFilters } from '../inventoryFilters';
 import InventoryStateFilter from '../components/InventoryStateFilter';
 import InventoryColumnFilter from '../components/InventoryColumnFilter';
 import { fetchAccessoryUsage, reassignAccessoryUsage, type AccessoryUsageContext } from '@bussan/shared';
@@ -80,8 +81,6 @@ export default function Inventory({ me }: { me: Staff }) {
   const [expandedComment, setExpandedComment] = useState<{ sku: string; label: string; text: string } | null>(null);
   const [visibleCount, setVisibleCount] = useState(80);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const inventoryTopScrollRef = useRef<HTMLDivElement>(null);
-  const inventoryTableScrollRef = useRef<HTMLDivElement>(null);
 
   const load=async()=>{await inventory.refresh();};
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
@@ -95,11 +94,6 @@ export default function Inventory({ me }: { me: Staff }) {
     observer.observe(el);
     return () => observer.disconnect();
   }, [viewItems.length, visibleCount]);
-  const trackingColumnWidth = items.reduce((width, item) => Math.max(width, Math.min(232, (Array.from(item.tracking_no ?? '').length) * 10 + 32)), 140);
-  const inventoryTableWidth = Math.max(2890, 2530 + trackingColumnWidth);
-  const syncInventoryScroll = (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
-    if (source && target && target.clientWidth > 0 && target.scrollLeft !== source.scrollLeft) target.scrollLeft = source.scrollLeft;
-  };
 
   async function excludeDraft(id: string) {
     if (dismissingDraft) return;
@@ -188,81 +182,10 @@ export default function Inventory({ me }: { me: Staff }) {
       {loading && items.length === 0 && <div className="empty">読み込み中…</div>}
       {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {items.length > 0 && (
-        <>
-        <div className="inventory-top-scroll" aria-label="在庫を左右にスクロール" ref={inventoryTopScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTableScrollRef.current)}>
-          <div style={{ width: inventoryTableWidth, height: 1 }} />
-        </div>
-        <div className="scroll inventory-bottom-scroll" ref={inventoryTableScrollRef} onScroll={event => syncInventoryScroll(event.currentTarget, inventoryTopScrollRef.current)}>
-          <table className="inventory-table" aria-rowcount={viewItems.length + 1} style={{ minWidth: inventoryTableWidth, '--tracking-column-width': `${trackingColumnWidth}px` } as CSSProperties}>
-            <thead>
-              <tr aria-rowindex={1}>
-                <th>{filterHeading('photo')}</th><th>{filterHeading('serial')} / {filterHeading('product_no')}<br />{filterHeading('sku')}</th><th>{filterHeading('asin')}<br />{filterHeading('model')}</th>
-                <th>{filterHeading('purchaser')}<br />{filterHeading('deliverer')}</th><th>{filterHeading('marketplace')}<br />{filterHeading('item_id')} / {filterHeading('tracking')}</th>
-                <th>{filterHeading('purchased_at')}<br />{filterHeading('cost')}</th><th>{filterHeading('sales_channel')}<br />{filterHeading('condition')}</th>
-                <th>{filterHeading('packed_on')}<br />{filterHeading('shipped_on')}</th><th>{filterHeading('planned_price')}<br />{filterHeading('planned_payout')}</th>
-                <th>{filterHeading('expected_profit')}<br />{filterHeading('expected_rate')}</th><th>{filterHeading('sold_on')}<br />{filterHeading('sold_days')}</th>
-                <th>{filterHeading('sold_price')}<br />{filterHeading('payout')}</th><th>{filterHeading('profit')}<br />{filterHeading('rate')}</th>
-                <th>{filterHeading('inventory_refund')}<br />{filterHeading('other_refund')}</th><th>{filterHeading('amazon_refund')}</th><th>{filterHeading('purchaser_comment')}</th><th>{filterHeading('comment')}</th><th>{filterHeading('status')}<br />{filterHeading('registration')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {viewItems.slice(0, visibleCount).map((i, index) => {
-                const serial = productSerial(i.sku, i.lot_seq);
-                const purchaseUrl = noticeProductUrl(i.marketplace, i.marketplace_item_id, i.marketplace_url);
-                const previous = viewItems[index - 1];
-                const next = viewItems[index + 1];
-                const previousSerial = previous ? productSerial(previous.sku, previous.lot_seq) : null;
-                const nextSerial = next ? productSerial(next.sku, next.lot_seq) : null;
-                const attachedAccessory = i.is_accessory && !/^[0-9]+c+$/i.test(productSerial(i.sku, i.lot_seq)) && !i.product_sale_conflict;
-                const sharedSaleItem = attachedAccessory ? { ...i, sold_on: i.product_sold_on } : i;
-                const edit = (field: InventoryField) => setEditFor({ item: ['sold_on','sold_price','payout_amount','sales_channel'].includes(field) ? sharedSaleItem : i, field });
-                const stacked = (top: ReactNode, topField: InventoryField, bottom?: ReactNode, bottomField?: InventoryField) => <div className="inventory-cell-stack"><button type="button" className="inventory-cell-edit" onClick={() => edit(topField)} title="クリックして編集">{top}</button>{bottom !== undefined && <button type="button" className="inventory-cell-edit" onClick={() => edit(bottomField ?? topField)} title="クリックして編集">{bottom}</button>}</div>;
-                const expectedRate = i.planned_price && i.expected_profit !== null ? `${((i.expected_profit / i.planned_price) * 100).toFixed(1)}%` : '—';
-                const actualRate = i.product_sold_price && i.product_sold_price > 0 && i.product_profit !== null ? `${((i.product_profit / i.product_sold_price) * 100).toFixed(1)}%` : '—';
-
-                const soldDays = saleDays(i);
-                const modelOrAccessoryName = i.is_accessory ? i.title : productModelText(i);
-                const modelOrAccessoryField: InventoryField = i.is_accessory || (!i.model_no && i.marketplace !== '動作品Amazon返品') ? 'title' : 'model_no';
-                return (
-                <tr key={i.id} data-item-status={i.status} aria-rowindex={index + 2} data-lot={serial} data-group-end={serial !== nextSerial}>
-                  <td><button type="button" className="inventory-photo" onClick={() => { setPurchaseOpen(false); setFullEditFor(sharedSaleItem); }} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>
-                    {i.amazon_image_url ? <img src={i.amazon_image_url} alt={`${i.title}のAmazon画像`} loading="lazy" /> : <span className="inventory-photo-empty">—</span>}
-                  </button></td>
-                  <td><div className="inventory-cell-stack"><div className="inventory-identity-line">
-                    {(i.is_accessory || serial !== previousSerial) && <><button type="button" className="inventory-cell-edit" onClick={() => edit('lot_seq')}>{serial}</button><span> / </span></>}
-                    <button type="button" className="inventory-cell-edit" onClick={() => edit('product_no')}>{i.product_no ?? '—'}</button>
-                  </div><button type="button" className="inventory-cell-edit sku" onClick={() => edit('sku')}>{i.sku}</button></div></td>
-                  <td><div className="inventory-cell-stack">
-                    <span className="reference-value"><button type="button" className="inventory-cell-edit" onClick={() => edit('asin')}>{i.asin ?? '—'}</button>{i.asin && <a className="inline-reference-link" href={`https://www.amazon.co.jp/dp/${encodeURIComponent(i.asin)}`} target="_blank" rel="noopener noreferrer" aria-label={`${i.asin}をAmazonで開く`} title="Amazonの商品ページを開く"><span aria-hidden="true">↗</span></a>}</span>
-                    <button type="button" className="inventory-cell-edit" onClick={() => edit(modelOrAccessoryField)} title={i.is_accessory ? i.title : 'クリックして編集'}>{modelOrAccessoryName}</button>
-                  </div></td>
-                  <td>{stacked(staffDisplayName(i.purchaser_name) || '—', 'purchaser_id', staffDisplayName(i.deliverer_name) || '—', 'deliverer_id')}</td>
-                  <td><div className="inventory-cell-stack">
-                    <button type="button" className="inventory-cell-edit inventory-marketplace-name" onClick={() => edit('marketplace')} title="仕入先を編集">{<ColoredLabel value={i.marketplace} />}</button>
-                    <span className="reference-value"><button type="button" className="inventory-cell-edit inventory-marketplace-item-id" onClick={() => edit('marketplace_item_id')} title="商品IDをクリックして編集">{i.marketplace_item_id || '—'}</button>{purchaseUrl && <a className="inline-reference-link" href={purchaseUrl} target="_blank" rel="noopener noreferrer" aria-label={`${i.sku}の仕入先の商品ページを開く`} title="仕入先の商品ページを開く"><span aria-hidden="true">↗</span></a>}</span>
-                    <button type="button" className="inventory-cell-edit inventory-tracking-number" onClick={() => edit('tracking_no')} title="追跡番号をクリックして編集">{Array.from(i.tracking_no ?? '').slice(0, 20).join('') || '—'}</button>
-                  </div></td>
-                  <td>{stacked(jpDate(i.purchased_at), 'purchased_at', yen(i.cost_amount), 'cost_amount')}</td>
-                  <td>{stacked(<ColoredLabel value={i.sales_channel ?? '—'} />, 'sales_channel', <ColoredLabel value={i.condition ?? '—'} />, 'condition')}</td>
-                  <td>{stacked(jpDate(i.packed_on), 'packed_on', jpDate(i.shipped_on), 'shipped_on')}</td>
-                  <td>{stacked(yen(i.planned_price), 'planned_price', yen(i.planned_payout), 'planned_payout')}</td>
-                  <td>{stacked(yen(i.expected_profit), 'planned_payout', expectedRate, 'planned_price')}</td>
-                  <td>{stacked(i.product_sale_conflict ? '要確認' : jpDate(i.product_sold_on), 'sold_on', i.status==='返品処理' ? undefined : soldDays == null ? '—' : `${soldDays}日`, 'sold_on')}</td>
-                  <td>{attachedAccessory ? <div className="inventory-cell-stack"><span>—</span><span>—</span></div> : stacked(yen(salePrice(i)), 'sold_price', yen(salePayout(i)), 'payout_amount')}</td>
-                  <td>{attachedAccessory ? <div className="inventory-cell-stack"><span>—</span><span>—</span></div> : stacked(yen(i.product_profit), 'payout_amount', actualRate, 'sold_price')}</td>
-                  <td>{stacked(yen(i.inventory_refund_amount), 'inventory_refund_amount', yen(i.non_amazon_refund_amount), 'non_amazon_refund_amount')}</td>
-                  <td><button type="button" className="inventory-cell-edit" onClick={() => edit('amazon_refund_amount')} title="Amazon返金金額をクリックして編集">{yen(i.amazon_refund_amount)}</button></td>
-                  <td><button type="button" className="inventory-comment" onClick={() => edit('memo')} title="仕入担当者からのコメントを編集" aria-label={`${i.sku}の仕入担当者からのコメントを編集`}><span>{Array.from(i.memo ?? '').slice(0, 10).join('') || '—'}</span><span>{Array.from(i.memo ?? '').slice(10, 20).join('')}{Array.from(i.memo ?? '').length > 20 ? '…' : ''}</span></button></td>
-                  <td>{i.latest_comment ? (() => { const chars = Array.from(i.latest_comment); return <button type="button" className="inventory-comment" onClick={() => setExpandedComment({ sku: i.sku, label: '納品担当者からのコメント', text: i.latest_comment! })} title="コメント全文を表示"><span>{chars.slice(0, 10).join('')}</span><span>{chars.slice(10, 20).join('')}{chars.length > 20 ? '…' : ''}</span></button>; })() : '—'}</td>
-                  <td><div className="inventory-cell-stack inventory-sale-status"><span>{i.status || '—'}</span><span className="muted">{i.is_accessory ? '付属品' : '本体'}</span></div></td>
-                </tr>
-              ); })}
-            </tbody>
-          </table>
-        </div>
-        </>
-      )}
+      {items.length > 0 && <InventoryOverview items={viewItems.slice(0,visibleCount)} canPrice={me.role==='admin'} heading={filterHeading}
+        onEdit={(item,field)=>setEditFor({item,field})}
+        onFullEdit={item=>{setPurchaseOpen(false);setFullEditFor(item);}}
+        onComment={item=>setExpandedComment({sku:item.sku,label:'納品担当者からのコメント',text:item.latest_comment??''})} />}
       {!loading && items.length > 0 && viewItems.length === 0 && <p className="empty" role="status">フィルターに一致する在庫はありません。フィルターの条件を変更するか、すべて解除してください。</p>}
       {(visibleCount<viewItems.length||inventory.more)&&<div ref={loadMoreRef} className="toolbar"><button className="btn" disabled={loading} onClick={()=>{if(visibleCount<viewItems.length)setVisibleCount(current=>Math.min(current+80,viewItems.length));else {setVisibleCount(current=>current+50);inventory.loadMore();}}}>さらに表示</button></div>}
       </div>

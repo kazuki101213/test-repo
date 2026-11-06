@@ -25,13 +25,13 @@
   .inventory-mobile-label { display:none; }
   .task-product-summary { display:grid; grid-template-columns:minmax(0,480px) minmax(0,1fr); gap:24px; align-items:start; }
   .task-product-summary:not(:has(.task-members)) { grid-template-columns:minmax(0,1fr); }
-  .task-product-summary .task-card-overview { display:grid; grid-template-columns:120px minmax(0,1fr); gap:16px; }
+  .task-product-summary .task-card:not(.approved-delivery-card)-overview { display:grid; grid-template-columns:120px minmax(0,1fr); gap:16px; }
   .task-product-summary .task-photo-action { grid-column:1; grid-row:1; }
-  .task-product-summary .task-card-info { grid-column:2; grid-row:1; }
-  .task-product-summary .task-card-info, .task-product-summary .task-members, .task-product-summary .task-member-row { min-width:0; display:grid; gap:4px; margin:0; padding:0; }
+  .task-product-summary .task-card:not(.approved-delivery-card)-info { grid-column:2; grid-row:1; }
+  .task-product-summary .task-card:not(.approved-delivery-card)-info, .task-product-summary .task-members, .task-product-summary .task-member-row { min-width:0; display:grid; gap:4px; margin:0; padding:0; }
   .app .task-product-summary, .app .task-product-summary .task-section-title, .app .task-product-summary .task-detail-field, .app .task-product-summary .copyable-text, .app .task-product-summary .task-member-row > * { font-size:15px; font-weight:400; color:var(--text); line-height:1.6; }
   .task-product-summary .task-section-title { margin:0 0 4px; }
-  .app .task-product-summary .task-card-info > span { white-space:normal; overflow:visible; text-overflow:clip; }
+  .app .task-product-summary .task-card:not(.approved-delivery-card)-info > span { white-space:normal; overflow:visible; text-overflow:clip; }
   .app .task-product-summary .copyable-text, .app .task-product-summary .task-detail-field { display:grid; grid-template-columns:112px minmax(0,1fr); column-gap:8px; padding:0; min-width:0; overflow-wrap:anywhere; }
   .task-product-summary .task-detail-field > span:first-child, .task-product-summary .copyable-text > span:first-child { white-space:nowrap; }
   .app .task-product-summary .task-item-id-line { display:flex !important; gap:4px; align-items:start; min-width:0; }
@@ -43,10 +43,10 @@
   .app .task-product-summary .task-member-open { width:100%; min-height:0; background:transparent; border:0; padding:0; margin:0; }
 }
 @media screen and (min-width:1280px) {
-  .app .task-card .workflow-buttons { grid-template-columns:max-content; }
-  .app .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons { display:grid; grid-template-columns:1fr; width:max-content; }
-  .app .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons .btn { width:100% !important; justify-self:stretch; grid-column:1; }
-  .app .task-card[data-item-status="商品登録前"] .workflow-buttons { grid-template-columns:1fr; }
+  .app .task-card:not(.approved-delivery-card) .workflow-buttons { grid-template-columns:max-content; }
+  .app .task-card:not(.approved-delivery-card):is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons { display:grid; grid-template-columns:1fr; width:max-content; }
+  .app .task-card:not(.approved-delivery-card):is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons .btn { width:100% !important; justify-self:stretch; grid-column:1; }
+  .app .task-card:not(.approved-delivery-card)[data-item-status="商品登録前"] .workflow-buttons { grid-template-columns:1fr; }
 }
 @media screen and (max-width:1279px) {
   .app .delivery-navigation { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) max-content; gap:4px 8px; justify-items:start; }
@@ -70,19 +70,19 @@
   .inventory-workflow-footer > [data-status="Amazon補填申請中"] { order:6; }
   .inventory-workflow-footer > [data-status="all"] { order:8; }
   .task-product-summary { display:block; }
-  .task-product-summary .task-card-overview { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .task-product-summary .task-card:not(.approved-delivery-card)-overview { grid-template-columns:minmax(0,1fr); gap:8px; }
   .task-product-summary .task-photo-action { grid-column:1; grid-row:1; justify-items:start; }
-  .task-product-summary .task-card-info { grid-column:1; grid-row:2; }
-  .task-product-summary .task-card-photo-button, .task-product-summary .task-card-photo { width:120px; }
-  .task-product-summary .task-card-photo { height:80px; }
+  .task-product-summary .task-card:not(.approved-delivery-card)-info { grid-column:1; grid-row:2; }
+  .task-product-summary .task-card:not(.approved-delivery-card)-photo-button, .task-product-summary .task-card:not(.approved-delivery-card)-photo { width:120px; }
+  .task-product-summary .task-card:not(.approved-delivery-card)-photo { height:80px; }
   .task-product-summary .task-members { margin-top:16px; }
   .app .task-product-summary .copyable-text, .app .task-product-summary .task-detail-field { grid-template-columns:106px minmax(0,1fr); gap:4px; }
 }
 @media screen and (min-width:1024px) and (max-width:1199px) {
   .task-product-summary { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; }
-  .task-product-summary .task-card-overview { grid-template-columns:minmax(0,1fr); }
+  .task-product-summary .task-card:not(.approved-delivery-card)-overview { grid-template-columns:minmax(0,1fr); }
   .task-product-summary .task-photo-action { grid-column:1; grid-row:1; }
-  .task-product-summary .task-card-info { grid-column:1; grid-row:2; }
+  .task-product-summary .task-card:not(.approved-delivery-card)-info { grid-column:1; grid-row:2; }
 }
 
 @media screen and (min-width:1280px) {
@@ -153,66 +153,66 @@
   .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:2; grid-row:1; }
 }
 @media screen and (min-width:1280px) {
-  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; column-gap:16px; align-items:start; }
-  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > * { grid-column:1 / -1; }
-  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > .task-product-summary { grid-column:1; grid-row:1; }
-  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > .workflow-controls { display:contents; }
-  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons { grid-column:2; grid-row:1; display:flex; gap:6px; margin-top:0; flex-wrap:nowrap; }
-  .task-card:is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-action-form { grid-column:1 / -1; }
-  .task-card[data-item-status="取引中"] .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; column-gap:16px; align-items:start; }
-  .task-card[data-item-status="取引中"] .task-content > * { grid-column:1 / -1; }
-  .task-card[data-item-status="取引中"] .task-content > .task-product-summary { grid-column:1; grid-row:1; }
-  .task-card[data-item-status="取引中"] .task-content > .workflow-controls { display:contents; }
-  .app .task-card[data-item-status="取引中"] .workflow-buttons { grid-column:2; grid-row:1; display:grid; grid-template-columns:1fr; gap:6px; width:max-content; justify-self:end; margin-top:0; }
-  .app .task-card:is([data-item-status="商品登録前"],[data-item-status="取引中"]) .workflow-buttons .btn { grid-column:1; grid-row:auto; width:100% !important; height:44px; box-sizing:border-box; justify-self:stretch; }
-  .task-card[data-item-status="取引中"] .workflow-action-form { grid-column:1 / -1; }
+  .task-card:not(.approved-delivery-card):is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; column-gap:16px; align-items:start; }
+  .task-card:not(.approved-delivery-card):is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > * { grid-column:1 / -1; }
+  .task-card:not(.approved-delivery-card):is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > .task-product-summary { grid-column:1; grid-row:1; }
+  .task-card:not(.approved-delivery-card):is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .task-content > .workflow-controls { display:contents; }
+  .task-card:not(.approved-delivery-card):is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-buttons { grid-column:2; grid-row:1; display:flex; gap:6px; margin-top:0; flex-wrap:nowrap; }
+  .task-card:not(.approved-delivery-card):is([data-item-status="検品中"],[data-item-status="Amazon返送依頼"],[data-item-status="動作不良"],[data-item-status="出品中"],[data-item-status="商品登録前"]) .workflow-action-form { grid-column:1 / -1; }
+  .task-card:not(.approved-delivery-card)[data-item-status="取引中"] .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; column-gap:16px; align-items:start; }
+  .task-card:not(.approved-delivery-card)[data-item-status="取引中"] .task-content > * { grid-column:1 / -1; }
+  .task-card:not(.approved-delivery-card)[data-item-status="取引中"] .task-content > .task-product-summary { grid-column:1; grid-row:1; }
+  .task-card:not(.approved-delivery-card)[data-item-status="取引中"] .task-content > .workflow-controls { display:contents; }
+  .app .task-card:not(.approved-delivery-card)[data-item-status="取引中"] .workflow-buttons { grid-column:2; grid-row:1; display:grid; grid-template-columns:1fr; gap:6px; width:max-content; justify-self:end; margin-top:0; }
+  .app .task-card:not(.approved-delivery-card):is([data-item-status="商品登録前"],[data-item-status="取引中"]) .workflow-buttons .btn { grid-column:1; grid-row:auto; width:100% !important; height:44px; box-sizing:border-box; justify-self:stretch; }
+  .task-card:not(.approved-delivery-card)[data-item-status="取引中"] .workflow-action-form { grid-column:1 / -1; }
 }
 @media screen and (max-width:1279px) {
   .task-product-summary .task-photo-action { align-content:start; }
-  .task-card[data-item-status="検品中"] .task-content { position:relative; }
-  .app .task-card[data-item-status="検品中"] .workflow-buttons { position:absolute; right:0; top:0; display:grid; grid-template-columns:max-content; gap:6px; width:max-content; max-width:calc(100% - 136px); margin:0; }
-  .app .task-card[data-item-status="検品中"] .workflow-buttons .btn { grid-column:1; width:100% !important; justify-self:stretch; }
-  .task-card[data-item-status="検品中"] .task-photo-action { min-height:94px; }
-  .task-card[data-item-status="検品中"]:has([data-action="return_request_cancel"]) .task-photo-action { min-height:120px; }
+  .task-card:not(.approved-delivery-card)[data-item-status="検品中"] .task-content { position:relative; }
+  .app .task-card:not(.approved-delivery-card)[data-item-status="検品中"] .workflow-buttons { position:absolute; right:0; top:0; display:grid; grid-template-columns:max-content; gap:6px; width:max-content; max-width:calc(100% - 136px); margin:0; }
+  .app .task-card:not(.approved-delivery-card)[data-item-status="検品中"] .workflow-buttons .btn { grid-column:1; width:100% !important; justify-self:stretch; }
+  .task-card:not(.approved-delivery-card)[data-item-status="検品中"] .task-photo-action { min-height:94px; }
+  .task-card:not(.approved-delivery-card)[data-item-status="検品中"]:has([data-action="return_request_cancel"]) .task-photo-action { min-height:120px; }
 }
 
 /* Keep only the selected state actions beside the photo; extra actions stay below the details. */
 @media screen and (max-width:1279px) {
- .task-card:has(.workflow-photo-buttons) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:8px; align-items:start; }
- .task-card:has(.workflow-photo-buttons) .task-product-summary,
- .task-card:has(.workflow-photo-buttons) .task-card-overview,
- .task-card:has(.workflow-photo-buttons) .workflow-controls,
- .task-card:has(.workflow-photo-buttons) .workflow-buttons { display:contents; }
- .task-card:has(.workflow-photo-buttons) .task-photo-action { grid-column:1; grid-row:1; width:min(120px,100%); min-width:0; }
- .task-card:has(.workflow-photo-buttons) .task-card-photo-button,
- .task-card:has(.workflow-photo-buttons) .task-card-photo { width:100%; max-width:120px; }
- .task-card:has(.workflow-photo-buttons) .task-card-info { grid-column:1 / -1; grid-row:2; }
- .task-card:has(.workflow-photo-buttons) .task-members { grid-column:1 / -1; grid-row:3; }
- .task-card:has(.workflow-photo-buttons) .task-content > .error,
- .task-card:has(.workflow-photo-buttons) .workflow-action-form,
- .task-card:has(.workflow-photo-buttons) .workflow-buttons > .btn { grid-column:1 / -1; }
- .app .task-card .workflow-photo-buttons { display:grid; grid-column:2; grid-row:1; grid-template-columns:max-content; gap:6px; justify-self:end; align-self:start; }
- .app .task-card .workflow-photo-buttons > .btn { width:100% !important; justify-self:stretch; grid-column:1; margin:0; }
- .app .task-card[data-item-status="取引中"] .workflow-photo-buttons { width:max-content; grid-template-columns:minmax(0,1fr); }
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:8px; align-items:start; }
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-product-summary,
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-card:not(.approved-delivery-card)-overview,
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .workflow-controls,
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .workflow-buttons { display:contents; }
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-photo-action { grid-column:1; grid-row:1; width:min(120px,100%); min-width:0; }
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-card:not(.approved-delivery-card)-photo-button,
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-card:not(.approved-delivery-card)-photo { width:100%; max-width:120px; }
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-card:not(.approved-delivery-card)-info { grid-column:1 / -1; grid-row:2; }
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-members { grid-column:1 / -1; grid-row:3; }
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .task-content > .error,
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .workflow-action-form,
+ .task-card:not(.approved-delivery-card):has(.workflow-photo-buttons) .workflow-buttons > .btn { grid-column:1 / -1; }
+ .app .task-card:not(.approved-delivery-card) .workflow-photo-buttons { display:grid; grid-column:2; grid-row:1; grid-template-columns:max-content; gap:6px; justify-self:end; align-self:start; }
+ .app .task-card:not(.approved-delivery-card) .workflow-photo-buttons > .btn { width:100% !important; justify-self:stretch; grid-column:1; margin:0; }
+ .app .task-card:not(.approved-delivery-card)[data-item-status="取引中"] .workflow-photo-buttons { width:max-content; grid-template-columns:minmax(0,1fr); }
  .workflow-photo-row-top { display:flex; gap:6px; }
  .workflow-photo-row-back { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
- .app .task-card .workflow-photo-row-back > .btn { width:100% !important; justify-self:stretch; }
- .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons { grid-template-columns:max-content max-content; }
- .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > [data-action="photos"] { grid-column:1; grid-row:1; }
- .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
- .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:1 / -1; grid-row:2; }
+ .app .task-card:not(.approved-delivery-card) .workflow-photo-row-back > .btn { width:100% !important; justify-self:stretch; }
+ .app .task-card:not(.approved-delivery-card)[data-item-status="商品登録前"] .workflow-photo-buttons { grid-template-columns:max-content max-content; }
+ .app .task-card:not(.approved-delivery-card)[data-item-status="商品登録前"] .workflow-photo-buttons > [data-action="photos"] { grid-column:1; grid-row:1; }
+ .app .task-card:not(.approved-delivery-card)[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="listing"],[data-action="listing_complete"]) { grid-column:2; grid-row:1; }
+ .app .task-card:not(.approved-delivery-card)[data-item-status="商品登録前"] .workflow-photo-buttons > :is([data-action="inspection_cancel"],[data-action="yahoo_instruction_cancel"]) { grid-column:1 / -1; grid-row:2; }
  /* Place the reply entry in the empty right-hand space without moving the item details. */
- .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons:has(> [data-action="yahoo_instruction_cancel"]) { position:relative; }
- .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons:has(> [data-action="yahoo_instruction_cancel"]) > [data-action="comments"] { position:absolute; left:0; right:0; top:calc(100% + 6px); height:44px; margin:0; padding-block:2px; line-height:18px; white-space:normal; }
+ .app .task-card:not(.approved-delivery-card)[data-item-status="商品登録前"] .workflow-photo-buttons:has(> [data-action="yahoo_instruction_cancel"]) { position:relative; }
+ .app .task-card:not(.approved-delivery-card)[data-item-status="商品登録前"] .workflow-photo-buttons:has(> [data-action="yahoo_instruction_cancel"]) > [data-action="comments"] { position:absolute; left:0; right:0; top:calc(100% + 6px); height:44px; margin:0; padding-block:2px; line-height:18px; white-space:normal; }
 }
 @media screen and (max-width:374px) {
- .app .task-card[data-item-status="取引中"] .workflow-photo-row > .btn { font-size:12px; }
+ .app .task-card:not(.approved-delivery-card)[data-item-status="取引中"] .workflow-photo-row > .btn { font-size:12px; }
 }
 /* Use the same compact thumbnail size throughout the mobile inventory. */
 @media screen and (max-width:1279px) {
- .app .task-card .task-photo-action { width:min(80px,100%); }
- .app .task-card .task-card-photo-button,
- .app .task-card .task-card-photo { width:100%; max-width:80px; }
+ .app .task-card:not(.approved-delivery-card) .task-photo-action { width:min(80px,100%); }
+ .app .task-card:not(.approved-delivery-card) .task-card:not(.approved-delivery-card)-photo-button,
+ .app .task-card:not(.approved-delivery-card) .task-card:not(.approved-delivery-card)-photo { width:100%; max-width:80px; }
 }
 
 /* The catalog switch stays at the lower right of the workflow selector. */
@@ -335,38 +335,38 @@
 }
 
 /* Fault/compensation actions share one compact column, independent of the photo actions elsewhere. */
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:8px; align-items:start; }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-product-summary { display:block; grid-column:1; grid-row:1; min-width:0; }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-overview { display:flex; flex-direction:column-reverse; align-items:flex-start; gap:8px; }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-info { grid-column:auto; grid-row:auto; width:100%; }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-photo-action { grid-column:auto; grid-row:auto; width:80px; }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.workflow-controls,.workflow-buttons) { display:contents; }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-photo-buttons { display:grid; grid-column:2; grid-row:1; grid-template-columns:max-content; gap:4px; align-self:start; justify-self:end; }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-photo-buttons > .btn { grid-column:1; grid-row:auto; width:100% !important; height:44px; min-width:0; padding:8px 12px; margin:0; white-space:nowrap; }
-.app .task-card[data-item-status="Amazon補填申請中"] .workflow-photo-buttons { width:100px; grid-template-columns:minmax(0,1fr); }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-action-form { grid-column:1 / -1; }
-.app .task-card[data-item-status="動作不良"] [data-action="return_impossible"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-content { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:8px; align-items:start; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-product-summary { display:block; grid-column:1; grid-row:1; min-width:0; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card:not(.approved-delivery-card)-overview { display:flex; flex-direction:column-reverse; align-items:flex-start; gap:8px; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card:not(.approved-delivery-card)-info { grid-column:auto; grid-row:auto; width:100%; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-photo-action { grid-column:auto; grid-row:auto; width:80px; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.workflow-controls,.workflow-buttons) { display:contents; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-photo-buttons { display:grid; grid-column:2; grid-row:1; grid-template-columns:max-content; gap:4px; align-self:start; justify-self:end; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-photo-buttons > .btn { grid-column:1; grid-row:auto; width:100% !important; height:44px; min-width:0; padding:8px 12px; margin:0; white-space:nowrap; }
+.app .task-card:not(.approved-delivery-card)[data-item-status="Amazon補填申請中"] .workflow-photo-buttons { width:100px; grid-template-columns:minmax(0,1fr); }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .workflow-action-form { grid-column:1 / -1; }
+.app .task-card:not(.approved-delivery-card)[data-item-status="動作不良"] [data-action="return_impossible"] { background:var(--accent); border-color:var(--accent); color:#fff; }
 .work-date-field { display:grid; gap:8px; margin-top:16px; margin-bottom:4px; }
-@media(max-width:767px){.app .task-card[data-item-status="動作不良"] .workflow-photo-buttons > .btn { font-size:12px; padding:8px; }}
+@media(max-width:767px){.app .task-card:not(.approved-delivery-card)[data-item-status="動作不良"] .workflow-photo-buttons > .btn { font-size:12px; padding:8px; }}
 /* Keep item values readable beside the action column rather than wrapping one character at a time. */
 @media screen and (min-width:1280px) {
- .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-overview { display:grid; grid-template-columns:minmax(0,1fr) 84px; gap:10px; }
+ .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card:not(.approved-delivery-card)-overview { display:grid; grid-template-columns:minmax(0,1fr) 84px; gap:10px; }
 }
 @media screen and (max-width:1279px) {
- .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.copyable-text,.task-detail-field) { grid-template-columns:60px minmax(0,1fr); gap:0 4px; font-size:12px; line-height:18px; }
- .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-info > span { line-height:18px; }
- .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-item-id-line { display:grid; grid-template-columns:minmax(0,1fr) 17px; gap:2px; }
- .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-item-page-link { width:17px; min-width:0; padding:0; }
- .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .purchaser-comment { font-size:12px; line-height:18px; }
+ .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.copyable-text,.task-detail-field) { grid-template-columns:60px minmax(0,1fr); gap:0 4px; font-size:12px; line-height:18px; }
+ .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card:not(.approved-delivery-card)-info > span { line-height:18px; }
+ .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-item-id-line { display:grid; grid-template-columns:minmax(0,1fr) 17px; gap:2px; }
+ .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-item-page-link { width:17px; min-width:0; padding:0; }
+ .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .purchaser-comment { font-size:12px; line-height:18px; }
 }
 .work-date-field > span > button { width:36px; height:44px; display:grid; place-items:center; padding:0 !important; }
 .work-date-field > span > input[type="text"] { height:44px; }
 @media screen and (max-width:1279px) {
- .app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.copyable-text,.task-detail-field) > span:first-child { white-space:normal; overflow-wrap:anywhere; }
+ .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.copyable-text,.task-detail-field) > span:first-child { white-space:normal; overflow-wrap:anywhere; }
 }
 /* Keep the photo inside its own column beside the fault/compensation actions. */
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.task-card-photo-button,.task-card-photo) { width:80px; max-width:100%; }
-.app .task-card:is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-photo { height:80px; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.task-card:not(.approved-delivery-card)-photo-button,.task-card:not(.approved-delivery-card)-photo) { width:80px; max-width:100%; }
+.app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card:not(.approved-delivery-card)-photo { height:80px; }
 
 /* Six equal desktop status cells, retaining the card bounds and the sold/footer gap. */
 @media screen and (min-width:1280px) {

@@ -36,9 +36,11 @@ const react={useState(v){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof v=
 // Hook methods are imported as standalone functions.
 react.useCallback=(fn,deps)=>react.useMemo(()=>fn,deps);
 let initialRead=true, finishInitial;
-const jsx=(type,props)=>({type,props});const api={fetchItems:async (q,signal,progress)=>{lastRequest=q;if(initialRead){initialRead=false;progress?.({items:rows,count:2});return new Promise(resolve=>{finishInitial=()=>resolve({items:rows,count:2})});}return{items:rows,count:2};},fetchStaff:async()=>[],fetchPurchaseDrafts:async()=>[]};
+const jsx=(type,props)=>type==='approved-overview'?overviewModule.exports.default(props):({type,props});const api={fetchItems:async (q,signal,progress)=>{lastRequest=q;if(initialRead){initialRead=false;progress?.({items:rows,count:2});return new Promise(resolve=>{finishInitial=()=>resolve({items:rows,count:2})});}return{items:rows,count:2};},fetchStaff:async()=>[],fetchPurchaseDrafts:async()=>[]};
 const draftsModule={exports:{},require:()=>react,Date};vm.runInNewContext(compile('apps/admin/src/hooks/usePurchaseDrafts.ts'),draftsModule);
-const context={exports:{},require:name=>name==='../hooks/usePurchaseSync'?{usePurchaseSync:()=>({syncing:false,message:'',error:null,startSync:async()=>{}})}:name==='../hooks/usePurchaseDrafts'?draftsModule.exports:name==='../hooks/useInventoryPage'?{useInventoryPage:(_scope,_owner,q)=>{lastRequest=q;return {rows,total:2,loading:initialRead,more:false,error:null,refresh:async()=>{},loadMore:()=>{}};}}:name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:name==='../inventorySearch'?search.exports:{default:name.includes('InventoryStateFilter')?'state-filter':name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
+const presentation={exports:{}};vm.runInNewContext(compile('packages/shared/src/inventoryPresentation.ts'),presentation);Object.assign(shared,presentation.exports);
+const overviewModule={exports:{},require:name=>name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../inventoryFilters'?filters.exports:{default:'component'}};vm.runInNewContext(compile('apps/admin/src/components/InventoryOverview.tsx'),overviewModule);
+const context={exports:{},require:name=>name==='../components/InventoryOverview'?{default:'approved-overview'}:name==='../hooks/usePurchaseSync'?{usePurchaseSync:()=>({syncing:false,message:'',error:null,startSync:async()=>{}})}:name==='../hooks/usePurchaseDrafts'?draftsModule.exports:name==='../hooks/useInventoryPage'?{useInventoryPage:(_scope,_owner,q)=>{lastRequest=q;return {rows,total:2,loading:initialRead,more:false,error:null,refresh:async()=>{},loadMore:()=>{}};}}:name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:name==='../inventorySearch'?search.exports:{default:name.includes('InventoryStateFilter')?'state-filter':name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
 vm.runInNewContext(compile('apps/admin/src/pages/Inventory.tsx'),context);
 let me={role:'admin',id:'AA',code:'AA'};
 function render(){cursor=0;dirty=false;tree=context.exports.default({me});pending.splice(0).forEach(fn=>fn());}
@@ -46,9 +48,9 @@ async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.re
 function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)){n.forEach(v=>all(v,out));return out;}out.push(n);all(n.props?.children,out);return out;}
 (async()=>{
  await settle();
- assert(all(tree).some(n=>n.type==='table'&&n.props.className==='inventory-table'),'Show first batch while remaining rows load');
- const purchaseLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.sku+'の仕入先の商品ページを開く');assert(purchaseLink);assert.equal(purchaseLink.props.href,row.marketplace_url);assert.equal(purchaseLink.props.className,'inline-reference-link');assert.equal(purchaseLink.props.target,'_blank');assert.equal(purchaseLink.props.rel,'noopener noreferrer');
- const amazonLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.asin+'をAmazonで開く');assert(amazonLink);assert.equal(amazonLink.props.href,'https://www.amazon.co.jp/dp/'+row.asin);assert.equal(amazonLink.props.className,'inline-reference-link');assert.equal(amazonLink.props.target,'_blank');
+ assert(all(tree).some(n=>n.props?.role==='table'&&n.props.className==='approved-inventory'),'Show first batch while remaining rows load');
+ const purchaseLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.sku+'の仕入先の商品ページを開く');assert(purchaseLink);assert.equal(purchaseLink.props.href,row.marketplace_url);assert(purchaseLink.props.className.includes('inline-reference-link'));assert.equal(purchaseLink.props.target,'_blank');assert.equal(purchaseLink.props.rel,'noopener noreferrer');
+ const amazonLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.asin+'をAmazonで開く');assert(amazonLink);assert.equal(amazonLink.props.href,'https://www.amazon.co.jp/dp/'+row.asin);assert(amazonLink.props.className.includes('inline-reference-link'));assert.equal(amazonLink.props.target,'_blank');
  all(tree).find(n=>n.type==='button'&&n.props.title==='商品IDをクリックして編集').props.onClick();await settle();const idEditor=all(tree).find(n=>n.props?.field==='marketplace_item_id');assert.equal(idEditor.props.item.id,row.id);idEditor.props.onClose();await settle();
  assert(!all(tree).some(n=>n.type==='button'&&['一覧をCSV','再読込'].includes(n.props.children)),'Requested inventory export and reload controls are absent');
  initialRead=false;dirty=true;await settle();
@@ -65,32 +67,32 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,'検索');}
  const stateFilter=()=>all(tree).find(n=>n.type==='state-filter');
  assert(stateFilter());assert(!all(tree).some(n=>['仕入先フィルター','販売先フィルター','販売状態フィルター'].includes(n.props?.['aria-label'])));
- stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
- stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1);
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],4);
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],1);
  all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();assert.equal(Object.keys(stateFilter().props.value).length,0);
- const accessoryRow=all(tree).find(n=>n.type==='tr'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
- const saleCell=all(accessoryRow).filter(n=>n.type==='td')[11];
- const moneyButtons=all(saleCell).filter(n=>n.type==='button');
+ const accessoryRow=all(tree).find(n=>n.props?.role==='row'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
+ const saleCell=all(accessoryRow).filter(n=>n.props?.role==='cell')[5];
+ const moneyButtons=all(saleCell).filter(n=>n.type==='button').slice(-2);
  assert.deepEqual(moneyButtons.map(n=>n.props.children),['200','150']);
  moneyButtons[0].props.onClick();await settle();
  const editor=all(tree).find(n=>n.props?.field==='sold_price');
  assert.equal(editor.props.item.sold_price,200);assert.equal(editor.props.item.payout_amount,150);
  editor.props.onClose();await settle();
- all(accessoryRow).find(n=>n.props?.className==='inventory-photo').props.onClick();await settle();
+ all(accessoryRow).find(n=>n.props?.title==='商品情報編集').props.onClick();await settle();
  const fullEditor=all(tree).find(n=>n.props?.item?.id==='2'&&n.props.onClose&&!n.props.field);
  assert.equal(fullEditor.props.item.sold_price,200);assert.equal(fullEditor.props.item.payout_amount,150);
  fullEditor.props.onClose();await settle();
  const heading=all(tree).find(n=>n.props?.['aria-label']==='Amazon返金金額のフィルター');assert(heading);
  heading.props.onClick({currentTarget:{}});await settle();all(tree).find(n=>n.type==='popup').props.onApply(f(null,'-2000','-1'));await settle();
- assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],3);
+ assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],3);
  all(tree).find(n=>n.props?.['aria-label']==='Amazon返金金額のフィルター').props.onClick({currentTarget:{}});await settle();all(tree).find(n=>n.type==='popup').props.onApply(f([]));await settle();
- assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],1,'Keep headings with zero matching rows');
+ assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],1,'Keep headings with zero matching rows');
  selector().props.onChange({target:{value:'serial'}});await settle();
  all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.onChange({target:{value:'search'}});await settle();
  all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();
  assert.equal(lastRequest.queryField,'serial');assert.equal(selector().props.value,'serial');
  assert.equal(lastRequest.query,'');assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds.length,0);assert.equal(lastRequest.from,'');assert.equal(lastRequest.to,'');
- assert.equal(all(tree).find(n=>n.type==='table'&&n.props.className==='inventory-table').props['aria-rowcount'],4);
+ assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],4);
  const assignee=all(tree).find(n=>n.type==='state-filter').props.assignee;assert(assignee,'AA management has the assignee filter');assignee.onChange(['II','LL']);await settle();assert.deepEqual(Array.from(lastRequest.delivererIds),['II','LL']);all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();assert.equal(lastRequest.delivererIds.length,0);
  for(const identity of [{id:'EE',code:'EE',role:'purchaser'},{id:'XX',code:'XX',role:'admin'}]){me=identity;dirty=true;await settle();assert(stateFilter().props.assignee,'Every management inventory user can filter assignees');stateFilter().props.assignee.onChange(['II','LL']);await settle();assert.deepEqual(Array.from(lastRequest.delivererIds),['II','LL']);all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();assert.equal(lastRequest.delivererIds.length,0);}
  console.log('34 headings, combined filters, signed ranges, dates, empty values, all fetched rows, zero-match recovery and clear-all UI passed');

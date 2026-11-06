@@ -37,6 +37,10 @@ verify_jwt = false
 [functions.amazon-payments]
 verify_jwt = false
 
+# Auth.getUser + app.is_admin; exact item/SKU/account checks before price updates.
+[functions.amazon-listing-price]
+verify_jwt = false
+
 [functions.delivery-photo-drive]
 verify_jwt = false
 
