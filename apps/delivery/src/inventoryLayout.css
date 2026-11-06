@@ -168,7 +168,6 @@
   .task-card[data-item-status="取引中"] .workflow-action-form { grid-column:1 / -1; }
 }
 @media screen and (max-width:1279px) {
-  .task-product-summary .task-section-title { transform:translateX(-1em); }
   .task-product-summary .task-photo-action { align-content:start; }
   .task-card[data-item-status="検品中"] .task-content { position:relative; }
   .app .task-card[data-item-status="検品中"] .workflow-buttons { position:absolute; right:0; top:0; display:grid; grid-template-columns:max-content; gap:6px; width:max-content; max-width:calc(100% - 136px); margin:0; }
@@ -206,15 +205,6 @@
  .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons:has(> [data-action="yahoo_instruction_cancel"]) { position:relative; }
  .app .task-card[data-item-status="商品登録前"] .workflow-photo-buttons:has(> [data-action="yahoo_instruction_cancel"]) > [data-action="comments"] { position:absolute; left:0; right:0; top:calc(100% + 6px); height:44px; margin:0; padding-block:2px; line-height:18px; white-space:normal; }
 }
-/* Keep selection fixed and place the thumbnail below it on the same left edge. */
-@media screen and (max-width:1279px) {
- .task-product-summary .task-photo-action { position:relative; left:-34px; padding-top:30px; }
- .task-card[data-item-status="取引中"] .task-photo-action { width:min(120px,calc(100% + 34px)); }
-}
-@media screen and (max-width:1023px) {
- .task-product-summary .task-photo-action { left:-30px; }
- .task-card[data-item-status="取引中"] .task-photo-action { width:min(120px,calc(100% + 30px)); }
-}
 @media screen and (max-width:374px) {
  .app .task-card[data-item-status="取引中"] .workflow-photo-row > .btn { font-size:12px; }
 }
@@ -223,10 +213,6 @@
  .app .task-card .task-photo-action { width:min(80px,100%); }
  .app .task-card .task-card-photo-button,
  .app .task-card .task-card-photo { width:100%; max-width:80px; }
- .app .task-card[data-item-status="取引中"] .task-photo-action { width:min(80px,calc(100% + 34px)); }
-}
-@media screen and (max-width:1023px) {
- .app .task-card[data-item-status="取引中"] .task-photo-action { width:min(80px,calc(100% + 30px)); }
 }
 
 /* The catalog switch stays at the lower right of the workflow selector. */
