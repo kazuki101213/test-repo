@@ -402,8 +402,8 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  if(error)throw error;
  announceReturnTaskChange();
 }
-export async function submitAmazonListing(itemId:string,date:string,requestId:string):Promise<{verified:boolean;state:string;note:string}>{
- const {data,error}=await getSupabase().functions.invoke('amazon-listing-submit',{body:{action:'submit',itemId,workCompletedOn:date,requestId}});
+export async function submitAmazonListing(itemId:string,date:string,requestId:string,photoIds:string[]):Promise<{verified:boolean;state:string;note:string}>{
+ const {data,error}=await getSupabase().functions.invoke('amazon-listing-submit',{body:{action:'submit',itemId,workCompletedOn:date,requestId,photoIds}});
  if(error){const result=error.context instanceof Response?await error.context.json().catch(()=>null):null;throw new Error(result?.error||'Amazonの登録結果を確認できません。再度、結果を確認してください。');}
  if(!data||typeof data.verified!=='boolean')throw new Error('Amazonの登録結果が不正です。');return data;
 }
