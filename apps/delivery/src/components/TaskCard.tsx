@@ -84,8 +84,8 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
  const badge=(text:string)=><span className="inventory-label inventory-accessory-label">{text}</span>;
  const independent=(item:DeliveryTask)=>!item.is_accessory||isSeparateAccessory(item);
  const people=(item:DeliveryTask)=><div className="delivery-people">{[
-  ['納品担当者',staffDisplayName(item.deliverer_name||(item.deliverer_id===staff.id?staffDisplayName(staff):''))||'未設定',true],
-  ['仕入担当者',staffDisplayName(item.purchaser_name)||'—',true],['仕入先',item.marketplace,false],['販売先',salesChannelLabel(item.sales_channel)||'—',false],
+  ['仕入担当者',staffDisplayName(item.purchaser_name)||'—',true],
+  ['納品担当者',staffDisplayName(item.deliverer_name||(item.deliverer_id===staff.id?staffDisplayName(staff):''))||'未設定',true],['仕入先',item.marketplace,false],['販売先',salesChannelLabel(item.sales_channel)||'—',false],
  ].map(([label,value,person])=><div key={String(label)}><small>{label}</small><span className="inventory-label" style={person?inventoryStaffStyle(String(value)):inventorySiteStyle(String(value))}>{value}</span></div>)}</div>;
  const sourceLink=(item:DeliveryTask)=>{const url=noticeProductUrl(item.marketplace,productIdFor(item),item.marketplace_url);return <button type="button" className="task-item-page-link inventory-inline-link" aria-label="仕入先の商品ページを開く" disabled={!isAllowedMarketplaceUrl(item.marketplace,url)} title={isAllowedMarketplaceUrl(item.marketplace,url)?'仕入先の商品ページを開く':'登録されたURLは対応フリマサイトの商品ページではありません'} onClick={()=>{if(isAllowedMarketplaceUrl(item.marketplace,url))window.open(url!,'_blank','noopener,noreferrer');}}>↗</button>;};
  const field=(label:string,value:string,className='')=><span className={`task-detail-field${className?' '+className:''}`}><span>{label}</span><span>{value}</span></span>;
