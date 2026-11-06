@@ -402,6 +402,12 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  if(error)throw error;
  announceReturnTaskChange();
 }
+export async function submitAmazonListing(itemId:string,date:string,requestId:string):Promise<{verified:boolean;state:string;note:string}>{
+ const {data,error}=await getSupabase().functions.invoke('amazon-listing-submit',{body:{action:'submit',itemId,workCompletedOn:date,requestId}});
+ if(error){const result=error.context instanceof Response?await error.context.json().catch(()=>null):null;throw new Error(result?.error||'Amazonの登録結果を確認できません。再度、結果を確認してください。');}
+ if(!data||typeof data.verified!=='boolean')throw new Error('Amazonの登録結果が不正です。');return data;
+}
+
 export async function performDatedInventoryAction(task:Pick<DeliveryTask,'id'|'status'>,action:'listing_complete'|'supplier_return_complete',date:string,requestId:string):Promise<void>{
  const {error}=await getSupabase().rpc('perform_dated_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_on:date,p_request_id:requestId});
  if(error)throw error;announceReturnTaskChange();

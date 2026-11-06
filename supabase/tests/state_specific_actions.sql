@@ -34,10 +34,13 @@ update app.items set sales_channel='FBA' where lot_seq=992001 and not is_accesso
 set local role postgres;
 insert into app.item_photos(item_id,storage_path) select id,'test/listing-992001.jpg' from app.items where lot_seq=992001 and not is_accessory;
 insert into app.photo_reviews(item_id,drive_folder_id,exported_photo_count,approved_at) select id,'fixture-folder',1,now() from app.items where lot_seq=992001 and not is_accessory;
+update app.items set asin='B000TEST01',planned_price=1000,condition='非常に良い' where lot_seq=992001 and not is_accessory;
+insert into app.amazon_listing_submissions(request_id,item_id,requested_by,sku,asin,sales_channel,account_id,seller_id,price,item_condition,description,work_completed_on,state,verified_at,note)
+select gen_random_uuid(),i.id,(select user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.code='AA'),i.sku,i.asin,i.sales_channel,case when i.sales_channel::text in ('FBA2','自己発送2') then 'amazon-2' else 'amazon-1' end,case when i.sales_channel::text in ('FBA2','自己発送2') then 'A3E7BXJWH9TP11' else 'A1WI3OGPE43N2T' end,i.planned_price,i.condition::text,coalesce(i.description,''),current_date,'verified',clock_timestamp(),'test-first' from app.items i where lot_seq=992001 and not is_accessory;
 set local role authenticated;
 
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
-select app.perform_inventory_action(id,'listing_complete',status) from app.items where lot_seq=992001 and not is_accessory;
+select app.perform_inventory_action(id,'listing_complete',status,null,(select request_id from app.amazon_listing_submissions where item_id=app.items.id)) from app.items where lot_seq=992001 and not is_accessory;
 select app.perform_inventory_action(id,'listing_cancel',status,'confirmed not listed') from app.items where lot_seq=992001 and not is_accessory;
 do $$begin
  begin perform app.set_inventory_workflow((select id from app.items where lot_seq=992001 and not is_accessory),'販売済');raise exception 'Delivery zero sale accepted';exception when insufficient_privilege then null;end;
