@@ -2,9 +2,10 @@
 .approved-delivery-card * { min-width:0; }
 .approved-delivery-card .copyable-text { display:inline; cursor:pointer; font:inherit; line-height:inherit; overflow-wrap:anywhere; }
 .approved-delivery-card .copyable-text > span:first-child { display:none; }
-.approved-delivery-card .task-item-id-line { display:inline; white-space:normal; }
+.app .approved-delivery-card .task-item-id-line { display:inline-flex!important; white-space:normal; align-items:baseline; gap:3px; }
 .app .approved-delivery-card .task-item-page-link,.approved-delivery-card .inventory-inline-link { display:inline; width:auto; min-width:0; height:auto; min-height:0; font:inherit; line-height:1; padding:0 3px; border:0; border-radius:0; background:transparent; box-shadow:none; color:inherit; vertical-align:baseline; }
 .app .approved-delivery-card .task-item-page-link:disabled { opacity:.4; }
+.app .task-card.approved-delivery-card .task-item-page-link.inventory-inline-link { width:1em!important; min-width:1em!important; max-width:1em!important; flex:0 0 1em; height:1em!important; }
 .approved-delivery-card .task-detail-field { display:block; line-height:21px; }
 .approved-delivery-card .task-detail-field > span:first-child { display:none; }
 .approved-delivery-card .delivery-record-actions { align-self:center; min-width:0; }
@@ -105,7 +106,7 @@
  .delivery-main-dates { width:100%; order:3; }
  .approved-delivery-card .task-detail-field,.approved-delivery-card .delivery-accessory-details > .copyable-text,.approved-delivery-card .delivery-accessory-details > .task-item-id-line { display:grid; grid-template-columns:125px minmax(0,1fr); gap:8px; align-items:center; min-height:25px; font-size:12px; line-height:18px; }
  .approved-delivery-card .task-detail-field > span:first-child,.approved-delivery-card .delivery-accessory-details > .copyable-text > span:first-child { display:block; color:var(--muted); font-size:11px; }
- .approved-delivery-card .delivery-accessory-details > .task-item-id-line { display:flex; gap:0; }
+ .app .approved-delivery-card .delivery-accessory-details > .task-item-id-line { display:flex!important; gap:0; }
  .approved-delivery-card .delivery-accessory-details > .task-item-id-line .copyable-text { flex:1; display:grid; grid-template-columns:125px minmax(0,1fr); gap:8px; }
  .approved-delivery-card .delivery-accessory-details > .task-item-id-line .copyable-text > span:first-child { display:block; font-size:11px; color:var(--muted); }
  .approved-delivery-card .delivery-accessory-details > .task-item-id-line .task-item-page-link { margin-right:4px; }
