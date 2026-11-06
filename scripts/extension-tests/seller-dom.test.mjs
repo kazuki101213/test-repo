@@ -1,6 +1,6 @@
 import {parseCarrierReceipts,readOutboundReceipt} from '../../tools/fleamarket-extension/daily-shipping.js';
 import {readSellerStructure,readInspectionTarget,readShippingInspectionTarget} from '../../tools/fleamarket-extension/seller-inspection.js';
-import {clickSellerListTab,advanceSellerList,clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,advanceMercariShippingEditor,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
+import {clickSellerListTab,advanceSellerList,clickSellerChoice,searchSellerCategory,resolveYahooCategory,openSellerSession,normalizeSellerPhoto,prepareMercariShipping,advanceMercariShippingEditor,advanceMercariShippingSize,advanceMercariShippingPlace,selectMercariListingChoice,mercariListingChoiceSelected,returnMercariListingForm} from '../../tools/fleamarket-extension/seller-runtime.js';
 import test,{before,after} from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';
 import {readSellerPage} from '../../tools/fleamarket-extension/seller-sync.js';import {sellerDomOperation} from '../../tools/fleamarket-extension/seller-dom.js';
 const require=createRequire(import.meta.url),{chromium}=require('C:/Users/長部一輝/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');let browser;
@@ -536,3 +536,40 @@ test('ネコポスは装飾で非表示のradioとaria-labelledbyに対応し、
  }
 });
 test('140指定時は初期選択ゆうパケットをゆうパック120-170へ変更する',async()=>{const p=await page('<h1>サイズ（１／２）</h1><label><input type="radio" name="size" value="ゆうパケット" checked>ゆうパケット</label><label><input type="radio" name="size" value="ゆうパック60 - 100">ゆうパック60 - 100</label><label><input type="radio" name="size" value="ゆうパック120 - 170">ゆうパック120 - 170</label><button onclick="document.body.dataset.next=1">選択して次へ</button>','https://jp.mercari.com/transaction/m99125688368/shipping_class');const result=await p.evaluate(advanceMercariShippingSize,{itemId:'m99125688368',size:'140',shippingMethod:'ゆうゆうメルカリ便'});assert.equal(result.__error,undefined);await p.waitForFunction(()=>document.body.dataset.next==='1');assert.equal(await p.locator('input[value="ゆうパック120 - 170"]').isChecked(),true);await p.close();});
+
+test('既存コードのためサイズ画面が戻される実フローでも匿名配送を一度切り替え、指定方法と宅急便へ戻して止まる',async()=>{
+ const p=await page('<h1>取引画面</h1>','https://jp.mercari.com/transaction/m99125688368');
+ await p.evaluate(()=>{
+  window.resetState={method:'らくらくメルカリ便',oldCode:true,switches:[],parcel:'ネコポス',place:'セブンイレブン',issued:0,notified:0};
+  window.renderShipping=(screen='root')=>{
+   const s=window.resetState,base='/transaction/m99125688368';history.replaceState(null,'',base+(screen==='method'?'/shipping_method':screen==='size'?'/shipping_class':screen==='place'?'/shipping_facilities':''));
+   document.body.innerHTML='<main><h1>取引画面</h1></main>';const root=document.querySelector('main');
+   const button=(text,handler)=>{const b=document.createElement('button');b.textContent=text;b.onclick=handler;root.append(b);};
+   const radio=(value,text,checked,name='choice')=>{const l=document.createElement('label'),r=document.createElement('input');r.type='radio';r.name=name;r.value=value;r.checked=checked;l.append(r,document.createTextNode(text));root.append(l);return r;};
+   if(screen==='method'){
+    const ra=radio('14','らくらくメルカリ便で発送する',s.method==='らくらくメルカリ便'),yu=radio('17','ゆうゆうメルカリ便で発送する',s.method==='ゆうゆうメルカリ便');
+    button('変更する',()=>{const selected=ra.checked?'らくらくメルカリ便':'ゆうゆうメルカリ便';if(selected===s.method)throw Error('配送方法が変更されていません');s.switches.push(selected);s.method=selected;s.oldCode=false;window.renderShipping();});return;
+   }
+   if(screen==='size'){
+    if(s.oldCode){window.renderShipping();return;}
+    const parcel=radio('宅急便60 - 160','宅急便60 - 160',false),small=radio('ネコポス','ネコポス',true);
+    button('選択して次へ',()=>{s.parcel=parcel.checked?'宅急便':'ネコポス';window.renderShipping('place');});return;
+   }
+   if(screen==='place'){
+    const seven=radio('SEVEN_ELEVEN','セブンイレブン',false),yamato=radio('YAMATO_OFFICE','ヤマト営業所',true);
+    button('選択して完了する',()=>{s.place=seven.checked?'セブンイレブン':'ヤマト営業所';window.renderShipping();});return;
+   }
+   root.append(document.createTextNode(s.method+' サイズ '+s.parcel));
+   if(s.oldCode){
+    button('商品サイズや発送方法を修正する',()=>{const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.append('発送方法を変更しますか？ ');for(const text of ['キャンセル','変更する']){const b=document.createElement('button');b.textContent=text;b.onclick=()=>text==='変更する'?window.renderShipping('method'):window.renderShipping();dialog.append(b,' ');}document.body.append(dialog);});
+   }else{
+    const a=document.createElement('a');a.href=base+'/shipping_method';a.textContent='発送方法を変更する';a.onclick=e=>{e.preventDefault();window.renderShipping('method');};root.append(a);
+    button('商品サイズと発送場所を選択する',()=>window.renderShipping('size'));button('発送用バーコードを発行',()=>s.issued++);
+   }
+   button('商品を発送したので、発送通知をする',()=>s.notified++);
+  };window.renderShipping();
+ });
+ const job={external_id:'m99125688368',payload:{shippingMethod:'らくらくメルカリ便',size:'100',dropoff:'セブンイレブン'}};
+ const result=await prepareMercariShipping({job,resetExistingCode:true,execute:async(fn,args)=>{const r=await p.evaluate(fn,args);if(r.__error)throw Error(r.__error);return r;},go:async()=>assert.fail('既存コードが残るURLへ直接移動しない'),loaded:async()=>{},finishChoice:async before=>{await p.waitForFunction(before=>location.href!==before.url||document.body.innerText!==before.text,before);}});
+ assert.equal(result.resetPreviousCode,true);const state=await p.evaluate(()=>window.resetState);assert.deepEqual(state.switches,['ゆうゆうメルカリ便','らくらくメルカリ便']);assert.equal(state.method,'らくらくメルカリ便');assert.equal(state.parcel,'宅急便');assert.equal(state.place,'セブンイレブン');assert.equal(state.issued,0);assert.equal(state.notified,0);await p.close();
+});
