@@ -102,6 +102,20 @@ export function advanceMercariShippingEditor({itemId,shippingMethod}){
  if(location.hostname!=='jp.mercari.com'||!/^m[0-9]{8,14}$/.test(itemId)||!(location.pathname===path||new RegExp('^'+path+'/shipping(?:_[a-z]+)?$').test(location.pathname)))throw Error('対象取引の配送設定画面ではありません：'+location.pathname.replace(/m[0-9]+/g,'[item]'));
  if(location.pathname===path+'/shipping_class')return {sizeReady:true};
  const allDialogs=[...document.querySelectorAll('[role=dialog],[aria-modal=true],dialog[open]')].filter(e=>visible(e)&&getComputedStyle(e).visibility!=='hidden'&&norm(e.innerText));
+ // Some Mercari confirmation portals omit dialog semantics. Identify only the
+ // small shipping-reset confirmation with its own cancel/confirm controls.
+ if(!allDialogs.some(e=>/配送|発送|サイズ/.test(norm(e.innerText)))){
+  for(const button of document.querySelectorAll('button')){
+   if(!visible(button)||button.disabled||!['修正する','変更する'].includes(norm(button.innerText)))continue;
+   for(let box=button.parentElement,n=0;box&&n<5;box=box.parentElement,n++){
+    const text=norm(box.innerText),buttons=[...box.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled),labels=buttons.map(e=>norm(e.innerText));
+    if(text.length>600||box.querySelector('input:not([type=hidden]),textarea,select'))break;
+    if(buttons.length===2&&labels.includes('キャンセル')&&/商品サイズ|発送方法を変更しますか/.test(text)&&!/発送通知|発送しました|取引をキャンセル|購入する|支払う/.test(text)){
+     if(!allDialogs.includes(box))allDialogs.push(box);break;
+    }
+   }
+  }
+ }
  const shippingDialogs=allDialogs.filter(e=>/配送|発送|サイズ/.test(norm(e.innerText)));
  const dialogs=shippingDialogs.filter(e=>!shippingDialogs.some(other=>other!==e&&e.contains(other)));
  if(!dialogs.length){
@@ -115,7 +129,7 @@ export function advanceMercariShippingEditor({itemId,shippingMethod}){
   if(location.pathname===path){
    const revise=buttons.filter(e=>norm(e.innerText)==='商品サイズや発送方法を修正する');
    const links=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&e.origin===location.origin&&e.pathname.startsWith(path+'/')&&/\/shipping(?:_[a-z]+)?$/.test(e.pathname));
-   const method=links.filter(e=>norm(e.innerText)==='発送方法を変更する'),size=[...buttons,...links].filter(e=>norm(e.innerText)==='商品サイズと発送場所を選択する');
+  const method=links.filter(e=>norm(e.innerText)==='発送方法を変更する'),size=[...buttons,...links].filter(e=>['商品サイズと発送場所を選択する','サイズと発送場所を選択する'].includes(norm(e.innerText)));
    const choices=revise.length?revise:!body.includes(shippingMethod)&&method.length?method:size.length?size:method;
    if(choices.length===1){const state=before();setTimeout(()=>choices[0].click(),100);return state;}
   }
@@ -128,7 +142,7 @@ export function advanceMercariShippingEditor({itemId,shippingMethod}){
  const radios=[...dialog.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&norm([e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText)].join(' ')).startsWith(shippingMethod));
  let candidates;
  if(radios.length===1){if(radios[0].checked)return {methodAlreadySelected:true};candidates=buttons.filter(e=>['変更する','更新する','選択して次へ'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();radios[0].click();if(!radios[0].checked)return stop();}
- else {if(radios.length||dialog.querySelector('input:not([type=hidden]):not([type=button]):not([type=submit]),textarea,select')||!(/コード|商品サイズ/.test(text)||text==='発送方法を変更しますか？ キャンセル 変更する'))return stop();candidates=buttons.filter(e=>['修正する','変更する','はい'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();}
+ else {if(radios.length||dialog.querySelector('input:not([type=hidden]):not([type=button]):not([type=submit]),textarea,select')||!(/コード|商品サイズ/.test(text)||/^発送方法を変更しますか[？?]\s*キャンセル\s*変更する$/.test(text)))return stop();candidates=buttons.filter(e=>['修正する','変更する','はい'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();}
  const state=before();setTimeout(()=>candidates[0].click(),100);return state;
  }catch(error){return {__error:error.message};}
 }
