@@ -24,13 +24,12 @@
 .delivery-people > div { min-width:0; }
 .delivery-people small { display:none; }
 .delivery-people .inventory-label { font-size:11px; padding:1px 5px; line-height:17px; }
-.approved-delivery-card .purchaser-comment { display:block; margin-top:5px; color:var(--muted); font-size:12px; line-height:17px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.approved-delivery-card .purchaser-comment > span:last-child { white-space:pre-wrap; overflow-wrap:anywhere; }
 .delivery-accessory-title { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
 .delivery-accessory-title > strong { font-size:16px; line-height:21px; }
 .delivery-accessory-title > b { font-size:12px; font-weight:500; }
 .delivery-accessory-title .inventory-label { font-size:10px; padding:1px 5px; }
 .delivery-accessory-text > .copyable-text { display:block; font-size:13px; line-height:19px; }
-.delivery-accessory-open { border:0; background:transparent; padding:0; text-decoration:underline; font-size:11px; color:var(--muted); cursor:pointer; }
 .delivery-bundled-record { position:relative; }
 .delivery-mobile-accessory-name { display:none; }
 .delivery-accessory-details { font-size:12px; line-height:21px; }
@@ -61,7 +60,6 @@
  .delivery-bundled-record .delivery-accessory-identity { grid-column:1; grid-row:1; }
  .delivery-bundled-record .delivery-people { grid-column:2; grid-row:1/4; align-self:center; }
  .delivery-bundled-record .delivery-accessory-details { grid-column:1; grid-row:2; }
- .delivery-bundled-record .delivery-accessory-open { grid-column:1; grid-row:3; justify-self:start; }
  .delivery-independent-record { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; min-height:64px; border-top:1px solid var(--border); padding:4px 12px; }
  .delivery-independent-record > .delivery-accessory-identity { flex:1 1 310px; min-width:310px; }
  .delivery-independent-record > .delivery-people { flex:.4 1 120px; min-width:120px; }
@@ -138,5 +136,4 @@
  .delivery-independent-record .delivery-record-actions { margin-top:6px; }
  .approved-delivery-card .delivery-accessory-details > .copyable-text { font-size:13px; }
  .app .approved-delivery-card .workflow-controls .btn { font-size:10px; min-height:28px; padding:5px 6px!important; }
- .delivery-accessory-open { margin-top:3px; }
 }

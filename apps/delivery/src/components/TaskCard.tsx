@@ -87,9 +87,9 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   ['仕入担当者',staffDisplayName(item.purchaser_name)||'—',true],['仕入先',item.marketplace,false],['販売先',item.sales_channel||'—',false],
  ].map(([label,value,person])=><div key={String(label)}><small>{label}</small><span className="inventory-label" style={person?inventoryStaffStyle(String(value)):inventorySiteStyle(String(value))}>{value}</span></div>)}</div>;
  const sourceLink=(item:DeliveryTask)=>{const url=noticeProductUrl(item.marketplace,productIdFor(item),item.marketplace_url);return <button type="button" className="task-item-page-link inventory-inline-link" aria-label="仕入先の商品ページを開く" disabled={!isAllowedMarketplaceUrl(item.marketplace,url)} title={isAllowedMarketplaceUrl(item.marketplace,url)?'仕入先の商品ページを開く':'登録されたURLは対応フリマサイトの商品ページではありません'} onClick={()=>{if(isAllowedMarketplaceUrl(item.marketplace,url))window.open(url!,'_blank','noopener,noreferrer');}}>↗</button>;};
- const field=(label:string,value:string)=><span className="task-detail-field"><span>{label}</span><span>{value}</span></span>;
+ const field=(label:string,value:string,className='')=><span className={`task-detail-field${className?' '+className:''}`}><span>{label}</span><span>{value}</span></span>;
  const source=(item:DeliveryTask)=><span className="task-item-id-line"><CopyableText label={itemIdLabel(item)} value={productIdFor(item)}/>{sourceLink(item)}</span>;
- const comments=(item:DeliveryTask)=>item.memo?.trim()?<span className="purchaser-comment">仕入担当者からのコメント：{item.memo}</span>:null;
+ const comments=(item:DeliveryTask)=>field('仕入担当者からのコメント',item.memo?.trim()?item.memo:'—','purchaser-comment');
  const controls=(item:DeliveryTask)=>operate(item)?<div className="delivery-record-actions" data-record-id={item.id}><WorkflowControls task={item} onChanged={()=>refreshAction(item)} onError={message=>setActionError(message?`${item.sku}：${message}`:null)} onPanel={mode=>openPanel(item,mode)}/></div>:<span className="muted task-read-only">閲覧のみ</span>;
  const accessoryInfo=(item:DeliveryTask,compact=false)=> <>
   <div className={`delivery-accessory-identity${independent(item)?' independent':''}`}>
@@ -110,7 +110,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
     {people(task)}
     <div className="delivery-main-dates">{field('コンディション',task.condition||'—')}{field('仕入日',jpDate(task.purchased_at))}{field('作業完了日',task.packed_on?jpDate(task.packed_on):'未登録')}{comments(task)}</div>
    </div>
-   <div className="delivery-bundled">{bundled.map(item=><section key={item.id} className="delivery-bundled-record" data-item-id={item.id} style={{backgroundColor:inventoryBoxColor(task.status,task.purchased_at)}}>{accessoryInfo(item,true)}{operate(item)&&<button type="button" className="delivery-accessory-open" aria-label={`${item.title}の詳細を開く`} onClick={()=>openPanel(item,'photos')}>詳細</button>}</section>)}</div>
+   <div className="delivery-bundled">{bundled.map(item=><section key={item.id} className="delivery-bundled-record" data-item-id={item.id} style={{backgroundColor:inventoryBoxColor(task.status,task.purchased_at)}}>{accessoryInfo(item,true)}</section>)}</div>
    {controls(task)}
   </div>}
   {separate.map(item=><section key={item.id} className="delivery-independent-record" data-kind="separate" data-item-id={item.id} data-item-status={item.status} style={{backgroundColor:inventoryBoxColor(item.status,item.purchased_at)}}>{accessoryInfo(item)}{controls(item)}</section>)}
