@@ -45,6 +45,8 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
     ...extras.map(line => ({ ...line, extra: true })),
   ];
   const subtotal = lines.filter(line => !line.taxIncluded).reduce((sum, l) => sum + (Number.isFinite(l.quantity * l.unit_price) ? l.quantity * l.unit_price : 0), 0);
+  const workFees = snapshot.lines.reduce((sum, line) => sum + (Number.isFinite(line.quantity * line.unit_price) ? line.quantity * line.unit_price : 0), 0);
+  const allowances = subtotal - workFees;
   const reimbursement = receipts.reduce((sum, row) => sum + (row.amount ?? 0), 0);
   const total = subtotal + Math.floor(subtotal * snapshot.tax_percent / 100) + reimbursement;
   const quantities = snapshot.lines.reduce((sum, l) => sum + l.quantity, 0);
@@ -100,7 +102,7 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
         </tbody>
         {last && <tfoot><tr><td colSpan={2}>合計</td><td>{quantities}</td><td /><td>{money(total)}</td></tr></tfoot>}
       </table>
-      {last && <div className="invoice-reimbursement"><p>作業費・手当：{money(subtotal)}</p><p>消費税：{money(Math.floor(subtotal * snapshot.tax_percent / 100))}</p><p>立替経費（税込）：{money(reimbursement)}</p></div>}
+      {last && <div className="invoice-reimbursement"><p>作業費：{money(workFees)}</p><p>手当：{money(allowances)}</p><p>消費税：{money(Math.floor(subtotal * snapshot.tax_percent / 100))}</p><p>立替経費（税込）：{money(reimbursement)}</p></div>}
       {last && <div className="invoice-footer"><section><div>備考</div><div className="invoice-note">{note || '\u00a0'}</div></section><Bank details={p} /></div>}
     </article>;
   })}</div>;
