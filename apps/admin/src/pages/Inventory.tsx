@@ -1,3 +1,4 @@
+import { salesChannelLabel } from '@bussan/shared';
 import InventoryOverview from '../components/InventoryOverview';
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
 import { staffDisplayName, deliveryStaffOptions, inventorySiteStyle } from '@bussan/shared';
@@ -252,7 +253,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     cost_amount: item.cost_amount, planned_price: item.planned_price, planned_payout: item.planned_payout,
     packed_on: item.packed_on, shipped_on: item.shipped_on, status: item.status, memo: item.memo,
     purchaser_id: item.purchaser_id, deliverer_id: item.deliverer_id, marketplace: item.marketplace,
-    condition: item.condition, sales_channel: item.sales_channel, sold_on: item.sold_on,
+    condition: item.condition, sales_channel: item.sales_channel ? salesChannelLabel(item.sales_channel) as InventoryEdit['sales_channel'] : null, sold_on: item.sold_on,
     sold_price: item.sold_price, payout_amount: item.payout_amount, refund_amount: item.refund_amount,
     amazon_refund_amount: item.amazon_refund_amount, non_amazon_refund_amount: item.non_amazon_refund_amount,
     inventory_refund_amount: item.inventory_refund_amount,
@@ -362,7 +363,7 @@ const fieldLabels: Record<InventoryField, string> = {
 };
 
 function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
-  const initial = item[field] ?? '';
+  const initial = field==='sales_channel'?salesChannelLabel(item.sales_channel):item[field]??'';
   const [value, setValue] = useState(String(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

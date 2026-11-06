@@ -68,3 +68,9 @@ mainを最新状態と突き合わせ、対象変更だけをpushします。Ver
 - https://developer-docs.amazon/sp-api/docs/get-fba-inventory-summaries
 - https://developer-docs.amazon/sp-api/docs/search-for-listings-items-by-id
 - https://supabase.com/docs/guides/functions/deploy
+
+## 販売先と出品者の対応
+
+新しい販売先は `FBA1`・`FBA2`・`自己発送1`・`自己発送2` です。FBA1/自己発送1はAmazon1（Seller ID `A1WI3OGPE43N2T`）、FBA2/自己発送2はAmazon2（Seller ID `A3E7BXJWH9TP11`）を使います。番号の違いで色は変えず、FBAは薄青、自己発送は薄緑に統一します。旧FBA/自己発送の保存値は互換のため保持し、画面は1として表示します。既存商品を一括更新する処理は行いません。
+
+出品確認のカテゴリ必須チェックはメルカリとヤフオクだけに適用します。Amazonの出品完了登録ではASINベースの既存運用を維持し、販売サイト向けカテゴリを要求しません。梱包写真・作業完了日・発送待ちの判定はアカウント番号にかかわらず発送方式で行います。明示的な1/2付き販売先と異なる出品者の売上・返金は自動反映せず確認対象にします。

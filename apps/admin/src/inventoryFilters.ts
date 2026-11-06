@@ -1,3 +1,4 @@
+import {salesChannelLabel} from '@bussan/shared';
 import { productModelText, staffDisplayName } from '@bussan/shared';
 import type { InventoryItem } from './api';
 import { productSerial } from './inventory';
@@ -24,7 +25,7 @@ export const inventoryColumns: Record<string, InventoryColumn> = {
   tracking: { label: '追跡番号', value: i => i.tracking_no },
   purchased_at: { label: '仕入日', kind: 'date', value: i => i.purchased_at },
   cost: { label: '仕入金額', kind: 'number', value: i => i.cost_amount },
-  sales_channel: { label: '販売先', value: i => i.sales_channel },
+  sales_channel: { label: '販売先', value: i => salesChannelLabel(i.sales_channel) },
   condition: { label: '商品状態', value: i => i.condition },
   packed_on: { label: '作業完了日', kind: 'date', value: i => i.packed_on },
   shipped_on: { label: '出荷日', kind: 'date', value: i => i.shipped_on },

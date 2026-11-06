@@ -17,7 +17,7 @@ for(const app of ['admin','delivery']){
  assert.equal(all(tree).filter(n=>n.type==='details').length,1);assert.equal(all(tree).filter(n=>n.type==='select').length,0);
  assert.deepEqual(all(tree).filter(n=>n.type==='legend').map(text),['仕入先','販売先','販売状態']);
  const toggle=(group,option,checked)=>{const fieldset=all(tree).find(n=>n.type==='fieldset'&&all(n).some(v=>v.type==='legend'&&text(v)===group));const label=all(fieldset).find(n=>n.type==='label'&&text(n)===option);assert(label);all(label).find(n=>n.type==='input').props.onChange({target:{checked}});render();};
- toggle('仕入先','Amazon返品',true);toggle('仕入先','ヤフオク',true);toggle('販売先','FBA',true);toggle('販売先','自己発送',true);toggle('販売状態','受取前',true);toggle('販売状態','販売済',true);
+ toggle('仕入先','Amazon返品',true);toggle('仕入先','ヤフオク',true);toggle('販売先','FBA1',true);toggle('販売先','自己発送1',true);toggle('販売状態','受取前',true);toggle('販売状態','販売済',true);
  assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（6）');assert.equal(value.marketplace.length,2);assert.equal(value.sales_channel.length,2);assert.equal(value.status.length,2);
  toggle('仕入先','Amazon返品',false);assert.equal(value.marketplace.join(','),'ヤフオク');assert.equal(value.status.length,2);
  listeners.pointerdown({target:'inside'});assert(ref.current.open);listeners.pointerdown({target:'outside'});assert(!ref.current.open);

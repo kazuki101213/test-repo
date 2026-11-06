@@ -162,6 +162,6 @@ export function buildDescription(input: {
   text = text.replace(/●経験豊富なスタッフ[^。]*。/, workText);
   if (!inspected) text = text.replace('●十分な検品をして出品しておりますが、', '●');
   if (condition === '新品') text = text.replace(/●あくまで中古品[^。]*。/, '');
-  if (salesChannel !== 'FBA') text = text.replace(/《配送》[^《]*/, '《配送》●配送方法は出品ページをご確認ください。');
+  if (!/^FBA(?:[12１２])?$/.test(salesChannel??'')) text = text.replace(/《配送》[^《]*/, '《配送》●配送方法は出品ページをご確認ください。');
   return text.replace(/[　\t]+/g, ' ').replace(/\s*《/g, '\n\n《').replace(/\s*●/g, '\n●').trim();
 }

@@ -6,5 +6,6 @@ export const INVENTORY_FILTER_GROUPS = [
 ] as const;
 export type InventoryFilters = Partial<Record<typeof INVENTORY_FILTER_GROUPS[number]['field'], string[]>>;
 export function matchesInventoryFilters(item: { marketplace?: string | null; sales_channel?: string | null; status?: string | null }, filters: InventoryFilters): boolean {
-  return INVENTORY_FILTER_GROUPS.every(({ field }) => !filters[field]?.length || filters[field]!.includes(item[field] ?? ''));
+  const normalize=(value:string)=>value==='FBA'?'FBA1':value==='自己発送'?'自己発送1':value;
+  return INVENTORY_FILTER_GROUPS.every(({field})=>!filters[field]?.length||filters[field]!.some(value=>(field==='sales_channel'?normalize(value):value)===(field==='sales_channel'?normalize(item[field]??''):item[field]??'')));
 }

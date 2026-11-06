@@ -36,7 +36,9 @@ export function inventoryStaffStyle(value:string|null|undefined):InventoryLabelS
 }
 export function inventorySiteStyle(value:string|null|undefined):InventoryLabelStyle {
   const site=(value??'').replace(/[12１２]$/,'');
-  if(/Amazon|FBA|自己発送/i.test(site))return tone('#f4e1bd','#83571f');
+  if(site==='FBA')return tone('#dce7f1','#3c6085');
+  if(site==='自己発送')return tone('#dff0eb','#275e55');
+  if(/Amazon/i.test(site))return tone('#f4e1bd','#83571f');
   if(site==='ヤフオク')return tone('#f4e9b6','#756018');
   if(site==='メルカリ')return tone('#f4d8df','#8c4358');
   if(site==='ラクマ')return tone('#e6dcf4','#6f4c90');

@@ -7,7 +7,7 @@ export const MARKETPLACES: Marketplace[] = [
 ];
 
 export const SALES_CHANNELS: SalesChannel[] = [
-  'FBA', '自己発送', 'メルカリ', 'ヤフオク', 'ヤフフリ', 'その他',
+  'FBA1', 'FBA2', '自己発送1', '自己発送2', 'メルカリ', 'ヤフオク', 'ヤフフリ', 'その他',
 ];
 
 export const CONDITIONS: ItemCondition[] = [
