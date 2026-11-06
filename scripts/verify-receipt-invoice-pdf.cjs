@@ -25,6 +25,17 @@ for(const row of numbered.slice(0,3))assert(text(numberedSheet).includes(row.des
 function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}
 const receipt=(id,amount,type='receipt_photo')=>({id,original_name:id+'.pdf',spent_on:'2026-10-01',description:'資材費',amount,mime_type:type==='receipt'?'application/pdf':'image/jpeg',document_type:type,url:'blob:'+id,include_in_invoice:true});
+// Fee categories keep their display order even when their dates differ.
+for(const review_edited of [false,true]){
+ const snapshot={profile:{},lines:[{date:'2026-10-31',description:'小物',serial:'9001',quantity:2,unit_price:500}],review_edited,tax_percent:10};
+ const extras=[{date:'2026-10-01',description:'追加費用',quantity:1,unit_price:250}],receipts=[{...receipt('ordered',330),spent_on:'2026-10-15',description:'領収書の費用'}];
+ const original=JSON.stringify({snapshot,extras,receipts});
+ const ordered=context.exports.default({snapshot,month:'2026-10',issued:'2026-11-02',extras,note:'',receipts});
+ const descriptions=all(ordered).filter(n=>n.props?.className==='invoice-lines').flatMap(table=>all(table).filter(n=>n.type==='tbody').flatMap(body=>all(body).filter(n=>n.type==='tr').map(row=>text(row.props.children[1]))));
+ assert.deepEqual(descriptions,[review_edited?'小物':'納品外注費(9001)','領収書の費用（税込）','追加費用']);
+ assert(text(ordered).includes('¥1,705'),'Receipt reimbursement remains tax-inclusive; additional fees retain the original tax calculation');
+ assert.equal(JSON.stringify({snapshot,extras,receipts}),original,'Changing the printed order must not alter saved invoice data');
+}
 const rows=Array.from({length:5},(_,i)=>receipt(String(i),1100));rows.push(receipt('pdf',2200,'receipt'));
 const sheet=context.exports.default({snapshot:{profile:{},lines:[{date:'2026-10-01',description:'ブルーレイレコーダー',quantity:1,unit_price:1000}],tax_percent:10},month:'2026-10',issued:'2026-10-14',extras:[],note:'',receipts:rows});
 assert(text(sheet).includes('¥8,800'));assert(text(sheet).includes('消費税：¥100'));assert(text(sheet).includes('立替経費（税込）：¥7,700'));
