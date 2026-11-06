@@ -84,3 +84,5 @@ Amazonの受付と登録完了は別です。GETでSKU/ASIN/価格/コンディ�
 関数はAuth.getUserと有効な管理者または納品担当者を確認し、Service Roleは確認履歴の書き込みだけに使います。状態更新は元の利用者の権限で既存RPCを使います。履歴は管理者/担当者のみ閲覧でき、利用者による確認証跡の偽造は禁止です。FBAの登録ができても、未入庫ならまだ購入可能にはなりません。
 
 公式: https://developer-docs.amazon/sp-api/reference/putlistingsitem と https://developer-docs.amazon/sp-api/docs/additional-functionality-fulfillment-inbound
+
+FBAの事前チェックが電池・危険物属性を要求する場合は、同じASINのCatalog Items APIに実在するbatteries_required/supplier_declared_dg_hz_regulationを使います。未設定の値を一律にfalse/規制対象外として補いません。受付後に属性だけが返りsummariesのASIN/コンディションが未生成の場合も、入力値のエコーだけでは出品完了とせず、未取得項目を表示して結果を再確認します。

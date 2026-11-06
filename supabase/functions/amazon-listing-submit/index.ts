@@ -24,6 +24,13 @@ export function verifiedListing(listing:Obj,item:ListingItem):boolean{
  const schedules=offers.length===1?offers[0].our_price?.[0]?.schedule:[];
  return listing.sku===item.sku&&summary?.asin===item.asin&&summary?.conditionType===conditionTypes[item.condition??'']&&schedules?.length===1&&schedules[0].value_with_tax===item.planned_price&&!schedules[0].start_at&&!schedules[0].end_at&&(attributes.fulfillment_availability??[]).some((v:Obj)=>v.fulfillment_channel_code===(/^FBA/.test(item.sales_channel??'')?'AMAZON_JP':'DEFAULT'))&&issues(listing).length===0;
 }
+function verificationNote(listing:Obj):string{
+ const s=listing.summaries?.find((v:Obj)=>v.marketplaceId===marketplace),a=listing.attributes??{};
+ const prices=(a.purchasable_offer??[]).flatMap((o:Obj)=>(o.our_price??[]).flatMap((p:Obj)=>(p.schedule??[]).map((v:Obj)=>v.value_with_tax))).filter((v:unknown)=>typeof v==='number'&&Number.isFinite(v));
+ const price=prices.length?'¥'+prices.join(' / ¥'):'未取得',condition=Object.entries(conditionTypes).find(([,value])=>value===s?.conditionType)?.[0]??'未取得';
+ const channels=(a.fulfillment_availability??[]).map((v:Obj)=>v.fulfillment_channel_code).filter((v:unknown)=>v==='AMAZON_JP'||v==='DEFAULT');
+ return 'Amazonの反映を確認中です（ASIN '+(/^[A-Z0-9]{10}$/.test(s?.asin??'')?s!.asin:'未取得')+'、コンディション '+condition+'、価格 '+price+'、配送 '+(channels.join('/')||'未取得')+'）。再度、登録結果を確認してください。';
+}
 function sameItem(a:ListingItem,b:ListingItem){return['sku','asin','condition','description','planned_price','sales_channel','status'].every(k=>a[k as keyof ListingItem]===b[k as keyof ListingItem]);}
 async function amazon(id:AmazonAccountId){
  const credentials=amazonCredentials(id),expected=id==='amazon-2'?'A3E7BXJWH9TP11':'A1WI3OGPE43N2T';if(credentials.sellerId!==expected)throw new SafeError(503,'販売先とAmazon出品者IDの設定が一致しません。');
@@ -85,7 +92,7 @@ export async function handler(req:Request):Promise<Response>{
    }catch(e){const failed=e instanceof SafeError&&e.status>=400&&e.status<500;await svc.from('amazon_listing_submissions').update({state:failed?'failed':'uncertain',note:e instanceof SafeError?e.message:'Amazonへの送信結果が不明です。再送せず登録結果を確認します。'}).eq('request_id',operation!.request_id);throw e;}
   }
   if(!remote){try{remote=await api.get(item.sku);}catch{return respond(200,{verified:false,state:'accepted',note:'Amazonへの送信を受け付けました。登録結果の取得を再度お試しください。'});}}
-  if(!remote||!verifiedListing(remote,item))return respond(200,{verified:false,state:operation!.state==='uncertain'?'uncertain':'accepted',note:remote?issues(remote).join(' ')||'Amazonの反映を確認中です。もう一度、登録結果を確認してください。':'Amazon受付済みです。まだSKUの登録を確認できません。少し待って登録結果を確認してください。'});
+  if(!remote||!verifiedListing(remote,item))return respond(200,{verified:false,state:operation!.state==='uncertain'?'uncertain':'accepted',note:remote?issues(remote).join(' ')||verificationNote(remote):'Amazon受付済みです。まだSKUの登録を確認できません。少し待って登録結果を確認してください。'});
   const {data:latest,error:latestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'Amazon送信後に商品情報が変更されています。内容を確認してください。');
   const {error:verifiedError}=await svc.from('amazon_listing_submissions').update({state:'verified',verified_at:new Date().toISOString(),note:'AmazonのSKU・ASIN・価格・コンディション・配送方式を確認済み'}).eq('request_id',operation!.request_id);if(verifiedError)throw new SafeError(503,'Amazonの登録確認を保存できません。再度結果を確認してください。');
   const {error:completeError}=await sb.rpc('perform_dated_inventory_action',{p_item_id:item.id,p_action:'listing_complete',p_expected_status:item.status,p_on:operation!.work_completed_on,p_request_id:operation!.request_id});if(completeError)throw new SafeError(409,'Amazonへの登録は確認済みですが、アプリの状態を更新できません。再度登録結果を確認してください。');
