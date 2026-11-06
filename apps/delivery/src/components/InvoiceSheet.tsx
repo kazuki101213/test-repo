@@ -39,7 +39,11 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
   snapshot: InvoiceSnapshot; month: string; issued: string; extras: InvoiceLine[]; note: string; receipts?: InvoiceReceipt[];
 }) {
   const p = snapshot.profile;
-  const lines: PrintLine[] = [...groupedInvoiceLines(snapshot, extras), ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true }))];
+  const lines: PrintLine[] = [
+    ...groupedInvoiceLines(snapshot, []),
+    ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true })),
+    ...extras.map(line => ({ ...line, extra: true })),
+  ];
   const subtotal = lines.filter(line => !line.taxIncluded).reduce((sum, l) => sum + (Number.isFinite(l.quantity * l.unit_price) ? l.quantity * l.unit_price : 0), 0);
   const reimbursement = receipts.reduce((sum, row) => sum + (row.amount ?? 0), 0);
   const total = subtotal + Math.floor(subtotal * snapshot.tax_percent / 100) + reimbursement;
