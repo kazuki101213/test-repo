@@ -1,0 +1,109 @@
+.approved-inventory { width:100%; min-width:0; font-size:13px; font-variant-numeric:tabular-nums; }
+.approved-inventory-row { display:grid; grid-template-columns:minmax(260px,2fr) minmax(96px,.9fr) minmax(120px,1fr) minmax(110px,.95fr) minmax(125px,1fr) minmax(105px,.85fr) minmax(80px,.75fr) minmax(120px,.9fr) minmax(130px,1fr); border-bottom:1px solid var(--border); min-width:0; }
+.approved-inventory-row > [role=cell],.approved-inventory-row > [role=columnheader] { min-width:0; padding:7px 8px; overflow-wrap:anywhere; line-height:18px; }
+.approved-inventory-head { background:var(--surface-2); border-top:1px solid var(--border); }
+.approved-inventory-head .inventory-column-heading { font-size:12px; line-height:18px; text-align:left; padding:0; font-weight:400; }
+.approved-record { min-height:128px; }
+.approved-record .inventory-cell-edit { display:inline; width:auto; font:inherit; color:inherit; padding:0; border:0; border-radius:0; background:transparent; min-width:0; max-width:100%; text-align:left; overflow:visible; overflow-wrap:anywhere; cursor:pointer; }
+.approved-record .inventory-cell-edit > span { display:inline-block; white-space:normal; overflow:visible; text-overflow:clip; }
+.approved-record .reference-value { display:inline-flex; flex-wrap:nowrap; align-items:baseline; gap:3px; }
+.approved-heading-line { display:flex; flex-wrap:wrap; gap:4px; }
+.approved-record .inventory-cell-edit:hover { text-decoration:underline; }
+.approved-record .approved-identity { display:flex; gap:10px; align-items:center; padding-block:8px; }
+.approved-record .approved-photo { width:112px; height:112px; flex:0 0 112px; margin:0; padding:0; background:var(--surface-2); border:0; border-radius:4px; overflow:hidden; font-size:11px; color:var(--muted); }
+.approved-record .approved-photo img { width:100%; height:100%; object-fit:contain; }
+.approved-identity-text { flex:1; min-width:0; }
+.approved-serial-line { display:flex; flex-wrap:wrap; align-items:baseline; gap:5px; }
+.approved-serial-line strong { font-size:22px; line-height:25px; }
+.approved-product-number { font-size:11px; color:var(--muted); }
+.approved-model { font-size:15px; font-weight:600; }
+.approved-record .approved-sku { font-size:14px; line-height:18px; display:block; }
+.approved-asin { font-size:11px; }
+.approved-field { min-width:0; }
+.approved-field-label { display:none; }
+.approved-mobile-meta { display:none; }
+.approved-field-value { min-width:0; overflow-wrap:anywhere; }
+.approved-record .approved-people { display:grid; grid-template-columns:minmax(0,1fr); gap:3px; align-content:start; }
+.approved-people .inventory-label { max-width:100%; font-size:11px; padding:1px 5px; line-height:17px; }
+.approved-profits,.approved-profit { color:#456439; }
+.approved-loss { color:#a24d3b; }
+.approved-profits .approved-actual { font-size:17px; line-height:22px; }
+.approved-profits .approved-expected { font-size:13px; }
+.approved-record .inventory-comment { background:transparent; border:0; font:inherit; text-align:left; padding:0; color:inherit; width:100%; white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
+.approved-comments .approved-field+.approved-field { margin-top:8px; }
+.approved-record.approved-accessory { min-height:64px; }
+.approved-accessory > [role=cell] { padding-block:4px; line-height:14px; }
+.approved-accessory .approved-purchase { display:grid; grid-template-columns:max-content minmax(0,1fr); column-gap:6px; align-content:center; }
+.approved-accessory .approved-purchase > .approved-field:nth-last-child(n+3) { grid-column:1/-1; }
+.approved-accessory .approved-profits .approved-actual { font-size:13px; line-height:14px; }
+.approved-accessory .approved-identity { position:relative; padding-left:130px; }
+.approved-child-state { position:absolute; left:8px; top:8px; width:112px; }
+.approved-child-state .inventory-label { font-size:10px; }
+.approved-accessory .approved-serial-line strong { font-size:16px; line-height:20px; }
+.approved-accessory .approved-serial-line { gap:5px; }
+.approved-accessory .approved-serial-line .inventory-accessory-label { font-size:10px; }
+.approved-accessory .approved-people { grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px; }
+.approved-accessory .approved-amazon-price:empty { display:block; }
+.amazon-listing-price form { display:flex; gap:5px; align-items:start; }
+.amazon-listing-price input { width:calc(100% - 46px); min-width:0; height:32px; padding:4px; font:inherit; background:var(--surface); }
+.amazon-listing-price .btn { padding:4px 6px; min-height:32px; height:auto; font-size:12px; }
+.amazon-listing-price small { display:block; font-size:10px; color:var(--muted); }
+.approved-price-error,.approved-price-message { font-size:11px; line-height:16px; overflow-wrap:anywhere; }
+.approved-price-error { color:var(--danger); }
+.approved-price-error button { margin-left:5px; text-decoration:underline; }
+@media(min-width:1200px) and (max-width:1599px) {
+ .approved-inventory { font-size:11px; }
+ .approved-inventory-row { grid-template-columns:minmax(235px,2.1fr) minmax(88px,.8fr) minmax(108px,.9fr) minmax(86px,.75fr) minmax(108px,.85fr) minmax(88px,.7fr) minmax(74px,.65fr) minmax(95px,.8fr) minmax(105px,.9fr); }
+ .approved-inventory-row > [role] { padding-inline:5px; }
+ .approved-record .approved-photo { width:88px; height:112px; flex-basis:88px; }
+ .approved-record .approved-sku { font-size:12px; }
+ .approved-accessory .approved-identity { padding-left:103px; }
+ .approved-child-state { left:5px; width:88px; }
+ .approved-people .inventory-label { font-size:10px; padding-inline:3px; }
+ .approved-inventory-head .inventory-column-heading { font-size:11px; }
+ .approved-inventory-row .approved-identity { gap:10px; }
+}
+@media(max-width:1199px) {
+ .approved-inventory { font-size:12px; }
+ .approved-inventory-head { display:none; }
+ .approved-record { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); min-height:0; padding:8px 10px 10px; margin:0; row-gap:0; }
+ .approved-record > [role=cell] { padding:0; }
+ .approved-record .approved-identity { grid-column:1/-1; order:1; padding:0; margin-bottom:4px; gap:10px; }
+ .approved-record .approved-photo { width:88px; height:88px; flex-basis:88px; }
+ .approved-identity-text { padding:0; }
+ .approved-identity-text > .inventory-status-label { float:right; font-size:11px; }
+ .approved-serial-line strong { font-size:21px; }
+ .approved-serial-line { display:flex; align-items:center; }
+ .approved-record .approved-sku { font-size:14px; line-height:20px; }
+ .approved-asin { display:none; }
+ .approved-product-number { display:none; }
+ .approved-record .approved-people { order:2; grid-column:1/-1; grid-template-columns:1.25fr 1.25fr .9fr .9fr; gap:5px; margin:5px 0 9px; }
+ .approved-people .approved-field-label { display:block; font-size:10px; line-height:15px; margin-bottom:3px; color:var(--muted); }
+ .approved-people .inventory-label { font-size:10px; padding:2px 3px; line-height:16px; }
+ .approved-record .approved-amazon-price { order:3; grid-column:1; margin-bottom:5px; padding-right:8px; }
+ .approved-amazon-price > .approved-field-label { display:block; font-size:11px; color:var(--muted); margin-bottom:4px; }
+ .approved-profits { display:contents; }
+ .approved-actual { order:4; grid-column:2; align-self:start; display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; }
+ .approved-actual .approved-field { display:flex; flex-direction:column; }
+ .approved-actual .approved-field-label { font-size:11px; color:var(--muted); margin-bottom:4px; display:block; }
+ .approved-actual .approved-field-value { font-size:17px; }
+ .approved-purchase { order:5; grid-column:1/-1; }
+ .approved-dates { order:6; grid-column:1/-1; }
+ .approved-amounts { order:7; grid-column:1/-1; }
+ .approved-expected { order:8; grid-column:1/-1; }
+ .approved-refunds { order:9; grid-column:1/-1; }
+ .approved-comments { order:10; grid-column:1/-1; }
+ .approved-field { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; min-height:18px; align-items:start; line-height:18px; }
+ .approved-field-label { display:block; color:var(--muted); }
+ .approved-mobile-meta { display:block; }
+ .approved-comments .approved-field+.approved-field { margin-top:0; }
+ .approved-record .inventory-comment { display:block; overflow:visible; -webkit-line-clamp:unset; }
+ .approved-accessory .approved-identity { padding:0; }
+ .approved-accessory .approved-purchase { display:block; }
+ .approved-child-state { position:static; width:auto; order:2; }
+ .approved-accessory .approved-identity { flex-wrap:wrap; }
+ .approved-accessory .approved-identity-text { flex:1; }
+ .approved-accessory .approved-sku { margin-top:3px; }
+ .approved-accessory .approved-amazon-price:not(:has(.amazon-listing-price)) { display:none; }
+ .approved-record.approved-accessory { min-height:0; }
+}

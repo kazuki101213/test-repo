@@ -1,9 +1,5 @@
-/* Use the same box color for a product in both inventory apps and at every viewport. */
-:is(.inventory-table tr, .app .task-card):is([data-item-status="受取前"], [data-item-status="検品中"], [data-item-status="商品登録前"]) { --inventory-status-background: #dce7f1; }
-:is(.inventory-table tr, .app .task-card):is([data-item-status="出品中"], [data-item-status="取引中"]) { --inventory-status-background: #dce9d3; }
-:is(.inventory-table tr, .app .task-card)[data-item-status="動作不良"] { --inventory-status-background: #f8dfc8; }
-:is(.inventory-table tr, .app .task-card):is([data-item-status="返品処理"], [data-item-status="Amazon返送依頼"], [data-item-status="Amazon補填申請中"]) { --inventory-status-background: #eadcec; }
-:is(.inventory-table tr, .app .task-card)[data-item-status="販売済"] { --inventory-status-background: #e6e4df; }
-
-.inventory-table tr[data-item-status] > td,
-.app .task-card[data-item-status] { background-color: var(--inventory-status-background); }
+/* Backgrounds come from inventoryBoxColor; status labels have a separate palette. */
+.inventory-label { display:inline-block; width:max-content; max-width:100%; padding:2px 6px; border-radius:4px; font-size:11px; line-height:17px; vertical-align:middle; overflow-wrap:anywhere; }
+.inventory-status-label { font-weight:600; }
+.inventory-accessory-label { background:#dce7f1; color:#3c6085; font-weight:400; }
+.inventory-inline-link { display:inline; font:inherit; line-height:1; padding:0 3px; border:0; background:transparent; text-decoration:none; color:inherit; }

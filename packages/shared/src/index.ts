@@ -30,3 +30,4 @@ export * from './sessionReads';
 export * from './readCache';
 export * from './photoUrlCache';
 export * from './accessoryUsage';
+export * from './inventoryPresentation';

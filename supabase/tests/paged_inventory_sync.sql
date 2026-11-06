@@ -60,6 +60,10 @@ do $$declare p jsonb; q jsonb; key text;begin
  if jsonb_array_length(q->'rows')<>1 then raise exception 'Different resale merged into explicit parent group';end if;
  q:=app.read_inventory_page('delivery',jsonb_build_object('queryField','sku','query',(select sku from app.items where title='parent grouping fixture')),1,(p->'fingerprints')||jsonb_build_object('__revision',p->>'revision'));
  if not (q->>'unchanged')::boolean then raise exception 'Explicit parent group broke unchanged revision';end if;
+ q:=app.read_inventory_page('management',jsonb_build_object('queryField','sku','query',(select sku from app.items where title='parent spare fixture')),50,'{}');
+ if not exists(select 1 from jsonb_array_elements(q->'rows') d where d->>'title'='parent spare fixture'
+   and d->>'inventory_parent_serial'=key and d->>'inventory_parent_purchased_at'='2026-10-01'
+   and d->>'inventory_parent_status' is not null) then raise exception 'Management accessory lacks authorized parent presentation context';end if;
 end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare p jsonb;begin
