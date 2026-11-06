@@ -2,6 +2,7 @@ const fs=require('fs'),ts=require('typescript'),vm=require('vm'),assert=require(
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText;
 const names={exports:{}},presentation={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNames.ts'),names);vm.runInNewContext(compile('packages/shared/src/inventoryPresentation.ts'),presentation);
 const jsx=(type,props)=>({type,props}),shared={...names.exports,...presentation.exports,jpDate:v=>v||'—',productModelText:t=>t.title};
+const notices={exports:{},URL};vm.runInNewContext(compile('packages/shared/src/noticeUrl.ts'),notices);Object.assign(shared,notices.exports);
 const context={exports:{},window:{location:{search:''}},URL,URLSearchParams,require:id=>id==='react'?{useState:v=>[typeof v==='function'?v():v,()=>{}],lazy:()=> 'seller-panel',Suspense:'suspense'}:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id.endsWith('/WorkflowControls')?{default:'workflow'}:id.endsWith('/TaskDetail')?{default:'detail'}:{}};
 vm.runInNewContext(compile('apps/delivery/src/components/TaskCard.tsx'),context);
 const nodes=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>nodes(x,out));else if(n&&typeof n==='object'){out.push(n);nodes(n.props?.children,out)}return out};const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props.children):String(n);
@@ -9,6 +10,8 @@ const body={id:'body',sku:'2392-AAII-20261001-100',title:'MODEL',purchased_at:'2
 for(const staff of [{id:'own',code:'AA',role:'admin'},{id:'own',code:'XX',role:'admin'},{id:'own',code:'II',role:'deliverer'},{id:'other',code:'DD',role:'purchaser'}]){
  let opened;const props={task:body,members:[body,bundled,separate],originalMarketplaceIds:new Map(),staff,unreadItemIds:new Set(),onOpen(){opened='body'},onOpenMember:id=>opened=id,onClose(){},onTaskChange(){}};
  const tree=context.exports.default(props),all=nodes(tree),comments=all.filter(n=>n.props?.className==='purchaser-comment');assert.deepEqual(comments.map(text),['仕入担当者からのコメント：'+body.memo,'仕入担当者からのコメント：'+bundled.memo,'仕入担当者からのコメント：'+separate.memo]);
+ const ownSources=context.exports.default({...props,task:{...body,marketplace_item_id:'m111'},members:[{...body,marketplace_item_id:'m111'},{...bundled,marketplace_item_id:'m222'},{...separate,marketplace_item_id:'m333'}],originalMarketplaceIds:new Map([['body','m100'],['bundled','m100'],['separate','m100']])});
+ assert.deepEqual(nodes(ownSources).filter(n=>n.props?.label==='商品ID').map(n=>n.props.value),['m100','m222','m333'],'accessories must retain their own purchase ID');
  const people=all.filter(n=>n.props?.className==='delivery-people');assert.equal(people.length,3);for(const group of people)assert.deepEqual(Array.from(group.props.children,n=>n.props.children[0].props.children),['納品担当者','仕入担当者','仕入先','販売先']);
  assert(!all.some(n=>['販売金額','仕入金額','利益額'].includes(n.props?.label)));assert.equal(all.filter(n=>n.props?.['aria-label']==='仕入先の商品ページを開く').length,3);
  const workflows=all.filter(n=>n.type==='workflow');assert.equal(workflows.length,staff.role==='admin'||staff.id==='own'?2:0,'bundled parts share body operations; separate parts own their operations');

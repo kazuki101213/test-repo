@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, type SyntheticEvent, type KeyboardEvent } from 'react';
-import { jpDate, canViewDeliveryAssignee, productModelText, inventorySerial, isSeparateAccessory, inventoryBoxColor, inventoryStaffStyle, inventorySiteStyle, inventoryStatusStyle, inventoryStatusText, staffDisplayName, accessoryDisplayLabel } from '@bussan/shared';
+import { jpDate, canViewDeliveryAssignee, productModelText, inventorySerial, isSeparateAccessory, inventoryBoxColor, inventoryStaffStyle, inventorySiteStyle, inventoryStatusStyle, inventoryStatusText, staffDisplayName, accessoryDisplayLabel, noticeProductUrl } from '@bussan/shared';
 import type { DeliveryTask, Staff, ProductPanel } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
 import WorkflowControls from './WorkflowControls';
@@ -68,7 +68,7 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
 export default function TaskCard({ readOnly = false, showAssignee = false, task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange }: { readOnly?: boolean; showAssignee?: boolean; task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void }) {
  const [panel,setPanel]=useState<ProductPanel>(()=>new URLSearchParams(window.location.search).get('openMessages')==='1'?'messages':'photos');
  const [actionError,setActionError]=useState<string|null>(null);
- const productIdFor=(item:DeliveryTask)=>(item.marketplace==='動作品Amazon返品'?item.marketplace_item_id:originalMarketplaceIds.get(item.id)||item.marketplace_item_id)||'—';
+ const productIdFor=(item:DeliveryTask)=>(item.is_accessory||item.marketplace==='動作品Amazon返品'?item.marketplace_item_id:originalMarketplaceIds.get(item.id)||item.marketplace_item_id)||'—';
  const modelFor=productModelText;
  const itemIdLabel=(item:DeliveryTask)=>item.marketplace==='動作品Amazon返品'?'ENA':'商品ID';
  const trackingLabel=(item:DeliveryTask)=>item.marketplace==='動作品Amazon返品'?'FNSKU':'追跡番号';
@@ -86,7 +86,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   ['納品担当者',staffDisplayName(item.deliverer_name||(item.deliverer_id===staff.id?staffDisplayName(staff):''))||'未設定',true],
   ['仕入担当者',staffDisplayName(item.purchaser_name)||'—',true],['仕入先',item.marketplace,false],['販売先',item.sales_channel||'—',false],
  ].map(([label,value,person])=><div key={String(label)}><small>{label}</small><span className="inventory-label" style={person?inventoryStaffStyle(String(value)):inventorySiteStyle(String(value))}>{value}</span></div>)}</div>;
- const sourceLink=(item:DeliveryTask)=><button type="button" className="task-item-page-link inventory-inline-link" aria-label="仕入先の商品ページを開く" disabled={!isAllowedMarketplaceUrl(item.marketplace,item.marketplace_url)} title={isAllowedMarketplaceUrl(item.marketplace,item.marketplace_url)?'仕入先の商品ページを開く':'登録されたURLは対応フリマサイトの商品ページではありません'} onClick={()=>{if(isAllowedMarketplaceUrl(item.marketplace,item.marketplace_url))window.open(item.marketplace_url!,'_blank','noopener,noreferrer');}}>↗</button>;
+ const sourceLink=(item:DeliveryTask)=>{const url=noticeProductUrl(item.marketplace,productIdFor(item),item.marketplace_url);return <button type="button" className="task-item-page-link inventory-inline-link" aria-label="仕入先の商品ページを開く" disabled={!isAllowedMarketplaceUrl(item.marketplace,url)} title={isAllowedMarketplaceUrl(item.marketplace,url)?'仕入先の商品ページを開く':'登録されたURLは対応フリマサイトの商品ページではありません'} onClick={()=>{if(isAllowedMarketplaceUrl(item.marketplace,url))window.open(url!,'_blank','noopener,noreferrer');}}>↗</button>;};
  const field=(label:string,value:string)=><span className="task-detail-field"><span>{label}</span><span>{value}</span></span>;
  const source=(item:DeliveryTask)=><span className="task-item-id-line"><CopyableText label={itemIdLabel(item)} value={productIdFor(item)}/>{sourceLink(item)}</span>;
  const comments=(item:DeliveryTask)=>item.memo?.trim()?<span className="purchaser-comment">仕入担当者からのコメント：{item.memo}</span>:null;
