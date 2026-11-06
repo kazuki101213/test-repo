@@ -12,12 +12,12 @@ update app.items set product_id=(select id from app.products where asin='BFALLBA
 insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade_key)
  select id,'メルカリ','mercari-1','m'||lot_seq,'https://jp.mercari.com/item/m'||lot_seq,'m'||lot_seq||':current'
  from app.items where lot_seq in(998761,998762);
-update app.items set status='取引中',seller_trade_key='m'||lot_seq||':current' where lot_seq in(998761,998762);
 insert into app.item_photos(item_id,storage_path,photo_kind,created_at)
  select id,'fallback/'||lot_seq||'/'||n||'.jpg','product',now()+n*interval '1 second'
  from app.items cross join generate_series(1,3)n where lot_seq=998761;
 insert into app.item_photos(item_id,storage_path,photo_kind,created_at)
  select id,'fallback/packing.jpg','packing',now()-interval '2 seconds' from app.items where lot_seq=998761;
+update app.items set status='取引中',seller_trade_key='m'||lot_seq||':current' where lot_seq in(998761,998762);
 
 do $$declare item uuid;outbox uuid;media jsonb;expected jsonb;front uuid;model uuid;begin
  select id into item from app.items where lot_seq=998761;
