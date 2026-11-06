@@ -5,19 +5,36 @@ const channels=load('packages/shared/src/salesChannels.ts'),palette=load('packag
 const seller=load('packages/shared/src/seller.ts',{'./productCategory':load('packages/shared/src/productCategory.ts')});
 const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);all(n.props?.embedded?.actions,out);all(n.props?.embedded?.beforeActions,out)}return out};
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
-async function confirm(channel,approved=true,verified=true){
- let hooks=[],cursor=0,pending=[],dirty=true,tree,writes=0,queued=0,changed=0;
- const task={id:'fixture',sku:'9000-AAII-date-100',sales_channel:channel,status:'商品登録前',purchased_at:'2026-10-01',packed_on:null,title:'ホコリセンサーフィルター',condition:'非常に良い',photo_review_approved:approved};
- const context={assignee:'担当者',revision:'revision',operations:[],photo_review_approved:approved};
- const react={useState(v){const n=cursor++;hooks[n]??={value:typeof v==='function'?v():v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((d,i)=>d!==hooks[n].deps[i])){hooks[n]={deps};pending.push(fn)}}};
- const api={fetchTask:async()=>task,fetchSellerContext:async()=>context,fetchPhotoUrls:async()=>[{id:'photo-1',url:'https://photos/one.jpg'},{id:'photo-2',url:'https://photos/two.jpg'}],fetchProductMaker:async()=>'',queueSellerOperation:async()=>{queued++},submitAmazonListing:async(id,date,requestId,photoIds)=>{assert.equal(id,task.id);assert.equal(date,'2026-11-06');assert.deepEqual(Array.from(photoIds),['photo-2','photo-1']);writes++;return{verified,state:verified?'verified':'accepted',note:'Amazon受付済み：登録結果を確認中'}}};
- const c={exports:{},crypto:{randomUUID:()=>String(Math.random())},window:{setInterval(){return 1},clearInterval(){}},require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx,jsxs:jsx}:n==='@bussan/shared'?{...seller,...channels,canViewDeliveryAssignee:()=>true}:n==='../api'?api:n==='../listingDraft'?{listingDraft:()=>({...seller.sellerDefaults(task),description:'説明文',listingCategory:''})}:{__esModule:true,default:n.split('/').at(-1)}};
+async function confirm(channel,approved=true,verified=true,scenario='normal'){
+ let hooks=[],cursor=0,effects=[],dirty=true,tree,writes=0,resumes=0,queued=0,changed=0,nextTimer=0;
+ const timers=new Map(),document={visibilityState:'visible'};
+ const task={id:'fixture',sku:'9000-AAII-date-100',asin:'B015INS3IE',planned_price:scenario==='freshPrice'?null:400,sales_channel:channel,status:'商品登録前',purchased_at:'2026-10-01',packed_on:null,title:'ホコリセンサーフィルター',condition:'非常に良い',photo_review_approved:approved};
+ const full={...task,planned_price:scenario==='missingPrice'?null:scenario==='freshPrice'?390:400},context={assignee:'担当者',revision:'revision',operations:[],photo_review_approved:approved};
+ const react={useState(v){const n=cursor++;hooks[n]??={value:typeof v==='function'?v():v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((d,i)=>d!==hooks[n].deps[i])){hooks[n]?.cleanup?.();const slot=hooks[n]={deps};effects.push(()=>{slot.cleanup=fn()})}}};
+ const api={fetchTask:async()=>full,fetchSellerContext:async()=>context,fetchPhotoUrls:async()=>[{id:'photo-1',url:'https://photos/one.jpg'},{id:'photo-2',url:'https://photos/two.jpg'}],fetchProductMaker:async()=>'',queueSellerOperation:async()=>{queued++},submitAmazonListing:async(id,date,key,photoIds,expected,resume)=>{
+  assert.equal(id,task.id);assert.equal(date,'2026-11-06');assert.deepEqual(Array.from(photoIds),['photo-2','photo-1']);assert.equal(expected.price,full.planned_price);assert.equal(expected.sku,task.sku);
+  if(resume){resumes++;assert.equal(key,'server-receipt');if(scenario==='resumeNetwork'&&resumes===1)throw Object.assign(new Error('通信'),{status:502});if(scenario==='resumeConflict')throw Object.assign(new Error('出品内容が変更されています'),{status:409});return{verified:resumes>=2,state:resumes>=2?'verified':'accepted',note:'確認中'};}
+  writes++;return{verified,state:scenario==='failed'?'failed':verified?'verified':'accepted',note:scenario==='failed'?'Amazonが出品内容を拒否しました':'Amazon受付済み：登録結果を確認中',requestId:'server-receipt',workCompletedOn:date};
+ }};
+ const c={exports:{},document,crypto:{randomUUID:()=>String(Math.random())},window:{setInterval(fn){timers.set(++nextTimer,fn);return nextTimer},clearInterval(id){timers.delete(id)}},require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx,jsxs:jsx}:n==='@bussan/shared'?{...seller,...channels,canViewDeliveryAssignee:()=>true}:n==='../api'?api:n==='../listingDraft'?{listingDraft:()=>({...seller.sellerDefaults(full),description:'説明文',listingCategory:''})}:{__esModule:true,default:n.split('/').at(-1)}};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/delivery/src/components/SellerPanel.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);
- async function settle(){for(let i=0;i<50;i++){if(dirty){cursor=0;dirty=false;tree=c.exports.default({mode:'listing',task,staff:{id:'admin',name:'管理者',role:'admin'},onClose(){},onChanged(){changed++}});pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
- await settle();const button=all(tree).find(n=>n.type==='button'&&text(n)==='出品');assert(button);assert.equal(button.props.disabled,!approved);
- assert(!all(tree).some(n=>n.type==='label'&&text(n).startsWith('出品カテゴリ')),'Amazon must not require a marketplace category');
- const chooser=all(tree).find(n=>n.props?.['aria-label']==='出品写真の掲載順');assert(chooser,'Amazon photo order chooser');const move=all(tree).find(n=>n.props?.['aria-label']==='写真1を後へ');assert(move);move.props.onClick();await settle();assert.equal(all(tree).filter(n=>n.type==='img').length,2);button.props.onClick();await settle();const dialog=all(tree).find(n=>n.type==='WorkDateConfirmation');assert(dialog);
- if(approved&&!verified)await assert.rejects(dialog.props.onConfirm('2026-11-06'),/登録結果/);else await dialog.props.onConfirm('2026-11-06');assert.equal(changed,approved&&verified?1:0);assert.equal(task.status,'商品登録前');assert.equal(writes,approved?1:0);assert.equal(queued,0,'Amazon confirmation must not queue a Mercari/Yahoo listing');
+ async function settle(){for(let i=0;i<80;i++){if(dirty){cursor=0;dirty=false;tree=c.exports.default({mode:'listing',task,staff:{id:'admin',name:'管理者',role:'admin'},onClose(){},onChanged(){changed++}});effects.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
+ const button=()=>all(tree).find(n=>n.type==='button'&&text(n)==='出品'),dialog=()=>all(tree).find(n=>n.type==='WorkDateConfirmation');
+ await settle();assert(button());assert.equal(button().props.disabled,!approved);assert(!all(tree).some(n=>n.type==='label'&&text(n).startsWith('出品カテゴリ')));
+ if(!approved){assert.equal(writes,0);return;}
+ assert(all(tree).some(n=>n.props?.['aria-label']==='出品写真の掲載順'));
+ all(tree).find(n=>n.props?.['aria-label']==='写真1を後へ').props.onClick();await settle();button().props.onClick();await settle();
+ if(scenario==='missingPrice'){assert(!dialog());assert(all(tree).some(n=>n.props?.role==='alert'&&text(n).includes('予定販売価格')));assert.equal(writes,0);return;}
+ assert(dialog());assert(dialog().props.title.includes(String(full.planned_price)+'円'));assert(!dialog().props.title.includes('未登録'));
+ if(scenario==='failed'){await assert.rejects(dialog().props.onConfirm('2026-11-06'),/拒否/);await settle();assert.equal(timers.size,0);assert.equal(changed,0);return;}
+ await dialog().props.onConfirm('2026-11-06');dialog().props.onCancel();await settle();assert(!dialog());assert.equal(changed,verified?1:0);assert.equal(writes,1);assert.equal(queued,0);
+ if(!verified){
+  assert(all(tree).some(n=>n.props?.role==='status'&&text(n).includes('自動確認')));assert(!all(tree).some(n=>n.props?.role==='alert'));assert(button().props.disabled);assert.equal(timers.size,1);
+  const tick=[...timers.values()][0];document.visibilityState='hidden';tick();await settle();assert.equal(resumes,0);document.visibilityState='visible';tick();await settle();
+  if(scenario==='resumeConflict'){assert.equal(timers.size,0);assert.equal(changed,0);assert(all(tree).some(n=>n.props?.role==='alert'&&text(n).includes('変更')));return;}
+  assert.equal(changed,0);assert.equal(writes,1);if(scenario==='resumeNetwork')assert(all(tree).some(n=>n.props?.role==='status'&&text(n).includes('通信')));
+  tick();await settle();assert.equal(resumes,2);assert.equal(changed,1);assert.equal(writes,1,'polling must not submit a listing again');assert.equal(timers.size,0,'timer cleanup after verified result');assert(!all(tree).some(n=>n.props?.role==='alert'));
+ }
 }
 (async()=>{
  for(const channel of ['FBA','FBA1','FBA2','自己発送','自己発送1','自己発送2']){
@@ -25,8 +42,9 @@ async function confirm(channel,approved=true,verified=true){
   assert(workflow.deliveryWorkflowButtons({sku:'9000-test',status:'商品登録前',sales_channel:channel}).some(b=>b.key==='listing_complete'));
   assert.equal(workflow.canAddPackingPhotos({status:'商品登録前',sales_channel:channel}),channels.isFbaChannel(channel));
   assert.equal(workflow.canAddPackingPhotos({status:'出品中',sales_channel:channel}),channels.isSelfShippingChannel(channel));
-  await confirm(channel);await confirm(channel,false);await confirm(channel,true,false);
+  await confirm(channel);await confirm(channel,false);await confirm(channel,true,false);await confirm(channel,true,true,'missingPrice');await confirm(channel,true,true,'freshPrice');
  }
+ await confirm('FBA2',true,false,'resumeNetwork');await confirm('自己発送2',true,false,'resumeConflict');await confirm('FBA2',true,false,'failed');
  assert.deepEqual(palette.inventorySiteStyle('FBA1'),palette.inventorySiteStyle('FBA2'));
  assert.deepEqual(palette.inventorySiteStyle('自己発送1'),palette.inventorySiteStyle('自己発送2'));
  assert.notEqual(palette.inventorySiteStyle('FBA1').backgroundColor,palette.inventorySiteStyle('自己発送1').backgroundColor);

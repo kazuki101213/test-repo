@@ -77,11 +77,12 @@ export async function handler(req:Request):Promise<Response>{
   const options={auth:{persistSession:false,autoRefreshToken:false},db:{schema:'app'}};
   const sb=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_ANON_KEY')!,{...options,global:{headers:{Authorization:authorization}}});
   const {data:user,error:authError}=await sb.auth.getUser(authorization.replace(/^Bearer\s+/i,''));if(authError||!user.user)throw new SafeError(401,'ログインが無効です。');
-  const body=await req.json().catch(()=>null);if(!body||!['submit','check'].includes(body.action)||!uuid(body.itemId))throw new SafeError(400,'対象商品の指定が不正です。');
+  const body=await req.json().catch(()=>null);if(!body||!['submit','resume','check'].includes(body.action)||!uuid(body.itemId))throw new SafeError(400,'対象商品の指定が不正です。');
   const {data:item,error:itemError}=await sb.from('items').select(columns).eq('id',body.itemId).single();if(itemError||!item)throw new SafeError(404,'商品が見つかりません。');
   const [{data:staffId,error:staffError},{data:admin}]=await Promise.all([sb.rpc('current_staff_id'),sb.rpc('is_admin')]);
   const {data:staff,error:activeError}=await sb.from('staff').select('is_active').eq('id',staffId).single();
   if(staffError||activeError||!staff?.is_active||(!admin&&item.deliverer_id!==staffId))throw new SafeError(403,'この商品の出品権限がありません。');
+  if(body.expectedSku!==undefined&&body.expectedSku!==item.sku||body.expectedPrice!==undefined&&body.expectedPrice!==item.planned_price)throw new SafeError(409,'確認後にSKUまたは予定販売価格が変更されています。出品画面を開き直してください。');
   if(!['商品登録前','出品中'].includes(item.status)||item.is_accessory&&!/^\d+c+[-_]/i.test(item.sku))throw new SafeError(409,'現在この商品を出品できません。');
   const accountId=accountFor(item.sales_channel),payload=listingBody(item);
   const svc=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,options);
@@ -89,6 +90,10 @@ export async function handler(req:Request):Promise<Response>{
   let operation=pending as Obj|null;
   // Reconcile the original submission against its saved values before using current edits.
   const changedSubmission=()=>!!operation&&(operation.sku!==item.sku||operation.sales_channel!==item.sales_channel||operation.asin!==item.asin||operation.price!==item.planned_price||operation.item_condition!==item.condition||operation.description!==(item.description??''));
+  const resuming=body.action==='resume';
+  if(resuming&&!operation&&uuid(body.requestId)){const {data:prior,error}=await svc.from('amazon_listing_submissions').select('*').eq('request_id',body.requestId).maybeSingle();if(error)throw new SafeError(503,'出品処理の履歴を確認できません。');operation=prior;}
+  if(resuming&&(!operation||operation.item_id!==item.id||operation.request_id!==body.requestId||changedSubmission()))throw new SafeError(409,'確認対象の出品内容が変更されています。出品画面を開き直してください。');
+  const waiting=(state:string,note:string)=>respond(200,{verified:false,state,note,requestId:operation!.request_id,workCompletedOn:operation!.work_completed_on});
   if(body.action==='submit'&&operation&&changedSubmission()){
    const previousItem={...item,sku:operation.sku,asin:operation.asin,sales_channel:operation.sales_channel,planned_price:operation.price,condition:operation.item_condition,description:operation.description} as ListingItem;
    const previousApi=await amazon(accountFor(previousItem.sales_channel));
@@ -101,6 +106,7 @@ export async function handler(req:Request):Promise<Response>{
   }
   const api=await amazon(accountId);let remote=await api.get(item.sku);
   if(body.action==='check')return respond(200,{accountId,exists:!!remote,verified:!!remote&&verifiedListing(remote,item),state:operation?.state??null,note:remote?issues(remote).join(' ')||'AmazonにSKUの登録があります。':'AmazonにこのSKUはまだ登録されていません。'});
+  if(resuming&&operation!.state==='verified'&&item.status==='出品中')return respond(200,{verified:true,state:'verified',accountId,note:'Amazonへの登録を確認しました。'});
   if(item.status!=='商品登録前')throw new SafeError(409,'Amazonに登録がない場合は、出品完了を取り消してから出品してください。');
   if(!uuid(body.requestId)||typeof body.workCompletedOn!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(body.workCompletedOn)||Number.isNaN(Date.parse(body.workCompletedOn))||new Date(body.workCompletedOn+'T00:00:00Z').toISOString().slice(0,10)!==body.workCompletedOn||body.workCompletedOn>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(new Date())||(item.purchased_at&&body.workCompletedOn<item.purchased_at))throw new SafeError(400,'作業完了日を確認してください。');
   const {data:approved,error:photoError}=await sb.rpc('listing_photos_approved',{p_item_id:item.id});if(photoError||approved!==true)throw new SafeError(409,'管理アプリで商品写真の承認が必要です。');
@@ -117,27 +123,29 @@ export async function handler(req:Request):Promise<Response>{
    const {data:latest,error:latestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'商品情報が変更されています。再読み込みしてください。');
    const record={request_id:body.requestId,item_id:item.id,requested_by:user.user.id,sku:item.sku,asin:item.asin,sales_channel:item.sales_channel,account_id:accountId,seller_id:api.sellerId,price:item.planned_price,item_condition:item.condition,description:item.description??'',work_completed_on:body.workCompletedOn,state:'submitting'};
    const {data:inserted,error:insertError}=await svc.from('amazon_listing_submissions').insert(record).select().single();
-   if(insertError){if(insertError.code!=='23505')throw new SafeError(503,'出品処理を記録できません。Amazonへの送信は行っていません。');return respond(200,{verified:false,state:'submitting',note:'同じ商品の登録処理を確認中です。もう一度、登録結果を確認してください。'});}
+   if(insertError){if(insertError.code!=='23505')throw new SafeError(503,'出品処理を記録できません。Amazonへの送信は行っていません。');const {data:concurrent,error}=await svc.from('amazon_listing_submissions').select('*').eq('item_id',item.id).in('state',['submitting','accepted','uncertain']).limit(1).maybeSingle();operation=concurrent;if(error||!operation||changedSubmission())throw new SafeError(409,'別の出品処理を確認中です。出品画面を開き直してください。');return waiting('submitting','同じ商品の登録処理を確認中です。');}
    operation=inserted;owned=true;
   }
-  if(operation!.state==='failed')return respond(200,{verified:false,state:'failed',note:operation!.note||'前回の出品は失敗しました。内容を確認して再度お試しください。'});
+  if(operation!.state==='failed')return waiting('failed',operation!.note||'前回の出品は失敗しました。内容を確認して再度お試しください。');
   if(owned&&!remote){
    try{
     const result=await api.put(item.sku,payload);const errors=issues(result);if(result?.status!=='ACCEPTED'||errors.length)throw new SafeError(422,'Amazonが出品を受け付けませんでした。'+errors.join(' '));
     const {error:saveError}=await svc.from('amazon_listing_submissions').update({state:'accepted',submission_id:typeof result.submissionId==='string'?result.submissionId:null,note:'Amazon受付済み・登録結果を確認中'}).eq('request_id',operation!.request_id);if(saveError)throw new SafeError(502,'Amazonは受け付けましたが履歴の更新に失敗しました。再送せず結果を確認してください。');
    }catch(e){const failed=e instanceof SafeError&&e.status>=400&&e.status<500;await svc.from('amazon_listing_submissions').update({state:failed?'failed':'uncertain',note:e instanceof SafeError?e.message:'Amazonへの送信結果が不明です。再送せず登録結果を確認します。'}).eq('request_id',operation!.request_id);throw e;}
   }
-  if(!remote){try{remote=await api.get(item.sku);}catch{return respond(200,{verified:false,state:'accepted',note:'Amazonへの送信を受け付けました。登録結果の取得を再度お試しください。'});}}
-  if(!remote||!verifiedListing(remote,item))return respond(200,{verified:false,state:operation!.state==='uncertain'?'uncertain':'accepted',note:remote?issues(remote).join(' ')||verificationNote(remote):'Amazon受付済みです。まだSKUの登録を確認できません。少し待って登録結果を確認してください。'});
+  if(!remote){try{remote=await api.get(item.sku);}catch{return waiting('accepted','Amazonへの送信を受け付けました。登録結果を確認中です。');}}
+  if(remote&&issues(remote).length)throw new SafeError(422,'Amazonの商品登録にエラーがあります。'+issues(remote).join(' '));
+  if(!remote||!verifiedListing(remote,item))return waiting(operation!.state==='uncertain'?'uncertain':'accepted',remote?issues(remote).join(' ')||verificationNote(remote):'Amazon受付済みです。SKUの登録を確認中です。');
   if(!verifiedImages(remote,images)){
+   if(resuming)return waiting('accepted','Amazonに送信済みです。写真の反映を確認中です。');
    const imageKey='Amazon写真受付済み:'+Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([photoProductType(remote),Object.entries(images).map(([key,value])=>[key,new URL(value[0].media_location).pathname])]))))).map(value=>value.toString(16).padStart(2,'0')).join('');
-   if(operation!.note===imageKey)return respond(200,{verified:false,state:'accepted',note:'Amazonが商品写真を受け付けました。写真の登録結果を確認中です。'+imageProgress(remote,images)+'。再送せず登録結果を確認しています。'});
+   if(operation!.note===imageKey)return waiting('accepted','Amazonが商品写真を受け付けました。写真の登録結果を確認中です。'+imageProgress(remote,images)+'。再送せず登録結果を確認しています。');
    const preview=await api.patchImages(item.sku,images,remote,true);if(!['VALID','ACCEPTED'].includes(preview?.status??'')||issues(preview).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(preview).join(' '));
    const {data:photoLatest,error:photoLatestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(photoLatestError||!photoLatest||!sameItem(item,photoLatest))throw new SafeError(409,'商品情報が変更されています。再読み込みしてください。');
    const result=await api.patchImages(item.sku,images,remote);if(result?.status!=='ACCEPTED'||issues(result).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(result).join(' '));
    const {error:imageReceiptError}=await svc.from('amazon_listing_submissions').update({state:'accepted',note:imageKey}).eq('request_id',operation!.request_id);if(imageReceiptError)throw new SafeError(503,'Amazonは写真を受け付けましたが、受付履歴を保存できませんでした。');
    remote=await api.get(item.sku);
-   if(!remote||!verifiedListing(remote,item)||!verifiedImages(remote,images))return respond(200,{verified:false,state:'accepted',note:'Amazonが商品写真を受け付けました。写真の登録結果を確認中です。'+imageProgress(remote,images)+'。再度、登録結果を確認してください。'});
+   if(!remote||!verifiedListing(remote,item)||!verifiedImages(remote,images))return waiting('accepted','Amazonが商品写真を受け付けました。写真の登録結果を確認中です。'+imageProgress(remote,images)+'。登録結果を確認中です。');
   }
   const {data:latest,error:latestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'Amazon送信後に商品情報が変更されています。内容を確認してください。');
   const {error:verifiedError}=await svc.from('amazon_listing_submissions').update({state:'verified',verified_at:new Date().toISOString(),note:'AmazonのSKU・ASIN・価格・コンディション・配送方式を確認済み'}).eq('request_id',operation!.request_id);if(verifiedError)throw new SafeError(503,'Amazonの登録確認を保存できません。再度結果を確認してください。');

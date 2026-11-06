@@ -402,9 +402,10 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  if(error)throw error;
  announceReturnTaskChange();
 }
-export async function submitAmazonListing(itemId:string,date:string,requestId:string,photoIds:string[]):Promise<{verified:boolean;state:string;note:string}>{
- const {data,error}=await getSupabase().functions.invoke('amazon-listing-submit',{body:{action:'submit',itemId,workCompletedOn:date,requestId,photoIds}});
- if(error){const result=error.context instanceof Response?await error.context.json().catch(()=>null):null;throw new Error(result?.error||'Amazonの登録結果を確認できません。再度、結果を確認してください。');}
+export interface AmazonListingResult {verified:boolean;state:string;note:string;requestId?:string;workCompletedOn?:string;}
+export async function submitAmazonListing(itemId:string,date:string,requestId:string,photoIds:string[],expected?:{sku:string;price:number},resume=false):Promise<AmazonListingResult>{
+ const {data,error}=await getSupabase().functions.invoke('amazon-listing-submit',{body:{action:resume?'resume':'submit',itemId,workCompletedOn:date,requestId,photoIds,expectedSku:expected?.sku,expectedPrice:expected?.price}});
+ if(error){const result=error.context instanceof Response?await error.context.json().catch(()=>null):null;throw Object.assign(new Error(result?.error||'Amazonの登録結果を取得できませんでした。'),{status:error.context instanceof Response?error.context.status:undefined});}
  if(!data||typeof data.verified!=='boolean')throw new Error('Amazonの登録結果が不正です。');return data;
 }
 
