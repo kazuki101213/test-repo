@@ -9,9 +9,11 @@ const columns='id,sku,asin,condition,description,planned_price,sales_channel,sta
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const conditionTypes:Record<string,string>={'ほぼ新品':'used_like_new','非常に良い':'used_very_good','良い':'used_good','可':'used_acceptable'};
 export function accountFor(channel:string|null):AmazonAccountId{if(channel==='FBA2'||channel==='自己発送2')return'amazon-2';if(['FBA','FBA1','自己発送','自己発送1'].includes(channel??''))return'amazon-1';throw new SafeError(422,'Amazonの販売先を選択してください。');}
-export function listingBody(item:ListingItem){
+export function listingBody(item:ListingItem,catalog?:Obj|null){
  if(!item.asin||!/^[0-9A-Z]{10}$/.test(item.asin)||!conditionTypes[item.condition??'']||!Number.isSafeInteger(item.planned_price)||(item.planned_price??0)<1)throw new SafeError(422,'ASIN・コンディション・予定販売価格を確認してください。');
  const attributes:Obj={merchant_suggested_asin:[{value:item.asin,marketplace_id:marketplace}],condition_type:[{value:conditionTypes[item.condition!],marketplace_id:marketplace}],purchasable_offer:[{audience:'ALL',currency:'JPY',marketplace_id:marketplace,our_price:[{schedule:[{value_with_tax:item.planned_price}]}]}],fulfillment_availability:[/^FBA/.test(item.sales_channel??'')?{fulfillment_channel_code:'AMAZON_JP'}:{fulfillment_channel_code:'DEFAULT',quantity:1}]};
+ // Use actual ASIN attributes only; never invent battery or dangerous-goods declarations.
+ for(const name of ['batteries_required','supplier_declared_dg_hz_regulation']){const values=(catalog?.attributes?.[name]??[]).filter((v:Obj)=>(!v.marketplace_id||v.marketplace_id===marketplace)&&(name==='batteries_required'?typeof v.value==='boolean':typeof v.value==='string'));if(values.length)attributes[name]=values.map((v:Obj)=>({value:v.value,marketplace_id:marketplace}));}
  if(item.description?.trim())attributes.condition_note=[{value:item.description.replace(/\\n/g,'\n'),language_tag:'ja_JP',marketplace_id:marketplace}];
  return{productType:'PRODUCT',requirements:'LISTING_OFFER_ONLY',attributes};
 }
@@ -35,7 +37,7 @@ async function amazon(id:AmazonAccountId){
   if(!response.ok)throw new SafeError(response.status>=500?502:response.status,'Amazon登録APIがエラーになりました（HTTP '+response.status+'）。'+(issues(data).join(' ')||'アカウントの権限・状態を確認してください。'));
   if(!data||typeof data!=='object')throw new SafeError(502,'Amazonの登録結果を確認できません。');return data as Obj;
  }
- return{sellerId:credentials.sellerId,get:(sku:string)=>call(sku,'GET'),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview)};
+ return{sellerId:credentials.sellerId,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview)};
 }
 export async function handler(req:Request):Promise<Response>{
  const respond=(status:number,body:unknown)=>new Response(JSON.stringify(body),{status,headers});
@@ -68,7 +70,7 @@ export async function handler(req:Request):Promise<Response>{
   let owned=false;
   if(!operation){
    if(remote&&!verifiedListing(remote,item))throw new SafeError(409,'同じSKUがAmazonにありますが、ASIN・価格・コンディション・配送方式が一致しません。既存の出品は上書きしません。');
-   if(!remote){const preview=await api.put(item.sku,payload,true);const errors=issues(preview);if(!['VALID','ACCEPTED'].includes(preview?.status??'')||errors.length)throw new SafeError(422,'Amazonが出品内容を受け付けませんでした。'+errors.join(' '));}
+   if(!remote){const catalog=await api.catalog(item.asin!);if(catalog.asin!==item.asin)throw new SafeError(409,'Amazonの商品情報のASINが一致しません。');Object.assign(payload.attributes,listingBody(item,catalog).attributes);const preview=await api.put(item.sku,payload,true);const errors=issues(preview);if(!['VALID','ACCEPTED'].includes(preview?.status??'')||errors.length)throw new SafeError(422,'Amazonが出品内容を受け付けませんでした。'+errors.join(' '));}
    const {data:latest,error:latestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'商品情報が変更されています。再読み込みしてください。');
    const record={request_id:body.requestId,item_id:item.id,requested_by:user.user.id,sku:item.sku,asin:item.asin,sales_channel:item.sales_channel,account_id:accountId,seller_id:api.sellerId,price:item.planned_price,item_condition:item.condition,description:item.description??'',work_completed_on:body.workCompletedOn,state:'submitting'};
    const {data:inserted,error:insertError}=await svc.from('amazon_listing_submissions').insert(record).select().single();
