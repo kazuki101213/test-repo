@@ -460,6 +460,15 @@ test('配送修正確認は指定の配送方法だけ選択し、発送通知�
  const q=await page('<h1>取引画面</h1><div role="dialog"><p>商品の発送通知を送信しますか</p><button onclick="document.body.dataset.clicked=1">はい</button></div>','https://jp.mercari.com/transaction/m24285629702');const stopped=await q.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'});assert(stopped.__error);assert(stopped.shippingEvidence.editor.text);assert.equal(await q.evaluate(()=>document.body.dataset.clicked),undefined);await q.close();
 });
 
+test('匿名配送の復帰注意書きは指定のらくらくへ戻す場合だけ確認し、別の方法や未確認の文面では止まる',async()=>{
+ const notice='配送方法を変更しますか？ ゆうゆうメルカリ便から、らくらくメルカリ便へ変更する場合、郵便局・コンビニ受取は利用できません。';
+ for(const [method,text,allowed] of [['らくらくメルカリ便',notice,true],['ゆうゆうメルカリ便',notice,false],['らくらくメルカリ便',notice+' 氏名と住所を公開します。',false]]){
+  const p=await page('<div role="dialog">'+text+' <button>キャンセル</button><button onclick="document.body.dataset.confirmed=1">変更する</button></div>','https://jp.mercari.com/transaction/m99125688368');
+  const r=await p.evaluate(advanceMercariShippingEditor,{itemId:'m99125688368',shippingMethod:method});
+  if(allowed){assert.equal(r.__error,undefined);await p.waitForFunction(()=>document.body.dataset.confirmed==='1');}else{assert(r.__error);assert.equal(await p.evaluate(()=>document.body.dataset.confirmed),undefined);}await p.close();
+ }
+});
+
 test('配送修正の入れ子ダイアログは最内側だけ確認し、空の常設ダイアログを数えない',async()=>{
  const p=await page('<div role="dialog"></div><div role="dialog"><div aria-modal="true"><p>商品サイズや発送方法を修正します。コードは無効になります。</p><button onclick="location.href=\'/transaction/m24285629702/shipping_class\'">修正する</button></div></div>','https://jp.mercari.com/transaction/m24285629702');
  assert.equal((await p.evaluate(advanceMercariShippingEditor,{itemId:'m24285629702',shippingMethod:'ゆうゆうメルカリ便'})).__error,undefined);await p.waitForURL('https://jp.mercari.com/transaction/m24285629702/shipping_class');await p.close();

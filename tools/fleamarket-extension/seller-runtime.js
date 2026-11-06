@@ -136,13 +136,14 @@ export function advanceMercariShippingEditor({itemId,shippingMethod}){
  }
  if(dialogs.length!==1)return {__error:'配送設定の確認画面を1件に確認できません',shippingEvidence:{editor:{dialogCount:allDialogs.length,dialogs:allDialogs.map(e=>({role:e.getAttribute('role'),text:norm(e.innerText).replace(/[0-9]{4,}/g,'[number]').slice(0,800)})),buttons:[...document.querySelectorAll('button')].filter(visible).map(e=>norm(e.innerText)).filter(t=>t&&t.length<100).slice(-30)}}};
  const dialog=dialogs[0],text=norm(dialog.innerText),buttons=[...dialog.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled);
+ const restoreAnonymousMethod=shippingMethod==='らくらくメルカリ便'&&text.replace(/\s/g,'')==='配送方法を変更しますか？ゆうゆうメルカリ便から、らくらくメルカリ便へ変更する場合、郵便局・コンビニ受取は利用できません。キャンセル変更する';
  const evidence={text:text.replace(/[0-9]{4,}/g,'[number]').slice(0,600),buttons:buttons.map(e=>norm(e.innerText)),radios:[...dialog.querySelectorAll('input[type=radio]')].filter(visible).map(e=>norm([e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText)].join(' ')))};
  const stop=()=>({__error:'配送設定の確認画面を照合できません。コードは発行していません',shippingEvidence:{editor:evidence}});
  if(!/配送|発送|サイズ/.test(text)||/発送通知|発送しました|取引をキャンセル|購入する|支払う/.test(text))return stop();
  const radios=[...dialog.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&norm([e.getAttribute('aria-label'),...[...(e.labels||[])].map(l=>l.innerText),...(e.getAttribute('aria-labelledby')||'').split(/\s+/).filter(Boolean).map(id=>document.getElementById(id)?.innerText)].join(' ')).startsWith(shippingMethod));
  let candidates;
  if(radios.length===1){if(radios[0].checked)return {methodAlreadySelected:true};candidates=buttons.filter(e=>['変更する','更新する','選択して次へ'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();radios[0].click();if(!radios[0].checked)return stop();}
- else {if(radios.length||dialog.querySelector('input:not([type=hidden]):not([type=button]):not([type=submit]),textarea,select')||!(/コード|商品サイズ/.test(text)||/^発送方法を変更しますか[？?]\s*キャンセル\s*変更する$/.test(text)))return stop();candidates=buttons.filter(e=>['修正する','変更する','はい'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();}
+ else {if(radios.length||dialog.querySelector('input:not([type=hidden]):not([type=button]):not([type=submit]),textarea,select')||!(/コード|商品サイズ/.test(text)||/^発送方法を変更しますか[？?]\s*キャンセル\s*変更する$/.test(text)||restoreAnonymousMethod))return stop();candidates=buttons.filter(e=>['修正する','変更する','はい'].includes(norm(e.innerText)));if(candidates.length!==1)return stop();}
  const state=before();setTimeout(()=>candidates[0].click(),100);return state;
  }catch(error){return {__error:error.message};}
 }
