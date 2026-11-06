@@ -75,3 +75,17 @@ export async function downloadInvoicePdf(elements: HTMLElement[], files: Invoice
   const link = document.createElement('a'); link.href = url; link.download = name; link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
+
+/** Separate uploaded PDF pages for the review spread; the original stays unchanged. */
+export async function splitInvoicePdfPages(bytes: ArrayBuffer): Promise<Uint8Array[]> {
+  const source = await PDFDocument.load(bytes);
+  if (!source.getPageCount()) throw new Error('PDFにページがありません。');
+  const pages: Uint8Array[] = [];
+  for (const index of source.getPageIndices()) {
+    const page = await PDFDocument.create();
+    const [copy] = await page.copyPages(source, source.getPageIndices().slice(index, index + 1));
+    page.addPage(copy!);
+    pages.push(await page.save());
+  }
+  return pages;
+}

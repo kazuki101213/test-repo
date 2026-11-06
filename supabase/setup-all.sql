@@ -16775,7 +16775,7 @@ revoke all on function app.retry_uncertain_shipping_code(uuid,jsonb,uuid) from p
 grant execute on function app.retry_uncertain_shipping_code(uuid,jsonb,uuid) to authenticated;
 
 
--- ▼▼▼ 20261106073316_amazon_account_sales_channels.sql ▼▼▼
+-- ▼▼▼ 20261106080953_amazon_account_sales_channels.sql ▼▼▼
 
 -- Keep legacy channel values for old clients and historical data.
 alter type app.sales_channel add value if not exists 'FBA1';
