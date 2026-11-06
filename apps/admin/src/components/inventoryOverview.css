@@ -1,5 +1,5 @@
 .approved-inventory { width:100%; min-width:0; font-size:13px; font-variant-numeric:tabular-nums; }
-.approved-inventory-row { display:grid; grid-template-columns:minmax(260px,2fr) minmax(96px,.9fr) minmax(120px,1fr) minmax(110px,.95fr) minmax(125px,1fr) minmax(105px,.85fr) minmax(80px,.75fr) minmax(120px,.9fr) minmax(130px,1fr); border-bottom:1px solid var(--border); min-width:0; }
+.approved-inventory-row { display:grid; grid-template-columns:minmax(260px,2fr) minmax(232px,.9fr) minmax(120px,1fr) minmax(110px,.95fr) minmax(125px,1fr) minmax(105px,.85fr) minmax(80px,.75fr) minmax(120px,.9fr) minmax(130px,1fr); border-bottom:1px solid var(--border); min-width:0; }
 .approved-inventory-row > [role=cell],.approved-inventory-row > [role=columnheader] { min-width:0; padding:7px 8px; overflow-wrap:anywhere; line-height:18px; }
 .approved-inventory-head { background:var(--surface-2); border-top:1px solid var(--border); }
 .approved-inventory-head .inventory-column-heading { font-size:12px; line-height:18px; text-align:left; padding:0; font-weight:400; }
@@ -51,9 +51,12 @@
 .approved-price-error,.approved-price-message { font-size:11px; line-height:16px; overflow-wrap:anywhere; }
 .approved-price-error { color:var(--danger); }
 .approved-price-error button { margin-left:5px; text-decoration:underline; }
+@media(min-width:1200px) {
+ .approved-people > div:nth-child(-n+2) .inventory-cell-edit > span { white-space:nowrap; }
+}
 @media(min-width:1200px) and (max-width:1599px) {
  .approved-inventory { font-size:11px; }
- .approved-inventory-row { grid-template-columns:minmax(235px,2.1fr) minmax(88px,.8fr) minmax(108px,.9fr) minmax(86px,.75fr) minmax(108px,.85fr) minmax(88px,.7fr) minmax(74px,.65fr) minmax(95px,.8fr) minmax(105px,.9fr); }
+ .approved-inventory-row { grid-template-columns:minmax(235px,2.1fr) minmax(202px,.8fr) minmax(108px,.9fr) minmax(86px,.75fr) minmax(108px,.85fr) minmax(88px,.7fr) minmax(74px,.65fr) minmax(95px,.8fr) minmax(105px,.9fr); }
  .approved-inventory-row > [role] { padding-inline:5px; }
  .approved-record .approved-photo { width:88px; height:112px; flex-basis:88px; }
  .approved-record .approved-sku { font-size:12px; }
