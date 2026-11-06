@@ -31,7 +31,7 @@ export const inventoryStatusText=(status:string)=>status==='Amazon返送依頼'?
 export const INVENTORY_ACCESSORY_STYLE=tone('#dce7f1','#3c6085');
 export function inventoryStaffStyle(value:string|null|undefined):InventoryLabelStyle {
   const name=(value??'').replace(/\s/g,'').replace(/^[A-Z]{2}/,'');
-  const colors:Record<string,InventoryLabelStyle>={長部一輝:tone('#e4f0fc','#365d83'),久保田ゆかり:tone('#e8f0dc','#45662b'),石川秀樹:tone('#efe5f6','#694184'),石川秀櫢:tone('#efe5f6','#694184'),新川水紀:tone('#fae9d8','#854a1d'),久保田真由:tone('#f8e2eb','#843655'),株式会社コエル:tone('#f8f2d6','#706016'),株式会社吉光:tone('#dff0eb','#275e55')};
+  const colors:Record<string,InventoryLabelStyle>={長部一輝:tone('#e4f0fc','#365d83'),久保田ゆかり:tone('#e8f0dc','#45662b'),石川秀樹:tone('#efe5f6','#694184'),石川秀櫢:tone('#efe5f6','#694184'),新川水紀:tone('#fae9d8','#854a1d'),久保田真由:tone('#f8e2eb','#843655'),株式会社コエル:tone('#f8f2d6','#706016'),株式会社吉光:tone('#dff0eb','#275e55'),土井花菜:tone('#f7d9d2','#894b41')};
   return colors[name]??tone('#eeeeee','#5b5b5b');
 }
 export function inventorySiteStyle(value:string|null|undefined):InventoryLabelStyle {

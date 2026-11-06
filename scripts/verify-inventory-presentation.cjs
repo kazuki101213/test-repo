@@ -3,7 +3,7 @@ for(const [status,days,expected]of [['商品登録前',6,c.normal],['商品登�
 for(const date of [null,'2026-11-07','bad','2026-02-31'])assert.equal(p.inventoryBoxColor('出品中',date,now),c.normal);
 assert.equal(p.inventoryAge('2026-11-05',new Date('2026-11-05T15:00:00Z')),1,'JST midnight boundary');
 assert.equal(p.inventoryStatusStyle('商品登録前').backgroundColor,'#fff6d9');assert.equal(p.inventoryStatusStyle('返品処理').backgroundColor,'#dce7f1');assert.notEqual(p.inventoryStatusStyle('出品中').backgroundColor,c.listed15);
-assert.equal(p.inventoryStaffStyle('AA 長部 一輝').backgroundColor,'#e4f0fc');assert.equal(p.inventoryStaffStyle('LL 土井花菜').backgroundColor,'#eeeeee');assert.equal(new Set(['長部一輝','久保田ゆかり','石川秀樹','新川水紀','久保田真由','株式会社コエル','株式会社吉光'].map(s=>p.inventoryStaffStyle(s).backgroundColor)).size,7);
+assert.equal(p.inventoryStaffStyle('AA 長部 一輝').backgroundColor,'#e4f0fc');assert.equal(p.inventoryStaffStyle('LL 土井 花菜').backgroundColor,'#f7d9d2');assert.equal(new Set(['長部一輝','久保田ゆかり','石川秀樹','新川水紀','久保田真由','株式会社コエル','株式会社吉光','土井花菜'].map(s=>p.inventoryStaffStyle(s).backgroundColor)).size,8);
 for(const name of ['Amazon','ヤフオク','メルカリ','ラクマ','ヤフフリ'])assert.deepEqual(p.inventorySiteStyle(name+'1'),p.inventorySiteStyle(name+'2'));
 assert.equal(p.accessoryDisplayLabel({is_accessory:true,sku:'9003c-AAII-date-40'}),'付属品(別販売)');assert.equal(p.isSeparateAccessory({is_accessory:true,sku:'9003a-AAII-date-60'}),false);assert.equal(p.isSeparateAccessory({is_accessory:false,sku:'9003c-AAII-date-40'}),false);
 console.log('Inventory box boundaries/JST, independent label palette, staff/site identity and accessory classification passed');
