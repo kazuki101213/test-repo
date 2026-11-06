@@ -155,11 +155,11 @@ test('packing evidence shares the existing Drive folder without entering listing
  assert.deepEqual(JSON.parse(upload.body).parents,['shared']);
 });
 test('packing export accepts only the configured pre-transition stage and retains authorization',async()=>{
- for(const sales_channel of ['FBA','自己発送','メルカリ','ヤフオク']){
+ for(const sales_channel of ['FBA','FBA1','FBA2','自己発送','自己発送1','自己発送2','メルカリ','ヤフオク']){
   for(const status of ['検品中','商品登録前','出品中','取引中','販売済']){
    const {state,call}=setup();Object.assign(state.items[1],{status,sales_channel});
    state.item_photos.push({id:'packed',item_id:itemId,storage_path:'packed.jpg',photo_kind:'packing',drive_file_id:null,uploaded_by:'staff'});
-   const allowed=sales_channel==='FBA'?status==='商品登録前':status==='出品中';
+   const allowed=/^FBA[12]?$/.test(sales_channel)?status==='商品登録前':status==='出品中';
    assert.equal((await call('save',{purpose:'packing'})).status,allowed?200:409,sales_channel+status);
    if(!allowed)assert.equal(state.google.length,0);
   }

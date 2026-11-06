@@ -92,6 +92,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       pdfReady:!!snapshot && !loading && !profileLoading && !receiptBusy && !settings,
       ready:!!invoice && !!snapshot && !loading && !profileLoading && !receiptBusy && !error && !settings});
   }, [invoice,receiptVersion,busy,receiptSaving,pdfBusy,dirty,snapshot,loading,profileLoading,receiptBusy,error,settings,review?.onStateChange]);
+  const reviewPage = (label: string) => (page: ReactNode, index: number) => <section className="invoice-review-page" aria-label={`${label} ${index + 1}ページ`} key={`${label}-${index}`}><h3>{label}</h3><DocumentPreview>{page}</DocumentPreview></section>;
   const profile = profiles.find(p => p.staff_id === staffId);
   const isIshikawa = profile?.details.issuer_name === '石川秀樹';
 
@@ -235,9 +236,12 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       </div>
       </div>
       {review ? <div className="invoice-review-documents">
-        <section aria-label="請求書"><h3>請求書</h3><DocumentPreview><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts}/></DocumentPreview>{receiptRows.filter(row=>row.document_type==='invoice').map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
-        <section aria-label="領収書"><h3>領収書</h3>{claimedReceipts.length>0&&<DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="summary"/></DocumentPreview>}{receiptRows.filter(row=>row.document_type==='receipt').map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
-        <section aria-label="領収書の写真PDF"><h3>領収書の写真PDF</h3>{claimedReceipts.some(row=>row.mime_type.startsWith('image/'))&&<DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="photos"/></DocumentPreview>}{receiptRows.filter(row=>row.document_type==='receipt_photo'&&!claimedReceipts.some(claim=>claim.id===row.id&&claim.mime_type.startsWith('image/'))).map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
+        <InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} renderPage={reviewPage('請求書')}/>
+        {receiptRows.filter(row=>row.document_type==='invoice').map(row=><InvoiceAttachmentPreview key={row.id} file={row} label="請求書"/>)}
+        {claimedReceipts.length>0&&<ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="summary" renderPage={reviewPage('領収書')}/>}
+        {receiptRows.filter(row=>row.document_type==='receipt').map(row=><InvoiceAttachmentPreview key={row.id} file={row} label="領収書"/>)}
+        {claimedReceipts.some(row=>row.mime_type.startsWith('image/'))&&<ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="photos" renderPage={reviewPage('領収書の写真PDF')}/>}
+        {receiptRows.filter(row=>row.document_type==='receipt_photo'&&!claimedReceipts.some(claim=>claim.id===row.id&&claim.mime_type.startsWith('image/'))).map(row=><InvoiceAttachmentPreview key={row.id} file={row} label="領収書の写真PDF"/>)}
       </div> : <>
       <DocumentPreview><div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div></DocumentPreview>
       <DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} /></DocumentPreview>

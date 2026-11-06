@@ -1,16 +1,17 @@
-.invoice-review-documents { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
-.invoice-review-documents > section { min-width:0; }
+.invoice-review-documents { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; direction:rtl; align-items:start; }
+.invoice-review-documents > .invoice-document,.invoice-review-documents > .receipt-document,.invoice-review-documents > .invoice-review-attachments { display:contents; }
+.invoice-review-documents > *,.invoice-review-page { direction:ltr; min-width:0; }
 .invoice-review .document-preview { min-width:0; margin:12px 0; overflow:hidden; }
 .invoice-review .document-preview-content { width:190mm; transform-origin:top left; }
 .invoice-review .invoice-sheet,.invoice-review .receipt-summary-sheet,.invoice-review .receipt-photo-sheet { width:190mm; margin:0 0 20px; }
-.invoice-review .receipt-document { display:block; }
+
 .invoice-review .invoice-sheet th,.invoice-review .receipt-summary-sheet th { position:static; }
 .invoice-review .invoice-sheet td,.invoice-review .receipt-summary-sheet td { white-space:normal; }
 .invoice-review .invoice-sheet th,.invoice-review .invoice-sheet td,.invoice-review .receipt-summary-sheet th,.invoice-review .receipt-summary-sheet td { background:transparent; }
 .invoice-review-pdf { display:block; width:100%; height:75vh; min-height:360px; border:0; background:#fff; }
 .invoice-review-attachment { display:block; width:100%; height:auto; margin:12px 0; }
 .invoice-review-documents > p { grid-column:1 / -1; }
-@media(max-width:900px) { .invoice-review-documents { grid-template-columns:minmax(0,1fr); } }
+@media(max-width:900px) { .invoice-review-documents { grid-template-columns:minmax(0,1fr); direction:ltr; } }
 .invoice-review .invoice-workspace { border:0; padding:0; background:transparent; }
 .invoice-review .invoice-header { padding:0; }
 .invoice-review .invoice-documents { padding:0; }

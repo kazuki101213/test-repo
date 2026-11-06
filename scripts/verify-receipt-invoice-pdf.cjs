@@ -53,6 +53,9 @@ const manyExtras=Array.from({length:45},(_,i)=>({date:'2026-10-01',description:'
 const manySheet=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:10},month:'2026-10',issued:'2026-10-15',extras:manyExtras,note:'備考保持',receipts:[]});
 assert(all(manySheet).filter(n=>n.props?.className==='invoice-sheet').length>1);assert.equal(all(manySheet).filter(n=>n.type==='tfoot').length,1,'Totals belong only on the final page');
 for(const line of manyExtras)assert(text(manySheet).includes(line.description));const allFieldsText=text(manySheet)+all(manySheet).filter(n=>typeof n.type==='function').map(n=>text(n.type(n.props))).join('');for(const value of Object.values(profileFields))assert(allFieldsText.includes(value),value);assert(text(manySheet).includes('備考保持'));assert(text(manySheet).includes('¥49,500'));
+const wrappedSheet=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:10},month:'2026-10',issued:'2026-10-15',extras:manyExtras,note:'備考保持',renderPage:(page,index)=>jsx('section',{className:'review-page',pageIndex:index,children:page})});
+assert.equal(all(wrappedSheet).filter(n=>n.props?.className==='review-page').length,all(manySheet).filter(n=>n.props?.className==='invoice-sheet').length);
+assert.equal(text(wrappedSheet),text(manySheet),'Spreading preview pages preserves the full invoice and export order');
 const longExtras=Array.from({length:8},(_,i)=>({date:null,description:i+'長い明細を省略しない'.repeat(18),quantity:1,unit_price:1000}));
 const longSheet=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:10},month:'2026-10',issued:'2026-10-15',extras:longExtras,note:'',receipts:[]});
 assert(all(longSheet).filter(n=>n.props?.className==='invoice-sheet').length>1);for(const line of longExtras)assert(text(longSheet).includes(line.description));
@@ -111,6 +114,9 @@ function testExtraRows(){
  const ctx={exports:{},document:{fonts:{ready:Promise.resolve()}},fetch:async()=>({ok:true,arrayBuffer:async()=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}),require:name=>{dependencyLoads.push(name);return name==='pdf-lib'?require('../packages/shared/node_modules/pdf-lib'):name==='html2canvas'?{__esModule:true,default:()=>{throw Error('PDF should not be rasterized')}}:{}}};
  vm.runInNewContext(compile('packages/shared/src/invoicePdf.ts'),ctx);
  assert(dependencyLoads.includes('pdf-lib')&&dependencyLoads.includes('html2canvas'),'PDF dependencies must load with the app, before a later deployment can remove old lazy chunks');
+ const split=await ctx.exports.splitInvoicePdfPages(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
+ assert.equal(split.length,2);
+ for(const [i,part] of split.entries()){const page=await PDFDocument.load(part);assert.equal(page.getPageCount(),1);assert.deepEqual([page.getPages()[0].getWidth(),page.getPages()[0].getHeight()],[[420,595],[842,595]][i]);}
  const merged=await PDFDocument.load(await ctx.exports.buildInvoicePdf([],rows.filter(row=>row.document_type==='receipt')));
  assert.equal(merged.getPageCount(),2);assert.deepEqual(merged.getPages().map(p=>[p.getWidth(),p.getHeight()]),[[420,595],[842,595]]);
  assert(merged.catalog.has(require('../packages/shared/node_modules/pdf-lib').PDFName.of('Names')),'Original PDF should also be embedded');

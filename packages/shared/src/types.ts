@@ -7,7 +7,7 @@ export type Marketplace =
   | 'オフモール' | '2ndストリート' | 'トレジャーファクトリー' | '楽天' | '店舗'
   | 'Amazon返品' | '動作品Amazon返品' | 'Amazon' | 'Yahoo！ショッピング' | 'その他';
 
-export type SalesChannel = 'FBA' | '自己発送' | 'メルカリ' | 'ヤフオク' | 'ヤフフリ' | 'その他';
+export type SalesChannel = 'FBA' | '自己発送' | 'FBA1' | 'FBA2' | '自己発送1' | '自己発送2' | 'メルカリ' | 'ヤフオク' | 'ヤフフリ' | 'その他';
 
 export type ItemCondition =
   | '新品' | '再生品' | 'ほぼ新品' | '非常に良い' | '良い' | '可' | 'ジャンク';

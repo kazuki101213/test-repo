@@ -133,7 +133,7 @@ export async function handler(req: Request): Promise<Response> {
     if (staffError || !staff?.is_active) throw new RequestError(403, '担当者の権限がありません。');
     const { data: item, error: itemError } = await service.from('items').select('id,sku,lot_seq,deliverer_id,status,sales_channel').eq('id', itemId).maybeSingle();
     if (itemError || !item || (staff.role !== 'admin' && item.deliverer_id !== profile.staff_id && !(action === 'list' && staff.role === 'purchaser'))) throw new RequestError(403, 'この商品の写真を扱う権限がありません。');
-    if(purpose==='packing' && action==='save' && !(item.sales_channel==='FBA'?item.status==='商品登録前':['自己発送','メルカリ','ヤフオク'].includes(item.sales_channel)&&item.status==='出品中')) throw new RequestError(409,'現在の販売状態では梱包写真を追加できません。');
+    if(purpose==='packing' && action==='save' && !(/^FBA(?:[12])?$/.test(item.sales_channel??'')?item.status==='商品登録前':['自己発送','自己発送1','自己発送2','メルカリ','ヤフオク'].includes(item.sales_channel)&&item.status==='出品中')) throw new RequestError(409,'現在の販売状態では梱包写真を追加できません。');
     // Authorize the requested item first, then expose only its own lot's photos.
     const aSeries = /^(\d+)a+-/i.exec(item.sku ?? '');
     if (action === 'reflect' && (purpose !== 'product' || !aSeries || item.status !== '商品登録前')) throw new RequestError(409, '商品登録前のa系商品の商品写真で利用できます。');

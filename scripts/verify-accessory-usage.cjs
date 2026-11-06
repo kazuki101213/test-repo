@@ -16,6 +16,7 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
   reassignAccessoryUsage:(...args)=>{writes.push({type:'usage',args});return new Promise(resolve=>{finish=()=>resolve({serial:'2448'});});}
  };
  const api={fetchCards:async()=>[],fetchInventoryPaymentCard:async()=>null,updateInventoryItem:async(item,fields)=>{writes.push({type:'fields',fields});revision='after-edit';}};
+const channelLabels={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/salesChannels.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,channelLabels);Object.assign(shared,channelLabels.exports);
  const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../inventory'?{productSerial:()=> '2447'}:{default:'component'}};
  const source=fs.readFileSync(path.join(root,'apps/admin/src/pages/Inventory.tsx'),'utf8')+'\nexport {InventoryFullEditDialog};';
  vm.runInNewContext(compile(source),ctx);

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { invoicePageEnds } from '../invoicePagination';
 import type { InvoiceReceipt } from '@bussan/shared';
 import type { InvoiceDetails, InvoiceLine, InvoiceSnapshot } from '../invoices';
@@ -35,8 +36,8 @@ function Bank({ details: p }: { details: InvoiceDetails }) {
   </tbody></table>;
 }
 
-export default function InvoiceSheet({ snapshot, month, issued, extras, note, receipts = [] }: {
-  snapshot: InvoiceSnapshot; month: string; issued: string; extras: InvoiceLine[]; note: string; receipts?: InvoiceReceipt[];
+export default function InvoiceSheet({ snapshot, month, issued, extras, note, receipts = [], renderPage }: {
+  snapshot: InvoiceSnapshot; month: string; issued: string; extras: InvoiceLine[]; note: string; receipts?: InvoiceReceipt[]; renderPage?: (page: ReactNode, index: number) => ReactNode;
 }) {
   const p = snapshot.profile;
   const lines: PrintLine[] = [
@@ -89,7 +90,7 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
   return <div ref={root} className="invoice-document" aria-label={`${month}の請求書プレビュー`}>{pages.map((page, pageIndex) => {
     const last = pageIndex === pages.length - 1;
     const issuedLabel = issued.replaceAll('-', '/') + (pages.length > 1 ? `　${pageIndex + 1} / ${pages.length}` : '');
-    return <article className="invoice-sheet" key={pageIndex}>
+    const pageContent = <article className="invoice-sheet" key={pageIndex}>
       <header className="document-heading"><h1>請求書</h1></header>
       {pageIndex > 0 && <div className="invoice-issued invoice-continuation-issued">{issuedLabel}</div>}
       {pageIndex === 0 && <><div className="invoice-parties"><div><div className="invoice-recipient">{p.recipient}</div><p className="invoice-greeting">下記の通り、ご請求申し上げます。</p></div>
@@ -105,5 +106,6 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
       {last && <div className="invoice-reimbursement"><p>作業費：{money(workFees)}</p><p>手当：{money(allowances)}</p><p>消費税：{money(Math.floor(subtotal * snapshot.tax_percent / 100))}</p><p>立替経費（税込）：{money(reimbursement)}</p></div>}
       {last && <div className="invoice-footer"><section><div>備考</div><div className="invoice-note">{note || '\u00a0'}</div></section><Bank details={p} /></div>}
     </article>;
+    return renderPage ? renderPage(pageContent, pageIndex) : pageContent;
   })}</div>;
 }

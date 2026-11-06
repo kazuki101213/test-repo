@@ -138,3 +138,4 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/inventory_assignee_dates.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/expense_bulk_delete.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/nekopos_shipping.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_account_sales_channels.sql"

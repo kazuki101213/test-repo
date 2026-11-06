@@ -1,3 +1,4 @@
+import { salesChannelLabel } from '@bussan/shared';
 import InventoryOverview from '../components/InventoryOverview';
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
 import { staffDisplayName, deliveryStaffOptions, inventorySiteStyle } from '@bussan/shared';
@@ -334,7 +335,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
         return <label className={`field${field === 'memo' ? ' inventory-full-edit-memo' : ''}`} key={field}><span>{fieldLabels[field]}</span>
-          {options ? <ColoredSelect value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
+          {options ? <ColoredSelect value={field==='sales_channel'?salesChannelLabel(String(current)):String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
             : dateFields.has(field)
               ? <DateInput value={String(current)} onChange={event => set(field, event.target.value)} />
@@ -362,7 +363,7 @@ const fieldLabels: Record<InventoryField, string> = {
 };
 
 function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
-  const initial = item[field] ?? '';
+  const initial = field==='sales_channel'?salesChannelLabel(item.sales_channel):item[field]??'';
   const [value, setValue] = useState(String(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

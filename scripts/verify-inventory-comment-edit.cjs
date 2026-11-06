@@ -4,6 +4,7 @@ const react={useRef(initial){const i=cursor++;return hooks[i]??(hooks[i]={curren
 const jsx=(type,props)=>({type,props});
 const api={fetchCards:async()=>[],fetchInventoryPaymentCard:async()=>null,updateInventoryField:async(item,field,value)=>{saved={item,field,value};},updateInventoryItem:async(item,fields)=>{saved={item,fields};}};
 const shared={CONDITIONS:[],MARKETPLACES:[],SALES_CHANNELS:[],STATUSES:[],deliveryStaffOptions:s=>s};
+const channelLabels={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/salesChannels.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,channelLabels);Object.assign(shared,channelLabels.exports);
 const source=fs.readFileSync('apps/admin/src/pages/Inventory.tsx','utf8')+'\nexport {InventoryFieldDialog,InventoryFullEditDialog};';
 const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:{default:'component'}};
 vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,context);

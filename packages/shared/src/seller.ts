@@ -29,6 +29,7 @@ export function sellerDefaults(task:DeliveryTask,manufacturer=''):SellerDraft{
 
 /** Manufacturer branches cannot be selected using only their parent category. */
 export function sellerListingCategoryError(draft:Pick<SellerDraft,'category'|'listingCategory'>,salesChannel:string|null):string{
+ if(!['メルカリ','ヤフオク'].includes(salesChannel??''))return '';
  if(!draft.listingCategory?.trim())return '出品カテゴリを入力してください（販売サイトのカテゴリ名）。';
  return salesChannel==='ヤフオク'&&draft.category==='ブルーレイレコーダー'&&(!draft.listingCategory?.trim()||draft.listingCategory.normalize('NFKC').replace(/\s/g,'')==='ブルーレイレコーダー')
   ?'出品カテゴリはメーカーまで指定してください（例：ブルーレイレコーダー > ソニー）。':'';

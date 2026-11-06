@@ -1,3 +1,4 @@
+import { salesChannelLabel } from '@bussan/shared';
 import { STAFF_DISPLAY_NAMES, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
@@ -86,7 +87,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const isWorkingAmazonReturn = marketplace === '動作品Amazon返品' && workStream !== '付属品';
   const [cardId, setCardId] = useState('');
   const [condition, setCondition] = useState<ItemCondition | ''>('非常に良い');
-  const [salesChannel, setSalesChannel] = useState<SalesChannel>('FBA');
+  const [salesChannel, setSalesChannel] = useState<SalesChannel>('FBA1');
   const [plannedPrice, setPlannedPrice] = useState<number | ''>('');
   const [plannedPayout, setPlannedPayout] = useState<number | ''>('');
   const [note, setNote] = useState('');
@@ -225,7 +226,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setCondition(source.condition ?? '');
       setPlannedPrice(source.planned_price ?? '');
       setPlannedPayout(source.planned_payout ?? '');
-      setSalesChannel(source.sales_channel ?? 'FBA');
+      setSalesChannel(salesChannelLabel(source.sales_channel ?? 'FBA1') as SalesChannel);
       setMarketplaceItemId(source.marketplace_item_id ?? '');
       setTrackingNo('');
       setCardId('');
