@@ -253,7 +253,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     cost_amount: item.cost_amount, planned_price: item.planned_price, planned_payout: item.planned_payout,
     packed_on: item.packed_on, shipped_on: item.shipped_on, status: item.status, memo: item.memo,
     purchaser_id: item.purchaser_id, deliverer_id: item.deliverer_id, marketplace: item.marketplace,
-    condition: item.condition, sales_channel: item.sales_channel ? salesChannelLabel(item.sales_channel) as InventoryEdit['sales_channel'] : null, sold_on: item.sold_on,
+    condition: item.condition, sales_channel: item.sales_channel, sold_on: item.sold_on,
     sold_price: item.sold_price, payout_amount: item.payout_amount, refund_amount: item.refund_amount,
     amazon_refund_amount: item.amazon_refund_amount, non_amazon_refund_amount: item.non_amazon_refund_amount,
     inventory_refund_amount: item.inventory_refund_amount,
@@ -335,7 +335,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
         return <label className={`field${field === 'memo' ? ' inventory-full-edit-memo' : ''}`} key={field}><span>{fieldLabels[field]}</span>
-          {options ? <ColoredSelect value={String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
+          {options ? <ColoredSelect value={field==='sales_channel'?salesChannelLabel(String(current)):String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
             : dateFields.has(field)
               ? <DateInput value={String(current)} onChange={event => set(field, event.target.value)} />

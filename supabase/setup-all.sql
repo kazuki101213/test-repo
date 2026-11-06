@@ -16844,7 +16844,8 @@ declare v text; source text; patched text;
 begin
  foreach v in array array['v_amazon_unmatched_app_sales','v_deliverer_workload','v_delivery_notice_tasks','v_amazon_listing_feed'] loop
   source:=pg_get_viewdef(('app.'||v)::regclass,true);
-  patched:=replace(source,'(items.sales_channel)::text = ANY','(app.sales_channel_family(items.sales_channel))::text = ANY');
+  patched:=regexp_replace(source,$pattern$(items\.sales_channel)(\)?\s*::text\s*=\s*ANY)$pattern$,
+    $replacement$app.sales_channel_family(\1)\2$replacement$,'g');
   patched:=replace(patched,'i.sales_channel = ANY','app.sales_channel_family(i.sales_channel) = ANY');
   patched:=replace(patched,'CASE i.sales_channel','CASE app.sales_channel_family(i.sales_channel)');
   if source=patched then raise exception 'Amazon channel predicate not found in view %',v; end if;
