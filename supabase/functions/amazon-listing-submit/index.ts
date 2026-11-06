@@ -24,6 +24,27 @@ export function verifiedListing(listing:Obj,item:ListingItem):boolean{
  const schedules=offers.length===1?offers[0].our_price?.[0]?.schedule:[];
  return listing.sku===item.sku&&summary?.asin===item.asin&&summary?.conditionType===conditionTypes[item.condition??'']&&schedules?.length===1&&schedules[0].value_with_tax===item.planned_price&&!schedules[0].start_at&&!schedules[0].end_at&&(attributes.fulfillment_availability??[]).some((v:Obj)=>v.fulfillment_channel_code===(/^FBA/.test(item.sales_channel??'')?'AMAZON_JP':'DEFAULT'))&&issues(listing).length===0;
 }
+export function offerImages(urls:string[]):Obj{
+ if(!urls.length||urls.length>6||urls.some(url=>!url.startsWith('https://')))throw new SafeError(422,'商品写真を1〜6枚で確認してください。');
+ return Object.fromEntries(urls.map((url,index)=>[index?'other_offer_image_locator_'+index:'main_offer_image_locator',[{media_location:url,marketplace_id:marketplace}]]));
+}
+export function verifiedImages(listing:Obj,images:Obj):boolean{
+ const identity=(url:unknown)=>{try{const value=new URL(String(url));return value.origin+value.pathname;}catch{return '';}};
+ return Object.entries(images).every(([name,values])=>(listing.attributes?.[name]??[]).some((v:Obj)=>v.marketplace_id===marketplace&&identity(v.media_location)===identity(values[0].media_location)))&&Array.from({length:5},(_,i)=>'other_offer_image_locator_'+(i+1)).every(name=>images[name]||!(listing.attributes?.[name]??[]).some((v:Obj)=>v.marketplace_id===marketplace));
+}
+export function imagePatches(images:Obj,listing:Obj){return[...Object.entries(images).map(([name,value])=>({op:'replace',path:'/attributes/'+name,value})),...Array.from({length:5},(_,i)=>'other_offer_image_locator_'+(i+1)).filter(name=>!images[name]&&(listing.attributes?.[name]??[]).some((v:Obj)=>v.marketplace_id===marketplace)).map(name=>({op:'delete',path:'/attributes/'+name,value:[{marketplace_id:marketplace}]}))];}
+async function approvedImages(sb:any,svc:any,itemId:string,selected:unknown):Promise<Obj>{
+ const {data:list,error:listError}=await sb.functions.invoke('delivery-photo-drive',{body:{itemId,action:'list',purpose:'product'}});
+ const allowed=Array.isArray(list?.photos)?list.photos.map((p:Obj)=>p.id):[];
+ const ids=selected===undefined?allowed.slice(0,6):selected;
+ if(listError||!Array.isArray(ids)||!ids.length||ids.length>6||new Set(ids).size!==ids.length||ids.some((id:unknown)=>!uuid(id)||!allowed.includes(id)))throw new SafeError(409,'出品する商品写真を1〜6枚で選択してください。');
+ const {data:photos,error}=await svc.from('item_photos').select('id,storage_path,photo_kind').in('id',ids);
+ if(error||!photos||ids.some((id:string)=>!photos.some((p:Obj)=>p.id===id&&(p.photo_kind??'product')==='product')))throw new SafeError(503,'商品写真の保存先を確認できません。');
+ const paths=ids.map((id:string)=>photos.find((p:Obj)=>p.id===id)!.storage_path);
+ const {data:signed,error:signError}=await svc.storage.from('item-photos').createSignedUrls(paths,604800);
+ if(signError||!signed||signed.length!==paths.length||signed.some((p:Obj)=>!p.signedUrl))throw new SafeError(503,'Amazon用の商品写真を準備できません。');
+ return offerImages(signed.map((p:Obj)=>p.signedUrl));
+}
 function verificationNote(listing:Obj):string{
  const s=listing.summaries?.find((v:Obj)=>v.marketplaceId===marketplace),a=listing.attributes??{};
  const prices=(a.purchasable_offer??[]).flatMap((o:Obj)=>(o.our_price??[]).flatMap((p:Obj)=>(p.schedule??[]).map((v:Obj)=>v.value_with_tax))).filter((v:unknown)=>typeof v==='number'&&Number.isFinite(v));
@@ -37,14 +58,14 @@ async function amazon(id:AmazonAccountId){
  const r=await fetch('https://api.amazon.com/auth/o2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:credentials.clientId,client_secret:credentials.clientSecret,refresh_token:credentials.refreshToken}),signal:AbortSignal.timeout(15000)});
  const token=await r.json().catch(()=>null);if(!r.ok||!token?.access_token)throw new SafeError(502,'Amazonの認証に失敗しました。');
  const path='/listings/2021-08-01/items/'+encodeURIComponent(credentials.sellerId)+'/';
- async function call(sku:string,method:'GET'|'PUT',body?:Obj,preview=false){
+ async function call(sku:string,method:'GET'|'PUT'|'PATCH',body?:Obj,preview=false){
   const params=new URLSearchParams({marketplaceIds:marketplace,issueLocale:'ja_JP',includedData:method==='GET'?'summaries,attributes,issues':'issues'});if(preview)params.set('mode','VALIDATION_PREVIEW');
   const response=await fetch(endpoint+path+encodeURIComponent(sku)+'?'+params,{method,headers:{'x-amz-access-token':token.access_token,'x-amz-date':new Date().toISOString().replace(/[:-]|\.\d{3}/g,''),'Content-Type':'application/json','user-agent':'BussanDelivery/1.0 (Language=TypeScript; Platform=Supabase)'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(20000)});
   const data=await response.json().catch(()=>null);if(method==='GET'&&response.status===404)return null;
   if(!response.ok)throw new SafeError(response.status>=500?502:response.status,'Amazon登録APIがエラーになりました（HTTP '+response.status+'）。'+(issues(data).join(' ')||'アカウントの権限・状態を確認してください。'));
   if(!data||typeof data!=='object')throw new SafeError(502,'Amazonの登録結果を確認できません。');return data as Obj;
  }
- return{sellerId:credentials.sellerId,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview)};
+ return{sellerId:credentials.sellerId,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview),patchImages:(sku:string,images:Obj,listing:Obj,preview=false)=>call(sku,'PATCH',{productType:'PRODUCT',patches:imagePatches(images,listing)},preview)};
 }
 export async function handler(req:Request):Promise<Response>{
  const respond=(status:number,body:unknown)=>new Response(JSON.stringify(body),{status,headers});
@@ -81,6 +102,7 @@ export async function handler(req:Request):Promise<Response>{
   if(item.status!=='商品登録前')throw new SafeError(409,'Amazonに登録がない場合は、出品完了を取り消してから出品してください。');
   if(!uuid(body.requestId)||typeof body.workCompletedOn!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(body.workCompletedOn)||Number.isNaN(Date.parse(body.workCompletedOn))||new Date(body.workCompletedOn+'T00:00:00Z').toISOString().slice(0,10)!==body.workCompletedOn||body.workCompletedOn>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(new Date())||(item.purchased_at&&body.workCompletedOn<item.purchased_at))throw new SafeError(400,'作業完了日を確認してください。');
   const {data:approved,error:photoError}=await sb.rpc('listing_photos_approved',{p_item_id:item.id});if(photoError||approved!==true)throw new SafeError(409,'管理アプリで商品写真の承認が必要です。');
+  const images=await approvedImages(sb,svc,item.id,body.photoIds);Object.assign(payload.attributes,images);
   if(!operation){
    const {data:prior,error:priorError}=await svc.from('amazon_listing_submissions').select('*').eq('request_id',body.requestId).maybeSingle();if(priorError)throw new SafeError(503,'操作IDを確認できません。');
    if(prior){if(prior.item_id!==item.id)throw new SafeError(409,'操作IDが重複しています。');operation=prior;}
@@ -105,6 +127,13 @@ export async function handler(req:Request):Promise<Response>{
   }
   if(!remote){try{remote=await api.get(item.sku);}catch{return respond(200,{verified:false,state:'accepted',note:'Amazonへの送信を受け付けました。登録結果の取得を再度お試しください。'});}}
   if(!remote||!verifiedListing(remote,item))return respond(200,{verified:false,state:operation!.state==='uncertain'?'uncertain':'accepted',note:remote?issues(remote).join(' ')||verificationNote(remote):'Amazon受付済みです。まだSKUの登録を確認できません。少し待って登録結果を確認してください。'});
+  if(!verifiedImages(remote,images)){
+   const preview=await api.patchImages(item.sku,images,remote,true);if(!['VALID','ACCEPTED'].includes(preview?.status??'')||issues(preview).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(preview).join(' '));
+   const {data:photoLatest,error:photoLatestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(photoLatestError||!photoLatest||!sameItem(item,photoLatest))throw new SafeError(409,'商品情報が変更されています。再読み込みしてください。');
+   const result=await api.patchImages(item.sku,images,remote);if(result?.status!=='ACCEPTED'||issues(result).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(result).join(' '));
+   remote=await api.get(item.sku);
+   if(!remote||!verifiedListing(remote,item)||!verifiedImages(remote,images))return respond(200,{verified:false,state:'accepted',note:'Amazonが商品写真を受け付けました。写真の登録結果を確認中です。再度、登録結果を確認してください。'});
+  }
   const {data:latest,error:latestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'Amazon送信後に商品情報が変更されています。内容を確認してください。');
   const {error:verifiedError}=await svc.from('amazon_listing_submissions').update({state:'verified',verified_at:new Date().toISOString(),note:'AmazonのSKU・ASIN・価格・コンディション・配送方式を確認済み'}).eq('request_id',operation!.request_id);if(verifiedError)throw new SafeError(503,'Amazonの登録確認を保存できません。再度結果を確認してください。');
   const {error:completeError}=await sb.rpc('perform_dated_inventory_action',{p_item_id:item.id,p_action:'listing_complete',p_expected_status:item.status,p_on:operation!.work_completed_on,p_request_id:operation!.request_id});if(completeError)throw new SafeError(409,'Amazonへの登録は確認済みですが、アプリの状態を更新できません。再度登録結果を確認してください。');
