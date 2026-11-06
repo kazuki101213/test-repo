@@ -1,4 +1,4 @@
-.invoice-review-documents { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; }
+.invoice-review-documents { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
 .invoice-review-documents > section { min-width:0; }
 .invoice-review .document-preview { min-width:0; margin:12px 0; overflow:hidden; }
 .invoice-review .document-preview-content { width:190mm; transform-origin:top left; }
