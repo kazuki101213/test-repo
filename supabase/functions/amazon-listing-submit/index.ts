@@ -64,18 +64,18 @@ export async function handler(req:Request):Promise<Response>{
   const svc=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,options);
   const {data:pending,error:pendingError}=await svc.from('amazon_listing_submissions').select('*').eq('item_id',item.id).in('state',['submitting','accepted','uncertain']).order('created_at',{ascending:false}).limit(1).maybeSingle();if(pendingError)throw new SafeError(503,'出品処理の履歴を確認できません。');
   let operation=pending as Obj|null;
-  // Finish the earlier SKU's evidence without applying its status to a renamed item.
-  if(body.action==='submit'&&operation&&operation.sku!==item.sku){
+  // Reconcile the original submission against its saved values before using current edits.
+  const changedSubmission=()=>!!operation&&(operation.sku!==item.sku||operation.sales_channel!==item.sales_channel||operation.asin!==item.asin||operation.price!==item.planned_price||operation.item_condition!==item.condition||operation.description!==(item.description??''));
+  if(body.action==='submit'&&operation&&changedSubmission()){
    const previousItem={...item,sku:operation.sku,asin:operation.asin,sales_channel:operation.sales_channel,planned_price:operation.price,condition:operation.item_condition,description:operation.description} as ListingItem;
    const previousApi=await amazon(accountFor(previousItem.sales_channel));
    if(previousApi.sellerId!==operation.seller_id)throw new SafeError(409,'以前のSKUの出品者情報が一致しません。');
    const previousListing=await previousApi.get(previousItem.sku);
    if(!previousListing||!verifiedListing(previousListing,previousItem))throw new SafeError(409,'以前のSKU '+previousItem.sku+' の登録確認が必要です。'+(previousListing?issues(previousListing).join(' ')||verificationNote(previousListing):'Amazonの登録結果をまだ確認できません。'));
-   const {error:previousError}=await svc.from('amazon_listing_submissions').update({state:'verified',verified_at:new Date().toISOString(),note:'以前のSKUのAmazon登録を確認済み。通番号・SKUの変更後の在庫状態は変更しません。'}).eq('request_id',operation.request_id);
+   const {error:previousError}=await svc.from('amazon_listing_submissions').update({state:'verified',verified_at:new Date().toISOString(),note:'変更前の出品内容のAmazon登録を確認済み。現在の在庫状態は変更しません。'}).eq('request_id',operation.request_id);
    if(previousError)throw new SafeError(503,'以前のSKUの登録確認を保存できません。再度、結果を確認してください。');
    operation=null;
   }
-  if(operation&&(operation.sku!==item.sku||operation.sales_channel!==item.sales_channel||operation.asin!==item.asin||operation.price!==item.planned_price||operation.item_condition!==item.condition||operation.description!==(item.description??'')))throw new SafeError(409,'送信後に商品情報が変更されています。Amazonの登録内容を確認してください。');
   const api=await amazon(accountId);let remote=await api.get(item.sku);
   if(body.action==='check')return respond(200,{accountId,exists:!!remote,verified:!!remote&&verifiedListing(remote,item),state:operation?.state??null,note:remote?issues(remote).join(' ')||'AmazonにSKUの登録があります。':'AmazonにこのSKUはまだ登録されていません。'});
   if(item.status!=='商品登録前')throw new SafeError(409,'Amazonに登録がない場合は、出品完了を取り消してから出品してください。');
@@ -85,6 +85,7 @@ export async function handler(req:Request):Promise<Response>{
    const {data:prior,error:priorError}=await svc.from('amazon_listing_submissions').select('*').eq('request_id',body.requestId).maybeSingle();if(priorError)throw new SafeError(503,'操作IDを確認できません。');
    if(prior){if(prior.item_id!==item.id)throw new SafeError(409,'操作IDが重複しています。');operation=prior;}
   }
+  if(changedSubmission())throw new SafeError(409,'変更前の出品操作を確認済みです。画面を開き直して現在の内容で操作してください。');
   let owned=false;
   if(!operation){
    if(remote&&!verifiedListing(remote,item))throw new SafeError(409,'同じSKUがAmazonにありますが、ASIN・価格・コンディション・配送方式が一致しません。既存の出品は上書きしません。');
