@@ -33,6 +33,7 @@ export function verifiedImages(listing:Obj,images:Obj):boolean{
  return Object.entries(images).every(([name,values])=>(listing.attributes?.[name]??[]).some((v:Obj)=>v.marketplace_id===marketplace&&identity(v.media_location)===identity(values[0].media_location)))&&Array.from({length:5},(_,i)=>'other_offer_image_locator_'+(i+1)).every(name=>images[name]||!(listing.attributes?.[name]??[]).some((v:Obj)=>v.marketplace_id===marketplace));
 }
 export function imagePatches(images:Obj,listing:Obj){return[...Object.entries(images).map(([name,value])=>({op:'replace',path:'/attributes/'+name,value})),...Array.from({length:5},(_,i)=>'other_offer_image_locator_'+(i+1)).filter(name=>!images[name]&&(listing.attributes?.[name]??[]).some((v:Obj)=>v.marketplace_id===marketplace)).map(name=>({op:'delete',path:'/attributes/'+name,value:[{marketplace_id:marketplace}]}))];}
+function imageProgress(listing:Obj|null,images:Obj){return Object.keys(images).map((name,index)=>{const value=listing?.attributes?.[name]?.[0],url=value?.media_location;let host='未取得';try{host=new URL(url).hostname;}catch{}return `${index+1}枚目 ${host}${value?'（'+Object.keys(value).join('/')+'）':''}`;}).join('、');}
 async function approvedImages(sb:any,svc:any,itemId:string,selected:unknown):Promise<Obj>{
  const {data:list,error:listError}=await sb.functions.invoke('delivery-photo-drive',{body:{itemId,action:'list',purpose:'product'}});
  const allowed=Array.isArray(list?.photos)?list.photos.map((p:Obj)=>p.id):[];
@@ -128,11 +129,14 @@ export async function handler(req:Request):Promise<Response>{
   if(!remote){try{remote=await api.get(item.sku);}catch{return respond(200,{verified:false,state:'accepted',note:'Amazonへの送信を受け付けました。登録結果の取得を再度お試しください。'});}}
   if(!remote||!verifiedListing(remote,item))return respond(200,{verified:false,state:operation!.state==='uncertain'?'uncertain':'accepted',note:remote?issues(remote).join(' ')||verificationNote(remote):'Amazon受付済みです。まだSKUの登録を確認できません。少し待って登録結果を確認してください。'});
   if(!verifiedImages(remote,images)){
+   const imageKey='Amazon写真受付済み:'+Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(Object.entries(images).map(([key,value])=>[key,new URL(value[0].media_location).pathname])))))).map(value=>value.toString(16).padStart(2,'0')).join('');
+   if(operation!.note===imageKey)return respond(200,{verified:false,state:'accepted',note:'Amazonが商品写真を受け付けました。写真の登録結果を確認中です。'+imageProgress(remote,images)+'。再送せず登録結果を確認しています。'});
    const preview=await api.patchImages(item.sku,images,remote,true);if(!['VALID','ACCEPTED'].includes(preview?.status??'')||issues(preview).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(preview).join(' '));
    const {data:photoLatest,error:photoLatestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(photoLatestError||!photoLatest||!sameItem(item,photoLatest))throw new SafeError(409,'商品情報が変更されています。再読み込みしてください。');
    const result=await api.patchImages(item.sku,images,remote);if(result?.status!=='ACCEPTED'||issues(result).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(result).join(' '));
+   const {error:imageReceiptError}=await svc.from('amazon_listing_submissions').update({state:'accepted',note:imageKey}).eq('request_id',operation!.request_id);if(imageReceiptError)throw new SafeError(503,'Amazonは写真を受け付けましたが、受付履歴を保存できませんでした。');
    remote=await api.get(item.sku);
-   if(!remote||!verifiedListing(remote,item)||!verifiedImages(remote,images))return respond(200,{verified:false,state:'accepted',note:'Amazonが商品写真を受け付けました。写真の登録結果を確認中です。再度、登録結果を確認してください。'});
+   if(!remote||!verifiedListing(remote,item)||!verifiedImages(remote,images))return respond(200,{verified:false,state:'accepted',note:'Amazonが商品写真を受け付けました。写真の登録結果を確認中です。'+imageProgress(remote,images)+'。再度、登録結果を確認してください。'});
   }
   const {data:latest,error:latestError}=await sb.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'Amazon送信後に商品情報が変更されています。内容を確認してください。');
   const {error:verifiedError}=await svc.from('amazon_listing_submissions').update({state:'verified',verified_at:new Date().toISOString(),note:'AmazonのSKU・ASIN・価格・コンディション・配送方式を確認済み'}).eq('request_id',operation!.request_id);if(verifiedError)throw new SafeError(503,'Amazonの登録確認を保存できません。再度結果を確認してください。');
