@@ -16856,7 +16856,7 @@ end $migration$;
 notify pgrst,'reload schema';
 
 
--- ▼▼▼ 20261106091611_verified_amazon_listing_submission.sql ▼▼▼
+-- ▼▼▼ 20261106093327_verified_amazon_listing_submission.sql ▼▼▼
 
 -- Amazon may be accepted asynchronously. Only server-verified evidence can finish listing.
 create table app.amazon_listing_submissions (
