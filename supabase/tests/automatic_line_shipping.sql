@@ -5,6 +5,9 @@ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_
 select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'LINE automatic fixture',1000,'メルカリ','メルカリ',
  'm'||n::text,'https://jp.mercari.com/item/m'||n,now(),now(),'出品中' from generate_series(998741,998743) n;
 create temporary table line_probe as select id,lot_seq from app.items where lot_seq between 998741 and 998743 and not is_accessory;
+insert into app.products(product_no,asin,model_no,maker,shipping_category,shipping_size)
+ values(898741,'BLINEAUTO1','automatic LINE fixed-size fixture','fixture','ブ','100');
+update app.items set product_id=(select id from app.products where asin='BLINEAUTO1') where lot_seq=998741;
 insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade_key)
  select id,'メルカリ','mercari-1','m'||lot_seq,'https://jp.mercari.com/transaction/m'||lot_seq,'m'||lot_seq||':2026-10-24T12:00' from line_probe;
 update app.items i set seller_trade_key=l.trade_key from app.seller_listings l where l.item_id=i.id and i.id in(select id from line_probe);
@@ -14,7 +17,8 @@ update app.delivery_line_settings set enabled=true;
 update app.items set status='取引中' where lot_seq in(998741,998742);
 do $$begin
  if (select count(*) from app.delivery_line_outbox)<>2 then raise exception 'Old requests were broadcast or new requests missing';end if;
- if exists(select 1 from line_probe where lot_seq in(998741,998742) and app.line_shipping_media((select o.id from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=line_probe.id)) is null) then raise exception 'Missing optional photos blocked the automatic request';end if;
+ if exists(select 1 from line_probe where lot_seq=998741 and app.line_shipping_media((select o.id from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=line_probe.id)) is not null) then raise exception 'Fixed-size request bypassed current code';end if;
+ if exists(select 1 from line_probe where lot_seq=998742 and app.line_shipping_media((select o.id from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=line_probe.id)) is null) then raise exception 'Missing optional photos blocked the automatic request';end if;
 end $$;
 insert into app.item_photos(item_id,storage_path,uploaded_by,photo_kind)
  select p.id,'fixture/'||p.lot_seq||'-'||v||'.jpg',(select id from app.staff where code='DD'),'product' from line_probe p cross join generate_series(1,2) v;
