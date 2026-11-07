@@ -46,7 +46,7 @@
 .approved-accessory .approved-amazon-price:empty { display:block; }
 .amazon-listing-price form { display:flex; gap:5px; align-items:start; }
 .amazon-listing-price input { width:calc(100% - 46px); min-width:0; height:32px; padding:4px; font:inherit; background:var(--surface); }
-.amazon-listing-price .btn { padding:4px 6px; min-height:32px; height:auto; font-size:12px; }
+.amazon-listing-price .btn { min-height:var(--action-button-min-height,32px); font-size:12px; }
 .amazon-listing-price small { display:block; font-size:10px; color:var(--muted); }
 .approved-price-error,.approved-price-message { font-size:11px; line-height:16px; overflow-wrap:anywhere; }
 .approved-price-error { color:var(--danger); }

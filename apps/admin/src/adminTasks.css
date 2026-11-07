@@ -5,7 +5,7 @@
 .invoice-task-rows > .admin-task-card .task-action-details > strong { flex-basis:100%; margin:0; line-height:20px; }
 .invoice-task-rows > .admin-task-card .task-action-details > small { display:inline; margin:0; font:inherit; overflow-wrap:anywhere; }
 .invoice-task-rows > .admin-task-card .task-action-details > a,.invoice-task-rows > .admin-task-card .task-action-details > span { margin:0; min-width:0; overflow-wrap:anywhere; }
-.invoice-task-rows > .admin-task-card .btn { display:inline-flex; justify-content:center; align-items:center; width:auto; min-height:44px; margin:0; padding:8px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); white-space:nowrap; font-size:13px; }
+.invoice-task-rows > .admin-task-card .btn { display:inline-flex; justify-content:center; align-items:center; width:auto; min-height:var(--action-button-min-height,44px); margin:0; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); white-space:nowrap; font-size:13px; }
 .invoice-task-rows > .admin-simple-task > .btn { grid-column:2; grid-row:1 / span 2; align-self:start; }
 .invoice-task-rows > .admin-photo-task .admin-photo-count { grid-column:1; line-height:20px; }
 .invoice-task-rows > .admin-task-card .malfunction-task-content { grid-column:1; grid-row:1; min-width:0; }
@@ -23,7 +23,7 @@
 .invoice-task-rows > .admin-fault-task .malfunction-management-actions { grid-column:2; grid-row:1 / span 3; display:flex; align-items:flex-end; justify-content:flex-start; margin:0; padding:0; }
 .invoice-task-rows > .admin-fault-task .workflow-buttons { display:flex; flex-direction:column; gap:6px; margin:0; width:94px; }
 .invoice-task-rows > .admin-fault-task .malfunction-management-actions > .yahoo-instruction-open { width:94px; white-space:normal; }
-.invoice-task-rows > .admin-fault-task .workflow-buttons > .btn,.invoice-task-rows > .admin-fault-task .task-reply-send { width:94px; min-width:94px; max-width:94px; }
+.invoice-task-rows > .admin-fault-task .workflow-buttons > .btn { align-self:flex-end; }
 .invoice-task-rows > .admin-damage-task > .workflow-buttons { grid-column:2; grid-row:1; display:flex; flex-direction:row; justify-content:flex-end; gap:6px; margin:0; }
 .invoice-task-rows > .admin-damage-task > .workflow-buttons > .btn { width:94px; }
 .invoice-task-rows > .admin-shipping-task .spare-shipping-content { display:contents; }
@@ -59,7 +59,7 @@
 
 /* Acknowledging a damage report is separate from the deliverer's compensation transition. */
 .invoice-task-rows > .admin-damage-task > .workflow-buttons { display:grid; grid-template-columns:84px; gap:4px; width:84px; justify-self:end; }
-.invoice-task-rows > .admin-damage-task > .workflow-buttons > .btn { width:84px; min-width:0; height:44px; padding:8px; margin:0; }
+.invoice-task-rows > .admin-damage-task > .workflow-buttons > .btn { justify-self:end; }
 @media(max-width:767px){.invoice-task-rows > .admin-task-card.admin-damage-task { grid-template-columns:minmax(0,1fr) 84px; }}
 
 .invoice-task-rows > .admin-damage-task > .workflow-buttons > .btn { background:var(--surface-2); border-color:var(--border); color:var(--text); }
