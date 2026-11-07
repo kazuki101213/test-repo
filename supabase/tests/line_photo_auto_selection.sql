@@ -2,14 +2,14 @@
 begin;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 update app.delivery_line_settings set enabled=false;
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,status)
- select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'photo role fixture',1000,'メルカリ','メルカリ','受取前' from generate_series(998781,998785)n;
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,status,inspected_at,product_registered_at)
+ select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'photo role fixture',1000,'メルカリ','メルカリ','出品中',now(),now() from generate_series(998781,998785)n;
 insert into app.item_photos(item_id,storage_path,photo_kind)
  select id,'auto-photo/'||lot_seq||'/'||n||'.jpg','product' from app.items cross join generate_series(1,6)n where lot_seq in(998781,998782,998783,998784);
 insert into app.item_photos(item_id,storage_path,photo_kind) select id,'packing.jpg','packing' from app.items where lot_seq=998781;
 insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade_key)
  select id,'メルカリ','mercari-1','m'||lot_seq,'https://jp.mercari.com/item/m'||lot_seq,'m'||lot_seq||':current' from app.items where lot_seq=998785;
-do $$declare i uuid;c jsonb;front uuid;model uuid;other uuid;result boolean;begin
+do $$declare i uuid;c jsonb;front uuid;model uuid;other uuid;result boolean;front_path text;model_path text;begin
  select id into i from app.items where lot_seq=998781;
  if not exists(select 1 from app.line_photo_selections where item_id=i) then raise exception 'Upload did not enqueue automatic selection';end if;
  update app.line_photo_selections set next_attempt_at=now() where item_id=i;
@@ -23,6 +23,8 @@ do $$declare i uuid;c jsonb;front uuid;model uuid;other uuid;result boolean;begi
  -- Saved roles are reused; a second patrol does not call AI again.
  perform app.enqueue_line_photo_selection(i);
  if app.claim_line_photo_selection(i) is not null then raise exception 'Saved roles reclassified';end if;
+ delete from app.item_photos where id=front;
+ if not exists(select 1 from app.line_photo_selections where item_id=i and state='pending') then raise exception 'Deleted selection did not requeue';end if;
  -- Another product's photo must never be accepted.
  select id into i from app.items where lot_seq=998782;
  update app.line_photo_selections set next_attempt_at=now() where item_id=i;c:=app.claim_line_photo_selection(i);
@@ -38,11 +40,22 @@ do $$declare i uuid;c jsonb;front uuid;model uuid;other uuid;result boolean;begi
  select id into i from app.items where lot_seq=998784;update app.line_photo_selections set next_attempt_at=now() where item_id=i;c:=app.claim_line_photo_selection(i);
  insert into app.item_photos(item_id,storage_path,photo_kind) values(i,'later.jpg','product');
  if app.finish_line_photo_selection(i,(c->>'lease')::uuid,jsonb_build_object('overview',jsonb_build_object('id',c->'photos'->0->>'id'),'model',null)) then raise exception 'Stale partial upload committed';end if;
+ update app.line_photo_selections set next_attempt_at=now() where item_id=i;c:=app.claim_line_photo_selection(i);
+ perform app.finish_line_photo_selection(i,(c->>'lease')::uuid,jsonb_build_object('overview',jsonb_build_object('id',c->'photos'->0->>'id'),'model',null));
+ if not exists(select 1 from app.line_photo_selections where item_id=i and state='unavailable') then raise exception 'Missing label misrepresented as complete';end if;
+ insert into app.item_photos(item_id,storage_path,photo_kind) values(i,'new-model-label.jpg','product');
+ if not exists(select 1 from app.line_photo_selections where item_id=i and state='pending') then raise exception 'New label did not trigger reclassification';end if;
  -- Listing fallback context is current and exact; no own app photos means empty.
  select id into i from app.items where lot_seq=998785;update app.line_photo_selections set next_attempt_at=now() where item_id=i;c:=app.claim_line_photo_selection(i);
  if jsonb_array_length(c->'photos')<>0 or c->'listing'->>'externalId'<>'m998785' then raise exception 'Listing fallback not bound to item';end if;
  perform app.finish_line_photo_selection(i,(c->>'lease')::uuid,'{}','temporary fixture failure');
  if not exists(select 1 from app.line_photo_selections where item_id=i and state='failed' and next_attempt_at>now() and last_error is not null) then raise exception 'Retry not recorded';end if;
+ update app.line_photo_selections set next_attempt_at=now() where item_id=i;c:=app.claim_line_photo_selection(i);
+ front_path:=(c->>'sku')||'/line-auto-'||(c->'listing'->>'id')||'-overview.jpg';
+ model_path:=(c->>'sku')||'/line-auto-'||(c->'listing'->>'id')||'-model.png';
+ insert into storage.objects(bucket_id,name) values('item-photos',front_path),('item-photos',model_path);
+ result:=app.finish_line_photo_selection(i,(c->>'lease')::uuid,jsonb_build_object('source','メルカリ','overview',jsonb_build_object('path',front_path,'mime','image/jpeg'),'model',jsonb_build_object('path',model_path,'mime','image/png')));
+ if not result or not exists(select 1 from app.delivery_line_preferences pref join app.item_photos p on p.id=pref.overview_photo_id and p.item_id=i join app.item_photos m on m.id=pref.model_photo_id and m.item_id=i where pref.item_id=i and p.storage_path=front_path and m.storage_path=model_path) then raise exception 'External selections not registered as own app photos';end if;
  if has_function_privilege('authenticated','app.claim_line_photo_selection(uuid)','execute') or has_table_privilege('authenticated','app.line_photo_selections','insert') then raise exception 'Private role selection exposed';end if;
 end $$;
 rollback;

@@ -17083,7 +17083,7 @@ begin
      and p.id=(value->>'id')::uuid and exists(select 1 from jsonb_array_elements(q.source_snapshot->'photos')v where v->>'id'=p.id::text and v->>'path'=p.storage_path);
     if photo is null then update app.line_photo_selections set state='pending',lease=null,next_attempt_at=now() where item_id=p_item;return false;end if;
    else
-    if value->>'path' is distinct from (q.source_snapshot->>'sku')||'/line-auto-'||listing.id::text||'-'||expected_path||'.jpg' then raise exception 'Invalid imported photo';end if;
+    if coalesce(value->>'mime','') not in('image/jpeg','image/png') or value->>'path' is distinct from (q.source_snapshot->>'sku')||'/line-auto-'||listing.id::text||'-'||expected_path||case when value->>'mime'='image/jpeg' then '.jpg' else '.png' end then raise exception 'Invalid imported photo';end if;
     if not exists(select 1 from storage.objects where bucket_id='item-photos' and name=value->>'path') then raise exception 'Photo file missing';end if;
     insert into app.item_photos(item_id,storage_path,photo_kind) values(p_item,value->>'path','product') returning id into photo;
    end if;
