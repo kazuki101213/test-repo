@@ -29,13 +29,21 @@ interface Task {id:string;staff_id:string;month:string;name:string;updated:strin
 const approval=(row?:Invoice)=>row?(Array.isArray(row.delivery_invoice_approvals)?row.delivery_invoice_approvals[0]:row.delivery_invoice_approvals):null;
 const messageOf=(e:unknown)=>e instanceof Error?e.message:(e as {message?:string})?.message??'処理に失敗しました。';
 const monthEnd=(month:string)=>{const date=new Date(month+'T00:00:00Z');date.setUTCMonth(date.getUTCMonth()+1,0);return date.toISOString().slice(0,10);};
+const approvalNotice=(state:unknown)=>{
+ if(state==='sent')return '公式LINEが送信を受け付けました。';
+ if(state==='pending'||state==='sending')return '担当者への公式LINE通知を送信します。';
+ if(state==='waiting_link')return '公式LINE通知は担当者の連携待ちです。';
+ if(state==='link_changed')return '担当者のLINE連携が変わったため、通知を保留しました。';
+ if(state==='failed')return '公式LINE通知を送信できませんでした。';
+ return '公式LINE通知の状況を取得できませんでした。';
+};
 
 async function fetchTasks():Promise<Task[]> {
  return [...await readResourceSnapshot<Task>('invoice_tasks')].sort((a,b)=>b.updated.localeCompare(a.updated));
 }
 
 const ignoreInvoiceNavigation = () => {};
-function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:Staff;onClose:()=>void;onApproved:()=>void;onSaved?:()=>void}) {
+function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:Staff;onClose:()=>void;onApproved:(lineNotice:string)=>void;onSaved?:()=>void}) {
  const dialog=useRef<HTMLDialogElement>(null);
  const [busy,setBusy]=useState(false);
  const {ask,pending,confirmation}=useTaskConfirmation();
@@ -50,12 +58,17 @@ function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:
   try{
    const {error}=await getSupabase().rpc('approve_invoice_documents',{p_invoice:invoice.id,p_version:invoice.version,p_receipt_version:documents.receiptVersion,p_incurred_on:monthEnd(task.month)});
    if(error)throw new Error(messageOf(error));
-   onApproved();
+   let lineState:unknown;
+   try {
+    const result=await getSupabase().rpc('invoice_approval_line_status',{p_invoice:invoice.id});
+    if(!result.error)lineState=result.data;
+   } catch { /* Approval succeeded independently of this status read. */ }
+   onApproved(approvalNotice(lineState));
   }finally{setBusy(false);}
  }
  return <><dialog ref={dialog} className="monthly-detail invoice-review" aria-labelledby="invoice-review-title" onCancel={e=>{e.preventDefault();close();}}>
   <div className="toolbar"><h2 id="invoice-review-title">{staffDisplayName(task.name)} · {task.month.slice(0,7)}</h2></div>
-  <fieldset className="invoice-review-content" disabled={busy}><DeliveryInvoices staff={staff} onNavigationChange={ignoreInvoiceNavigation} review={{staffId:task.staff_id,month:task.month.slice(0,7),receiptVersion:task.receipts?.version??null,onStateChange:updateDocuments,onSaved,toolbarActions:<>{!approved&&<button type="button" className="btn primary" disabled={pending||busy||documents.busy||documents.dirty||!documents.ready||!invoice||invoice.total<=0} onClick={()=>ask('請求書の承認',approve,'承認すると経費の外注費に追加されます。')}>{busy?'承認中…':'承認'}</button>}<button type="button" className="btn" disabled={busy||documents.busy} onClick={close}>閉じる</button></>}}/></fieldset>
+  <fieldset className="invoice-review-content" disabled={busy}><DeliveryInvoices staff={staff} onNavigationChange={ignoreInvoiceNavigation} review={{staffId:task.staff_id,month:task.month.slice(0,7),receiptVersion:task.receipts?.version??null,onStateChange:updateDocuments,onSaved,toolbarActions:<>{!approved&&<button type="button" className="btn primary" disabled={pending||busy||documents.busy||documents.dirty||!documents.ready||!invoice||invoice.total<=0} onClick={()=>ask('請求書の承認',approve,'承認すると経費の外注費に追加し、この請求書の担当者に公式LINEで通知します。')}>{busy?'承認中…':'承認'}</button>}<button type="button" className="btn" disabled={busy||documents.busy} onClick={close}>閉じる</button></>}}/></fieldset>
  </dialog>{confirmation}</>;
 }
 
@@ -81,7 +94,7 @@ export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;sta
  return <section className="card invoice-tasks" aria-label="やること">
  {error&&<div className="error" role="alert">{error}<button className="btn" onClick={()=>setRevision(n=>n+1)}>再読み込み</button></div>}{message&&<p className="ok" role="status">{message}</p>}
  {loading?<p>読み込み中…</p>:<ul className="invoice-task-rows">{filtered.map(row=><li key={row.id} className="admin-task-card admin-simple-task admin-invoice-task"><div className="task-action-details"><strong>{row.invoice?'請求書':'領収書'}</strong><span>【{staffDisplayName(row.name)}】</span><span>【{row.month.slice(0,7)}】</span><small>{row.invoice?yen(row.invoice.total):'領収書のみ'}</small></div><button type="button" className="btn" onClick={()=>setSelected(row)}>確認</button></li>)}<PhotoReviewTasks mode="photos" onReviewed={()=>setPhotoRevision(value=>value+1)}/>{staff.role==='admin'&&<PackingPhotoTasks/>}<MalfunctionTasks staff={staff} /><ReceiptEvaluationTasks/><PhotoReviewTasks mode="listing" refreshRevision={photoRevision}/><ShippingReminderTasks /><SpareShippingTasks staff={staff} management /></ul>}
- {selected&&<InvoiceReview key={selected.id} task={selected} staff={staff} onClose={()=>setSelected(null)} onSaved={()=>setRevision(n=>n+1)} onApproved={()=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費の外注費に追加しました。');onApproved();}}/>}
+ {selected&&<InvoiceReview key={selected.id} task={selected} staff={staff} onClose={()=>setSelected(null)} onSaved={()=>setRevision(n=>n+1)} onApproved={lineNotice=>{setSelected(null);setRevision(n=>n+1);setMessage('承認し、経費の外注費に追加しました。'+lineNotice);onApproved();}}/>}
  </section>;
 }
 

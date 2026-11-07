@@ -62,10 +62,10 @@ export interface InvoiceReviewContext {
   staffId: string; month: string; receiptVersion: number | null;
   onStateChange: (state: InvoiceReviewState) => void; onSaved?: () => void; pdfButtonRef?: RefObject<HTMLButtonElement>; toolbarActions?: ReactNode;
 }
-export default function Invoices({ staff, onNavigationChange, review }: { staff: Staff; onNavigationChange: (state: 'busy' | 'dirty' | null) => void; review?: InvoiceReviewContext }) {
+export default function Invoices({ staff, onNavigationChange, review, initialMonth }: { staff: Staff; onNavigationChange: (state: 'busy' | 'dirty' | null) => void; review?: InvoiceReviewContext; initialMonth?: string }) {
   const [profiles, setProfiles] = useState<InvoiceProfile[]>([]);
   const [staffId, setStaffId] = useState(review?.staffId ?? staff.id);
-  const [month, setMonth] = useState(review?.month ?? japanToday().slice(0, 7));
+  const [month, setMonth] = useState(review?.month ?? initialMonth ?? japanToday().slice(0, 7));
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [snapshot, setSnapshot] = useState<InvoiceSnapshot | null>(null);
   const [extras, setExtras] = useState<InvoiceLine[]>([]);
