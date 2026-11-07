@@ -26,17 +26,17 @@ export function groupedInvoiceLines(snapshot: InvoiceSnapshot, extras: InvoiceLi
 const money = (value: number) => yen(Number.isFinite(value) ? value : 0);
 const shortDate = (date: string | null) => date ? date.slice(5).replace('-', '/') : '';
 
-function BankValue({ value }: { value: string }) {
+function bankValue(value: string) {
   return <td><span className="invoice-bank-value"><span>{value}</span></span></td>;
 }
 
 function Bank({ details: p }: { details: InvoiceDetails }) {
   return <table className="invoice-bank-table"><colgroup><col style={{ width: '12%' }} /><col style={{ width: '37%' }} /><col style={{ width: '14%' }} /><col style={{ width: '37%' }} /></colgroup><tbody>
     <tr><th colSpan={4}>振込先</th></tr>
-    <tr><td>銀行名</td><BankValue value={p.bank} /><td>銀行コード</td><BankValue value={p.bank_code} /></tr>
-    <tr><td>支店名</td><BankValue value={p.branch} /><td>店番</td><BankValue value={p.branch_code} /></tr>
-    <tr><td>口座種別</td><BankValue value={p.account_type} /><td>口座番号</td><BankValue value={p.account_number} /></tr>
-    <tr><td>名前</td><BankValue value={p.holder} /><td>フリガナ</td><BankValue value={p.holder_kana} /></tr>
+    <tr><td>銀行名</td>{bankValue(p.bank)}<td>銀行コード</td>{bankValue(p.bank_code)}</tr>
+    <tr><td>支店名</td>{bankValue(p.branch)}<td>店番</td>{bankValue(p.branch_code)}</tr>
+    <tr><td>口座種別</td>{bankValue(p.account_type)}<td>口座番号</td>{bankValue(p.account_number)}</tr>
+    <tr><td>名前</td>{bankValue(p.holder)}<td>フリガナ</td>{bankValue(p.holder_kana)}</tr>
   </tbody></table>;
 }
 
