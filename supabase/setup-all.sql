@@ -17131,7 +17131,7 @@ end $$;
 notify pgrst,'reload schema';
 
 
--- ▼▼▼ 20261107024023_amazon_listing_reconciliation.sql ▼▼▼
+-- ▼▼▼ 20261107025918_amazon_listing_reconciliation.sql ▼▼▼
 
 -- Keep the submitted photo order and permit one explicit recovery of a vanished SKU.
 alter table app.amazon_listing_submissions
