@@ -119,13 +119,19 @@ export async function reconcileReceipt(svc:any,input:Obj,connect=amazon){
  let fingerprint=await photoFingerprint(images),photosVerified=verifiedImages(remote,images)||r.photo_fingerprint===fingerprint&&!!r.photos_verified_at&&Date.now()-Date.parse(r.photos_verified_at)<600000;
  if(!photosVerified){const result=await verifyAmazonPhotoCopies(remote,images,!r.photo_ids?.length);photosVerified=result.verified;if(result.verified&&result.order.some((n,i)=>n!==i)){ids=result.order.map(n=>ids[n]);images=offerImages(result.order.map(n=>signed[n].signedUrl));fingerprint=await photoFingerprint(images);}}
  if(!photosVerified){
-  if(input.recoverMissing&&!r.photo_submitted_at){
+  const canRepair=!r.photo_submission_id&&(!r.photo_submitted_at||Date.now()-Date.parse(r.photo_submitted_at)>600000);
+  if((input.recoverMissing||input.repairPhotos)&&canRepair){
    const preview=await api.patchImages(r.sku,images,remote,true);if(!['VALID','ACCEPTED'].includes(preview?.status??'')||issues(preview).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(preview).join(' '));
-   const {data:reserved,error}=await svc.from('amazon_listing_submissions').update({photo_ids:ids,photo_submitted_at:new Date().toISOString(),photo_submitted_fingerprint:fingerprint}).eq('request_id',r.request_id).is('photo_submitted_at',null).select('request_id').maybeSingle();
+   const {data:latest,error:latestError}=await svc.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'写真の送信前に商品情報が変更されています。');
+   const reservation='pending:'+crypto.randomUUID();
+   const {data:reserved,error}=await svc.from('amazon_listing_submissions').update({photo_ids:ids,photo_submitted_at:new Date().toISOString(),photo_submitted_fingerprint:fingerprint,photo_submission_id:reservation}).eq('request_id',r.request_id).eq('state',r.state).is('photo_submission_id',null).select('request_id').maybeSingle();
    if(error||!reserved)return waiting('商品写真の送信結果を確認中です。');
    const result=await api.patchImages(r.sku,images,remote);if(result?.status!=='ACCEPTED'||issues(result).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(result).join(' '));
-   await svc.from('amazon_listing_submissions').update({photo_submission_id:result.submissionId??null}).eq('request_id',r.request_id);
+   const {error:saveError}=await svc.from('amazon_listing_submissions').update({photo_submission_id:result.submissionId??'accepted:'+reservation}).eq('request_id',r.request_id).eq('photo_submission_id',reservation);
+   if(saveError)throw new SafeError(503,'写真の受付結果を保存できません。再送せず確認してください。');
+   return waiting('Amazonに商品写真を送信済みです。取り込みを確認中です。');
   }
+  if(canRepair)return waiting('Amazonへの商品登録は確認済みです。同じSKUで写真の反映を再確認できます。','retryable');
   return waiting('Amazonに送信済みです。商品写真の取り込みを確認中です。');
  }
  const {data:latest,error:latestError}=await svc.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'Amazon確認中に商品情報が変更されています。');
@@ -140,6 +146,12 @@ async function amazon(id:AmazonAccountId){
  const r=await fetch('https://api.amazon.com/auth/o2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:credentials.clientId,client_secret:credentials.clientSecret,refresh_token:credentials.refreshToken}),signal:AbortSignal.timeout(15000)});
  const token=await r.json().catch(()=>null);if(!r.ok||!token?.access_token)throw new SafeError(502,'Amazonの認証に失敗しました。');
  const path='/listings/2021-08-01/items/'+encodeURIComponent(credentials.sellerId)+'/';
+ async function inspectFba(sku:string){
+  const params=new URLSearchParams({granularityType:'Marketplace',granularityId:marketplace,marketplaceIds:marketplace,sellerSkus:sku,details:'false'});
+  const response=await fetch(endpoint+'/fba/inventory/v1/summaries?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});
+  const result=await response.json().catch(()=>null);
+  return{httpStatus:response.status,rows:(result?.payload?.inventorySummaries??[]).filter((v:Obj)=>v.sellerSku===sku).map((v:Obj)=>({sku:v.sellerSku,asin:v.asin,fnSku:v.fnSku,condition:v.condition,totalQuantity:v.totalQuantity,lastUpdatedTime:v.lastUpdatedTime})),errorCodes:(result?.errors??[]).map((v:Obj)=>v.code)};
+ }
  async function feedCall(path:string,body?:Obj){
   const r=await fetch(endpoint+'/feeds/2021-06-30/'+path,{method:body?'POST':'GET',headers:{'x-amz-access-token':token.access_token,'content-type':'application/json','user-agent':'BussanDelivery/1.0'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000)});
   const data=await r.json().catch(()=>null);if(!r.ok||!data)throw new SafeError(502,'Amazon価格フィードAPIの確認に失敗しました（HTTP '+r.status+'）。');return data as Obj;
@@ -172,7 +184,7 @@ async function amazon(id:AmazonAccountId){
   if(!response.ok)throw new SafeError(response.status>=500?502:response.status,'Amazon登録APIがエラーになりました（HTTP '+response.status+'）。'+(issues(data).join(' ')||'アカウントの権限・状態を確認してください。'));
   if(!data||typeof data!=='object')throw new SafeError(502,'Amazonの登録結果を確認できません。');return data as Obj;
  }
- return{sellerId:credentials.sellerId,diagnosePrice,submitPriceFeed,priceFeedStatus,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),inspect:(sku:string)=>call(sku,'GET'),patchPrice:(sku:string,body:Obj,preview=false)=>call(sku,'PATCH',body,preview),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview),patchImages:(sku:string,images:Obj,listing:Obj,preview=false)=>call(sku,'PATCH',{productType:photoProductType(listing),patches:imagePatches(images,listing)},preview)};
+ return{sellerId:credentials.sellerId,diagnosePrice,inspectFba,submitPriceFeed,priceFeedStatus,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),inspect:(sku:string)=>call(sku,'GET'),patchPrice:(sku:string,body:Obj,preview=false)=>call(sku,'PATCH',body,preview),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview),patchImages:(sku:string,images:Obj,listing:Obj,preview=false)=>call(sku,'PATCH',{productType:photoProductType(listing),patches:imagePatches(images,listing)},preview)};
 }
 // Operator read-only inspection is bound to an existing, non-cancelled receipt.
 // The private project dispatcher authenticates it; normal user routes retain Auth.getUser.
@@ -188,11 +200,12 @@ export async function inspectReceipt(svc:any,input:Obj,connect=amazon){
  const original=await read(receipt.sku),currentListing=current.sku===receipt.sku?original:await read(current.sku);
  const pricing=input.includePricing===true?await api.diagnosePrice(receipt.sku,receipt.asin,receipt.item_condition):undefined;
  const repair=typeof receipt.note==='string'&&receipt.note.startsWith('Amazon価格補正:')?JSON.parse(receipt.note.slice('Amazon価格補正:'.length)):null;
+ const fba=input.includeFba===true&&/^FBA/.test(receipt.sales_channel)?await api.inspectFba(receipt.sku):undefined;
  const feed=input.includeFeed===true&&repair?.feed?.id?await api.priceFeedStatus(repair.feed.id):undefined;
  let history:Obj[]|undefined,photoEvidence:Obj|undefined;
  if(input.includeHistory===true){const {data:rows,error}=await svc.from('amazon_listing_submissions').select('request_id,sku,state').eq('item_id',receipt.item_id).order('created_at',{ascending:false}).limit(20);if(error)throw new SafeError(503,'過去の登録履歴を確認できません。');history=[];for(const row of rows??[]){if(row.sku===receipt.sku)continue;history.push({...row,remote:summarize(await read(row.sku))});}}
  if(input.includePhotos===true){const {data:photos,error}=await svc.from('item_photos').select('id,storage_path').eq('item_id',receipt.item_id).eq('photo_kind','product').order('sort_order').order('created_at').limit(6);if(error)throw new SafeError(503,'写真を確認できません。');if(photos?.length){const {data:signed,error}=await svc.storage.from('item-photos').createSignedUrls(photos.map((p:Obj)=>p.storage_path),600);if(error||signed?.some((p:Obj)=>!p.signedUrl))throw new SafeError(503,'写真の照合に失敗しました。');const images=offerImages(signed.map((p:Obj)=>p.signedUrl));photoEvidence={copiedImages:original?await verifyAmazonPhotoCopies(original,images,true):null,photoIds:photos.map((p:Obj)=>p.id),originalVerified:!!original&&verifiedImages(original,images),currentVerified:!!currentListing&&verifiedImages(currentListing,images),slots:Object.entries(original?.attributes??{}).filter(([key])=>/image_locator/.test(key)).map(([slot,values]:[string,any])=>({slot,entries:values.map((value:Obj)=>({keys:Object.keys(value),marketplace:value.marketplace_id,host:(()=>{try{return new URL(value.media_location).hostname}catch{return null}})(),matches:photos.filter((p:Obj)=>typeof value.media_location==='string'&&decodeURI(value.media_location).includes(p.storage_path)).map((p:Obj)=>p.id)}))}))};}}
- return{receipt:{requestId:receipt.request_id,sku:receipt.sku,asin:receipt.asin,price:receipt.price,condition:receipt.item_condition,channel:receipt.sales_channel,state:receipt.state},current:{id:current.id,sku:current.sku,asin:current.asin,price:current.planned_price,condition:current.condition,channel:current.sales_channel,status:current.status},original:summarize(original),currentListing:summarize(currentListing),pricing,feed,history,photoEvidence};
+ return{receipt:{requestId:receipt.request_id,sku:receipt.sku,asin:receipt.asin,price:receipt.price,condition:receipt.item_condition,channel:receipt.sales_channel,state:receipt.state},current:{id:current.id,sku:current.sku,asin:current.asin,price:current.planned_price,condition:current.condition,channel:current.sales_channel,status:current.status},original:summarize(original),currentListing:summarize(currentListing),pricing,feed,history,photoEvidence,fba};
 }
 // Explicit operator repair of an existing receipt, never used by automatic resume.
 // A durable compare-and-set reservation prevents retries from repeating a PATCH.
