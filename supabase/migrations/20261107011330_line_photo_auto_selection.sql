@@ -56,7 +56,7 @@ begin
  if exists(select 1 from app.delivery_line_preferences where item_id=q.item_id and overview_photo_id is not null and model_photo_id is not null) then
   update app.line_photo_selections set state='ready',last_error=null where item_id=q.item_id;return null;
  end if;
- select jsonb_build_object('itemId',i.id,'sku',i.sku,'model',p.model_no,
+ select jsonb_build_object('itemId',i.id,'sku',i.sku,'model',coalesce(p.model_no,case when i.title ~ '^[A-Z][A-Z0-9]{1,15}-[A-Z0-9-]{1,30}$' then i.title end),
   'photos',coalesce((select jsonb_agg(jsonb_build_object('id',v.id,'path',v.storage_path) order by v.created_at,v.id)
    from(select id,storage_path,created_at from app.item_photos where item_id=i.id and coalesce(photo_kind,'product')='product'
     and storage_path ~* '\.(jpe?g|png)$' order by created_at,id limit 20)v),'[]'),
@@ -101,7 +101,8 @@ begin
      and p.id=(value->>'id')::uuid and exists(select 1 from jsonb_array_elements(q.source_snapshot->'photos')v where v->>'id'=p.id::text and v->>'path'=p.storage_path);
     if photo is null then update app.line_photo_selections set state='pending',lease=null,next_attempt_at=now() where item_id=p_item;return false;end if;
    else
-    if coalesce(value->>'mime','') not in('image/jpeg','image/png') or value->>'path' is distinct from (q.source_snapshot->>'sku')||'/line-auto-'||listing.id::text||'-'||expected_path||case when value->>'mime'='image/jpeg' then '.jpg' else '.png' end then raise exception 'Invalid imported photo';end if;
+    if coalesce(value->>'mime','') not in('image/jpeg','image/png') then raise exception 'Invalid imported photo type';end if;
+    if value->>'path' is distinct from (q.source_snapshot->>'sku')||'/line-auto-'||listing.id::text||'-'||expected_path||(case when value->>'mime'='image/jpeg' then '.jpg' else '.png' end) then raise exception 'Invalid imported photo';end if;
     if not exists(select 1 from storage.objects where bucket_id='item-photos' and name=value->>'path') then raise exception 'Photo file missing';end if;
     insert into app.item_photos(item_id,storage_path,photo_kind) values(p_item,value->>'path','product') returning id into photo;
    end if;
