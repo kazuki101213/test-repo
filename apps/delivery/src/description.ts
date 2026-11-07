@@ -35,7 +35,11 @@ export function conditionForTarget(target: DescriptionTarget, condition: ItemCon
   return targetLabel[condition] || '';
 }
 
-const recorderAccessories = ['本体', '取扱説明書', '純正リモコン', '代替リモコン', '○○製リモコン', 'B-CASカード', 'B-CASカード×2枚', 'ACASチップ内蔵', '電源ケーブル', '同軸(アンテナ)ケーブル', '同軸(アンテナ)ケーブル×2本', 'HDMIケーブル'];
+const recorderAccessories = [
+  '本体', '純正リモコン', 'B-CASカード', '電源ケーブル', 'ACASチップ内蔵',
+  '取扱説明書', '代替リモコン', '○○製リモコン', 'B-CASカード×2枚',
+  '同軸(アンテナ)ケーブル', '同軸(アンテナ)ケーブル×2本', 'HDMIケーブル',
+];
 export function accessoryOptions(product: string) {
   if (product === 'モニター') return ['モニター', 'スタンド', '電源ケーブル', 'HDMIケーブル', 'DPケーブル'];
   if (product === '小物') return ['本体', '付属品完品', '取扱説明書', '電源ケーブル', 'ACアダプター', 'リモコン'];
