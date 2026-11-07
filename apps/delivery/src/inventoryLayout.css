@@ -232,7 +232,7 @@
   .app .delivery-inventory-search > input,
   .app .delivery-inventory-search > select[aria-label="納品担当者で検索"] { grid-column:2; grid-row:1; width:100%; min-width:0; box-sizing:border-box; padding-inline:3px; font-size:13px; }
   .app .delivery-inventory-search > .inventory-multi-filter { grid-column:3; grid-row:1; width:max-content; }
-  .app .delivery-inventory-search > .inventory-multi-filter > summary { display:flex; align-items:center; gap:4px; width:max-content; height:44px; box-sizing:border-box; padding:8px 6px; font-size:13px; white-space:nowrap; list-style:none; }
+  .app .delivery-inventory-search > .inventory-multi-filter > summary { display:flex; align-items:center; gap:4px; width:max-content; height:var(--input-min-height); min-height:var(--input-min-height); box-sizing:border-box; padding:8px 6px; font-size:13px; white-space:nowrap; list-style:none; }
   .app .delivery-inventory-search > .inventory-multi-filter > summary::-webkit-details-marker { display:none; }
   .app .delivery-inventory-search > .inventory-multi-filter > summary::before { content:'▸'; font-size:12px; }
   .app .delivery-inventory-search > .inventory-multi-filter[open] > summary::before { content:'▾'; }
@@ -328,7 +328,8 @@
 .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-photo { height:80px; }
 
 @media screen {
- .app .delivery-inventory-search { height:auto; flex:none; }
+ .app .delivery-inventory-search { height:auto; flex:none; align-items:center; }
+ .app .delivery-inventory-search > :is(input,select,.btn), .app .delivery-inventory-search > .inventory-multi-filter > summary { box-sizing:border-box; height:var(--input-min-height); min-height:var(--input-min-height); }
  .app .delivery-inventory-date-range { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; width:max-content; max-width:100%; overflow-x:auto; margin:0; }
  .app .delivery-inventory-date-range > span:not(.calendar-control) { flex:none; white-space:nowrap; }
  .app .export-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }

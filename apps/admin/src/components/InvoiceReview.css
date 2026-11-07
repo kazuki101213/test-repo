@@ -22,9 +22,6 @@
 .invoice-review .invoice-toolbar label > span > input:not([aria-hidden=true],.calendar-native-picker) { width:0; flex:1 1 auto; min-width:0; }
 .invoice-review .invoice-extra label > span:has(>input),.invoice-review .receipt-entry-row label > span:has(>input) { width:100%; }
 .invoice-review .invoice-extra label > span > input:not([aria-hidden=true],.calendar-native-picker),.invoice-review .receipt-entry-row label > span > input:not([aria-hidden=true],.calendar-native-picker) { width:0; flex:1 1 auto; min-width:0; }
-@media screen {
- .invoice-review :is(.invoice-toolbar,.invoice-extra,.receipt-entry-row) .btn:not(.receipt-camera-btn) { align-self:center; height:auto; min-height:var(--action-button-min-height,42px); }
-}
 @media(max-width:700px) {
  .invoice-review .invoice-toolbar { flex-wrap:wrap; min-width:0; }
  .invoice-review .invoice-toolbar-scroll { overflow:visible; }

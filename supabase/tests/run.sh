@@ -33,6 +33,7 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/line_photo_auto_selection.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/product_family_accounting.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/serial_delivery_invoice.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/delivery_invoice_category_rates.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/spare_holder_manufacturer.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/receipt_details_invoice.sql"
 

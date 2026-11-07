@@ -162,7 +162,7 @@
   .invoice-toolbar { grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) auto; gap:10px 8px; }
   .invoice-toolbar > label:first-child { grid-column:1 / -1; }
   .invoice-toolbar > label:nth-child(2) { grid-column:1; grid-row:2; }
-  .invoice-toolbar > label:nth-child(2), .invoice-toolbar > label:nth-child(3) { grid-template-rows:20px 44px; line-height:20px; }
+  .invoice-toolbar > label:nth-child(2), .invoice-toolbar > label:nth-child(3) { grid-template-rows:20px var(--input-min-height); line-height:20px; }
   .invoice-toolbar > label:nth-child(3) { grid-column:2; grid-row:2; }
   .invoice-toolbar > .invoice-settings-button { grid-column:3; grid-row:2; align-self:end; }
   .invoice-toolbar > .invoice-toolbar-actions { display:flex; grid-column:1 / -1; grid-row:3; justify-self:start; gap:8px; }
@@ -235,10 +235,6 @@
   .invoice-toolbar { grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); }
   .invoice-toolbar > .invoice-settings-button { grid-column:2; grid-row:3; justify-self:end; }
   .invoice-toolbar > .invoice-toolbar-actions { grid-row:4; }
-}
-
-@media screen {
-  .app .invoice-toolbar button { box-sizing:border-box; height:44px; min-height:44px; }
 }
 
 @media screen {

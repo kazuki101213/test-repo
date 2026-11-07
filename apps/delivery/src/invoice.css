@@ -23,7 +23,6 @@
 .invoices input[type=checkbox] { width:auto; }
 .invoice-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .invoice-extra { display:grid; grid-template-columns:150px minmax(180px,1fr) 64px 90px 74px; min-width:620px; gap:8px; align-items:end; padding:12px 0; }
-.invoice-extra .btn { min-height:40px; padding:8px; }
 .invoice-extra-header { padding:12px 0 0; font-size:13px; }
 .invoice-extra-label { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
 
@@ -46,14 +45,6 @@
 .packed-summary-scroll th { position:sticky; top:0; background:var(--surface); }
 .packed-summary td,.packed-summary th { padding:6px; text-align:left; border-bottom:1px solid var(--border); font-size:12px; }
 @media(max-width:620px) { .invoice-documents { display:block; } .invoice-section { padding-right:0; border-right:0; padding-bottom:16px; } }
-@media screen and (max-width:550px) {
- .invoice-preview .invoice-sheet { padding:2mm; font-size:8px; }
- .invoice-preview .invoice-sheet table { font-size:7px; }
- .invoice-preview .invoice-sheet th { white-space:normal; }
- .invoice-preview .invoice-sheet h1 { font-size:17px; }
- .invoice-preview .invoice-parties { gap:3mm; }
- .invoice-preview .invoice-issuer > div { grid-template-columns:10mm 1fr; }
-}
 @media print {
  @page { size:A4; margin:10mm; }
  body:has(.invoices) { background:white; color:black; }
@@ -97,8 +88,7 @@
 .invoice-toolbar > label:first-child { width:160px; }
 .invoice-toolbar > label { width:145px; flex:none; }
 .invoice-toolbar > label:has(input[form="invoice-submit-form"]) { width:160px; }
-.invoice-toolbar input:not([aria-hidden=true]),.invoice-toolbar select { box-sizing:border-box; height:var(--input-min-height); min-height:var(--input-min-height); margin:0; }
-.invoice-toolbar button { box-sizing:border-box; height:42px; min-height:42px; margin:0; }
+.invoices :is(.invoice-toolbar,.invoice-extra,.receipt-entry-row,.invoice-auction-add) :is(input:not([aria-hidden=true],.calendar-native-picker),select,.btn) { box-sizing:border-box; height:var(--input-min-height); min-height:var(--input-min-height); margin:0; }
 .invoice-toolbar > .btn,.invoice-toolbar-actions > .btn { white-space:nowrap; flex:none; padding:9px 12px; }
 .invoice-toolbar label > span > button { width:36px; display:inline-flex; align-items:center; justify-content:center; }
 .invoice-fields { align-items:start; }
@@ -106,8 +96,6 @@
 .invoice-fields textarea { box-sizing:border-box; min-height:0; line-height:1.4; resize:vertical; }
 .invoice-extra-scroll,.receipt-entry-scroll { overflow-x:auto; }
 .receipt-entry-row { display:grid; grid-template-columns:150px minmax(180px,1fr) 90px 74px 74px; min-width:620px; gap:8px; align-items:end; }
-:is(.receipt-entry-row,.invoice-extra) input:not([aria-hidden=true]) { box-sizing:border-box; height:var(--input-min-height); min-height:var(--input-min-height); margin:0; }
-.receipt-entry-row button,.invoice-extra button { box-sizing:border-box; height:42px; min-height:42px; margin:0; }
 .invoice-extra button,.receipt-entry-row button { padding:8px; }
 .invoice-extra label > span > button,.receipt-entry-row label > span > button { width:30px; display:inline-flex; align-items:center; justify-content:center; padding:4px; }
 :is(.invoice-extra,.receipt-entry-row,.invoice-auction-day) input[type=number] { appearance:textfield; -moz-appearance:textfield; }
