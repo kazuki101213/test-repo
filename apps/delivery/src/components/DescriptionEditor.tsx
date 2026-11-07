@@ -36,7 +36,7 @@ function CopyIconButton({ label, copied, disabled, onClick, className = '' }: {
   </button>;
 }
 
-export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {beforeActions?:ReactNode;actions?:ReactNode;value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void} }) {
+export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {beforeActions?:ReactNode;actions?:ReactNode;afterActions?:ReactNode;value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void} }) {
   const [product, setProduct] = useState(embedded?.value.category??task.description_template ?? (task.work_stream === 'テレビ' ? 'テレビ' : task.work_stream === 'ブルーレイ' ? 'ブルーレイレコーダー' : ''));
   const [target, setTarget] = useState<DescriptionTarget>(() => embedded?(task.sales_channel==='メルカリ'?'mercari':task.sales_channel==='ヤフオク'?'yahoo-auction':'amazon'):initialTarget(task));
   const [condition, setCondition] = useState(() => embedded?.value.condition??conditionForTarget(initialTarget(task), task.condition));
@@ -163,6 +163,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
       <button className="btn primary" type="submit">{busy ? '保存中…' : saved ? '上書き保存' : '説明文を保存'}</button>
       {embedded?.actions}
       </div>
+      {embedded?.afterActions}
       {target !== 'amazon' && ai.message && <p className="description-ai-message muted" role="status">{ai.message}</p>}
       {listingLayout && options}
     </fieldset>
