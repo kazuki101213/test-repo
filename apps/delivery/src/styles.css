@@ -44,6 +44,10 @@ button, input, select, textarea { font: inherit; }
 }
 .topbar h1 { font-family: inherit; font-size: 19px; margin: 0; }
 .topbar .who { color: var(--muted); font-size: 13px; }
+.delivery-fba-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.delivery-fba-select { display:inline-flex; flex:none; align-items:center; justify-content:center; width:26px; height:26px; cursor:pointer; }
+.app .approved-delivery-card input.delivery-fba-checkbox { flex:0 0 18px; width:18px; height:18px; min-height:0; padding:0; margin:0; accent-color:var(--accent); }
+@media(pointer:coarse) { .delivery-fba-select { width:44px; height:44px; } }
 
 .card {
   background: var(--surface);

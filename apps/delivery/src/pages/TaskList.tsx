@@ -40,7 +40,7 @@ function hasSerialSuffix(task: DeliveryTask): boolean {
   return /^\d+[a-z]+-/i.test(task.sku);
 }
 
-export default function TaskList({ staff }: { staff: Staff }) {
+export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaDelivery }: { staff: Staff;selectedIds?:string[];onSelectionChange?:(ids:string[])=>void;onFbaDelivery?:()=>void }) {
   const { sectionRef, shippingRef, viewportHeight } = useTaskViewport();
 
   const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
@@ -196,6 +196,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
         <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e=>{setPurchasedTo(e.target.value);}} />
       </div>
         <span>{shownRows.length} / {inventory.total}商品</span>
+        {onFbaDelivery&&<div className="delivery-fba-actions"><span role="status" aria-live="polite">{selectedIds.length}商品選択</span><button type="button" className="btn" disabled={!selectedIds.length} onClick={onFbaDelivery}>FBA納品</button>{selectedIds.length>0&&<button type="button" className="btn ghost" onClick={()=>onSelectionChange?.([])}>選択解除</button>}</div>}
       </div>
 
       {replyTaskError && <div className="error">{replyTaskError}</div>}
@@ -204,7 +205,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
       {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
       {shownRows.length>0&&<div className="approved-delivery-head" aria-hidden="true"><div className="delivery-head-main"><div>販売状況 / 写真・通番号<br/>型番・ASIN / SKU<br/>追跡番号 / 商品ID</div><div>仕入担当者<br/>納品担当者<br/>仕入先<br/>販売先</div><div>コンディション<br/>仕入日<br/>作業完了日<br/>仕入担当者からのコメント</div></div><div className="delivery-head-bundled"><div>付属品<br/>通番号・品名 / 商品ID<br/>追跡番号 / 仕入日・利用記録<br/>仕入担当者からのコメント</div><div>仕入担当者<br/>納品担当者<br/>仕入先<br/>販売先</div></div><div>操作</div></div>}
-      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} onOpen={() => toggleExpanded(t.id)} />)}
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} onOpen={() => toggleExpanded(t.id)} selection={onSelectionChange?{ids:selectedIds,onChange:onSelectionChange}:undefined} />)}
       {inventory.more&&<button type="button" className="btn" disabled={loading} onClick={inventory.loadMore}>さらに表示</button>}
     </>
   );
