@@ -55,7 +55,7 @@ h2 { font-family: inherit; font-size: 20px; margin: 0 0 4px; }
 .invoice-tasks .toolbar { gap: 8px; margin-bottom: 10px; }
 .invoice-tasks .toolbar h3 { margin: 0; }
 .invoice-tasks .toolbar span { color: var(--muted); font-size: 12px; }
-.invoice-tasks .toolbar select { padding: 4px 6px; margin-left: auto; font-size: 12px; }
+.invoice-tasks .toolbar select { padding: 2px 3px; margin-left: auto; font-size: 12px; }
 .invoice-task-rows { padding: 0 6px 0 0; margin: 0; list-style: none; max-height: 200px; overflow-y: auto; scrollbar-gutter: stable; }
 .invoice-task-rows button { display: flex; align-items: center; gap: 10px; justify-content: space-between; width: 100%; padding: 10px 0; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
 .invoice-task-rows button:hover { background: var(--surface-2); }
@@ -115,7 +115,7 @@ tbody tr:hover { background: var(--surface-2); }
 .amazon-sales-update .error { margin: 0; }
 input[type='text'], input[type='number'], input[type='date'], input[type='search'],
 input[type='email'], input[type='password'], input[type='url'], select, textarea {
-  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  padding: 4px 5px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface-2); color: var(--text);
 }
 textarea { min-height: 90px; width: 100%; resize: vertical; }
@@ -276,7 +276,7 @@ td.detail-description { white-space: normal; min-width: 200px; max-width: 400px;
   .inventory-workspace.with-purchase { grid-template-columns: minmax(360px, 1fr) 340px; overflow-x: auto; }
   .purchase-panel { max-height: calc(100dvh - 24px); }
 }
-input[type='month'] { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
+input[type='month'] { padding: 4px 5px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
 .dashboard-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
 .dashboard-charts > * { min-width: 0; }
 .workload-card { overflow-x: auto; }

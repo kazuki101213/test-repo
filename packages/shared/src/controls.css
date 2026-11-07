@@ -1,5 +1,5 @@
 /* One screen-control palette and horizontal rhythm in both apps and at every width. */
-:root { --control-gap:8px; --calendar-gap:4px; --search-field-width:260px; --search-item-width:132px; --date-field-width:150px; }
+:root { --control-gap:8px; --calendar-gap:4px; --search-field-width:260px; --search-item-width:132px; --date-field-width:150px; --input-min-height:32px; }
 
 /* Match the compact listing and packing-photo buttons across the screen layouts. */
 @layer action-button-spacing {
