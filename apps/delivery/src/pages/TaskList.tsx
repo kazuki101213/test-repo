@@ -1,7 +1,7 @@
 import ReturnTasks from '../components/ReturnTasks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
-import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
+import { canViewDeliveryAssignee, inventorySiteStyle, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
 import { fetchDeliveryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import {fetchTask} from '../api';
@@ -177,7 +177,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
       </div>
 
       <div className="filters task-filters inventory-workflow-menu" role="group" aria-label="販売状態で絞り込み">
-        {['FBA','自己発送','メルカリ','ヤフオク','Amazon返品'].map((channel,index) => <span key={channel} className="inventory-workflow-lane" data-lane={index}>{channel}</span>)}
+        {['FBA','自己発送','メルカリ','ヤフオク','Amazon返品'].map((channel,index) => <span key={channel} className="inventory-workflow-lane" data-lane={index} style={inventorySiteStyle(channel)}>{channel}</span>)}
         {FILTERS.map((f) => (
           <button
             key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key}
