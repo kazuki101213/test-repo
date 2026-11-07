@@ -22,7 +22,22 @@ export function verifiedListing(listing:Obj,item:ListingItem):boolean{
  const summary=listing.summaries?.find((s:Obj)=>s.marketplaceId===marketplace);
  const attributes=listing.attributes??{},offers=(attributes.purchasable_offer??[]).filter((v:Obj)=>v.currency==='JPY'&&(!v.marketplace_id||v.marketplace_id===marketplace)&&(!v.audience||v.audience==='ALL'));
  const schedules=offers.length===1?offers[0].our_price?.[0]?.schedule:[];
- return listing.sku===item.sku&&summary?.asin===item.asin&&summary?.conditionType===conditionTypes[item.condition??'']&&schedules?.length===1&&schedules[0].value_with_tax===item.planned_price&&!schedules[0].start_at&&!schedules[0].end_at&&(attributes.fulfillment_availability??[]).some((v:Obj)=>v.fulfillment_channel_code===(/^FBA/.test(item.sales_channel??'')?'AMAZON_JP':'DEFAULT'))&&issues(listing).length===0;
+ // FBA with no received stock may have no active offer yet. An in-stock FBM
+ // listing must expose the effective consumer price, not just submitted attributes.
+ const activePrice=/^FBA/.test(item.sales_channel??'')||effectivePrice(listing)===item.planned_price;
+ return activePrice&&listing.sku===item.sku&&summary?.asin===item.asin&&summary?.conditionType===conditionTypes[item.condition??'']&&schedules?.length===1&&schedules[0].value_with_tax===item.planned_price&&!schedules[0].start_at&&!schedules[0].end_at&&(attributes.fulfillment_availability??[]).some((v:Obj)=>v.fulfillment_channel_code===(/^FBA/.test(item.sales_channel??'')?'AMAZON_JP':'DEFAULT'))&&issues(listing).length===0;
+}
+export function effectivePrice(listing:Obj):number|null{
+ const offers=(listing.offers??[]).filter((v:Obj)=>v.marketplaceId===marketplace&&v.offerType==='B2C'&&v.price?.currencyCode==='JPY');
+ return offers.length===1&&typeof offers[0].price.amount==='number'&&Number.isSafeInteger(offers[0].price.amount)&&offers[0].price.amount>0?offers[0].price.amount:null;
+}
+export function receiptPricePatch(listing:Obj,price:number){
+ const values=structuredClone(listing.attributes?.purchasable_offer??[]),indexes=values.map((v:Obj,i:number)=>({v,i})).filter(({v}:{v:Obj})=>v.currency==='JPY'&&v.marketplace_id===marketplace&&v.audience==='ALL');
+ const offer=indexes.length===1?indexes[0].v:null,schedules=offer?.our_price?.length===1?offer.our_price[0].schedule:null;
+ const type=listing.summaries?.find((v:Obj)=>v.marketplaceId===marketplace)?.productType;
+ if(!Number.isSafeInteger(price)||price<1||!offer||schedules?.length!==1||schedules[0].start_at||schedules[0].end_at||typeof type!=='string'||!/^[A-Z][A-Z0-9_]{0,199}$/.test(type))throw new SafeError(409,'既存SKUの通常価格を一意に確認できません。');
+ schedules[0].value_with_tax=price;
+ return{productType:type,patches:[{op:'replace',path:'/attributes/purchasable_offer',value:values}]};
 }
 export function offerImages(urls:string[]):Obj{
  if(!urls.length||urls.length>6||urls.some(url=>!url.startsWith('https://')))throw new SafeError(422,'商品写真を1〜6枚で確認してください。');
@@ -52,7 +67,7 @@ function verificationNote(listing:Obj):string{
  const prices=(a.purchasable_offer??[]).flatMap((o:Obj)=>(o.our_price??[]).flatMap((p:Obj)=>(p.schedule??[]).map((v:Obj)=>v.value_with_tax))).filter((v:unknown)=>typeof v==='number'&&Number.isFinite(v));
  const price=prices.length?'¥'+prices.join(' / ¥'):'未取得',condition=Object.entries(conditionTypes).find(([,value])=>value===s?.conditionType)?.[0]??'未取得';
  const channels=(a.fulfillment_availability??[]).map((v:Obj)=>v.fulfillment_channel_code).filter((v:unknown)=>v==='AMAZON_JP'||v==='DEFAULT');
- return 'Amazonの反映を確認中です（ASIN '+(/^[A-Z0-9]{10}$/.test(s?.asin??'')?s!.asin:'未取得')+'、コンディション '+condition+'、価格 '+price+'、配送 '+(channels.join('/')||'未取得')+'）。再度、登録結果を確認してください。';
+ return 'Amazonの反映を確認中です（ASIN '+(/^[A-Z0-9]{10}$/.test(s?.asin??'')?s!.asin:'未取得')+'、コンディション '+condition+'、送信価格 '+price+'、販売価格 '+(effectivePrice(listing)===null?'未反映':'¥'+effectivePrice(listing))+'、配送 '+(channels.join('/')||'未取得')+'）。再度、登録結果を確認してください。';
 }
 function sameItem(a:ListingItem,b:ListingItem){return['sku','asin','condition','description','planned_price','sales_channel','status'].every(k=>a[k as keyof ListingItem]===b[k as keyof ListingItem]);}
 async function amazon(id:AmazonAccountId){
@@ -60,19 +75,105 @@ async function amazon(id:AmazonAccountId){
  const r=await fetch('https://api.amazon.com/auth/o2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:credentials.clientId,client_secret:credentials.clientSecret,refresh_token:credentials.refreshToken}),signal:AbortSignal.timeout(15000)});
  const token=await r.json().catch(()=>null);if(!r.ok||!token?.access_token)throw new SafeError(502,'Amazonの認証に失敗しました。');
  const path='/listings/2021-08-01/items/'+encodeURIComponent(credentials.sellerId)+'/';
+ async function feedCall(path:string,body?:Obj){
+  const r=await fetch(endpoint+'/feeds/2021-06-30/'+path,{method:body?'POST':'GET',headers:{'x-amz-access-token':token.access_token,'content-type':'application/json','user-agent':'BussanDelivery/1.0'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000)});
+  const data=await r.json().catch(()=>null);if(!r.ok||!data)throw new SafeError(502,'Amazon価格フィードAPIの確認に失敗しました（HTTP '+r.status+'）。');return data as Obj;
+ }
+ function documentUrl(value:unknown){const u=new URL(String(value));if(u.protocol!=='https:'||!/(^|\.)amazonaws\.com(?:\.cn)?$/.test(u.hostname))throw new SafeError(502,'Amazonのフィード保存先を確認できません。');return u.href;}
+ async function submitPriceFeed(sku:string,patch:Obj){
+  const contentType='application/json; charset=UTF-8',doc=await feedCall('documents',{contentType});
+  const body={header:{sellerId:credentials.sellerId,version:'2.0',issueLocale:'ja_JP'},messages:[{messageId:1,sku,operationType:'PATCH',productType:patch.productType,patches:patch.patches}]};
+  const upload=await fetch(documentUrl(doc.url),{method:'PUT',headers:{'content-type':contentType},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});
+  if(!upload.ok)throw new SafeError(502,'価格フィードのアップロードに失敗しました。');
+  const result=await feedCall('feeds',{feedType:'JSON_LISTINGS_FEED',marketplaceIds:[marketplace],inputFeedDocumentId:doc.feedDocumentId});
+  if(typeof result.feedId!=='string')throw new SafeError(502,'価格フィードの受付結果を確認できません。');return{status:'ACCEPTED',feedId:result.feedId};
+ }
+ async function priceFeedStatus(feedId:string){
+  const feed=await feedCall('feeds/'+encodeURIComponent(feedId));
+  if(feed.feedType!=='JSON_LISTINGS_FEED'||feed.marketplaceIds?.length!==1||feed.marketplaceIds[0]!==marketplace)throw new SafeError(409,'価格フィードの対象が一致しません。');
+  let report:Obj|undefined;
+  if(feed.resultFeedDocumentId){const doc=await feedCall('documents/'+encodeURIComponent(feed.resultFeedDocumentId)),r=await fetch(documentUrl(doc.url),{signal:AbortSignal.timeout(15000)});if(!r.ok||!r.body)throw new SafeError(502,'価格フィードの処理結果を取得できません。');const stream=doc.compressionAlgorithm==='GZIP'?r.body.pipeThrough(new DecompressionStream('gzip')):r.body;const data=await new Response(stream).json();report={summary:data.summary,issues:(data.issues??[]).slice(0,10)};}
+  return{feedId,processingStatus:feed.processingStatus,report};
+ }
+ async function diagnosePrice(sku:string,asin:string,condition:string){
+  const read=async(path:string,params:URLSearchParams)=>{const r=await fetch(endpoint+path+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});const data=await r.json().catch(()=>null);return{httpStatus:r.status,data};};
+  const [own,offers,restrictions]=await Promise.all([read('/products/pricing/v0/price',new URLSearchParams({MarketplaceId:marketplace,ItemType:'Sku',Skus:sku})),read('/products/pricing/v0/listings/'+encodeURIComponent(sku)+'/offers',new URLSearchParams({MarketplaceId:marketplace,ItemCondition:'Used',CustomerType:'Consumer'})),read('/listings/2021-08-01/restrictions',new URLSearchParams({asin,sellerId:credentials.sellerId,marketplaceIds:marketplace,conditionType:conditionTypes[condition],reasonLocale:'ja_JP'}))]);
+  return{ownPrice:{httpStatus:own.httpStatus,rows:(own.data?.payload??[]).map((v:Obj)=>({status:v.status,sku:v.SellerSKU,offers:v.Product?.Offers,errors:v.errors}))},offerStatus:{httpStatus:offers.httpStatus,status:offers.data?.payload?.status,summary:offers.data?.payload?.Summary,errors:offers.data?.errors},restrictions:{httpStatus:restrictions.httpStatus,rows:restrictions.data?.restrictions,errors:restrictions.data?.errors}};
+ }
  async function call(sku:string,method:'GET'|'PUT'|'PATCH',body?:Obj,preview=false){
-  const params=new URLSearchParams({marketplaceIds:marketplace,issueLocale:'ja_JP',includedData:method==='GET'?'summaries,attributes,issues':'issues'});if(preview)params.set('mode','VALIDATION_PREVIEW');
+  const params=new URLSearchParams({marketplaceIds:marketplace,issueLocale:'ja_JP',includedData:method==='GET'?'summaries,attributes,issues,offers,fulfillmentAvailability':'issues'});if(preview)params.set('mode','VALIDATION_PREVIEW');
   const response=await fetch(endpoint+path+encodeURIComponent(sku)+'?'+params,{method,headers:{'x-amz-access-token':token.access_token,'x-amz-date':new Date().toISOString().replace(/[:-]|\.\d{3}/g,''),'Content-Type':'application/json','user-agent':'BussanDelivery/1.0 (Language=TypeScript; Platform=Supabase)'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(20000)});
   const data=await response.json().catch(()=>null);if(method==='GET'&&response.status===404)return null;
   if(!response.ok)throw new SafeError(response.status>=500?502:response.status,'Amazon登録APIがエラーになりました（HTTP '+response.status+'）。'+(issues(data).join(' ')||'アカウントの権限・状態を確認してください。'));
   if(!data||typeof data!=='object')throw new SafeError(502,'Amazonの登録結果を確認できません。');return data as Obj;
  }
- return{sellerId:credentials.sellerId,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview),patchImages:(sku:string,images:Obj,listing:Obj,preview=false)=>call(sku,'PATCH',{productType:photoProductType(listing),patches:imagePatches(images,listing)},preview)};
+ return{sellerId:credentials.sellerId,diagnosePrice,submitPriceFeed,priceFeedStatus,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),inspect:(sku:string)=>call(sku,'GET'),patchPrice:(sku:string,body:Obj,preview=false)=>call(sku,'PATCH',body,preview),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview),patchImages:(sku:string,images:Obj,listing:Obj,preview=false)=>call(sku,'PATCH',{productType:photoProductType(listing),patches:imagePatches(images,listing)},preview)};
+}
+// Operator read-only inspection is bound to an existing, non-cancelled receipt.
+// The private project dispatcher authenticates it; normal user routes retain Auth.getUser.
+export async function inspectReceipt(svc:any,input:Obj,connect=amazon){
+ if(input?.action!=='inspect-receipt'||!uuid(input.itemId)||!uuid(input.requestId))throw new SafeError(400,'対象の受付履歴を指定してください。');
+ const {data:receipt,error}=await svc.from('amazon_listing_submissions').select('*').eq('request_id',input.requestId).eq('item_id',input.itemId).maybeSingle();
+ if(error||!receipt||!['accepted','uncertain','verified'].includes(receipt.state))throw new SafeError(404,'有効な受付履歴がありません。');
+ const {data:current,error:itemError}=await svc.from('items').select(columns).eq('id',receipt.item_id).single();
+ if(itemError||!current)throw new SafeError(404,'商品が見つかりません。');
+ const api=await connect(accountFor(receipt.sales_channel));if(api.sellerId!==receipt.seller_id)throw new SafeError(409,'受付時の出品者が一致しません。');
+ const summarize=(remote:Obj|null)=>remote?{sku:remote.sku,summaries:remote.summaries,offers:remote.offers,fulfillmentAvailability:remote.fulfillmentAvailability,attributes:Object.fromEntries(['merchant_suggested_asin','condition_type','purchasable_offer','fulfillment_availability','merchant_shipping_group'].filter(key=>remote.attributes?.[key]).map(key=>[key,remote.attributes[key]])),issues:(remote.issues??[]).map((issue:Obj)=>({code:issue.code,severity:issue.severity,message:typeof issue.message==='string'&&!/token|secret|authorization|password|Bearer/i.test(issue.message)?issue.message.slice(0,500):'',attributeNames:issue.attributeNames,enforcements:issue.enforcements})),imageAttributes:Object.keys(remote.attributes??{}).filter(key=>/offer_image_locator/.test(key)),attributeNames:Object.keys(remote.attributes??{})}:null;
+ const read=api.inspect??api.get;
+ const original=await read(receipt.sku),currentListing=current.sku===receipt.sku?original:await read(current.sku);
+ const pricing=input.includePricing===true?await api.diagnosePrice(receipt.sku,receipt.asin,receipt.item_condition):undefined;
+ const repair=typeof receipt.note==='string'&&receipt.note.startsWith('Amazon価格補正:')?JSON.parse(receipt.note.slice('Amazon価格補正:'.length)):null;
+ const feed=input.includeFeed===true&&repair?.feed?.id?await api.priceFeedStatus(repair.feed.id):undefined;
+ return{receipt:{requestId:receipt.request_id,sku:receipt.sku,asin:receipt.asin,price:receipt.price,condition:receipt.item_condition,channel:receipt.sales_channel,state:receipt.state},current:{id:current.id,sku:current.sku,asin:current.asin,price:current.planned_price,condition:current.condition,channel:current.sales_channel,status:current.status},original:summarize(original),currentListing:summarize(currentListing),pricing,feed};
+}
+// Explicit operator repair of an existing receipt, never used by automatic resume.
+// A durable compare-and-set reservation prevents retries from repeating a PATCH.
+export async function repairReceiptPrice(svc:any,input:Obj,connect=amazon){
+ if(!['repair-receipt-price','repair-receipt-price-feed'].includes(input?.action)||!uuid(input.itemId)||!uuid(input.requestId))throw new SafeError(400,'対象の受付履歴を指定してください。');
+ const feedMode=input.action==='repair-receipt-price-feed';
+ const {data:r,error}=await svc.from('amazon_listing_submissions').select('*').eq('request_id',input.requestId).eq('item_id',input.itemId).maybeSingle();
+ if(error||!r||!['accepted','uncertain','verified'].includes(r.state)||r.sku!==input.expectedSku||r.price!==input.expectedPrice||!Number.isSafeInteger(r.price)||r.price<1)throw new SafeError(409,'補正対象の受付履歴が一致しません。');
+ const {data:current,error:itemError}=await svc.from('items').select(columns).eq('id',r.item_id).single();
+ if(itemError||!current||current.sku!==input.expectedCurrentSku||current.asin!==r.asin||current.planned_price!==r.price||current.condition!==r.item_condition||current.sales_channel!==r.sales_channel)throw new SafeError(409,'現在の商品情報と補正価格が一致しません。');
+ const api=await connect(accountFor(r.sales_channel));if(api.sellerId!==r.seller_id)throw new SafeError(409,'受付時の出品者が一致しません。');
+ const remote=await api.get(r.sku),summary=remote?.summaries?.find((v:Obj)=>v.marketplaceId===marketplace);
+ if(!remote||remote.sku!==r.sku||summary?.asin!==r.asin||summary?.conditionType!==conditionTypes[r.item_condition]||issues(remote).length)throw new SafeError(409,'既存のAmazon商品情報を照合できません。');
+ const livePrice=effectivePrice(remote);
+ if(livePrice===r.price)return{accepted:true,verified:true,sku:r.sku,price:livePrice,written:false};
+ const previous=typeof r.note==='string'&&r.note.startsWith('Amazon価格補正:')?JSON.parse(r.note.slice('Amazon価格補正:'.length)):null;
+ if(previous&&(!feedMode||previous.feed))return{accepted:true,verified:false,sku:r.sku,price:livePrice,written:false,note:'価格補正を送信済みです。再送せず反映を確認してください。'};
+ if(feedMode&&(!previous||previous.state!=='accepted'||!Number.isFinite(Date.parse(previous.startedAt))||Date.now()-Date.parse(previous.startedAt)<600000))throw new SafeError(409,'既存の価格補正結果を先に確認してください。');
+ const payload=receiptPricePatch(remote,r.price),preview=await api.patchPrice(r.sku,payload,true);
+ if(!['VALID','ACCEPTED'].includes(preview?.status??'')||issues(preview).length)throw new SafeError(422,'Amazonが価格補正を受け付けませんでした。'+issues(preview).join(' '));
+ const {data:latest,error:latestError}=await svc.from('items').select(columns).eq('id',current.id).single();
+ if(latestError||!latest||!sameItem(current,latest))throw new SafeError(409,'補正の確認中に商品情報が変更されました。');
+ const audit:Obj=feedMode?{...previous,feed:{startedAt:new Date().toISOString(),state:'sending'}}:{previousNote:r.note??null,startedAt:new Date().toISOString(),state:'sending',price:r.price,sku:r.sku,submissionId:null};
+ const prefix='Amazon価格補正:',reservation=prefix+JSON.stringify(audit);
+ let query=svc.from('amazon_listing_submissions').update({note:reservation}).eq('request_id',r.request_id).eq('state',r.state);
+ query=r.note===null?query.is('note',null):query.eq('note',r.note);
+ const {data:reserved,error:reserveError}=await query.select('request_id').maybeSingle();
+ if(reserveError||!reserved)throw new SafeError(409,'価格補正の予約ができません。再送せず履歴を確認してください。');
+ try{
+  const result:Obj|null=feedMode?await api.submitPriceFeed(r.sku,payload):await api.patchPrice(r.sku,payload);
+  if(result?.status!=='ACCEPTED'||issues(result).length)throw new SafeError(422,'Amazonが価格補正を受け付けませんでした。'+issues(result).join(' '));
+  if(feedMode){audit.feed.state='accepted';audit.feed.id=result.feedId;}else{audit.state='accepted';audit.submissionId=typeof result.submissionId==='string'?result.submissionId:null;}
+ }catch(e){if(feedMode)audit.feed.state=e instanceof SafeError&&e.status<500?'rejected':'uncertain';else audit.state=e instanceof SafeError&&e.status<500?'rejected':'uncertain';await svc.from('amazon_listing_submissions').update({note:prefix+JSON.stringify(audit)}).eq('request_id',r.request_id).eq('note',reservation);throw e;}
+ const {error:saveError}=await svc.from('amazon_listing_submissions').update({note:prefix+JSON.stringify(audit)}).eq('request_id',r.request_id).eq('note',reservation);
+ if(saveError)throw new SafeError(503,'Amazon受付後の補正履歴を保存できません。再送せず結果を確認してください。');
+ const result=await api.get(r.sku);
+ return{accepted:true,verified:!!result&&effectivePrice(result)===r.price,sku:r.sku,price:result?effectivePrice(result):null,written:true,submissionId:audit.submissionId,feedId:audit.feed?.id};
 }
 export async function handler(req:Request):Promise<Response>{
  const respond=(status:number,body:unknown)=>new Response(JSON.stringify(body),{status,headers});
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers});if(req.method!=='POST')return respond(405,{error:'POSTのみ利用できます。'});
  try{
+  if(req.headers.has('x-delivery-dispatch')){
+   const svc=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false},db:{schema:'app'}});
+   const {data:config,error}=await svc.rpc('delivery_push_config');
+   if(error||!req.headers.get('x-delivery-dispatch')||req.headers.get('x-delivery-dispatch')!==config?.delivery_push_dispatch_token)throw new SafeError(401,'内部認証が必要です。');
+   const input=await req.json().catch(()=>null);
+   return respond(200,await(['repair-receipt-price','repair-receipt-price-feed'].includes(input?.action)?repairReceiptPrice(svc,input):inspectReceipt(svc,input)));
+  }
   const authorization=req.headers.get('authorization')??'';if(!/^Bearer\s+\S+$/i.test(authorization))throw new SafeError(401,'ログインが必要です。');
   const options={auth:{persistSession:false,autoRefreshToken:false},db:{schema:'app'}};
   const sb=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_ANON_KEY')!,{...options,global:{headers:{Authorization:authorization}}});
