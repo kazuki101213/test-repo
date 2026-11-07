@@ -9,6 +9,7 @@ alter table app.amazon_listing_submissions
  add column recovery_count smallint not null default 0 check(recovery_count between 0 and 1),
  add column recovery_at timestamptz,
  add column recovery_submission_id text;
+grant select(sku,item_id) on app.item_sku_aliases to service_role;
 
 -- Cost/date edits still generate inventory SKUs as before. A verified Amazon SKU
 -- can be an alias of the same inventory item; it must never belong to another item.

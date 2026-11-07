@@ -264,9 +264,13 @@ export async function handler(req:Request):Promise<Response>{
   if(resuming&&(!operation||operation.item_id!==item.id||operation.request_id!==body.requestId))throw new SafeError(409,'確認対象の受付履歴が一致しません。');
   const waiting=(state:string,note:string)=>respond(200,{verified:false,state,note,requestId:operation!.request_id,workCompletedOn:operation!.work_completed_on});
   if(operation&&body.action!=='check')return respond(200,await reconcileReceipt(svc,{itemId:item.id,requestId:operation.request_id,expectedSku:item.sku,expectedPrice:item.planned_price,photoIds:body.photoIds,recoverMissing:body.action==='submit'}));
-  const api=await amazon(accountId);let remote=await api.get(item.sku);
-  if(body.action==='check')return respond(200,{accountId,exists:!!remote,verified:!!remote&&verifiedListing(remote,item),state:operation?.state??null,note:remote?issues(remote).join(' ')||'AmazonにSKUの登録があります。':'AmazonにこのSKUはまだ登録されていません。'});
-  if(resuming&&operation!.state==='verified'&&item.status==='出品中')return respond(200,{verified:true,state:'verified',accountId,note:'Amazonへの登録を確認しました。'});
+  const api=await amazon(accountId);
+  if(body.action==='check'){
+   let target=item;
+   if(operation&&sameReceiptContent(item,operation)&&operation.seller_id===api.sellerId&&operation.sku!==item.sku){const {data:alias,error}=await svc.from('item_sku_aliases').select('item_id').eq('sku',operation.sku).maybeSingle();if(error||alias?.item_id!==item.id)throw new SafeError(409,'Amazon登録SKUと在庫の対応を確認できません。');target={...item,sku:operation.sku};}
+   const remote=await api.get(target.sku);return respond(200,{accountId,exists:!!remote,verified:!!remote&&verifiedListing(remote,target),state:operation?.state??null,note:remote?issues(remote).join(' ')||'AmazonにSKUの登録があります。':'AmazonにこのSKUはまだ登録されていません。'});
+  }
+  const remote=await api.get(item.sku);
   if(item.status!=='商品登録前')throw new SafeError(409,'Amazonに登録がない場合は、出品完了を取り消してから出品してください。');
   if(!uuid(body.requestId)||typeof body.workCompletedOn!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(body.workCompletedOn)||Number.isNaN(Date.parse(body.workCompletedOn))||new Date(body.workCompletedOn+'T00:00:00Z').toISOString().slice(0,10)!==body.workCompletedOn||body.workCompletedOn>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(new Date())||(item.purchased_at&&body.workCompletedOn<item.purchased_at))throw new SafeError(400,'作業完了日を確認してください。');
   const {data:approved,error:photoError}=await sb.rpc('listing_photos_approved',{p_item_id:item.id});if(photoError||approved!==true)throw new SafeError(409,'管理アプリで商品写真の承認が必要です。');

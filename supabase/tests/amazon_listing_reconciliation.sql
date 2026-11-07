@@ -25,8 +25,11 @@ do $$begin
  begin perform app.complete_verified_amazon_listing('99785100-0000-4000-8000-000000000001',(select sku from app.items where lot_seq=997851));raise exception 'Foreign photo accepted';exception when insufficient_privilege then null;end;
 end $$;
 update app.amazon_listing_submissions set photo_ids=array[(select id from app.item_photos where item_id=(select id from app.items where lot_seq=997851))] where item_id=(select id from app.items where lot_seq=997851);
-select app.complete_verified_amazon_listing('99785100-0000-4000-8000-000000000001',sku) from app.items where lot_seq=997851;
-select app.complete_verified_amazon_listing('99785100-0000-4000-8000-000000000001',sku) from app.items where lot_seq=997851;
+select set_config('test.amazon_expected_sku',(select sku from app.items where lot_seq=997851),true);
+set local role service_role;
+select app.complete_verified_amazon_listing('99785100-0000-4000-8000-000000000001',current_setting('test.amazon_expected_sku'));
+select app.complete_verified_amazon_listing('99785100-0000-4000-8000-000000000001',current_setting('test.amazon_expected_sku'));
+reset role;
 do $$begin
  if not exists(select 1 from app.items where lot_seq=997851 and status='出品中' and packed_on=current_date-1 and product_registered_at is not null and sku like '%-120') then raise exception 'Alias listing or saved work date not finalized';end if;
  if (select count(*) from app.inventory_workflow_events where id='99785100-0000-4000-8000-000000000001')<>1 then raise exception 'Duplicate workflow event';end if;
