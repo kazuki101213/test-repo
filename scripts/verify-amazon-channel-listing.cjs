@@ -3,7 +3,7 @@ const jsx=(type,props)=>({type,props});
 function load(file,imports={}){const c={exports:{},require:n=>imports[n]??{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);return c.exports;}
 const channels=load('packages/shared/src/salesChannels.ts'),palette=load('packages/shared/src/inventoryPresentation.ts'),workflow=load('packages/shared/src/workflow.ts');
 const seller=load('packages/shared/src/seller.ts',{'./productCategory':load('packages/shared/src/productCategory.ts')});
-const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);all(n.props?.embedded?.actions,out);all(n.props?.embedded?.beforeActions,out)}return out};
+const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);all(n.props?.embedded?.actions,out);all(n.props?.embedded?.beforeActions,out);all(n.props?.embedded?.afterActions,out)}return out};
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
 async function confirm(channel,approved=true,verified=true,scenario='normal'){
  let hooks=[],cursor=0,effects=[],dirty=true,tree,writes=0,resumes=0,queued=0,changed=0,nextTimer=0;
