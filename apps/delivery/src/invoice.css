@@ -6,7 +6,7 @@
 .invoice-auction-group { display:grid; gap:6px; }
 .invoice-auction-day { display:grid; grid-template-columns:2.3em minmax(0,1fr) 24px; align-items:center; gap:4px; }
 .invoice-auction-day > span { white-space:nowrap; }
-.invoices .invoice-auction-day > input { box-sizing:border-box; padding-inline:4px; }
+.invoices .invoice-auction-day > input { box-sizing:border-box; padding-inline:2px; }
 .invoice-auction-day-remove { width:24px; min-height:32px; padding:0; border:0; border-radius:0; background:transparent; color:var(--accent); font:inherit; font-size:22px; cursor:pointer; }
 .invoice-auction-day-remove:disabled { opacity:.55; cursor:not-allowed; }
 .invoice-auction-day-remove:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
@@ -19,7 +19,7 @@
 .invoices h2 { font-size:19px; margin:0 0 16px; }
 .invoices h3 { font-size:15px; }
 .invoices label { display:grid; gap:5px; font-size:13px; }
-.invoices input,.invoices select,.invoices textarea { width:100%; min-width:0; padding:9px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); }
+.invoices input,.invoices select,.invoices textarea { width:100%; min-width:0; padding:4.5px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); }
 .invoices input[type=checkbox] { width:auto; }
 .invoice-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-bottom:18px; }
 .invoice-extra { display:grid; grid-template-columns:150px minmax(180px,1fr) 64px 90px 74px; min-width:620px; gap:8px; align-items:end; padding:12px 0; }
@@ -97,15 +97,17 @@
 .invoice-toolbar > label:first-child { width:160px; }
 .invoice-toolbar > label { width:145px; flex:none; }
 .invoice-toolbar > label:has(input[form="invoice-submit-form"]) { width:160px; }
-.invoice-toolbar input:not([aria-hidden=true]),.invoice-toolbar select,.invoice-toolbar button { box-sizing:border-box; height:42px; min-height:42px; margin:0; }
+.invoice-toolbar input:not([aria-hidden=true]),.invoice-toolbar select { box-sizing:border-box; height:var(--input-min-height); min-height:var(--input-min-height); margin:0; }
+.invoice-toolbar button { box-sizing:border-box; height:42px; min-height:42px; margin:0; }
 .invoice-toolbar > .btn,.invoice-toolbar-actions > .btn { white-space:nowrap; flex:none; padding:9px 12px; }
 .invoice-toolbar label > span > button { width:36px; display:inline-flex; align-items:center; justify-content:center; }
 .invoice-fields { align-items:start; }
-.invoice-fields input { box-sizing:border-box; height:42px; }
+.invoice-fields input { box-sizing:border-box; height:var(--input-min-height); }
 .invoice-fields textarea { box-sizing:border-box; min-height:0; line-height:1.4; resize:vertical; }
 .invoice-extra-scroll,.receipt-entry-scroll { overflow-x:auto; }
 .receipt-entry-row { display:grid; grid-template-columns:150px minmax(180px,1fr) 90px 74px 74px; min-width:620px; gap:8px; align-items:end; }
-.receipt-entry-row input:not([aria-hidden=true]),.receipt-entry-row button,.invoice-extra input:not([aria-hidden=true]),.invoice-extra button { box-sizing:border-box; height:42px; min-height:42px; margin:0; }
+:is(.receipt-entry-row,.invoice-extra) input:not([aria-hidden=true]) { box-sizing:border-box; height:var(--input-min-height); min-height:var(--input-min-height); margin:0; }
+.receipt-entry-row button,.invoice-extra button { box-sizing:border-box; height:42px; min-height:42px; margin:0; }
 .invoice-extra button,.receipt-entry-row button { padding:8px; }
 .invoice-extra label > span > button,.receipt-entry-row label > span > button { width:30px; display:inline-flex; align-items:center; justify-content:center; padding:4px; }
 :is(.invoice-extra,.receipt-entry-row,.invoice-auction-day) input[type=number] { appearance:textfield; -moz-appearance:textfield; }
@@ -132,7 +134,7 @@
  .invoices .receipt-optional-fields > label:first-child { grid-column:5; grid-row:1; }
  .invoices .receipt-optional-fields > label:last-child { grid-column:6; grid-row:1; }
  .invoices .receipt-detail-form fieldset > :is(div,p):not(.receipt-entry-scroll):not(.receipt-optional-fields) { grid-column:1 / -1; }
- .invoices .receipt-optional-fields textarea { height:42px; min-height:42px; box-sizing:border-box; }
+ .invoices .receipt-optional-fields textarea { height:var(--input-min-height); min-height:var(--input-min-height); box-sizing:border-box; }
 }
 .receipt-selected-file { margin:0; overflow-wrap:anywhere; font-size:13px; }
 @media print { .app:has(.invoices) { max-width:none; } }

@@ -98,7 +98,7 @@ button, input, select, textarea { font: inherit; }
 .step[data-done='true'] .check { border-color: var(--ok); color: var(--ok); }
 .step .label { font-weight: 600; }
 .step .hint { color: var(--muted); font-size: 12px; }
-.step-date { width:145px; flex:none; min-width:0; padding:7px 4px; font-size:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); }
+.step-date { width:145px; flex:none; min-width:0; padding:3.5px 2px; font-size:12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); }
 @media(max-width:450px) { .step-date { width:132px; } }
 .malfunction-step-wrap { display:grid; gap:8px; order:-1; }
 .malfunction-status { margin:0 12px; white-space:pre-wrap; }
@@ -111,7 +111,7 @@ button, input, select, textarea { font: inherit; }
 
 input:not([type]), input[type='text'], input[type='email'], input[type='password'], input[type='search'], input[type='number'],
 select, textarea {
-  width: 100%; padding: 11px 12px; border-radius: 10px;
+  width: 100%; padding: 5.5px 6px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
 }
 textarea { min-height: 80px; resize: vertical; }

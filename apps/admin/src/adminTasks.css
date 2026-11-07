@@ -16,7 +16,7 @@
 .invoice-task-rows > .admin-fault-task .task-conversation-history { grid-column:1; grid-row:3; min-width:0; }
 .invoice-task-rows > .admin-fault-task .task-conversation-history .comment { margin:0 0 6px; overflow-wrap:anywhere; }
 .invoice-task-rows > .admin-fault-task .task-template-row { grid-column:1 / -1; grid-row:4; display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
-.invoice-task-rows > .admin-fault-task .task-template-row select { width:168px; max-width:calc(100% - 102px); min-width:0; min-height:44px; }
+.invoice-task-rows > .admin-fault-task .task-template-row select { width:168px; max-width:calc(100% - 102px); min-width:0; min-height:var(--input-min-height); }
 .invoice-task-rows > .admin-fault-task .task-reply-editor { grid-column:1; grid-row:5; min-width:0; }
 .invoice-task-rows > .admin-fault-task .task-reply-editor textarea { width:100%; min-height:80px; box-sizing:border-box; }
 .invoice-task-rows > .admin-fault-task .task-reply-editor .photo-upload { display:inline-flex; width:auto; margin-top:6px; }

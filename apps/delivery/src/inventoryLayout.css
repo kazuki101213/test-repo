@@ -7,7 +7,7 @@
   .app .delivery-navigation > .btn[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
   .topbar { position:static; border:0; background:transparent; }
   .delivery-inventory-workspace, .delivery-inventory-sidebar { display:contents; }
-  .app .inventory-workflow-menu { display:grid; grid-template-columns:106px 140px 100px 156px repeat(4,100px); grid-template-rows:repeat(4,30px) 44px 8px 44px; gap:6px; padding:12px; align-content:center; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:visible; }
+  .app .inventory-workflow-menu { display:grid; gap:6px; padding:12px; align-content:center; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:visible; }
   .inventory-workflow-lane { height:30px; align-self:center; grid-column:1; position:relative; display:flex; align-items:center; padding-left:16px; font-size:15px; font-weight:400; white-space:nowrap; }
   .inventory-workflow-lane::before { content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:3px; background:var(--lane-color); }
   .inventory-workflow-lane[data-lane="0"] { grid-row:1; --lane-color:#71836a; }
@@ -15,13 +15,7 @@
   .inventory-workflow-lane[data-lane="2"] { grid-row:3; --lane-color:#c37c7c; }
   .inventory-workflow-lane[data-lane="3"] { grid-row:4; --lane-color:#c79c44; }
   .inventory-workflow-lane[data-lane="4"] { grid-row:5; --lane-color:#a18abf; }
-  .app .inventory-workflow-menu > .btn { width:100% !important; height:100%; align-self:stretch; justify-self:stretch; min-width:0; padding-inline:12px !important; font-size:15px; font-weight:400; line-height:1.35; white-space:nowrap; }
-  .inventory-workflow-menu > [data-status="work"] { grid-column:2 / 7; grid-row:1 / 6; }
-  .inventory-workflow-menu > [data-status="Amazon返送依頼"] { grid-column:2; grid-row:5; }
-  .inventory-workflow-menu > [data-status="selling"] { grid-column:7; grid-row:1 / 6; }
-  .inventory-workflow-menu > [data-status="販売済"] { grid-column:8; grid-row:1 / 6; }
-  .inventory-workflow-footer { grid-column:1 / -1; grid-row:7; display:flex; gap:6px; align-items:stretch; }
-  .app .inventory-workflow-footer > .btn { width:max-content !important; height:44px; font-size:15px; font-weight:400; padding-inline:12px !important; }
+  .app .inventory-workflow-menu .btn { display:inline-flex; align-items:center; justify-content:center; align-self:center; justify-self:stretch; width:100% !important; min-width:0; height:var(--action-button-min-height,28px); min-height:var(--action-button-min-height,28px); margin:0; font-size:13px; font-weight:400; line-height:1.35; white-space:nowrap; }
   .inventory-mobile-label { display:none; }
   .task-product-summary { display:grid; grid-template-columns:minmax(0,480px) minmax(0,1fr); gap:24px; align-items:start; }
   .task-product-summary:not(:has(.task-members)) { grid-template-columns:minmax(0,1fr); }
@@ -56,15 +50,14 @@
   .app .delivery-navigation > [data-tab="invoices"] { grid-column:3; }
   .app .delivery-navigation > [data-tab="bid-calculator"] { grid-column:1 / 3; grid-row:2; }
   .app .delivery-navigation > [data-tab="notifications"] { grid-column:3; grid-row:2; }
-  .app .inventory-workflow-menu { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(5,44px); width:auto; justify-content:stretch; gap:8px; padding:8px; }
+  .app .inventory-workflow-menu { grid-template-columns:repeat(2,minmax(0,1fr)); width:auto; justify-content:stretch; gap:8px; padding:8px; }
   .inventory-workflow-lane { display:none; }
-  .app .inventory-workflow-menu > .btn { grid-column:auto; grid-row:auto; justify-self:stretch; font-size:14px; padding-inline:12px !important; }
+  .app .inventory-workflow-menu .btn { font-size:14px; }
   .inventory-workflow-menu > [data-status="work"] { order:1; }
   .inventory-workflow-menu > [data-status="selling"] { order:2; }
   .inventory-workflow-menu > [data-status="Amazon返送依頼"] { order:5; }
   .inventory-workflow-menu > [data-status="販売済"] { order:7; }
   .inventory-workflow-footer { display:contents; }
-  .app .inventory-workflow-footer > .btn { width:100% !important; box-sizing:border-box; height:44px; font-size:14px; }
   .inventory-workflow-footer > [data-status="動作不良"] { order:3; }
   .inventory-workflow-footer > [data-status="返品処理"] { order:4; }
   .inventory-workflow-footer > [data-status="Amazon補填申請中"] { order:6; }
@@ -86,23 +79,19 @@
 }
 
 @media screen and (min-width:1280px) {
-  .delivery-inventory-workspace { display:grid; grid-template-columns:minmax(0,1fr) max-content; gap:16px; align-items:stretch; }
-  .delivery-inventory-sidebar { display:flex; flex-direction:column; min-width:0; }
-  .delivery-inventory-sidebar .delivery-inventory-search { display:grid; grid-template-columns:148px minmax(0,1fr) auto; gap:8px; margin-top:0; }
+  .delivery-inventory-workspace { display:grid; gap:16px; align-items:stretch; }
+  .delivery-inventory-sidebar .delivery-inventory-search { display:grid; gap:8px; margin-top:0; }
   .delivery-inventory-sidebar .delivery-inventory-search > select { grid-column:1; grid-row:1; }
   .delivery-inventory-sidebar .delivery-inventory-search > input, .delivery-inventory-sidebar .delivery-inventory-search > select[aria-label="納品担当者で検索"] { grid-column:2; grid-row:1; }
   .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:3; grid-row:1; }
   .delivery-inventory-sidebar .inventory-multi-filter-panel { left:0; right:auto; }
-  .delivery-inventory-sidebar .delivery-task-heading { margin:8px 0; }
-  .delivery-inventory-sidebar .delivery-reply-tasks { flex:1; min-height:0; max-height:182px !important; margin:0; overflow:auto; }
   .app .delivery-inventory-workspace > .inventory-workflow-menu { margin:0; min-width:0; }
-  .app .inventory-workflow-menu { width:max-content; box-sizing:border-box; }
   .export-actions { display:flex; align-items:center; flex-wrap:nowrap; gap:8px; }
   .export-actions > span { margin-left:auto; order:2; white-space:nowrap; }
   .export-actions > button { order:1; }
 }
 @media screen {
-  .inventory-assignee-filter select { width:100%; min-height:44px; padding:8px; }
+  .inventory-assignee-filter select { width:100%; min-height:var(--input-min-height); padding:4px; }
 }
 @media screen and (max-width:374px) {
   .app .inventory-workflow-menu { padding:6px; gap:4px; }
@@ -138,7 +127,7 @@
   .spare-shipping-actions { display:flex; align-items:center; gap:6px; margin-top:10px; max-width:100%; overflow-x:auto; }
   .spare-shipping-actions > .field { display:flex; align-items:center; gap:6px; flex:none; min-width:0; margin:0; }
   .spare-shipping-actions > .field > span { white-space:nowrap; }
-  .spare-shipping-actions input { width:176px; height:44px; box-sizing:border-box; }
+  .spare-shipping-actions input { width:176px; height:var(--input-min-height); box-sizing:border-box; }
   .spare-shipping-actions > .btn { margin:0; }
 }
 @media screen and (max-width:1279px) {
@@ -215,10 +204,7 @@
  .app .task-card:not(.approved-delivery-card) .task-card-photo { width:100%; max-width:80px; }
 }
 
-/* The catalog switch stays at the lower right of the workflow selector. */
-@media (min-width:1280px) { .inventory-workflow-footer > .inventory-all-products { margin-left:auto; } }
 @media (max-width:1279px) {
- .inventory-workflow-footer > [data-status="all"] { grid-column:auto; }
  .inventory-workflow-footer > .inventory-all-products { order:9; grid-column:1; }
 }
 
@@ -231,23 +217,6 @@
   .app .delivery-navigation { flex-wrap:wrap; justify-content:flex-start; gap:0 20px; }
 }
 
-/* The work group leaves the existing Amazon return cell uncovered. */
-@media screen and (min-width:1280px) {
-  .app .inventory-workflow-menu > [data-status="work"] {
-    position:relative; width:240px !important; box-sizing:border-box; justify-self:start;
-    border:0; border-radius:0; background:var(--border);
-    clip-path:polygon(0 0,100% 0,100% 100%,146px 100%,146px calc(100% - 50px),0 calc(100% - 50px));
-  }
-  .app .inventory-workflow-menu > [data-status="work"]::before {
-    content:''; position:absolute; inset:1px; background:var(--surface-2);
-    clip-path:polygon(0 0,100% 0,100% 100%,146px 100%,146px calc(100% - 50px),0 calc(100% - 50px));
-  }
-  .app .inventory-workflow-menu > [data-status="work"][data-active="true"] { background:var(--accent); }
-  .app .inventory-workflow-menu > [data-status="work"][data-active="true"]::before { background:#dce2d3; }
-  .inventory-workflow-menu > [data-status="work"] > span { position:relative; }
-  .app .inventory-workflow-menu > [data-status="work"]:focus-visible::before { box-shadow:inset 0 0 0 2px var(--accent); }
-}
-
 @media screen and (max-width:374px) {
   .app .inventory-workflow-menu .btn { font-size:13px; }
 }
@@ -255,13 +224,13 @@
 /* Mobile search stays on one row, with compact text-sized outer controls. */
 @media screen and (max-width:1279px) {
   .app .delivery-inventory-search { grid-template-columns:max-content minmax(0,1fr) max-content; gap:6px; align-items:center; }
-  .app .delivery-inventory-search > select:first-child { grid-column:1; grid-row:1; width:72px; min-width:0; height:44px; box-sizing:border-box; padding-inline:5px; font-size:13px; }
+  .app .delivery-inventory-search > select:first-child { grid-column:1; grid-row:1; width:72px; min-width:0; box-sizing:border-box; padding-inline:2.5px; font-size:13px; }
   .app .delivery-inventory-search > select[data-search-field="sku"],
   .app .delivery-inventory-search > select[data-search-field="model"] { width:60px; }
   .app .delivery-inventory-search > select[data-search-field="tracking_no"] { width:86px; }
   .app .delivery-inventory-search > select[data-search-field="deliverer"] { width:98px; }
   .app .delivery-inventory-search > input,
-  .app .delivery-inventory-search > select[aria-label="納品担当者で検索"] { grid-column:2; grid-row:1; width:100%; min-width:0; height:44px; box-sizing:border-box; padding-inline:6px; font-size:13px; }
+  .app .delivery-inventory-search > select[aria-label="納品担当者で検索"] { grid-column:2; grid-row:1; width:100%; min-width:0; box-sizing:border-box; padding-inline:3px; font-size:13px; }
   .app .delivery-inventory-search > .inventory-multi-filter { grid-column:3; grid-row:1; width:max-content; }
   .app .delivery-inventory-search > .inventory-multi-filter > summary { display:flex; align-items:center; gap:4px; width:max-content; height:44px; box-sizing:border-box; padding:8px 6px; font-size:13px; white-space:nowrap; list-style:none; }
   .app .delivery-inventory-search > .inventory-multi-filter > summary::-webkit-details-marker { display:none; }
@@ -270,49 +239,35 @@
 }
 
 @media screen and (min-width:1280px) {
-  /* Shrink the selector by 380px without expanding the existing todo column. */
-  .delivery-inventory-workspace { padding-right:380px; }
-  .app .inventory-workflow-menu { grid-template-columns:106px 140px 94px 100px 100px; }
-  .inventory-workflow-menu > [data-status="work"] { grid-column:2 / 4; }
-  .inventory-workflow-menu > [data-status="selling"] { grid-column:4; }
-  .inventory-workflow-menu > [data-status="販売済"] { grid-column:5; }
-}
-
-/* Desktop auxiliary filters use three rows, 18px after sold. */
-@media screen and (min-width:1280px) {
-  .delivery-inventory-workspace { padding-right:128px; }
-  .app .inventory-workflow-menu { grid-template-columns:106px 140px 94px 100px 100px max-content; }
-  .app .delivery-inventory-workspace > .inventory-workflow-menu { align-self:start; grid-template-rows:repeat(4,30px) 44px; }
+  .app .delivery-inventory-workspace > .inventory-workflow-menu {
+    align-self:start; width:100%;
+    grid-template-columns:74px minmax(120px,max-content) minmax(24px,.6fr) repeat(2,minmax(56px,1fr)) max-content;
+    grid-template-rows:repeat(5,30px);
+  }
+  .inventory-workflow-menu > [data-status="work"] { grid-column:2 / 4; grid-row:1 / 5; }
+  .inventory-workflow-menu > [data-status="selling"] { grid-column:4; grid-row:1 / 5; }
+  .inventory-workflow-menu > [data-status="販売済"] { grid-column:5; grid-row:1 / 5; }
+  .inventory-workflow-menu > [data-status="Amazon返送依頼"] { grid-column:2; grid-row:5; }
   .inventory-workflow-footer {
     grid-column:6; grid-row:1 / 6; display:grid;
-    grid-template-columns:156px 72px; grid-template-rows:repeat(3,44px);
+    grid-template-columns:max-content max-content; grid-template-rows:repeat(3,30px);
     gap:6px; align-content:start; margin-left:12px;
   }
-  .app .inventory-workflow-footer > .btn { grid-column:1; width:100% !important; box-sizing:border-box; margin:0; }
   .inventory-workflow-footer > .inventory-all-products { grid-column:2; grid-row:1; }
   .inventory-workflow-footer > [data-status="all"] { grid-column:2; grid-row:2; }
-  .inventory-workflow-footer > [data-status="動作不良"] { grid-row:1; }
-  .inventory-workflow-footer > [data-status="返品処理"] { grid-row:2; }
-  .inventory-workflow-footer > [data-status="Amazon補填申請中"] { grid-row:3; }
-  .app .inventory-workflow-footer > :is(.inventory-all-products,[data-status="all"]) { grid-column:2; width:100% !important; justify-self:start; }
+  .inventory-workflow-footer > [data-status="動作不良"] { grid-column:1; grid-row:1; }
+  .inventory-workflow-footer > [data-status="返品処理"] { grid-column:1; grid-row:2; }
+  .inventory-workflow-footer > [data-status="Amazon補填申請中"] { grid-column:1; grid-row:3; }
 }
 
-/* Keep inventory rows anchored while sharing the desktop overview equally. */
+/* Keep inventory rows anchored and give the state filters more space than the todo list. */
 @media screen and (min-width:1280px) {
-  .delivery-inventory-workspace { grid-template-columns:repeat(2,minmax(0,1fr)); padding-right:0; height:263.2px; }
-  .delivery-inventory-sidebar { min-height:0; }
-  .delivery-inventory-sidebar .delivery-inventory-search { grid-template-columns:128px minmax(0,1fr) max-content; flex:none; height:44px; }
-  .delivery-inventory-sidebar .delivery-inventory-search > :is(select,input) { min-width:0; height:44px; box-sizing:border-box; }
+  .delivery-inventory-workspace { grid-template-columns:minmax(610px,3fr) minmax(0,2fr); height:263.2px; }
+  .delivery-inventory-sidebar .delivery-inventory-search { grid-template-columns:128px minmax(0,1fr) max-content; flex:none; }
+  .delivery-inventory-sidebar .delivery-inventory-search > :is(select,input) { min-width:0; box-sizing:border-box; }
   .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter > summary { white-space:nowrap; }
-  .delivery-inventory-sidebar .delivery-reply-tasks { flex:1 1 0; max-height:none !important; }
-  .app .delivery-inventory-workspace > .inventory-workflow-menu { width:100%; grid-template-columns:74px 112px minmax(24px,.6fr) minmax(56px,1fr) minmax(56px,1fr) 208px; }
-  .inventory-workflow-lane { font-size:13px; padding-left:10px; }
-  .app .inventory-workflow-menu > .btn { font-size:13px; padding-inline:4px !important; }
-  .app .inventory-workflow-menu > [data-status="work"] { width:100% !important; clip-path:polygon(0 0,100% 0,100% 100%,118px 100%,118px calc(100% - 50px),0 calc(100% - 50px)); }
-  .app .inventory-workflow-menu > [data-status="work"]::before { clip-path:polygon(0 0,100% 0,100% 100%,118px 100%,118px calc(100% - 50px),0 calc(100% - 50px)); }
-  .inventory-workflow-footer { grid-template-columns:130px 60px; }
-  .app .inventory-workflow-footer > .btn { font-size:13px; padding-inline:6px !important; }
-  .export-actions { width:calc((100% - 16px)/2); box-sizing:border-box; }
+  .delivery-inventory-sidebar .delivery-reply-tasks { max-height:none !important; }
+  .export-actions { width:calc((100% - 16px)*.6); box-sizing:border-box; }
 }
 @media screen and (min-width:1280px) and (max-width:1439px) {
   .delivery-inventory-workspace { height:331.6px; }
@@ -364,28 +319,13 @@
  .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .purchaser-comment { font-size:12px; line-height:18px; }
 }
 .work-date-field > span > button { width:36px; height:44px; display:grid; place-items:center; padding:0 !important; }
-.work-date-field > span > input[type="text"] { height:44px; }
+.work-date-field > span > input[type="text"] { height:var(--input-min-height); }
 @media screen and (max-width:1279px) {
  .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.copyable-text,.task-detail-field) > span:first-child { white-space:normal; overflow-wrap:anywhere; }
 }
 /* Keep the photo inside its own column beside the fault/compensation actions. */
 .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) :is(.task-card-photo-button,.task-card-photo) { width:80px; max-width:100%; }
 .app .task-card:not(.approved-delivery-card):is([data-item-status="動作不良"],[data-item-status="Amazon補填申請中"]) .task-card-photo { height:80px; }
-
-/* Six equal desktop status cells, retaining the card bounds and the sold/footer gap. */
-@media screen and (min-width:1280px) {
- .app .delivery-inventory-workspace > .inventory-workflow-menu {
-  --status-cell-width:calc((100% - 122px) / 6);
-  grid-template-columns:74px repeat(4,var(--status-cell-width)) calc(var(--status-cell-width) + var(--status-cell-width) + 18px);
- }
- .app .inventory-workflow-menu > .btn { white-space:normal; padding-block:4px; }
- .app .inventory-workflow-menu > [data-status="work"],
- .app .inventory-workflow-menu > [data-status="work"]::before {
-  clip-path:polygon(0 0,100% 0,100% 100%,calc((100% + 6px) / 2) 100%,calc((100% + 6px) / 2) calc(100% - 50px),0 calc(100% - 50px));
- }
- .app .inventory-workflow-menu > .inventory-workflow-footer { grid-template-columns:repeat(2,minmax(0,1fr)); min-width:0; }
- .app .inventory-workflow-footer > .btn { min-width:0; padding:4px !important; white-space:normal; }
-}
 
 @media screen {
  .app .delivery-inventory-search { height:auto; flex:none; }

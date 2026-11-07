@@ -19,7 +19,7 @@
   .app, .app:has(.invoices) { width:100%; max-width:none; padding:0 24px 96px; }
   .app > *, .app .card, .app fieldset, .app label { min-width:0; }
   .app input, .app select, .app textarea { min-width:0; max-width:100%; }
-  .app select, .app input:not([type=checkbox]):not([type=radio]):not([type=file]):not([aria-hidden=true]) { min-height:44px; }
+  .app select, .app input:not([type=checkbox]):not([type=radio]):not([type=file]):not([aria-hidden=true]) { min-height:var(--input-min-height); }
   .app .btn { white-space:nowrap; }
   .copy-icon-button { width:44px; height:44px; }
   .app .row, .app-switch-actions, .invoice-notification-actions { flex-wrap:nowrap; }
@@ -79,7 +79,7 @@
   .invoice-toolbar label > span > button { width:32px; }
   .invoice-extra { min-width:0; grid-template-columns:150px minmax(0,1fr) 60px 96px 80px; }
   .receipt-entry-row { min-width:0; grid-template-columns:150px minmax(0,1fr) 96px 74px 80px; }
-  .invoice-extra input, .receipt-entry-row input { padding-left:6px; padding-right:6px; }
+  :is(.invoice-extra,.receipt-entry-row) input:not([aria-hidden=true]) { padding-inline:3px; }
   .invoice-fields .btn { height:44px; }
   .invoice-auction-workdays > .row { display:grid; grid-template-columns:150px auto; justify-content:start; margin:8px 0; }
   .receipt-attachment-options { display:grid; grid-template-columns:auto auto; justify-content:start; }
@@ -147,7 +147,7 @@
   .photo-control-row > button:not(.photo-save-all) { grid-column:1 / -1; grid-row:3; font-size:14px; padding:8px 4px; }
   .product-photos .photos { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .description-options { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-  .description-options select, .description-options input { padding:8px 4px; }
+  .description-options select, .description-options input { padding:4px 2px; }
   .app input:not([type=checkbox]):not([type=radio]), .app select, .app textarea { font-size:16px; }
   .accessory-options { grid-template-columns:minmax(0,1fr); }
   .description-editor .row { grid-template-columns:minmax(0,1fr); }
@@ -167,12 +167,11 @@
   .invoice-toolbar > .invoice-settings-button { grid-column:3; grid-row:2; align-self:end; }
   .invoice-toolbar > .invoice-toolbar-actions { display:flex; grid-column:1 / -1; grid-row:3; justify-self:start; gap:8px; }
   .invoice-toolbar-actions:empty { display:none; }
-  .app .invoice-toolbar input:not([aria-hidden=true]), .app .invoice-toolbar select, .app .invoice-toolbar button { height:44px; min-height:44px; }
   .invoice-toolbar input[type="month"] { width:100%; }
   .invoice-toolbar label > span { width:100%; }
   .invoice-toolbar label > span:not(.invoice-month-control) > input:not([aria-hidden=true]) { flex:1 1 0; width:0; }
   .invoice-toolbar label > span > button { width:28px; }
-  .invoice-toolbar input, .invoice-toolbar select { padding:8px 4px; font-size:16px; }
+  .invoice-toolbar input:not([aria-hidden=true]), .invoice-toolbar select { padding:4px 2px; font-size:16px; }
   .invoice-toolbar > .btn, .invoice-toolbar-actions > .btn { font-size:14px; padding:8px 4px; }
   .invoice-extra { grid-template-columns:56px 96px minmax(0,1fr); gap:8px; }
   .invoice-extra-header { display:none; }
@@ -239,7 +238,7 @@
 }
 
 @media screen {
-  .app .invoice-toolbar input:not([aria-hidden=true]), .app .invoice-toolbar select, .app .invoice-toolbar button, .app .invoice-toolbar .invoice-month-value { box-sizing:border-box; height:44px; min-height:44px; }
+  .app .invoice-toolbar button { box-sizing:border-box; height:44px; min-height:44px; }
 }
 
 @media screen {
@@ -247,7 +246,7 @@
 }
 @media screen and (max-width:1279px) {
  .app .spare-search { grid-template-columns:108px minmax(0,1fr); }
- .app .spare-search > select:first-child { font-size:14px; padding-inline:6px; }
+ .app .spare-search > select:first-child { font-size:14px; padding-inline:3px; }
 }
 
 /* Keep the download control at the right edge for every product and packing panel. */
