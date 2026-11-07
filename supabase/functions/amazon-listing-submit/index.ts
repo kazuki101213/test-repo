@@ -19,6 +19,16 @@ export function listingBody(item:ListingItem,catalog?:Obj|null){
  return{productType:'PRODUCT',requirements:'LISTING_OFFER_ONLY',attributes};
 }
 function issues(data:Obj|null):string[]{return(Array.isArray(data?.issues)?data!.issues:[]).filter((v:Obj)=>v.severity==='ERROR').slice(0,5).map((v:Obj)=>{const code=/^[\w.-]{1,80}$/.test(v.code??'')?v.code:'ERROR';const message=typeof v.message==='string'&&!/token|secret|authorization|password|Bearer/i.test(v.message)?v.message.slice(0,450):'';return code+(message?'：'+message:'');});}
+function catalogAccoladeIssue(listing:Obj):boolean {
+ return !Object.hasOwn(listing.attributes??{},'product_accolade') &&
+  Array.isArray(listing.issues) && listing.issues.some((issue:Obj)=>issue.severity==='ERROR' && String(issue.code)==='100339' &&
+   (issue.attributeName==='product_accolade' || issue.attributeNames?.includes?.('product_accolade')));
+}
+export function listingIssueMessage(listing:Obj,asin:string):string {
+ const reported=issues(listing).join(' ');
+ if (!catalogAccoladeIssue(listing)) return reported;
+ return 'Amazonのカタログ項目「product_accolade」でエラー100339が出ています（ASIN '+asin+'）。この項目は今回の出品で送信していません。セラーセントラルで商品詳細ページの修正状況を確認してください。';
+}
 export function verifiedListing(listing:Obj,item:ListingItem):boolean{
  const summary=listing.summaries?.find((s:Obj)=>s.marketplaceId===marketplace);
  const attributes=listing.attributes??{},offers=(attributes.purchasable_offer??[]).filter((v:Obj)=>v.currency==='JPY'&&(!v.marketplace_id||v.marketplace_id===marketplace)&&(!v.audience||v.audience==='ALL'));
@@ -114,7 +124,7 @@ export async function reconcileReceipt(svc:any,input:Obj,connect=amazon){
   remote=await api.get(r.sku);
  }
  if(!remote)return waiting('同じSKUでAmazonに送信済みです。登録結果を確認中です。');
- if(issues(remote).length)throw new SafeError(422,'Amazonの商品登録にエラーがあります。'+issues(remote).join(' '));
+ if(issues(remote).length)throw new SafeError(422,'Amazonの商品登録にエラーがあります。'+listingIssueMessage(remote,r.asin));
  if(!verifiedListing(remote,target))return waiting(verificationNote(remote));
  let fingerprint=await photoFingerprint(images),photosVerified=verifiedImages(remote,images)||r.photo_fingerprint===fingerprint&&!!r.photos_verified_at&&Date.now()-Date.parse(r.photos_verified_at)<600000;
  if(!photosVerified){const result=await verifyAmazonPhotoCopies(remote,images,!r.photo_ids?.length);photosVerified=result.verified;if(result.verified&&result.order.some((n,i)=>n!==i)){ids=result.order.map(n=>ids[n]);images=offerImages(result.order.map(n=>signed[n].signedUrl));fingerprint=await photoFingerprint(images);}}
@@ -201,6 +211,14 @@ export async function inspectReceipt(svc:any,input:Obj,connect=amazon){
  const summarize=(remote:Obj|null)=>remote?{sku:remote.sku,summaries:remote.summaries,offers:remote.offers,fulfillmentAvailability:remote.fulfillmentAvailability,attributes:Object.fromEntries(['merchant_suggested_asin','condition_type','purchasable_offer','fulfillment_availability','merchant_shipping_group'].filter(key=>remote.attributes?.[key]).map(key=>[key,remote.attributes[key]])),issues:(remote.issues??[]).map((issue:Obj)=>({code:issue.code,severity:issue.severity,message:typeof issue.message==='string'&&!/token|secret|authorization|password|Bearer/i.test(issue.message)?issue.message.slice(0,500):'',attributeNames:issue.attributeNames,enforcements:issue.enforcements})),imageAttributes:Object.keys(remote.attributes??{}).filter(key=>/offer_image_locator/.test(key)),attributeNames:Object.keys(remote.attributes??{})}:null;
  const read=api.inspect??api.get;
  const original=await read(receipt.sku),currentListing=current.sku===receipt.sku?original:await read(current.sku);
+ let catalogAccolade:Obj|undefined;
+ if(input.inspectCatalogAccolade===true&&original&&catalogAccoladeIssue(original)){
+  const catalog=await api.catalog(receipt.asin);
+  if(catalog.asin!==receipt.asin)throw new SafeError(409,'商品カタログのASINが一致しません。');
+  const attribute=catalog.attributes?.product_accolade;
+  const attributeText=JSON.stringify(attribute??null);
+  catalogAccolade={present:attribute!==undefined,containsMarkup:/<\/?[a-z][^>]*>|&lt;\/?[a-z]|javascript:/i.test(attributeText)};
+ }
  const pricing=input.includePricing===true?await api.diagnosePrice(receipt.sku,receipt.asin,receipt.item_condition):undefined;
  const repair=typeof receipt.note==='string'&&receipt.note.startsWith('Amazon価格補正:')?JSON.parse(receipt.note.slice('Amazon価格補正:'.length)):null;
  const fba=input.includeFba===true&&/^FBA/.test(receipt.sales_channel)?await api.inspectFba(receipt.sku):undefined;
@@ -208,7 +226,7 @@ export async function inspectReceipt(svc:any,input:Obj,connect=amazon){
  let history:Obj[]|undefined,photoEvidence:Obj|undefined;
  if(input.includeHistory===true){const {data:rows,error}=await svc.from('amazon_listing_submissions').select('request_id,sku,state').eq('item_id',receipt.item_id).order('created_at',{ascending:false}).limit(20);if(error)throw new SafeError(503,'過去の登録履歴を確認できません。');history=[];for(const row of rows??[]){if(row.sku===receipt.sku)continue;history.push({...row,remote:summarize(await read(row.sku))});}}
  if(input.includePhotos===true){const {data:photos,error}=await svc.from('item_photos').select('id,storage_path').eq('item_id',receipt.item_id).eq('photo_kind','product').order('sort_order').order('created_at').limit(6);if(error)throw new SafeError(503,'写真を確認できません。');if(photos?.length){const {data:signed,error}=await svc.storage.from('item-photos').createSignedUrls(photos.map((p:Obj)=>p.storage_path),600);if(error||signed?.some((p:Obj)=>!p.signedUrl))throw new SafeError(503,'写真の照合に失敗しました。');const images=offerImages(signed.map((p:Obj)=>p.signedUrl));photoEvidence={copiedImages:original?await verifyAmazonPhotoCopies(original,images,true):null,photoIds:photos.map((p:Obj)=>p.id),originalVerified:!!original&&verifiedImages(original,images),currentVerified:!!currentListing&&verifiedImages(currentListing,images),slots:Object.entries(original?.attributes??{}).filter(([key])=>/image_locator/.test(key)).map(([slot,values]:[string,any])=>({slot,entries:values.map((value:Obj)=>({keys:Object.keys(value),marketplace:value.marketplace_id,host:(()=>{try{return new URL(value.media_location).hostname}catch{return null}})(),matches:photos.filter((p:Obj)=>typeof value.media_location==='string'&&decodeURI(value.media_location).includes(p.storage_path)).map((p:Obj)=>p.id)}))}))};}}
- return{receipt:{requestId:receipt.request_id,sku:receipt.sku,asin:receipt.asin,price:receipt.price,condition:receipt.item_condition,channel:receipt.sales_channel,state:receipt.state},current:{id:current.id,sku:current.sku,asin:current.asin,price:current.planned_price,condition:current.condition,channel:current.sales_channel,status:current.status},original:summarize(original),currentListing:summarize(currentListing),pricing,feed,history,photoEvidence,fba};
+ return{receipt:{requestId:receipt.request_id,sku:receipt.sku,asin:receipt.asin,price:receipt.price,condition:receipt.item_condition,channel:receipt.sales_channel,state:receipt.state},current:{id:current.id,sku:current.sku,asin:current.asin,price:current.planned_price,condition:current.condition,channel:current.sales_channel,status:current.status},original:summarize(original),currentListing:summarize(currentListing),pricing,feed,history,photoEvidence,fba,catalogAccolade};
 }
 // Explicit operator repair of an existing receipt, never used by automatic resume.
 // A durable compare-and-set reservation prevents retries from repeating a PATCH.
@@ -284,7 +302,7 @@ export async function handler(req:Request):Promise<Response>{
   if(body.action==='check'){
    let target=item;
    if(operation&&sameReceiptContent(item,operation)&&operation.seller_id===api.sellerId&&operation.sku!==item.sku){const {data:alias,error}=await svc.from('item_sku_aliases').select('item_id').eq('sku',operation.sku).maybeSingle();if(error||alias?.item_id!==item.id)throw new SafeError(409,'Amazon登録SKUと在庫の対応を確認できません。');target={...item,sku:operation.sku};}
-   const remote=await api.get(target.sku);return respond(200,{accountId,exists:!!remote,verified:!!remote&&verifiedListing(remote,target),state:operation?.state??null,note:remote?issues(remote).join(' ')||'AmazonにSKUの登録があります。':'AmazonにこのSKUはまだ登録されていません。'});
+   const remote=await api.get(target.sku);return respond(200,{accountId,exists:!!remote,verified:!!remote&&verifiedListing(remote,target),state:operation?.state??null,note:remote?listingIssueMessage(remote,target.asin??'')||'AmazonにSKUの登録があります。':'AmazonにこのSKUはまだ登録されていません。'});
   }
   const remote=await api.get(item.sku);
   if(item.status!=='商品登録前')throw new SafeError(409,'Amazonに登録がない場合は、出品完了を取り消してから出品してください。');
