@@ -32,13 +32,18 @@ export function listingImages(html:string,listing:NonNullable<Context['listing']
  const found:string[]=[];const add=(v:unknown)=>{const url=listingImageUrl(v,listing);if(url&&!found.includes(url))found.push(url);};
  // Product JSON-LD, never recommendation image URLs elsewhere in the document.
  const visit=(node:any)=>{if(Array.isArray(node)){node.forEach(visit);return;}if(!node||typeof node!=='object')return;
-  if([node['@type']].flat().includes('Product'))for(const v of [node.image].flat()){if(typeof v==='string')add(v);else if(v)add(v.url||v.contentUrl);}
+  const identity=node.url||node['@id'];
+  if([node['@type']].flat().includes('Product')&&(listing.channel==='メルカリ'||identity===listingPage(listing)))for(const v of [node.image].flat()){if(typeof v==='string')add(v);else if(v)add(v.url||v.contentUrl);}
   if(node['@graph'])visit(node['@graph']);};
  for(const match of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)){try{visit(JSON.parse(match[1]));}catch{/* Ignore unrelated invalid JSON. */}}
  // Mercari's path includes the exact listing ID, so it can also be extracted
  // from hydrated page data without accidentally using a recommendation.
  if(listing.channel==='メルカリ')for(const match of html.replace(/\\u002[Ff]|\\\//g,'/').matchAll(/https:\/\/static\.mercdn\.net\/item\/detail\/(?:orig|large)\/photos\/m\d+_\d+\.jpg(?:\?\d+)?/g))add(match[0]);
  if(!found.length)for(const tag of html.matchAll(/<meta\b[^>]*>/gi))if(/(?:property|name)=["']og:image["']/i.test(tag[0]))add(tag[0].match(/content=["']([^"']+)["']/i)?.[1]);
+ // Mercari's server-rendered page often exposes only the first photo. Read
+ // the bounded gallery under that verified exact-item image prefix; missing
+ // files are ignored by the downloader, not treated as guessed photo roles.
+ if(listing.channel==='メルカリ'&&found.length===1){const first=new URL(found[0]);for(let index=1;index<=20;index++){const url=new URL(first);url.pathname=url.pathname.replace(/_\d+\.jpg$/,`_${index}.jpg`);add(url.href);}}
  return found.slice(0,20);
 }
 export function parseSelection(output:any,count:number){

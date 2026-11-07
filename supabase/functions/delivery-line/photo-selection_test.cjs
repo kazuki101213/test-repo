@@ -40,7 +40,7 @@ test('Sources are exact listing IDs and trusted hosts; unrelated recommendations
  assert.equal(listingImages(`<img src="https://static.mercdn.net/item/detail/orig/photos/m11111111111_1.jpg">`,listing).length,0);
  const yahoo={...listing,channel:'ヤフオク',externalId:'d1249591152'},url='https://auctions.c.yimg.jp/images.auctions.yahoo.co.jp/image/fixture/item.jpg';
  assert.equal(listingPage(yahoo),'https://page.auctions.yahoo.co.jp/jp/auction/d1249591152');
- const html=`<script type="application/ld+json">${JSON.stringify({'@type':'Product',image:[url]})}</script><img src="https://auctions.c.yimg.jp/unrelated.jpg">`;
+ const html=`<script type="application/ld+json">${JSON.stringify({'@type':'Product',url:listingPage(yahoo),image:[url]})}</script><img src="https://auctions.c.yimg.jp/unrelated.jpg">`;
  assert.deepEqual(Array.from(listingImages(html,yahoo)),[url]);
 });
 test('Responses are byte bounded even when Content-Length is omitted',async()=>{await assert.rejects(boundedBytes(new Response(new Uint8Array(100)),10));});

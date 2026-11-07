@@ -39,6 +39,10 @@ do $$declare prepared jsonb;request uuid;r record;counted integer:=0;calls integ
   perform app.finish_delivery_line(r.id,r.lease,'sent',200);
  end loop;
  if counted<>1 then raise exception 'Ready photo-unselected request never reached dispatch';end if;
+ -- This fixture simulates the LINE consumer directly. Defer the independent
+ -- photo worker so its legitimate HTTP preparation is not mistaken for a push.
+ update app.line_photo_selections q set next_attempt_at=now()+interval '1 hour'
+ where q.item_id in(select id from app.items where lot_seq between 998771 and 998773);
  select count(*) into calls from line_patrol_http_calls;
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
  if prepared->>'queued'<>'0' or (select count(*) from app.seller_operations q join app.items i on i.id=q.item_id where i.lot_seq=998772)<>1 then raise exception 'Patrol duplicated a code request';end if;
