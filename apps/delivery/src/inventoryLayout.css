@@ -276,36 +276,29 @@
   .inventory-workflow-footer > [data-status="Amazon補填申請中"] { grid-column:1; grid-row:3; }
 }
 
-/* Keep inventory rows anchored and give the state filters more space than the todo list. */
+/* The left controls size these rows. The todo list scrolls within the same grid area. */
 @media screen and (min-width:1280px) {
-  .delivery-inventory-workspace { grid-template-columns:minmax(610px,3fr) minmax(0,2fr); height:263.2px; }
+  .delivery-inventory-workspace { grid-template-columns:minmax(610px,3fr) minmax(0,2fr); row-gap:6px; }
   .delivery-inventory-sidebar .delivery-inventory-search { grid-template-columns:128px minmax(0,1fr) max-content; flex:none; }
   .delivery-inventory-sidebar .delivery-inventory-search > :is(select,input) { min-width:0; box-sizing:border-box; }
   .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter > summary { white-space:nowrap; }
-  .delivery-inventory-sidebar .delivery-reply-tasks { max-height:none !important; }
   .export-actions { width:calc((100% - 16px)*.6); box-sizing:border-box; }
-}
-@media screen and (min-width:1280px) and (max-width:1439px) {
-  .delivery-inventory-workspace { height:331.6px; }
 }
 @media screen and (min-width:1280px) {
   .app .delivery-inventory-sidebar .delivery-inventory-search > :is(input,select[aria-label="納品担当者で検索"]) { grid-column:2; grid-row:1; width:100%; }
   .app .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:3; grid-row:1; width:max-content; }
   .app .delivery-inventory-sidebar .delivery-inventory-search > select:first-child { grid-column:1; grid-row:1; }
 }
-/* Keep search and state selection on the left, giving the right todo more height. */
 @media screen and (min-width:1280px) {
-  .delivery-inventory-workspace { grid-template-rows:44px minmax(0,1fr); row-gap:5.6px; }
+  .delivery-inventory-workspace { grid-template-rows:auto auto; }
   .delivery-inventory-sidebar { display:contents; }
   .app .delivery-inventory-sidebar .delivery-inventory-search { grid-column:1; grid-row:1; margin:0; }
   .app .delivery-inventory-workspace > .inventory-workflow-menu { grid-column:1; grid-row:2; }
-  .app .delivery-inventory-sidebar .delivery-task-heading { grid-column:2; grid-row:1; align-self:start; margin:0; }
-  .app .delivery-inventory-sidebar .delivery-reply-tasks { grid-column:2; grid-row:1 / -1; margin:28px 0 0; min-height:0; }
-}
-/* Use the heading and left-side action-row space without moving inventory cards. */
-@media screen and (min-width:1280px) {
- .app .delivery-inventory-sidebar .delivery-task-heading { display:none; }
- .app .delivery-inventory-sidebar .delivery-reply-tasks { margin:0; align-self:start; height:calc(100% + 54px); }
+  .app .delivery-inventory-sidebar .delivery-task-heading { display:none; }
+  .app .delivery-inventory-sidebar .delivery-reply-tasks {
+    grid-column:2; grid-row:1 / -1; align-self:stretch; contain:size;
+    margin:0; min-height:0; max-height:none !important;
+  }
 }
 
 /* Fault/compensation actions share one compact column, independent of the photo actions elsewhere. */
