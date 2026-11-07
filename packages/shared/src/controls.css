@@ -28,6 +28,7 @@
  :is(.layout,.app,.inventory-column-filter) input[type=search] { width:var(--search-field-width) !important; max-width:100%; flex:0 0 var(--search-field-width); box-sizing:border-box; }
  :is(.layout,.app) :is(select[aria-label*="検索項目"],.spare-search > select:first-of-type) { width:var(--search-item-width) !important; max-width:100%; flex:0 0 var(--search-item-width); box-sizing:border-box; }
  :is(.layout,.app) :is(.inventory-search,.delivery-inventory-search,.spare-search) { display:flex !important; flex-wrap:wrap; width:max-content; max-width:100%; align-items:center; }
+ :is(.layout,.app) .toolbar:has(> :is(input,select,.calendar-control)):not(:has(> label)) { align-items:center; }
  :is(.layout,.app) :is(.inventory-search,.delivery-inventory-search,.spare-search) > select:not(:first-of-type) { width:var(--search-field-width) !important; max-width:100%; flex:0 0 var(--search-field-width); }
  :is(.layout,.app) .toolbar:has(> input[type=search]) { display:flex !important; flex-wrap:wrap; align-items:center; }
  .layout .inventory-registration-fields > .inventory-product-search { grid-column:1 / -1; width:var(--search-field-width) !important; max-width:100%; }

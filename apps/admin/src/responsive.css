@@ -308,7 +308,7 @@
  .layout .daily-sales-range > .field { min-width:0; width:var(--date-field-width); max-width:100%; flex:0 0 var(--date-field-width); }
  .layout .daily-sales-range > .field > span:last-child { width:100%; margin-bottom:0; font-size:14px; }
  .layout .daily-sales-range input[type=text] { flex:1 1 0; width:0; min-width:0; box-sizing:border-box; }
- .layout .daily-sales-range > .btn { justify-self:start; }
+ .layout .daily-sales-range > .btn { justify-self:start; min-height:var(--input-min-height); }
 }
 /* Keep the common date width; neighboring controls wrap when space is limited. */
 @media screen and (max-width:1023px) {
