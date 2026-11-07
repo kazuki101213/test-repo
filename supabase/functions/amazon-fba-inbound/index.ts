@@ -153,6 +153,22 @@ export async function handler(req:Request):Promise<Response>{
    const input=await req.json().catch(()=>null);
    if(input?.action!=='connection'||!['FBA1','FBA2'].includes(input.account))return reply(400,{error:'操作を確認できません。'});
    const api=await amazonClient(input.account);
+   if(input.compareListing===true){
+    const inspect=async(path:string,query:Record<string,string>,field:string)=>{
+     try{
+      const result=await api.call(path,query);
+      return {status:200,valid:Array.isArray(result[field])};
+     }catch(error){
+      if(!(error instanceof AmazonError))throw error;
+      return {status:error.remoteStatus,code:error.code,requestId:error.requestId};
+     }
+    };
+    const [inboundResult,listingResult]=await Promise.all([
+     inspect(inbound+'/inboundPlans',{pageSize:'1'},'inboundPlans'),
+     inspect('/listings/2021-08-01/items/'+enc(api.sellerId),{marketplaceIds:marketplace,pageSize:'1'},'items'),
+    ]);
+    return reply(200,{account:input.account,inbound:inboundResult,listing:listingResult});
+   }
    const probe=await api.call(inbound+'/inboundPlans',{pageSize:'1'});
    if(!Array.isArray(probe.inboundPlans))throw new WorkflowError(502,'納品APIの応答を確認できません。');
    return reply(200,{connected:true,account:input.account});

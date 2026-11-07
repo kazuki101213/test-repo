@@ -37,6 +37,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   if(url.hostname==='labels.s3.amazonaws.com')return new Response('%PDF-test');
   equal(url.hostname,'sellingpartnerapi-fe.amazon.com');
   equal(new Headers(init?.headers).get('x-amz-access-token'),'for-fba2');
+  assert(/^\d{8}T\d{6}Z$/.test(new Headers(init?.headers).get('x-amz-date')??''),'SP-API requests include their UTC timestamp');
   remoteCalls++;requests.push({path,method,body});
   if(path.endsWith('/items/prepDetails')){
    equal(url.searchParams.getAll('mskus'),[sku]);

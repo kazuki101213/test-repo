@@ -6,7 +6,7 @@ const endpoint='https://sellingpartnerapi-fe.amazon.com';
 export const inbound='/inbound/fba/2024-03-20';
 export const expectedSeller={FBA1:'A1WI3OGPE43N2T',FBA2:'A3E7BXJWH9TP11'};
 export class AmazonError extends WorkflowError {
- constructor(public remoteStatus:number,message:string){super(remoteStatus===429?429:502,message);}
+ constructor(public remoteStatus:number,message:string,public requestId?:string,public code?:string){super(remoteStatus===429?429:502,message);}
 }
 export function amazonProblem(value:any) {
  const code=String(value?.code??'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,40);
@@ -24,12 +24,14 @@ export async function amazonClient(account:Account) {
   const url=new URL(endpoint+path);
   for(const [k,v] of Object.entries(query)) for(const value of (Array.isArray(v)?v:[v]))url.searchParams.append(k,value);
   let response:Response;
-  try {response=await fetch(url,{method,headers:{'Content-Type':'application/json','x-amz-access-token':accessToken,'User-Agent':'BussanDelivery/1.0 (Language=TypeScript; Platform=Supabase)'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(9000)});}
+  try {response=await fetch(url,{method,headers:{'Content-Type':'application/json','x-amz-access-token':accessToken,'x-amz-date':new Date().toISOString().replace(/[:-]|\.\d{3}/g,''),'User-Agent':'BussanDelivery/1.0 (Language=TypeScript; Platform=Supabase)'},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(9000)});}
   catch {throw new AmazonError(0,'Amazonに接続できません。時間をおいて結果を確認してください。');}
   const json=await response.json().catch(()=>null);
   if(!response.ok) throw new AmazonError(response.status,response.status===403
    ? `${account}のFBA納品APIへのアクセスがAmazonに拒否されました。アカウントの状態とアプリの権限を確認してください。`
-   : 'Amazon：'+((json?.errors??[]).map(amazonProblem).filter(Boolean).slice(0,2).join('／')||`応答 ${response.status}`));
+   : 'Amazon：'+((json?.errors??[]).map(amazonProblem).filter(Boolean).slice(0,2).join('／')||`応答 ${response.status}`),
+   response.headers.get('x-amzn-requestid')?.match(/^[\w-]{1,100}$/)?.[0],
+   String(json?.errors?.[0]?.code??response.headers.get('x-amzn-errortype')??'').match(/^[\w-]{1,80}$/)?.[0]);
   return json??{};
  }
  async function pages(path:string, field:string, query:Record<string,string>={}) {
