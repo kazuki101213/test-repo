@@ -1,5 +1,16 @@
 /* One screen-control palette and horizontal rhythm in both apps and at every width. */
 :root { --control-gap:8px; --calendar-gap:4px; --search-field-width:260px; --search-item-width:132px; --date-field-width:150px; }
+
+/* Match the compact listing and packing-photo buttons across the screen layouts. */
+@layer action-button-spacing {
+ @media screen {
+  :is(.btn,button.nav,.inventory-multi-filter > summary):not(:where(.receipt-camera-btn,.workflow-report-photo,.photo-save-all,.photo-review-icon,.seller-photo-order > .btn)) {
+   --action-button-min-height:28px;
+   padding:4px 6px !important;
+  }
+ }
+}
+
 @media screen {
  :is(.layout,.app,.inventory-column-filter,.workflow-confirmation) :is(div,span,form,fieldset,nav,label):has(> :is(button,.btn,input,select,textarea,.calendar-control,.colored-select,label:has(input,select,textarea))):not(.calendar-control):not(.calendar-month-field):not(.management-navigation):not(.delivery-navigation),
  :is(.layout,.app) :is(.inventory-controls,.invoice-extra-scroll,.registration-fields,.inventory-registration-fields,.inventory-full-edit-fields) {

@@ -34,7 +34,7 @@
   .layout > main { width:100%; padding:20px 24px 64px; }
   .layout main > *, .layout .card, .layout .grid > *, .layout fieldset, .layout label { min-width:0; }
   .layout main input, .layout main select, .layout main textarea { min-width:0; max-width:100%; }
-  .layout .btn, .layout .nav { min-height:44px; white-space:nowrap; }
+  .layout .btn, .layout .nav { min-height:var(--action-button-min-height,44px); white-space:nowrap; }
   .layout main input:not([type=checkbox]):not([type=radio]):not([type=hidden]), .layout main select { min-height:44px; }
   .layout main .btn { padding:8px 10px; }
   .layout .toolbar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:end; gap:8px; }
@@ -145,7 +145,7 @@
 }
 /* Keep the explicit grid rows, but size each command by its label. */
 @media screen {
-  .layout .btn, .layout button.nav { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:44px; padding-inline:12px !important; white-space:nowrap; }
+  .layout .btn, .layout button.nav { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:var(--action-button-min-height,44px); padding-inline:12px !important; white-space:nowrap; }
 }
 
 @media screen and (max-width:1023px) {
