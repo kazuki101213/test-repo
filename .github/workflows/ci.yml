@@ -38,6 +38,9 @@ jobs:
       - name: Accessory receipt parent readiness
         run: node --test scripts/extension-tests/accessory-receipt.test.mjs
 
+      - name: FBA納品の商品選択と担当権限
+        run: node scripts/verify-fba-selection.cjs
+
       - name: Yahoo buyer receipt resume safety
         run: node --test scripts/extension-tests/yahoo-workflow.test.mjs scripts/extension-tests/buyer-receipt-repair.test.mjs scripts/extension-tests/yahoo-rating-audit-runtime.test.mjs
 

@@ -12,12 +12,14 @@ import { disableDevicePush } from './push';
 import { useCompactBidViewport } from './hooks/useCompactBidViewport';
 
 const BidCalculator = lazy(() => import('./pages/BidCalculator'));
-type Tab = 'tasks' | 'spares' | 'invoices' | 'bid-calculator' | 'notifications';
+const FbaDelivery = lazy(() => import('./pages/FbaDelivery'));
+type Tab = 'tasks' | 'fba' | 'spares' | 'invoices' | 'bid-calculator' | 'notifications';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fbaSelectedIds,setFbaSelectedIds] = useState<string[]>([]);
   const [tab, setTab] = useState<Tab>(() => window.location.hash === '#bid-calculator' ? 'bid-calculator' : 'tasks');
   const [invoiceNavigation, setInvoiceNavigation] = useState<'busy' | 'dirty' | null>(null);
   const compactBidViewport = useCompactBidViewport();
@@ -58,6 +60,7 @@ export default function App() {
   }
 
   useEffect(() => { void refresh(); }, []);
+  useEffect(() => {setFbaSelectedIds([]);}, [session?.user.id]);
 
   if (!checked) return <div className="empty">読み込み中…</div>;
 
@@ -82,6 +85,7 @@ export default function App() {
       {error && <p className="error" role="alert">{error}</p>}
       <nav className="row invoice-tabs delivery-navigation no-print" aria-label="納品アプリのメニュー">
         <button className="btn ghost" data-tab="tasks" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'tasks' ? 'page' : undefined} onClick={() => navigate('tasks')}>在庫</button>
+        <button className="btn ghost" data-tab="fba" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'fba' ? 'page' : undefined} onClick={() => navigate('fba')}>FBA納品</button>
         <button className="btn ghost" data-tab="spares" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'spares' ? 'page' : undefined} onClick={() => navigate('spares')}>予備</button>
         <button className="btn ghost" data-tab="invoices" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => navigate('invoices')}>請求書・領収書</button>
         {['admin','purchaser'].includes(session.staff.role) && <button className="btn ghost" data-tab="bid-calculator" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'bid-calculator' ? 'page' : undefined} onClick={() => navigate('bid-calculator')}>入札計算ツール</button>}
@@ -91,7 +95,7 @@ export default function App() {
         <PushSettings key={session.user.id} userId={session.user.id} />
         <LineSettings key={`line-${session.user.id}`} userId={session.user.id} />
       </div>}
-      {tab === 'notifications' ? null : tab === 'bid-calculator' ? (['admin','purchaser'].includes(session.staff.role) ? <Suspense fallback={<p>計算ツールを読み込み中…</p>}><BidCalculator /></Suspense> : <p className="error" role="alert">入札計算ツールは管理者・仕入担当者向けです。全在庫を確認できる権限が必要です。</p>) : tab === 'tasks' ? <TaskList staff={session.staff} /> : tab === 'spares' ? <Spares staff={session.staff} /> : <Invoices key={session.user.id} staff={session.staff} onNavigationChange={setInvoiceNavigation} />}
+      {tab === 'notifications' ? null : tab === 'bid-calculator' ? (['admin','purchaser'].includes(session.staff.role) ? <Suspense fallback={<p>計算ツールを読み込み中…</p>}><BidCalculator /></Suspense> : <p className="error" role="alert">入札計算ツールは管理者・仕入担当者向けです。全在庫を確認できる権限が必要です。</p>) : tab === 'tasks' ? <TaskList staff={session.staff} selectedIds={fbaSelectedIds} onSelectionChange={setFbaSelectedIds} onFbaDelivery={()=>navigate('fba')} /> : tab === 'fba' ? <Suspense fallback={<p>納品する商品を読み込み中…</p>}><FbaDelivery key={session.user.id} staff={session.staff} itemIds={fbaSelectedIds} onSelectionChange={setFbaSelectedIds} onBack={()=>navigate('tasks')} /></Suspense> : tab === 'spares' ? <Spares staff={session.staff} /> : <Invoices key={session.user.id} staff={session.staff} onNavigationChange={setInvoiceNavigation} />}
     </div>
   );
 }
