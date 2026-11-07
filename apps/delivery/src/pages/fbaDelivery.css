@@ -19,3 +19,31 @@
  .fba-selection-quantity { grid-column:2; grid-row:2; font-size:12px; }
  .fba-remove-item { grid-column:2; grid-row:1; }
 }
+
+.fba-label-controls { border-top:1px solid var(--border); margin-top:12px; padding-top:10px; }
+.fba-label-controls h4 { margin:0 0 8px; }
+.fba-label-actions,.fba-label-dialog-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.fba-label-actions + .fba-label-actions { margin-top:8px; }
+.fba-label-actions label { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+.fba-label-actions a.btn { text-decoration:none; display:inline-flex; align-items:center; }
+.fba-label-controls p { margin:8px 0 0; }
+.fba-label-dialog { border:1px solid var(--border); border-radius:10px; color:var(--text); background:var(--surface); width:min(840px,94vw); max-height:88dvh; padding:12px; }
+.fba-label-dialog::backdrop { background:#0008; }
+.fba-label-dialog-actions { margin-bottom:8px; }
+.fba-label-paper { overflow:auto; }
+.fba-label-page { box-sizing:border-box; display:grid; grid-template-columns:repeat(3,66mm); grid-auto-rows:33.9mm; width:210mm; padding:12.9mm 6mm; background:#fff; color:#000; }
+.fba-product-label { box-sizing:border-box; min-width:0; display:flex; align-items:center; position:relative; border:1px dashed #d8d8d8; }
+.fba-label-identity { flex:1; min-width:0; padding:3.18mm 6.35mm 1mm; display:grid; gap:.2mm; font-size:8pt; line-height:1.12; text-align:center; }
+.fba-label-barcode { display:block; width:100%; height:11mm; margin-bottom:3.18mm; fill:#000; shape-rendering:crispEdges; }
+.fba-label-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fba-product-label img { width:13mm; height:15mm; object-fit:contain; margin-right:2mm; }
+.fba-print-copy { display:none; }
+@media print {
+  @page fbaLabels { size:A4; margin:0; }
+  body:has(.fba-print-copy) > :not(.fba-print-copy) { display:none !important; }
+  body:has(.fba-print-copy) { margin:0; padding:0; background:#fff; overflow:visible; }
+  .fba-label-dialog::backdrop { display:none; }
+  .fba-print-copy { display:block; page:fbaLabels; }
+  .fba-label-page + .fba-label-page { break-before:page; }
+  .fba-product-label { border-color:transparent; break-inside:avoid; }
+}

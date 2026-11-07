@@ -71,3 +71,6 @@ verify_jwt = false
 # Auth.getUser + active admin/assigned deliverer; durable Amazon verification before completion.
 [functions.amazon-listing-submit]
 verify_jwt = false
+
+[functions.amazon-fba-labels]
+verify_jwt = false

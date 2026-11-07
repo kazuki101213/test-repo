@@ -4,6 +4,7 @@ import type {DeliveryTask,Staff} from '@bussan/shared';
 import {fetchTask} from '../api';
 import {canSelectFbaItem,fbaSelectionAccount} from '../fbaSelection';
 import {deliveryErrorMessage} from '../errors';
+import FbaLabelControls from './FbaLabelControls';
 import './fbaDelivery.css';
 
 export default function FbaDelivery({staff,itemIds,onSelectionChange,onBack}:{staff:Staff;itemIds:string[];onSelectionChange:(ids:string[])=>void;onBack:()=>void}) {
@@ -38,6 +39,7 @@ export default function FbaDelivery({staff,itemIds,onSelectionChange,onBack}:{st
      <span className="fba-selection-assignee">{staffDisplayName(item.deliverer_name)||'未設定'}</span><span className="fba-selection-quantity">1点</span>
      <button type="button" className="fba-remove-item" aria-label={`${inventorySerial(item)}を選択から外す`} onClick={()=>onSelectionChange(itemIds.filter(id=>id!==item.id))}>×</button>
     </article>)}
+    {!loading && !error && <FbaLabelControls key={items.map(item=>item.id).join(',')} items={items}/>}
    </section>;
   })}
  </section>;
