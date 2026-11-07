@@ -19,7 +19,7 @@
   .app, .app:has(.invoices) { width:100%; max-width:none; padding:0 24px 96px; }
   .app > *, .app .card, .app fieldset, .app label { min-width:0; }
   .app input, .app select, .app textarea { min-width:0; max-width:100%; }
-  .app select, .app input:not([type=checkbox]):not([type=radio]):not([type=file]):not([aria-hidden=true]) { min-height:var(--input-min-height); }
+  .app select, .app input:not([type=checkbox]):not([type=radio]):not([type=file]):not([aria-hidden=true]):not(.calendar-native-picker) { min-height:var(--input-min-height); }
   .app .btn { white-space:nowrap; }
   .copy-icon-button { width:44px; height:44px; }
   .app .row, .app-switch-actions, .invoice-notification-actions { flex-wrap:nowrap; }
@@ -169,7 +169,7 @@
   .invoice-toolbar-actions:empty { display:none; }
   .invoice-toolbar input[type="month"] { width:100%; }
   .invoice-toolbar label > span { width:100%; }
-  .invoice-toolbar label > span:not(.invoice-month-control) > input:not([aria-hidden=true]) { flex:1 1 0; width:0; }
+  .invoice-toolbar label > span:not(.invoice-month-control) > input:not([aria-hidden=true],.calendar-native-picker) { flex:1 1 0; width:0; }
   .invoice-toolbar label > span > button { width:28px; }
   .invoice-toolbar input:not([aria-hidden=true]), .invoice-toolbar select { padding:4px 2px; font-size:16px; }
   .invoice-toolbar > .btn, .invoice-toolbar-actions > .btn { font-size:14px; padding:8px 4px; }

@@ -19,9 +19,9 @@
 .invoice-review .invoice-toolbar > label { width:170px; }
 .invoice-review-content { min-width:0; margin:0; padding:0; border:0; }
 .invoice-review .invoice-toolbar label > span:has(>input) { width:100%; }
-.invoice-review .invoice-toolbar label > span > input:not([aria-hidden=true]) { width:0; flex:1 1 auto; min-width:0; }
+.invoice-review .invoice-toolbar label > span > input:not([aria-hidden=true],.calendar-native-picker) { width:0; flex:1 1 auto; min-width:0; }
 .invoice-review .invoice-extra label > span:has(>input),.invoice-review .receipt-entry-row label > span:has(>input) { width:100%; }
-.invoice-review .invoice-extra label > span > input:not([aria-hidden=true]),.invoice-review .receipt-entry-row label > span > input:not([aria-hidden=true]) { width:0; flex:1 1 auto; min-width:0; }
+.invoice-review .invoice-extra label > span > input:not([aria-hidden=true],.calendar-native-picker),.invoice-review .receipt-entry-row label > span > input:not([aria-hidden=true],.calendar-native-picker) { width:0; flex:1 1 auto; min-width:0; }
 @media screen {
  .invoice-review :is(.invoice-toolbar,.invoice-extra,.receipt-entry-row) .btn:not(.receipt-camera-btn) { align-self:center; height:auto; min-height:var(--action-button-min-height,42px); }
 }
