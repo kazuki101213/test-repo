@@ -35,7 +35,7 @@
   .layout main > *, .layout .card, .layout .grid > *, .layout fieldset, .layout label { min-width:0; }
   .layout main input, .layout main select, .layout main textarea { min-width:0; max-width:100%; }
   .layout .btn, .layout .nav { min-height:var(--action-button-min-height,44px); white-space:nowrap; }
-  .layout main input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([aria-hidden=true]), .layout main select { min-height:var(--input-min-height); }
+  .layout main input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([aria-hidden=true]):not(.calendar-native-picker), .layout main select { min-height:var(--input-min-height); }
   .layout main .btn { padding:8px 10px; }
   .layout .toolbar { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); align-items:end; gap:8px; }
   .layout .toolbar > :empty:not(input):not(button) { display:none; }
@@ -308,20 +308,17 @@
  .layout .daily-sales-range > .field { min-width:0; width:var(--date-field-width); max-width:100%; flex:0 0 var(--date-field-width); }
  .layout .daily-sales-range > .field > span:last-child { width:100%; margin-bottom:0; font-size:14px; }
  .layout .daily-sales-range input[type=text] { flex:1 1 0; width:0; min-width:0; box-sizing:border-box; }
- .layout .daily-sales-range button[title] { height:44px; box-sizing:border-box; }
  .layout .daily-sales-range > .btn { justify-self:start; }
 }
 /* Keep the common date width; neighboring controls wrap when space is limited. */
 @media screen and (max-width:1023px) {
  .layout .daily-sales-range > .field > span:last-child { font-size:12px; }
  .layout .daily-sales-range input[type=text] { padding-inline:1.5px; }
- .layout .daily-sales-range button[title] { width:24px; padding-inline:0 !important; }
  .layout .daily-sales .daily-sales-range > .btn { font-size:12px; padding-inline:4px; }
 }
 @media screen and (max-width:359px) {
  .layout .daily-sales-range > .field > span:last-child { font-size:11px; }
  .layout .daily-sales-range input[type=text] { padding-inline:.5px; }
- .layout .daily-sales-range button[title] { width:20px; }
  .layout .daily-sales .daily-sales-range > .btn { font-size:11px; padding-inline:2px; }
 }
 @media screen {
