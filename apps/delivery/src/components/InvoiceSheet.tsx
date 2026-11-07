@@ -26,13 +26,17 @@ export function groupedInvoiceLines(snapshot: InvoiceSnapshot, extras: InvoiceLi
 const money = (value: number) => yen(Number.isFinite(value) ? value : 0);
 const shortDate = (date: string | null) => date ? date.slice(5).replace('-', '/') : '';
 
+function BankValue({ value }: { value: string }) {
+  return <td><span className="invoice-bank-value"><span>{value}</span></span></td>;
+}
+
 function Bank({ details: p }: { details: InvoiceDetails }) {
-  return <table className="invoice-bank-table"><colgroup><col style={{ width: '20%' }} /><col style={{ width: '30%' }} /><col style={{ width: '22%' }} /><col style={{ width: '28%' }} /></colgroup><tbody>
+  return <table className="invoice-bank-table"><colgroup><col style={{ width: '12%' }} /><col style={{ width: '37%' }} /><col style={{ width: '14%' }} /><col style={{ width: '37%' }} /></colgroup><tbody>
     <tr><th colSpan={4}>振込先</th></tr>
-    <tr><td>銀行名</td><td>{p.bank}</td><td>銀行コード</td><td>{p.bank_code}</td></tr>
-    <tr><td>支店名</td><td>{p.branch}</td><td>店番</td><td>{p.branch_code}</td></tr>
-    <tr><td>口座種別</td><td>{p.account_type}</td><td>口座番号</td><td>{p.account_number}</td></tr>
-    <tr><td>名前</td><td>{p.holder}</td><td>フリガナ</td><td>{p.holder_kana}</td></tr>
+    <tr><td>銀行名</td><BankValue value={p.bank} /><td>銀行コード</td><BankValue value={p.bank_code} /></tr>
+    <tr><td>支店名</td><BankValue value={p.branch} /><td>店番</td><BankValue value={p.branch_code} /></tr>
+    <tr><td>口座種別</td><BankValue value={p.account_type} /><td>口座番号</td><BankValue value={p.account_number} /></tr>
+    <tr><td>名前</td><BankValue value={p.holder} /><td>フリガナ</td><BankValue value={p.holder_kana} /></tr>
   </tbody></table>;
 }
 
@@ -71,6 +75,11 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
       if (!active) return;
       const first = element.querySelector<HTMLElement>('.invoice-sheet');
       if (!first || !first.offsetWidth) return;
+      for (const cell of element.querySelectorAll<HTMLElement>('.invoice-bank-value')) {
+        const text = cell.firstElementChild as HTMLElement;
+        const width = text.offsetWidth;
+        text.style.transform = width > cell.clientWidth ? `scaleX(${cell.clientWidth / width})` : '';
+      }
       const css = getComputedStyle(first);
       const usable = first.offsetWidth * 270 / 190 - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom) - 4;
       const heading = height(first.querySelector('.document-heading'));
