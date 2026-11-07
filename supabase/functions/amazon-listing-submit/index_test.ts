@@ -1,9 +1,56 @@
-import {handler,listingBody,verifiedListing,offerImages,verifiedImages,type ListingItem} from './index.ts';
+import {handler,listingBody,verifiedListing,offerImages,verifiedImages,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,type ListingItem} from './index.ts';
 const assert=(v:unknown,m='assertion failed')=>{if(!v)throw Error(m)};
 const id='11111111-1111-4111-8111-111111111111',requestId='22222222-2222-4222-8222-222222222222',market='A1VC38T7YXB528';
 const item=():ListingItem=>({id,sku:'100000-AAAA-20261106-35',asin:'B015INS3IE',condition:'非常に良い',description:'説明\\n本文',planned_price:400,sales_channel:'FBA2',status:'商品登録前',is_accessory:false,deliverer_id:'staff',purchased_at:'2026-10-01'});
 const photoId='55555555-5555-4555-8555-555555555555',photoUrl='https://test.supabase.co/storage/v1/object/sign/item-photos/photo.jpg?token=test';
-const listing=(i=item())=>({sku:i.sku,summaries:[{marketplaceId:market,productType:'HVAC_AIR_FILTER',asin:i.asin,conditionType:'used_very_good'}],attributes:{...listingBody(i).attributes,...offerImages([photoUrl])},issues:[]});
+const listing=(i=item())=>({sku:i.sku,summaries:[{marketplaceId:market,productType:'HVAC_AIR_FILTER',asin:i.asin,conditionType:'used_very_good'}],offers:[{marketplaceId:market,offerType:'B2C',price:{currencyCode:'JPY',amount:i.planned_price}}],attributes:{...listingBody(i).attributes,...offerImages([photoUrl])},issues:[]});
+Deno.test('in-stock FBM requires an effective B2C price; stored attributes alone cannot complete listing',()=>{
+ const i={...item(),sales_channel:'自己発送2'},remote=listing(i);
+ assert(verifiedListing(remote,i));
+ for(const offers of[[],[{marketplaceId:market,offerType:'B2C',price:{currencyCode:'JPY',amount:0}}],[{marketplaceId:market,offerType:'B2B',price:{currencyCode:'JPY',amount:400}}]]){
+  remote.offers=offers;assert(effectivePrice(remote)===null);assert(!verifiedListing(remote,i));
+ }
+ assert(verifiedListing({...listing(),offers:[]},item()),'FBA stock not received must not require a live offer');
+});
+Deno.test('receipt price patch preserves business offers and price rules and uses actual product type',()=>{
+ const remote=listing();Object.assign(remote.attributes.purchasable_offer[0],{minimum_seller_allowed_price:[{schedule:[{value_with_tax:300}]}],automated_pricing_merchandising_rule_plan:[{value:'rule'}]});
+ (remote.attributes.purchasable_offer as any[]).push({audience:'B2B',marketplace_id:market,currency:'JPY',our_price:[{schedule:[{value_with_tax:380}]}]});
+ const before=JSON.stringify(remote),patch=receiptPricePatch(remote,390);
+ assert(patch.productType==='HVAC_AIR_FILTER');assert(patch.patches.length===1&&patch.patches[0].path==='/attributes/purchasable_offer');
+ assert(patch.patches[0].value[0].our_price[0].schedule[0].value_with_tax===390);assert(patch.patches[0].value[1].our_price[0].schedule[0].value_with_tax===380);assert(patch.patches[0].value[0].minimum_seller_allowed_price[0].schedule[0].value_with_tax===300);assert(JSON.stringify(remote)===before);
+ for(const price of[0,-1,1.5]){let rejected=false;try{receiptPricePatch(remote,price)}catch{rejected=true}assert(rejected);}
+});
+for(const mode of['accepted','timeout','concurrent','stale','wrongSku','failed','alreadyLive'])Deno.test('receipt price repair '+mode,async()=>{
+ const current={...item(),sku:'100001-AAAA-20261106-34',sales_channel:'自己発送2',planned_price:390},r={request_id:requestId,item_id:id,sku:'100001-AAAA-20261106-40',asin:current.asin,price:390,item_condition:current.condition,sales_channel:current.sales_channel,seller_id:'A3E7BXJWH9TP11',state:mode==='failed'?'failed':'accepted',note:'original receipt'};
+ let writes=0,previews=0,itemReads=0;const original=listing({...current,sku:r.sku});if(mode!=='alreadyLive')original.offers=[];
+ const svc={from(table:string){let update:any=null,oldNote:any=undefined;const q:any={select(){return q},eq(k:string,v:unknown){if(k==='note')oldNote=v;return q},is(){return q},update(v:any){assert(table==='amazon_listing_submissions','must not mutate inventory');update=v;return q},maybeSingle:async()=>{if(update){if(mode==='concurrent'||oldNote!==r.note)return{data:null};r.note=update.note;return{data:{request_id:requestId}};}return{data:r}},single:async()=>({data:{...current,...(mode==='stale'&&++itemReads>1?{planned_price:500}:{})}}),then(resolve:any){if(update&&oldNote===r.note)r.note=update.note;return Promise.resolve({data:null}).then(resolve)}};return q;}};
+ const api={sellerId:r.seller_id,get:async()=>original,patchPrice:async(sku:string,payload:any,preview=false)=>{assert(sku===r.sku&&sku!==current.sku);assert(payload.patches[0].value[0].our_price[0].schedule[0].value_with_tax===390);if(preview){previews++;return{status:'VALID'}}writes++;assert(r.note.startsWith('Amazon価格補正:'),'durable reservation before live write');if(mode==='timeout')throw Error('timeout');return{status:'ACCEPTED',submissionId:'repair-1'}}};
+ const input={action:'repair-receipt-price',itemId:id,requestId,expectedSku:mode==='wrongSku'?current.sku:r.sku,expectedCurrentSku:current.sku,expectedPrice:390};
+ let result:any;try{result=await repairReceiptPrice(svc,input,async()=>api as any);}catch{assert(!['accepted','alreadyLive'].includes(mode));}
+ if(mode==='accepted'){assert(result.accepted&&!result.verified&&result.written);assert(writes===1);await repairReceiptPrice(svc,input,async()=>api as any);assert(writes===1&&previews===1,'retry must read only');}
+ else if(mode==='timeout'){assert(writes===1);await repairReceiptPrice(svc,input,async()=>api as any);assert(writes===1);}
+ else assert(writes===0);
+ if(mode==='alreadyLive')assert(result.verified&&previews===0);
+});
+Deno.test('Internal inspection reads original receipt SKU and current SKU without writes or photo URLs',async()=>{
+ const current={...item(),sku:'100001-AAAA-20261106-34'},receipt={request_id:requestId,item_id:id,sku:'100001-AAAA-20261106-40',asin:current.asin,price:390,item_condition:current.condition,sales_channel:'自己発送2',seller_id:'A3E7BXJWH9TP11',state:'accepted'};
+ const svc={from(table:string){const query={select(){return query},eq(){return query},maybeSingle:()=>Promise.resolve({data:receipt}),single:()=>Promise.resolve({data:current})};assert(['items','amazon_listing_submissions'].includes(table));return query;}};
+ const calls:string[]=[];const result=await inspectReceipt(svc,{action:'inspect-receipt',itemId:id,requestId},async()=>({sellerId:receipt.seller_id,get:async(sku:string)=>{calls.push(sku);return{...listing(current),sku};}}) as any);
+ assert(calls.join(',')===[receipt.sku,current.sku].join(','));assert(result.receipt.price===390);assert(!JSON.stringify(result).includes('token=test'));
+});
+Deno.test('Internal inspection rejects cancelled receipt and wrong action before Amazon',async()=>{
+ let calls=0;const svc={from(){const q={select(){return q},eq(){return q},maybeSingle:()=>Promise.resolve({data:{state:'failed'}})};return q;}};
+ for(const action of['inspect-receipt','submit']){try{await inspectReceipt(svc,{action,itemId:id,requestId},async()=>{calls++;throw Error('must not connect')});throw Error('should reject');}catch(e){assert((e as Error).message!=='should reject');}}assert(calls===0);
+});
+Deno.test('private receipt actions reject missing or wrong dispatcher credentials before reading inventory',async()=>{
+ const original=globalThis.fetch,keys=['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY'],saved=keys.map(k=>Deno.env.get(k));let calls=0;
+ try{
+  Deno.env.set('SUPABASE_URL','https://test.supabase.co');Deno.env.set('SUPABASE_SERVICE_ROLE_KEY','test-service');
+  globalThis.fetch=(async(input:RequestInfo|URL)=>{calls++;assert(String(input).includes('/rpc/delivery_push_config'));return new Response(JSON.stringify({delivery_push_dispatch_token:'private-dispatch'}),{headers:{'content-type':'application/json'}})}) as typeof fetch;
+  for(const value of['','wrong']){const r=await handler(new Request('https://local',{method:'POST',headers:{'x-delivery-dispatch':value},body:JSON.stringify({action:'repair-receipt-price',itemId:id,requestId})}));assert(r.status===401);assert(!JSON.stringify(await r.json()).includes('private-dispatch'));}
+  const r=await handler(new Request('https://local',{method:'POST',body:JSON.stringify({action:'repair-receipt-price',itemId:id,requestId})}));assert(r.status===401);assert(calls===2);
+ }finally{globalThis.fetch=original;keys.forEach((k,i)=>saved[i]===undefined?Deno.env.delete(k):Deno.env.set(k,saved[i]!));}
+});
 Deno.test('offer uses selected seller/ASIN/price/condition and FBA has no invented quantity',()=>{const fba=listingBody(item());assert(fba.attributes.fulfillment_availability[0].fulfillment_channel_code==='AMAZON_JP');assert(!('quantity'in fba.attributes.fulfillment_availability[0]));assert(fba.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax===400);assert(fba.attributes.condition_note[0].value==='説明\n本文');const self=listingBody({...item(),sales_channel:'自己発送2'});assert(self.attributes.fulfillment_availability[0].quantity===1);assert(self.attributes.fulfillment_availability[0].fulfillment_channel_code==='DEFAULT')});
 Deno.test('ASIN safety values are copied without inventing missing declarations',()=>{const empty=listingBody(item(),{attributes:{}}).attributes;assert(!('batteries_required'in empty));assert(!('supplier_declared_dg_hz_regulation'in empty));const known=listingBody(item(),{attributes:{batteries_required:[{value:false}],supplier_declared_dg_hz_regulation:[{value:'not_applicable'}]}}).attributes;assert(known.batteries_required[0].value===false);assert(known.supplier_declared_dg_hz_regulation[0].value==='not_applicable')});
 Deno.test('verification checks SKU, ASIN, price, condition, channel and asynchronous issues',()=>{for(const change of ['sku','asin','price','condition','fulfillment','error']){const x=listing();if(change==='sku')x.sku='wrong';if(change==='asin')x.summaries[0].asin='B000WRONG1';if(change==='price')x.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax=401;if(change==='condition')x.summaries[0].conditionType='new_new';if(change==='fulfillment')x.attributes.fulfillment_availability=[{fulfillment_channel_code:'DEFAULT'}];if(change==='error')(x.issues as any[]).push({severity:'ERROR',code:'123',message:'missing data'});assert(!verifiedListing(x,item()),change)}assert(verifiedListing(listing(),item()))});
