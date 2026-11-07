@@ -7,14 +7,13 @@
   .app .delivery-navigation > .btn[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
   .topbar { position:static; border:0; background:transparent; }
   .delivery-inventory-workspace, .delivery-inventory-sidebar { display:contents; }
-  .app .inventory-workflow-menu { display:grid; gap:6px; padding:12px; align-content:center; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:visible; }
-  .inventory-workflow-lane { height:30px; align-self:center; grid-column:1; position:relative; display:flex; align-items:center; padding-left:16px; font-size:15px; font-weight:400; white-space:nowrap; }
-  .inventory-workflow-lane::before { content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:3px; background:var(--lane-color); }
-  .inventory-workflow-lane[data-lane="0"] { grid-row:1; --lane-color:#71836a; }
-  .inventory-workflow-lane[data-lane="1"] { grid-row:2; --lane-color:#789ac8; }
-  .inventory-workflow-lane[data-lane="2"] { grid-row:3; --lane-color:#c37c7c; }
-  .inventory-workflow-lane[data-lane="3"] { grid-row:4; --lane-color:#c79c44; }
-  .inventory-workflow-lane[data-lane="4"] { grid-row:5; --lane-color:#a18abf; }
+  .app .inventory-workflow-menu { --workflow-lane-height:30px; --workflow-row-gap:6px; display:grid; gap:var(--workflow-row-gap); padding:12px; align-content:center; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:visible; }
+  .inventory-workflow-lane { height:var(--workflow-lane-height); grid-column:1; display:flex; align-items:center; justify-content:center; border-radius:6px; font-size:12px; white-space:nowrap; }
+  .inventory-workflow-lane[data-lane="0"] { grid-row:1; }
+  .inventory-workflow-lane[data-lane="1"] { grid-row:2; }
+  .inventory-workflow-lane[data-lane="2"] { grid-row:3; }
+  .inventory-workflow-lane[data-lane="3"] { grid-row:4; }
+  .inventory-workflow-lane[data-lane="4"] { grid-row:5; }
   .app .inventory-workflow-menu .btn { display:inline-flex; align-items:center; justify-content:center; align-self:center; justify-self:stretch; width:100% !important; min-width:0; height:var(--action-button-min-height,28px); min-height:var(--action-button-min-height,28px); margin:0; font-size:13px; font-weight:400; line-height:1.35; white-space:nowrap; }
   .inventory-mobile-label { display:none; }
   .task-product-summary { display:grid; grid-template-columns:minmax(0,480px) minmax(0,1fr); gap:24px; align-items:start; }
@@ -240,13 +239,30 @@
 
 @media screen and (min-width:1280px) {
   .app .delivery-inventory-workspace > .inventory-workflow-menu {
+    --return-lane-width:120px;
+    --work-notch-width:calc(var(--return-lane-width) + var(--control-gap));
+    --work-notch-height:calc(var(--workflow-lane-height) + var(--workflow-row-gap));
     align-self:start; width:100%;
-    grid-template-columns:74px minmax(120px,max-content) minmax(24px,.6fr) repeat(2,minmax(56px,1fr)) max-content;
-    grid-template-rows:repeat(5,30px);
+    grid-template-columns:74px var(--return-lane-width) minmax(24px,.6fr) repeat(2,minmax(56px,1fr)) max-content;
+    grid-template-rows:repeat(5,var(--workflow-lane-height));
   }
-  .inventory-workflow-menu > [data-status="work"] { grid-column:2 / 4; grid-row:1 / 5; }
-  .inventory-workflow-menu > [data-status="selling"] { grid-column:4; grid-row:1 / 5; }
-  .inventory-workflow-menu > [data-status="販売済"] { grid-column:5; grid-row:1 / 5; }
+  .app .inventory-workflow-menu > :is([data-status="work"],[data-status="selling"],[data-status="販売済"]) {
+    grid-row:1 / 6; align-self:stretch; height:auto;
+  }
+  .inventory-workflow-menu > [data-status="work"] {
+    grid-column:2 / 4;
+    position:relative;
+    clip-path:polygon(0 0,100% 0,100% 100%,var(--work-notch-width) 100%,var(--work-notch-width) calc(100% - var(--work-notch-height)),0 calc(100% - var(--work-notch-height)));
+    outline-offset:-3px;
+  }
+  .inventory-workflow-menu > [data-status="work"]::before {
+    content:''; position:absolute; pointer-events:none; left:-1px; bottom:-1px; box-sizing:border-box;
+    width:calc(var(--work-notch-width) + 1px); height:calc(var(--work-notch-height) + 1px);
+    border-top:1px solid; border-right:1px solid; border-color:inherit;
+  }
+  .inventory-workflow-menu > [data-status="work"] > span { transform:translateY(calc(var(--work-notch-height) / -2)); }
+  .inventory-workflow-menu > [data-status="selling"] { grid-column:4; }
+  .inventory-workflow-menu > [data-status="販売済"] { grid-column:5; }
   .inventory-workflow-menu > [data-status="Amazon返送依頼"] { grid-column:2; grid-row:5; }
   .inventory-workflow-footer {
     grid-column:6; grid-row:1 / 6; display:grid;
@@ -276,7 +292,6 @@
   .app .delivery-inventory-sidebar .delivery-inventory-search > :is(input,select[aria-label="納品担当者で検索"]) { grid-column:2; grid-row:1; width:100%; }
   .app .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter { grid-column:3; grid-row:1; width:max-content; }
   .app .delivery-inventory-sidebar .delivery-inventory-search > select:first-child { grid-column:1; grid-row:1; }
-  .inventory-workflow-lane { font-size:12px; padding-left:8px; }
 }
 /* Keep search and state selection on the left, giving the right todo more height. */
 @media screen and (min-width:1280px) {
