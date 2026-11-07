@@ -17218,7 +17218,7 @@ end $$;
 notify pgrst,'reload schema';
 
 
--- ▼▼▼ 20261107105358_delivery_invoice_category_rates.sql ▼▼▼
+-- ▼▼▼ 20261107110609_delivery_invoice_category_rates.sql ▼▼▼
 
 -- These rates are administered separately from the self-editable invoice profile.
 alter table app.delivery_invoice_profiles add column category_rates jsonb;

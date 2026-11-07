@@ -19,12 +19,12 @@ export async function buildInvoicePdf(elements: HTMLElement[], files: InvoiceRec
         resetPreview(doc);
         clone.style.margin = '0';
         // Use the preview's photo slots with an aspect-preserving background during capture.
-        for (const image of clone.querySelectorAll<HTMLImageElement>('.receipt-photo-sheet figure img')) {
+        clone.querySelectorAll<HTMLImageElement>('.receipt-photo-sheet figure img').forEach(image => {
           const photo = doc.createElement('div');
           photo.style.cssText = 'flex:1; min-height:0; width:100%; background-size:contain; background-repeat:no-repeat; background-position:center';
           photo.style.backgroundImage = 'url(' + JSON.stringify(image.currentSrc || image.src) + ')';
           image.replaceWith(photo);
-        }
+        });
       },
     });
     const image = element.classList.contains('receipt-photo-sheet')
