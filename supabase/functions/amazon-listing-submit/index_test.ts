@@ -1,9 +1,37 @@
-import {handler,listingBody,verifiedListing,offerImages,verifiedImages,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,type ListingItem} from './index.ts';
+import {handler,listingBody,verifiedListing,offerImages,verifiedImages,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,type ListingItem} from './index.ts';
+import {photographSignature,samePhotograph,verifyAmazonPhotoCopies} from '../_shared/amazonImageVerification.ts';
+import jpeg from 'npm:jpeg-js@0.4.4';
 const assert=(v:unknown,m='assertion failed')=>{if(!v)throw Error(m)};
 const id='11111111-1111-4111-8111-111111111111',requestId='22222222-2222-4222-8222-222222222222',market='A1VC38T7YXB528';
 const item=():ListingItem=>({id,sku:'100000-AAAA-20261106-35',asin:'B015INS3IE',condition:'非常に良い',description:'説明\\n本文',planned_price:400,sales_channel:'FBA2',status:'商品登録前',is_accessory:false,deliverer_id:'staff',purchased_at:'2026-10-01'});
 const photoId='55555555-5555-4555-8555-555555555555',photoUrl='https://test.supabase.co/storage/v1/object/sign/item-photos/photo.jpg?token=test';
 const listing=(i=item())=>({sku:i.sku,summaries:[{marketplaceId:market,productType:'HVAC_AIR_FILTER',asin:i.asin,conditionType:'used_very_good'}],offers:[{marketplaceId:market,offerType:'B2C',price:{currencyCode:'JPY',amount:i.planned_price}}],attributes:{...listingBody(i).attributes,...offerImages([photoUrl])},issues:[]});
+Deno.test('Amazon recompressed and resized photographs verify by content, including legacy submitted order',async()=>{
+ const raster=(size:number,reverse=false)=>{const data=new Uint8Array(size*size*4);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const k=(y*size+x)*4;data[k]=reverse?20:210;data[k+1]=x<size/2?40:150;data[k+2]=y<size/2?220:20;data[k+3]=255;}return{data,width:size,height:size};};
+ const one=raster(192),two=raster(192,true);assert(!samePhotograph(photographSignature(one),photographSignature(two)));
+ const bytes=new Map([['https://approved.example/a.jpg',jpeg.encode(one,95).data],['https://approved.example/b.jpg',jpeg.encode(two,95).data],['https://m.media-amazon.com/a.jpg',jpeg.encode(raster(96),50).data],['https://m.media-amazon.com/b.jpg',jpeg.encode(raster(96,true),50).data]]);
+ const saved=globalThis.fetch;try{globalThis.fetch=(async(input:RequestInfo|URL)=>{const data=bytes.get(String(input));assert(data,'unexpected image request');return new Response(data as any,{headers:{'content-length':String(data!.length)}})})as typeof fetch;
+  const images=offerImages(['https://approved.example/a.jpg','https://approved.example/b.jpg']),remote={attributes:{main_product_image_locator:[{marketplace_id:market,media_location:'https://m.media-amazon.com/b.jpg'}],other_product_image_locator_1:[{marketplace_id:market,media_location:'https://m.media-amazon.com/a.jpg'}]}};
+  assert(!(await verifyAmazonPhotoCopies(remote,images)).verified);const result=await verifyAmazonPhotoCopies(remote,images,true);assert(result.verified&&result.order.join(',')==='1,0');
+  remote.attributes.main_product_image_locator[0].media_location='https://untrusted.example/private';assert(!(await verifyAmazonPhotoCopies(remote,images,true)).verified);
+ }finally{globalThis.fetch=saved;}
+});
+for(const mode of['alias','foreignAlias','missingRead','recover','recoverTimeout','concurrentRecovery','staleRecovery','changedPrice','noApproval','wrongSeller','foreignPhoto','failedReceipt','completeFailure'])Deno.test('durable reconciliation '+mode,async()=>{
+ const current=item(),r:any={request_id:requestId,item_id:id,requested_by:'fixture-user',sku:current.sku,asin:current.asin,price:400,item_condition:current.condition,sales_channel:current.sales_channel,description:current.description,work_completed_on:'2026-11-06',created_at:new Date(Date.now()-1200000).toISOString(),state:mode==='failedReceipt'?'failed':'accepted',seller_id:'A3E7BXJWH9TP11',photo_ids:mode==='foreignPhoto'?['66666666-6666-4666-8666-666666666666']:[photoId],recovery_count:0};
+ if(mode==='alias'||mode==='foreignAlias')current.sku='100000-AAAA-20261106-34';if(mode==='changedPrice')current.planned_price=500;
+ let puts=0,previews=0,reads=0,completes=0,itemReads=0;
+ const remote=listing({...current,sku:r.sku,planned_price:400});
+ const api={sellerId:mode==='wrongSeller'?'wrong':r.seller_id,get:async(sku:string)=>{reads++;assert(sku===r.sku);return ['missingRead','recover','recoverTimeout','concurrentRecovery','staleRecovery'].includes(mode)&&!puts?null:mode==='recoverTimeout'?null:remote;},catalog:async()=>({asin:r.asin}),put:async(sku:string,body:any,preview=false)=>{assert(sku===r.sku);assert(body.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax===400);if(preview){previews++;return{status:'VALID'}}assert(r.recovery_count===1,'reserve recovery before PUT');puts++;if(mode==='recoverTimeout')throw Error('timeout');return{status:'ACCEPTED',submissionId:'same-sku-recovery'};}};
+ const svc:any={rpc:async(name:string)=>{if(name==='listing_photos_approved')return{data:mode!=='noApproval'};assert(name==='complete_verified_amazon_listing');completes++;assert(r.state==='verified'&&r.photos_verified_at);return mode==='completeFailure'?{error:{message:'db failed'}}:{};},storage:{from:()=>({createSignedUrls:async()=>({data:[{signedUrl:photoUrl}]})})},from(table:string){let update:any=null,where:any={};const q:any={select(){return q},eq(key:string,value:unknown){where[key]=value;return q},in(){return q},order(){return q},update(value:any){update=value;return q},maybeSingle:async()=>{if(update){if(mode==='concurrentRecovery'&&'recovery_count'in update)return{data:null};Object.assign(r,update);return{data:{request_id:requestId}};}if(table==='item_sku_aliases')return{data:{item_id:mode==='foreignAlias'?'someone-else':id}};return{data:r}},single:async()=>{itemReads++;return{data:{...current,...(mode==='staleRecovery'&&itemReads>1?{planned_price:500}:{})}}},then(resolve:any){if(table==='item_photos')return Promise.resolve({data:[{id:photoId,storage_path:'photo.jpg'}]}).then(resolve);if(update)Object.assign(r,update);return Promise.resolve({}).then(resolve)}};return q;}};
+ const input={itemId:id,requestId,expectedSku:current.sku,expectedPrice:current.planned_price,recoverMissing:['recover','recoverTimeout','concurrentRecovery','staleRecovery'].includes(mode)};
+ let result:any;try{result=await reconcileReceipt(svc,input,async()=>api as any);}catch{assert(['foreignAlias','recoverTimeout','staleRecovery','changedPrice','noApproval','wrongSeller','foreignPhoto','failedReceipt','completeFailure'].includes(mode),'unexpected reconciliation failure '+mode);}
+ if(mode==='alias'){assert(result.verified&&puts===0&&completes===1);assert(current.sku.endsWith('-34'),'preserve generated inventory SKU');assert(r.sku.endsWith('-35'),'keep registered Amazon SKU');}
+ if(mode==='missingRead')assert(result.state==='retryable'&&puts===0&&previews===0);
+ if(mode==='recover')assert(result.verified&&puts===1&&r.recovery_submission_id==='same-sku-recovery'&&completes===1);
+ if(mode==='recoverTimeout'){await reconcileReceipt(svc,input,async()=>api as any);assert(puts===1&&r.recovery_count===1,'unknown result must not replay');}
+ if(['foreignAlias','changedPrice','noApproval','failedReceipt'].includes(mode))assert(reads===0);
+ if(!['recover','recoverTimeout'].includes(mode))assert(puts===0);
+});
 Deno.test('in-stock FBM requires an effective B2C price; stored attributes alone cannot complete listing',()=>{
  const i={...item(),sales_channel:'自己発送2'},remote=listing(i);
  assert(verifiedListing(remote,i));
@@ -16,6 +44,13 @@ Deno.test('Amazon Decimal strings verify whole-yen prices without accepting inva
  const i={...item(),sales_channel:'自己発送2'},remote:any=listing(i);
  for(const raw of['400','400.0','400.00',400]){remote.offers[0].price.amount=raw;assert(effectivePrice(remote)===400);assert(verifiedListing(remote,i));}
  for(const raw of['0','0.0','400.5','4e2','400円','',null,'9007199254740993',Infinity]){remote.offers[0].price.amount=raw;assert(effectivePrice(remote)===null);assert(!verifiedListing(remote,i));}
+});
+Deno.test('photo verification accepts normalized product locator slots only for exact submitted source and order',()=>{
+ const images=offerImages(['https://photos.example/one.jpg?a=1','https://photos.example/two.jpg']);
+ const remote={attributes:Object.fromEntries(Object.entries(images).map(([key,value])=>[key.replace('_offer_','_product_'),value]))};
+ assert(verifiedImages(remote,images));assert(!verifiedImages(remote,offerImages(['https://photos.example/two.jpg','https://photos.example/one.jpg'])));
+ assert(!verifiedImages({summaries:[{mainImage:{link:'https://photos.example/one.jpg'}}]},images));
+ assert(!verifiedImages(remote,offerImages(['https://photos.example/one.jpg'])),'unexpected trailing photo is not the selected set');
 });
 Deno.test('receipt price patch preserves business offers and price rules and uses actual product type',()=>{
  const remote=listing();Object.assign(remote.attributes.purchasable_offer[0],{minimum_seller_allowed_price:[{schedule:[{value_with_tax:300}]}],automated_pricing_merchandising_rule_plan:[{value:'rule'}]});
@@ -78,11 +113,11 @@ for(const mode of ['anonymous','inactive','other','photo','invalidPrice','invali
  if(url.includes('/rpc/listing_photos_approved'))return json(mode!=='photo');
  if(url.includes('/rest/v1/amazon_listing_submissions')){
   if(method==='POST'){assert(new Headers(init?.headers).get('authorization')==='Bearer service','only service records evidence');record=JSON.parse(String(init?.body));return json(record,201)}
-  if(method==='PATCH'){assert(new Headers(init?.headers).get('authorization')==='Bearer service');Object.assign(record!,JSON.parse(String(init?.body)));return json(null)}
+  if(method==='PATCH'){assert(new Headers(init?.headers).get('authorization')==='Bearer service');Object.assign(record!,JSON.parse(String(init?.body)));return json(url.includes('select=request_id')?{request_id:record!.request_id}:null)}
   if(url.includes('request_id=eq.'))return json(record&&decodeURIComponent(url).includes('request_id=eq.'+record.request_id)?record:null);
   return json(record&&['submitting','accepted','uncertain'].includes(record.state)?[record]:[]);
  }
- if(url.includes('/rpc/perform_dated_inventory_action')){if(mode==='changedSku')assert(JSON.parse(String(init?.body)).p_request_id===requestId,'old SKU proof must not complete current SKU');complete++;assert((record as Record<string,any>|null)?.state==='verified','never complete before verification');return mode==='completeFailed'?json({message:'failure',code:'42501'},403):json(null)}
+ if(url.includes('/rpc/complete_verified_amazon_listing')){if(mode==='changedSku')assert(JSON.parse(String(init?.body)).p_request_id===requestId,'old SKU proof must not complete current SKU');complete++;assert((record as Record<string,any>|null)?.state==='verified','never complete before verification');return mode==='completeFailed'?json({message:'failure',code:'42501'},403):json(null)}
  if(url.includes('/auth/o2/token'))return json({access_token:'test-token'});
  if(url.includes('/catalog/2022-04-01/items/'))return json({asin:current.asin,attributes:{batteries_required:[{value:false,marketplace_id:market}],supplier_declared_dg_hz_regulation:[{value:'not_applicable',marketplace_id:market}]}});
  external++;if((mode==='changedSku'||mode==='changedSkuPending'||mode==='changedDetails')&&url.includes(encodeURIComponent(item().sku)+'?')){const previous=listing(item());if(mode==='changedSkuPending')previous.summaries=[];return json(previous);}
@@ -102,14 +137,14 @@ for(const mode of ['anonymous','inactive','other','photo','invalidPrice','invali
  })as typeof fetch;
  const run=()=>handler(new Request('https://local',{method:'POST',headers:mode==='anonymous'?{}:{Authorization:'Bearer session'},body:JSON.stringify({action:mode.startsWith('resume')?'resume':'submit',itemId:id,requestId,expectedPrice:mode==='expectedPrice'?401:undefined,expectedSku:mode==='expectedSku'?'changed':undefined,photoIds:[mode==='foreignPhoto'?'66666666-6666-4666-8666-666666666666':photoId],workCompletedOn:mode==='invalidDate'?'2099-01-01':'2026-11-06'})}));
  const response=await run(),data=await response.json();assert(!JSON.stringify(data).includes('secret-value'),'credentials must not leak');
- if(['verified','registered','changedSku','photoMissing','resumeReady','resumeVerified'].includes(mode)){assert(response.ok,JSON.stringify(data));assert(data.verified);assert(complete===(mode==='resumeVerified'?0:1));assert(puts===(['registered','photoMissing','resumeReady','resumeVerified'].includes(mode)?0:1))}
- else if(['pending','summaryPending','photoWaiting','resumeSummary','resumePhotos','resumeLivePrice'].includes(mode)){assert(response.ok);assert(!data.verified);assert(complete===0);assert((record as Record<string,any>|null)?.state==='accepted')}
+ if(['verified','registered','resumeReady','resumeVerified'].includes(mode)){assert(response.ok,JSON.stringify(data));assert(data.verified);assert(complete===1);assert(puts===(['registered','photoMissing','resumeReady','resumeVerified'].includes(mode)?0:1))}
+ else if(['pending','summaryPending','photoMissing','photoWaiting','resumeSummary','resumePhotos','resumeLivePrice'].includes(mode)){assert(response.ok);assert(!data.verified);assert(complete===0);assert((record as Record<string,any>|null)?.state==='accepted')}
  else{assert(response.status>=400,mode+' should fail '+JSON.stringify(data));assert(complete===(mode==='completeFailed'?1:0));}
  if(mode.startsWith('resume')){assert(puts===0&&patches===0,'resume must never PUT or PATCH an Amazon listing');if(response.ok&&!data.verified)assert(data.requestId===requestId,'resume receipt identity');}
  if(mode==='photoWaiting'){const again=await run();assert(again.ok);assert(patches===1,'pending photo ingestion must not PATCH again');assert(complete===0);}
- if(mode==='photoMissing'){assert(patches===1);assert(puts===0);}
+ if(mode==='photoMissing'){assert(patches===1);assert(puts===0);const again=await run();assert(again.ok);assert((await again.json()).verified);assert(patches===1);assert(complete===1);}
  if(mode==='timeout'){assert((record as Record<string,any>|null)?.state==='uncertain');const again=await run();assert(again.ok);assert(puts===1,'unknown writes must not be duplicated');assert(complete===0)}
- if(mode==='changedDetails'){assert(record?.state==='verified');assert(puts===0);assert(data.error.includes('一致しません'));} if(['anonymous','inactive','other','invalidPrice'].includes(mode))assert(external===0);
+ if(mode==='changedDetails'||mode==='changedSku'){assert(record?.state==='accepted');assert(puts===0);assert(data.error.includes('変更'));} if(['anonymous','inactive','other','invalidPrice'].includes(mode))assert(external===0);
  if(['previewRejected','photo','invalidDate','conflict','stale','getForbidden','foreignPhoto','packingPhoto','expectedPrice','expectedSku','resumeMissing','resumeChanged'].includes(mode))assert(puts===0,'unsafe live PUT');
  }finally{globalThis.fetch=savedFetch;keys.forEach((k,i)=>saved[i]===undefined?Deno.env.delete(k):Deno.env.set(k,saved[i]!))}
 });
