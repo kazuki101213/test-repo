@@ -5,11 +5,11 @@ function load(source,extra={}) {
  return context.exports;
 }
 const validation=load(fs.readFileSync(__dirname+'/validation.ts','utf8'));
-function fixture({auth=true,active=true,role='deliverer',configured=true,linked=true,botStatus=200,rows=[],pushStatus=200,prepare=true,mediaFail=false,enabled=true}={}) {
+function fixture({auth=true,active=true,role='deliverer',configured=true,linked=true,botStatus=200,rows=[],pushStatus=200,prepare=true,mediaFail=false,enabled=true,photoSelectionFail=false}={}) {
  const state={rpc:[],calls:[]};let handler;
  const client={auth:{getUser:async()=>({data:{user:auth?{id:'self'}:null}})},from(table){const query={select(){return query;},eq(field,value){state.lastFilter={table,field,value};return query;},maybeSingle:async()=>({data:table==='profiles'?{staff_id:'own-staff'}:table==='staff'?{id:'own-staff',role,is_active:active}:table==='delivery_line_settings'?{enabled}:linked?{linked_at:'2026-10-24',blocked:false}:null,error:null})};return query;},rpc:async(name,args)=>{state.rpc.push({name,args});return {data:name==='delivery_push_config'?{delivery_push_dispatch_token:'private-dispatch'}:name==='claim_delivery_line'?rows:name==='prepare_delivery_line_message'?prepare:name==='handle_delivery_line_event',error:null};}};
  const source=fs.readFileSync(__dirname+'/index.ts','utf8').replace(/^import [^\r\n]*(?:\r?\n|$)/gm,'');
- load(source,{...validation,QRCode:{},prepareShippingMedia:async({media})=>{if(mediaFail)throw Error('fixture media unavailable');return media;},createClient:()=>client,fetch:async(url,init)=>{state.calls.push({url,init});if(url.endsWith('/push')&&pushStatus===0)throw Error('network response lost');return Response.json(url.endsWith('/info')?{basicId:'@fixture',displayName:'Fixture'}:{},{status:url.endsWith('/info')?botStatus:url.endsWith('/push')?pushStatus:200});},Deno:{env:{get:name=>name==='LINE_CHANNEL_SECRET'?'fixture-secret':name==='LINE_CHANNEL_ACCESS_TOKEN'?(configured?'fixture-token':undefined):undefined},serve:fn=>handler=fn}});
+ load(source,{...validation,QRCode:{},selectLinePhotos:async()=>{state.photoSelectionCalls=(state.photoSelectionCalls||0)+1;if(photoSelectionFail)throw Error('temporary AI failure');return{processed:0};},prepareShippingMedia:async({media})=>{if(mediaFail)throw Error('fixture media unavailable');return media;},createClient:()=>client,fetch:async(url,init)=>{state.calls.push({url,init});if(url.endsWith('/push')&&pushStatus===0)throw Error('network response lost');return Response.json(url.endsWith('/info')?{basicId:'@fixture',displayName:'Fixture'}:{},{status:url.endsWith('/info')?botStatus:url.endsWith('/push')?pushStatus:200});},Deno:{env:{get:name=>name==='LINE_CHANNEL_SECRET'?'fixture-secret':name==='LINE_CHANNEL_ACCESS_TOKEN'?(configured?'fixture-token':undefined):undefined},serve:fn=>handler=fn}});
  const request=(action,headers={})=>handler(new Request('https://fixture.invalid/delivery-line',{method:'POST',headers:{Origin:validation.deliveryOrigin,Authorization:'Bearer fixture',...headers},body:JSON.stringify({action,staffId:'someone-else'})}));
  async function webhook(events,{sign=true,change=false}={}){let body=JSON.stringify({events});const signature=createHmac('sha256','fixture-secret').update(body).digest('base64');if(change)body+=' ';return handler(new Request('https://fixture.invalid/delivery-line/webhook',{method:'POST',headers:sign?{'x-line-signature':signature}:{},body}));}
  return{state,request,webhook};
@@ -90,6 +90,14 @@ test('A missing stored retry key never produces a misleading sent result',async(
 
 test('Listing photo recovery is not available through a user or public request',async()=>{
  const f=fixture();assert.equal((await f.request('recover-listing-photo-files')).status,401);assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
+});
+
+test('Photo auto selection is private, cannot send by itself, and its failure never stops dispatch',async()=>{
+ const denied=fixture();assert.equal((await denied.request('select-line-photos')).status,401);assert(!denied.state.photoSelectionCalls);
+ const allowed=fixture();assert.equal((await allowed.request('select-line-photos',{'x-delivery-dispatch':'private-dispatch'})).status,200);assert.equal(allowed.state.photoSelectionCalls,1);assert(!allowed.state.calls.some(x=>x.url.endsWith('/push')));
+ const payload={automatic:true,itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2392',sku:'2392-EEMM-20261002-591',supplierUrl:null,images:[]};
+ const f=fixture({photoSelectionFail:true,rows:[{id:'fixture',lease:'fixture',eligible:true,recipient:'fixture',payload:{...payload,lineRetryKey:'2768b1fd-64d5-4c3c-a9b7-9a9ad6a20d9c'}}]});
+ assert.equal((await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'})).status,200);assert(f.state.calls.some(x=>x.url.endsWith('/push')));
 });
 
 test('Automatic media failure still sends one exact-item request using the same retry key',async()=>{

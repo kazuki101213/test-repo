@@ -4,6 +4,7 @@ import type { ShippingPayload } from './validation.ts';
 import QRCode from 'npm:qrcode@1.5.4';
 import { prepareShippingMedia } from './media.ts';
 import { recoverListingPhotoFiles } from './photo-recovery.ts';
+import { selectLinePhotos } from './photo-selection.ts';
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
   db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false },
@@ -84,12 +85,17 @@ Deno.serve(async req => {
     // This public route is authenticated using LINE's signature, not user JWTs.
     if (new URL(req.url).pathname.endsWith('/webhook')) return await webhook(req);
     const body = await req.json();
-    if (body.action === 'dispatch' || body.action === 'connection' || body.action === 'recover-listing-photo-files') {
+    if (body.action === 'dispatch' || body.action === 'connection' || body.action === 'recover-listing-photo-files' || body.action === 'select-line-photos') {
       const config = await rpc('delivery_push_config');
       if (!req.headers.get('x-delivery-dispatch') || req.headers.get('x-delivery-dispatch') !== config.delivery_push_dispatch_token) return response(401, {});
       if (body.action === 'recover-listing-photo-files') return response(200, await recoverListingPhotoFiles({admin,itemId:body.itemId,sources:body.sources}));
       if (body.action === 'connection') return response(200, await botConnection());
+      const selectPhotos = (itemId?:string) => selectLinePhotos({admin,itemId,apiKey:Deno.env.get('GEMINI_API_KEY'),model:Deno.env.get('GEMINI_PHOTO_MODEL')||Deno.env.get('GEMINI_KEYWORDS_MODEL')||'gemini-3.5-flash-lite'});
+      if (body.action === 'select-line-photos') return response(200, await selectPhotos(body.itemId));
       if (!await shippingEnabled()) return response(200, { configured: false, processed: 0 });
+      // Save automatic roles before claiming fresh message payloads. Failure is
+      // retried independently and never blocks the existing LINE fallback.
+      await selectPhotos().catch(()=>{});
       const rows = await rpc('claim_delivery_line');
       let sent = 0;
       for (const row of rows || []) {
