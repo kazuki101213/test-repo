@@ -4,7 +4,8 @@ const marketplace='A1VC38T7YXB528',endpoint='https://sellingpartnerapi-fe.amazon
 const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'};
 class SafeError extends Error{constructor(public status:number,message:string){super(message)}}
 type Obj=Record<string,any>;
-type Item={id:string;sku:string;asin:string|null;sales_channel:string|null;status:string;is_accessory:boolean};
+type Item={id:string;sku:string;asin:string|null;sales_channel:string|null;status:string;is_accessory:boolean;inventorySku?:string;listingAccount?:AmazonAccountId};
+export function bindPriceItems(items:Item[],receipts:Obj[],aliases:Obj[]):Item[]{return items.map(item=>{const r=receipts.find(r=>r.item_id===item.id&&r.asin===item.asin&&r.sales_channel===item.sales_channel);if(!r||r.sku===item.sku)return item;if(!aliases.some(a=>a.sku===r.sku&&a.item_id===item.id))throw new SafeError(409,'登録済みAmazon SKUと在庫の対応を確認できません。');return{...item,inventorySku:item.sku,sku:r.sku,listingAccount:r.account_id};});}
 const isYen=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 function offersOf(listing:Obj):Obj[]{return Array.isArray(listing.attributes?.purchasable_offer)?listing.attributes.purchasable_offer:[]}
@@ -37,21 +38,25 @@ export async function handler(req:Request):Promise<Response>{
   const body=await req.json().catch(()=>null);if(!body||!['read','write'].includes(body.action))throw new SafeError(400,'操作の指定が不正です。');
   const ids=body.action==='read'?body.itemIds:[body.itemId];if(!Array.isArray(ids)||ids.length<1||ids.length>20||!ids.every(uuid))throw new SafeError(400,'対象商品の指定が不正です。');
   const {data:items,error}=await sb.from('items').select('id,sku,asin,sales_channel,status,is_accessory').in('id',ids);if(error)throw new SafeError(503,'在庫を確認できませんでした。');if(items?.length!==new Set(ids).size)throw new SafeError(404,'対象の在庫が見つかりません。');
-  const rows=items as Item[];for(const item of rows)validateItem(item);if(rows.some(i=>i.sku.includes(',')))throw new SafeError(422,'このSKUは価格の一括取得に対応していません。');
+  for(const item of items as Item[])validateItem(item);
+  const {data:receipts,error:receiptError}=await sb.from('amazon_listing_submissions').select('item_id,sku,asin,sales_channel,account_id').in('item_id',ids).eq('state','verified').order('created_at',{ascending:false});if(receiptError)throw new SafeError(503,'Amazon登録SKUを確認できません。');
+  const aliasSkus=[...new Set((receipts??[]).filter(r=>items.some(i=>i.id===r.item_id&&i.sku!==r.sku)).map(r=>r.sku))];
+  let aliases:Obj[]=[];if(aliasSkus.length){const result=await sb.from('item_sku_aliases').select('item_id,sku').in('sku',aliasSkus);if(result.error)throw new SafeError(503,'登録済みSKUの対応を確認できません。');aliases=result.data??[];}
+  const rows=bindPriceItems(items as Item[],receipts??[],aliases);if(rows.some(i=>i.sku.includes(',')))throw new SafeError(422,'このSKUは価格の一括取得に対応していません。');
   if(body.action==='read'){
    const found=new Map<string,Array<{accountId:AmazonAccountId;listing:Obj}>>(),failures:string[]=[];
    for(const account of amazonAccounts().filter(a=>a.configured)){
-    try{const api=await amazon(account.id),candidates=rows.filter(i=>!channelAccount(i.sales_channel)||channelAccount(i.sales_channel)===account.id);if(!candidates.length)continue;const listings=await api.search(candidates.map(i=>i.sku));for(const listing of listings){const item=candidates.find(i=>i.sku===listing.sku),summary=listing.summaries?.find((s:Obj)=>s.marketplaceId===marketplace);if(!item||!summary||item.asin&&summary.asin!==item.asin)continue;found.set(item.id,[...(found.get(item.id)??[]),{accountId:account.id,listing}]);}}
+    try{const api=await amazon(account.id),candidates=rows.filter(i=>!(i.listingAccount??channelAccount(i.sales_channel))||(i.listingAccount??channelAccount(i.sales_channel))===account.id);if(!candidates.length)continue;const listings=await api.search(candidates.map(i=>i.sku));for(const listing of listings){const item=candidates.find(i=>i.sku===listing.sku),summary=listing.summaries?.find((s:Obj)=>s.marketplaceId===marketplace);if(!item||!summary||item.asin&&summary.asin!==item.asin)continue;found.set(item.id,[...(found.get(item.id)??[]),{accountId:account.id,listing}]);}}
     catch(e){failures.push(e instanceof SafeError||e instanceof AmazonAccountError?e.message:'Amazonへの接続に失敗しました。');}
    }
-   return respond(200,{rows:rows.map(item=>{const matches=found.get(item.id)??[];if(matches.length!==1)return{id:item.id,sku:item.sku,price:null,error:matches.length>1?'両方のアカウントに同じSKUがあります。Amazon側の登録を確認してください。':failures.join(' ')||'接続済みのAmazonアカウントに同じSKUが見つかりません。'};const match=matches[0],price=listingPrice(match.listing);return{id:item.id,sku:item.sku,accountId:price===null?undefined:match.accountId,price,...(price===null?{error:'通常販売価格を一意に確認できません。Amazonの価格設定を確認してください。'}:{})};})});
+   return respond(200,{rows:rows.map(item=>{const matches=found.get(item.id)??[];if(matches.length!==1)return{id:item.id,sku:item.inventorySku??item.sku,price:null,error:matches.length>1?'両方のアカウントに同じSKUがあります。Amazon側の登録を確認してください。':failures.join(' ')||'接続済みのAmazonアカウントに同じSKUが見つかりません。'};const match=matches[0],price=listingPrice(match.listing);return{id:item.id,sku:item.inventorySku??item.sku,accountId:price===null?undefined:match.accountId,price,...(price===null?{error:'通常販売価格を一意に確認できません。Amazonの価格設定を確認してください。'}:{})};})});
   }
   const item=rows[0];if(!item||!isYen(body.price)||!isYen(body.expectedPrice))throw new SafeError(400,'価格は1円以上の整数で指定してください。');
-  if(!body.accountId)throw new SafeError(400,'確認済みのAmazonアカウントを指定してください。');const accountId=amazonAccountId(body.accountId);if(channelAccount(item.sales_channel)&&channelAccount(item.sales_channel)!==accountId)throw new SafeError(409,'販売先のアカウントが一致しません。');
+  if(!body.accountId)throw new SafeError(400,'確認済みのAmazonアカウントを指定してください。');const accountId=amazonAccountId(body.accountId);if((item.listingAccount??channelAccount(item.sales_channel))&&(item.listingAccount??channelAccount(item.sales_channel))!==accountId)throw new SafeError(409,'販売先のアカウントが一致しません。');
   const api=await amazon(accountId),listing=await api.get(item.sku),summary=listing.summaries?.find((s:Obj)=>s.marketplaceId===marketplace);
   if(!summary||item.asin&&summary.asin!==item.asin||listing.sku!==item.sku)throw new SafeError(409,'Amazonの商品情報が一致しません。再取得してください。');
   if(listingPrice(listing)!==body.expectedPrice)throw new SafeError(409,'Amazonの価格が変更されています。再取得してから反映してください。');
-  const {data:latest,error:latestError}=await sb.from('items').select('sku,asin,status,sales_channel').eq('id',item.id).single();if(latestError||!latest||latest.sku!==item.sku||latest.asin!==item.asin||latest.status!==item.status||latest.sales_channel!==item.sales_channel)throw new SafeError(409,'在庫情報が変更されています。再読み込みしてください。');
+  const {data:latest,error:latestError}=await sb.from('items').select('sku,asin,status,sales_channel').eq('id',item.id).single();if(latestError||!latest||latest.sku!==(item.inventorySku??item.sku)||latest.asin!==item.asin||latest.status!==item.status||latest.sales_channel!==item.sales_channel)throw new SafeError(409,'在庫情報が変更されています。再読み込みしてください。');
   const result=await api.patch(item.sku,pricePatch(listing,body.price));
   if(result.status!=='ACCEPTED'||result.issues?.some((issue:Obj)=>issue.severity==='ERROR'))throw new SafeError(422,'Amazonが価格変更を受け付けませんでした。セラーセントラルの出品情報を確認してください。');
   let verified=false;try{verified=listingPrice(await api.get(item.sku))===body.price;}catch{/* The accepted write must not be retried because a read failed. */}
