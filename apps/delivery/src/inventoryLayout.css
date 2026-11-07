@@ -227,6 +227,10 @@
   .app .export-actions > button { padding-inline:3px !important; }
 }
 
+@media screen and (max-width:480px) {
+  .app .delivery-navigation { flex-wrap:wrap; justify-content:flex-start; gap:0 20px; }
+}
+
 /* The work group leaves the existing Amazon return cell uncovered. */
 @media screen and (min-width:1280px) {
   .app .inventory-workflow-menu > [data-status="work"] {
