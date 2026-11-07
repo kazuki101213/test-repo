@@ -13,6 +13,7 @@ import { adminTaskNotice } from '../taskNotice';
 import DeliveryInvoices from '../../../delivery/src/pages/Invoices';
 import type { InvoiceReviewState } from '../../../delivery/src/pages/Invoices';
 import type { InvoiceSnapshot } from '../../../delivery/src/invoices';
+import { useTaskConfirmation } from './TaskConfirmation';
 import './InvoiceReview.css';
 
 
@@ -36,7 +37,8 @@ async function fetchTasks():Promise<Task[]> {
 const ignoreInvoiceNavigation = () => {};
 function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:Staff;onClose:()=>void;onApproved:()=>void;onSaved?:()=>void}) {
  const dialog=useRef<HTMLDialogElement>(null);
- const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+ const [busy,setBusy]=useState(false);
+ const {ask,pending,confirmation}=useTaskConfirmation();
  const [documents,setDocuments]=useState<InvoiceReviewState>({invoice:null,receiptVersion:task.receipts?.version??null,busy:false,dirty:false,ready:false});
  const updateDocuments=useCallback((state:InvoiceReviewState)=>setDocuments(state),[]);
  const invoice=documents.invoice;const approved=approval(task.invoice)||invoice?.approved_at;
@@ -44,17 +46,17 @@ function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:
  useEffect(()=>{const el=dialog.current;el?.showModal();return()=>el?.close();},[]);
  async function approve(){
   if(!invoice||!documents.ready||documents.dirty||busy||documents.busy)return;
-  setBusy(true);setError('');
+  setBusy(true);
   try{
    const {error}=await getSupabase().rpc('approve_invoice_documents',{p_invoice:invoice.id,p_version:invoice.version,p_receipt_version:documents.receiptVersion,p_incurred_on:monthEnd(task.month)});
-   if(error)throw error;onApproved();
-  }catch(e){setError(messageOf(e));}finally{setBusy(false);}
+   if(error)throw new Error(messageOf(error));
+   onApproved();
+  }finally{setBusy(false);}
  }
- return <dialog ref={dialog} className="monthly-detail invoice-review" aria-labelledby="invoice-review-title" onCancel={e=>{e.preventDefault();close();}}>
+ return <><dialog ref={dialog} className="monthly-detail invoice-review" aria-labelledby="invoice-review-title" onCancel={e=>{e.preventDefault();close();}}>
   <div className="toolbar"><h2 id="invoice-review-title">{staffDisplayName(task.name)} · {task.month.slice(0,7)}</h2></div>
-  {error&&<div className="error" role="alert">{error}</div>}
-  <fieldset className="invoice-review-content" disabled={busy}><DeliveryInvoices staff={staff} onNavigationChange={ignoreInvoiceNavigation} review={{staffId:task.staff_id,month:task.month.slice(0,7),receiptVersion:task.receipts?.version??null,onStateChange:updateDocuments,onSaved,toolbarActions:<>{!approved&&<button type="button" className="btn primary" disabled={busy||documents.busy||documents.dirty||!documents.ready||!invoice||invoice.total<=0} onClick={()=>void approve()}>{busy?'承認中…':'承認'}</button>}<button type="button" className="btn" disabled={busy||documents.busy} onClick={close}>閉じる</button></>}}/></fieldset>
- </dialog>;
+  <fieldset className="invoice-review-content" disabled={busy}><DeliveryInvoices staff={staff} onNavigationChange={ignoreInvoiceNavigation} review={{staffId:task.staff_id,month:task.month.slice(0,7),receiptVersion:task.receipts?.version??null,onStateChange:updateDocuments,onSaved,toolbarActions:<>{!approved&&<button type="button" className="btn primary" disabled={pending||busy||documents.busy||documents.dirty||!documents.ready||!invoice||invoice.total<=0} onClick={()=>ask('請求書の承認',approve,'承認すると経費の外注費に追加されます。')}>{busy?'承認中…':'承認'}</button>}<button type="button" className="btn" disabled={busy||documents.busy} onClick={close}>閉じる</button></>}}/></fieldset>
+ </dialog>{confirmation}</>;
 }
 
 export default function InvoiceTasks({onApproved,staff}:{onApproved:()=>void;staff:Staff}){
