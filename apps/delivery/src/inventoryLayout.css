@@ -278,11 +278,10 @@
 
 /* The left controls size these rows. The todo list scrolls within the same grid area. */
 @media screen and (min-width:1280px) {
-  .delivery-inventory-workspace { grid-template-columns:minmax(610px,3fr) minmax(0,2fr); row-gap:6px; }
+  .delivery-inventory-workspace { grid-template-columns:minmax(610px,3fr) minmax(0,2fr); row-gap:var(--control-gap); margin-bottom:var(--control-gap); }
   .delivery-inventory-sidebar .delivery-inventory-search { grid-template-columns:128px minmax(0,1fr) max-content; flex:none; }
   .delivery-inventory-sidebar .delivery-inventory-search > :is(select,input) { min-width:0; box-sizing:border-box; }
   .delivery-inventory-sidebar .delivery-inventory-search > .inventory-multi-filter > summary { white-space:nowrap; }
-  .export-actions { width:calc((100% - 16px)*.6); box-sizing:border-box; }
 }
 @media screen and (min-width:1280px) {
   .app .delivery-inventory-sidebar .delivery-inventory-search > :is(input,select[aria-label="納品担当者で検索"]) { grid-column:2; grid-row:1; width:100%; }
@@ -290,10 +289,11 @@
   .app .delivery-inventory-sidebar .delivery-inventory-search > select:first-child { grid-column:1; grid-row:1; }
 }
 @media screen and (min-width:1280px) {
-  .delivery-inventory-workspace { grid-template-rows:auto auto; }
+  .delivery-inventory-workspace { grid-template-rows:auto auto auto; }
   .delivery-inventory-sidebar { display:contents; }
   .app .delivery-inventory-sidebar .delivery-inventory-search { grid-column:1; grid-row:1; margin:0; }
   .app .delivery-inventory-workspace > .inventory-workflow-menu { grid-column:1; grid-row:2; }
+  .app .delivery-inventory-workspace > .export-actions { grid-column:1; grid-row:3; margin:0; min-width:0; }
   .app .delivery-inventory-sidebar .delivery-task-heading { display:none; }
   .app .delivery-inventory-sidebar .delivery-reply-tasks {
     grid-column:2; grid-row:1 / -1; align-self:stretch; contain:size;
