@@ -27,6 +27,7 @@ const defaultAuctionDays = (month: string) => {
     .map(day => `${month}-${String(day).padStart(2, '0')}`);
 };
 const auctionWorkdayLine = (date: string): InvoiceLine => ({ date, description: 'ヤフオク入札作業日', quantity: 1, unit_price: 4500 });
+const auctionDayRanges = ['1〜9日', '10〜19日', '20〜29日', '30〜31日'];
 
 function ProfileEditor({ profile, onSave }: { profile: InvoiceProfile; onSave: (p: InvoiceProfile) => void }) {
   const [draft, setDraft] = useState(profile);
@@ -158,6 +159,12 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
     setWorkdays(rows => [...rows, auctionWorkdayLine(newWorkday)].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))); setNewWorkday(''); setDirty(true); setMessage('');
   };
   const editableExtras: InvoiceLine[] = [...extras, ...workdays];
+  const workdayGroups = auctionDayRanges.map(() => [] as { line: InvoiceLine; index: number; day: number | null }[]);
+  workdays.forEach((line, index) => {
+    const dateDay = Number(line.date?.slice(8, 10));
+    const day = dateDay >= 1 && dateDay <= 31 ? dateDay : null;
+    workdayGroups[Math.floor((day ?? 0) / 10)]!.push({ line, index, day });
+  });
   const auctionBasePay = workdays.reduce((sum, row) => sum + (Number.isFinite(row.unit_price) ? row.quantity * row.unit_price : 0), 0);
   const auctionProfitPay = Math.floor(Math.max(grossProfit ?? 0, 0) * 0.1);
   const auctionAdjustment = Math.max(0, auctionProfitPay - auctionBasePay);
@@ -223,7 +230,15 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
         {isIshikawa && <section className="invoice-auction-workdays">
           <h3>ヤフオク入力作業</h3>
           <div className="invoice-auction-add"><DateInput aria-label="作業日を追加" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.some(row => row.date === newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
-          {workdays.map((line, index) => <div className="invoice-auction-day" key={line.date}><span>{line.date}</span><input aria-label={`${line.date}の料金(円)`} required type="number" min="0" max="10000000" step="1" value={Number.isFinite(line.unit_price) ? line.unit_price : ''} disabled={busy || receiptBusy || pdfBusy} onChange={e => { const price = e.target.valueAsNumber; setWorkdays(rows => rows.map((row, i) => i === index ? { ...row, unit_price: price } : row)); setDirty(true); setMessage(''); }} /><button type="button" className="invoice-auction-day-remove" aria-label={`${line.date}の作業日を削除`} disabled={busy} onClick={() => { setWorkdays(rows => rows.filter((_, i) => i !== index)); setDirty(true); }}>×</button></div>)}
+          {workdays.length > 0 && <div className="invoice-auction-groups">
+            {workdayGroups.map((group, groupIndex) => <div className="invoice-auction-group" key={auctionDayRanges[groupIndex]} role="group" aria-label={auctionDayRanges[groupIndex]}>
+              {group.map(({ line, index, day }) => <div className="invoice-auction-day" key={line.date ?? index}>
+                <span>{day === null ? '—' : `${day}日`}</span>
+                <input aria-label={`${line.date ?? '日付未設定'}の料金(円)`} required type="number" min="0" max="10000000" step="1" value={Number.isFinite(line.unit_price) ? line.unit_price : ''} disabled={busy || receiptBusy || pdfBusy} onChange={e => { const price = e.target.valueAsNumber; setWorkdays(rows => rows.map((row, i) => i === index ? { ...row, unit_price: price } : row)); setDirty(true); setMessage(''); }} />
+                <button type="button" className="invoice-auction-day-remove" aria-label={`${line.date ?? '日付未設定'}の作業日を削除`} disabled={busy} onClick={() => { setWorkdays(rows => rows.filter((_, i) => i !== index)); setDirty(true); }}>×</button>
+              </div>)}
+            </div>)}
+          </div>}
           <p>作業日分：¥{auctionBasePay.toLocaleString('ja-JP')}　粗利益の10%：{grossProfitLoading ? '計算中…' : `¥${auctionProfitPay.toLocaleString('ja-JP')}`}</p>
           {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
         </section>}
