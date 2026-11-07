@@ -16949,7 +16949,7 @@ $$;
 notify pgrst,'reload schema';
 
 
--- ▼▼▼ 20261107003640_line_patrol_optional_photo_dispatch.sql ▼▼▼
+-- ▼▼▼ 20261107004044_line_patrol_optional_photo_dispatch.sql ▼▼▼
 
 -- The four-hour patrol must hand off ready notifications even when no photos
 -- were explicitly selected. Code preparation uses shipping settings, not photos.
