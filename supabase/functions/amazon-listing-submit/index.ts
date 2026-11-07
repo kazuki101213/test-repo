@@ -29,7 +29,10 @@ export function verifiedListing(listing:Obj,item:ListingItem):boolean{
 }
 export function effectivePrice(listing:Obj):number|null{
  const offers=(listing.offers??[]).filter((v:Obj)=>v.marketplaceId===marketplace&&v.offerType==='B2C'&&v.price?.currencyCode==='JPY');
- return offers.length===1&&typeof offers[0].price.amount==='number'&&Number.isSafeInteger(offers[0].price.amount)&&offers[0].price.amount>0?offers[0].price.amount:null;
+ if(offers.length!==1)return null;
+ // Amazon Money.amount is a Decimal and can be returned as "390.0".
+ const raw=offers[0].price.amount,value=typeof raw==='number'?raw:typeof raw==='string'&&/^\d+(?:\.0+)?$/.test(raw)?Number(raw):NaN;
+ return Number.isSafeInteger(value)&&value>0?value:null;
 }
 export function receiptPricePatch(listing:Obj,price:number){
  const values=structuredClone(listing.attributes?.purchasable_offer??[]),indexes=values.map((v:Obj,i:number)=>({v,i})).filter(({v}:{v:Obj})=>v.currency==='JPY'&&v.marketplace_id===marketplace&&v.audience==='ALL');
