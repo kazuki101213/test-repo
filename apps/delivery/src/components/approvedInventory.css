@@ -40,6 +40,14 @@
 .app .task-card.approved-delivery-card .delivery-record-actions .workflow-buttons { display:flex; flex-wrap:wrap; gap:5px; margin:0; }
 .app .task-card.approved-delivery-card .delivery-record-actions :is(.workflow-photo-buttons,.workflow-photo-row) { display:contents; }
 .app .task-card.approved-delivery-card .delivery-record-actions .workflow-controls .btn { width:auto!important; height:auto!important; min-height:28px!important; font-size:11px!important; padding:4px 6px!important; }
+.approved-delivery-body,.delivery-independent-record { position:relative; }
+.approved-delivery-card .delivery-fba-select {
+ position:absolute;
+ top:6px;
+ right:3px;
+ width:44px;
+ height:44px;
+}
 @media(min-width:1280px) {
  .approved-delivery-head { display:grid; grid-template-columns:minmax(660px,1.7fr) minmax(285px,.9fr) minmax(150px,.5fr); gap:16px; padding:9px 12px; background:var(--surface-2); border-block:1px solid var(--border); color:var(--muted); font-size:12px; line-height:20px; align-items:center; }
  .delivery-head-main { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr); gap:12px; }
@@ -78,6 +86,7 @@
  .approved-delivery-body > .delivery-record-actions { grid-column:3; grid-row:1; padding-block:8px; }
  .delivery-independent-record { grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr) minmax(285px,.9fr) 620px; }
  .delivery-independent-record > .delivery-record-actions { grid-column:5; grid-row:1; }
+ :is(.approved-delivery-body,.delivery-independent-record):has(.delivery-fba-select) > .delivery-record-actions { margin-right:44px; }
 }
 @media(min-width:1280px) and (max-width:1599px) {
  .approved-delivery-card { font-size:12px; }
@@ -137,17 +146,6 @@
  .delivery-independent-record .delivery-record-actions { margin-top:6px; }
  .approved-delivery-card .delivery-accessory-details > .copyable-text { font-size:13px; }
  .app .approved-delivery-card .workflow-controls .btn { font-size:10px; min-height:28px; padding:5px 6px!important; }
-}
-
-@media(max-width:767px) {
- .approved-delivery-body,.delivery-independent-record { position:relative; }
- .approved-delivery-card .delivery-fba-select {
-  position:absolute;
-  top:6px;
-  right:3px;
-  width:44px;
-  height:44px;
- }
  .delivery-main-identity:has(.delivery-fba-select),
  .delivery-independent-record .delivery-accessory-identity:has(.delivery-fba-select) { padding-right:38px; }
 }
