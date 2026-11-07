@@ -12,6 +12,11 @@ Deno.test('in-stock FBM requires an effective B2C price; stored attributes alone
  }
  assert(verifiedListing({...listing(),offers:[]},item()),'FBA stock not received must not require a live offer');
 });
+Deno.test('Amazon Decimal strings verify whole-yen prices without accepting invalid or fractional amounts',()=>{
+ const i={...item(),sales_channel:'自己発送2'},remote:any=listing(i);
+ for(const raw of['400','400.0','400.00',400]){remote.offers[0].price.amount=raw;assert(effectivePrice(remote)===400);assert(verifiedListing(remote,i));}
+ for(const raw of['0','0.0','400.5','4e2','400円','',null,'9007199254740993',Infinity]){remote.offers[0].price.amount=raw;assert(effectivePrice(remote)===null);assert(!verifiedListing(remote,i));}
+});
 Deno.test('receipt price patch preserves business offers and price rules and uses actual product type',()=>{
  const remote=listing();Object.assign(remote.attributes.purchasable_offer[0],{minimum_seller_allowed_price:[{schedule:[{value_with_tax:300}]}],automated_pricing_merchandising_rule_plan:[{value:'rule'}]});
  (remote.attributes.purchasable_offer as any[]).push({audience:'B2B',marketplace_id:market,currency:'JPY',our_price:[{schedule:[{value_with_tax:380}]}]});
