@@ -69,6 +69,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
  const fee=(v,date)=>all(v.tree).find(n=>n.type==='input'&&n.props['aria-label']===date+'の料金(円)');
  assert.equal(fee(auction,'2026-10-02').props.value,3000);assert.equal(fee(auction,'2026-10-05').props.value,7000);
  assert(!text(auction.tree).includes('追加項目登録'));assert(!text(auction.tree).includes('対象月の月・水・金'));
+ assert(all(auction.tree).some(n=>n.type==='h3'&&text(n)==='ヤフオク入力作業'));
  fee(auction,'2026-10-02').props.onChange({target:{valueAsNumber:6000}});await auction.settle();
  let preview=child(auction,'InvoiceSheet');assert.equal(preview.props.extras.find(l=>l.description==='粗利益連動調整').unit_price,7000);
  all(auction.tree).find(n=>n.type==='form'&&n.props.id==='invoice-submit-form').props.onSubmit({preventDefault(){}});await auction.settle();

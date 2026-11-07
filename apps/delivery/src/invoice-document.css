@@ -23,7 +23,7 @@
 .invoice-lines td:nth-child(1),.invoice-lines td:nth-child(2) { text-align:left; }
 .invoice-lines tfoot td:nth-child(2) { text-align:right; }
 .invoice-lines tfoot td { font-weight:600; border-top:1px solid #555; border-bottom:1px solid #555; }
-.invoice-footer { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,3fr); align-items:start; gap:6mm; padding-top:2mm; break-inside:avoid; }
+.invoice-footer { display:grid; grid-template-columns:minmax(0,1fr) min(var(--invoice-bank-width, 100%), calc((100% - 6mm) * .75)); align-items:start; gap:6mm; padding-top:2mm; break-inside:avoid; }
 .invoice-footer > section { min-width:0; }
 .invoice-footer > section > div { padding:.5mm 0; font-size:11px; line-height:1.4; }
 .invoice-footer > section > div:first-child { border-bottom:1px solid #555; font-weight:600; }
@@ -31,7 +31,7 @@
 .invoice-sheet table.invoice-bank-table td { white-space:nowrap; }
 .invoice-bank-table td:nth-child(odd) { color:#555; }
 .invoice-bank-value { display:block; overflow:hidden; }
-.invoice-bank-value > span { display:inline-block; width:max-content; transform-origin:left center; }
+.invoice-bank-text { display:inline-block; width:max-content; transform-origin:left center; }
 .receipt-summary-sheet,.receipt-photo-sheet { box-sizing:border-box; width:min(100%,190mm); min-height:270mm; margin:20px auto; padding:8mm; background:#fff; color:#222; font:12px/1.45 var(--app-font-family); }
 .receipt-summary-meta { display:flex; justify-content:space-between; gap:6mm; margin-bottom:6mm; font-size:11px; }
 .receipt-summary-sheet th:first-child { width:7%; }

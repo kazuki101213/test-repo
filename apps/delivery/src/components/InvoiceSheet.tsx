@@ -27,17 +27,43 @@ const money = (value: number) => yen(Number.isFinite(value) ? value : 0);
 const shortDate = (date: string | null) => date ? date.slice(5).replace('-', '/') : '';
 
 function bankValue(value: string) {
-  return <td><span className="invoice-bank-value"><span>{value}</span></span></td>;
+  return <td><span className="invoice-bank-value"><span className="invoice-bank-text">{value}</span></span></td>;
 }
 
 function Bank({ details: p }: { details: InvoiceDetails }) {
   return <table className="invoice-bank-table"><colgroup><col style={{ width: '12%' }} /><col style={{ width: '37%' }} /><col style={{ width: '14%' }} /><col style={{ width: '37%' }} /></colgroup><tbody>
     <tr><th colSpan={4}>振込先</th></tr>
-    <tr><td>銀行名</td>{bankValue(p.bank)}<td>銀行コード</td>{bankValue(p.bank_code)}</tr>
-    <tr><td>支店名</td>{bankValue(p.branch)}<td>店番</td>{bankValue(p.branch_code)}</tr>
-    <tr><td>口座種別</td>{bankValue(p.account_type)}<td>口座番号</td>{bankValue(p.account_number)}</tr>
-    <tr><td>名前</td>{bankValue(p.holder)}<td>フリガナ</td>{bankValue(p.holder_kana)}</tr>
+    <tr><td><span className="invoice-bank-text">銀行名</span></td>{bankValue(p.bank)}<td><span className="invoice-bank-text">銀行コード</span></td>{bankValue(p.bank_code)}</tr>
+    <tr><td><span className="invoice-bank-text">支店名</span></td>{bankValue(p.branch)}<td><span className="invoice-bank-text">店番</span></td>{bankValue(p.branch_code)}</tr>
+    <tr><td><span className="invoice-bank-text">口座種別</span></td>{bankValue(p.account_type)}<td><span className="invoice-bank-text">口座番号</span></td>{bankValue(p.account_number)}</tr>
+    <tr><td><span className="invoice-bank-text">名前</span></td>{bankValue(p.holder)}<td><span className="invoice-bank-text">フリガナ</span></td>{bankValue(p.holder_kana)}</tr>
   </tbody></table>;
+}
+
+function sizeBankTable(bank: HTMLTableElement) {
+  const columns = Array.from(bank.querySelectorAll('col'));
+  const rows = Array.from(bank.rows).slice(1);
+  const widths = columns.map((_, index) => Math.max(...rows.map(row => {
+    const cell = row.cells[index]!;
+    const text = cell.querySelector<HTMLElement>('.invoice-bank-text')!;
+    const { paddingLeft, paddingRight } = getComputedStyle(cell);
+    return Math.ceil(text.offsetWidth + parseFloat(paddingLeft) + parseFloat(paddingRight)) + 1;
+  })));
+  const [leftLabel, leftValue, rightLabel, rightValue] = widths as [number, number, number, number];
+  const labelWidth = leftLabel + rightLabel;
+  bank.parentElement!.style.setProperty('--invoice-bank-width', `${labelWidth + leftValue + rightValue}px`);
+  const valueSpace = Math.max(0, parseFloat(getComputedStyle(bank).width) - labelWidth);
+  // Keep a short value column at full width when the other column needs compression.
+  const fittedLeft = Math.min(leftValue, Math.max(valueSpace / 2, valueSpace - rightValue));
+  const fittedWidths = [leftLabel, fittedLeft, rightLabel, Math.min(rightValue, valueSpace - fittedLeft)];
+  columns.forEach((column, index) => {
+    column.style.width = `${fittedWidths[index]}px`;
+  });
+  for (const cell of bank.querySelectorAll<HTMLElement>('.invoice-bank-value')) {
+    const text = cell.firstElementChild as HTMLElement;
+    const width = text.offsetWidth;
+    text.style.transform = width > cell.clientWidth ? `scaleX(${cell.clientWidth / width})` : '';
+  }
 }
 
 export default function InvoiceSheet({ snapshot, month, issued, extras, note, receipts = [], renderPage }: {
@@ -47,7 +73,7 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
   const lines: PrintLine[] = [
     ...groupedInvoiceLines(snapshot, []),
     ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true })),
-    ...extras.map(line => ({ ...line, extra: true })),
+    ...extras.map(line => ({ ...line, description: line.description === 'ヤフオク入札作業日' ? 'ヤフオク入力作業' : line.description, extra: true })),
   ];
   const subtotal = lines.filter(line => !line.taxIncluded).reduce((sum, l) => sum + (Number.isFinite(l.quantity * l.unit_price) ? l.quantity * l.unit_price : 0), 0);
   const workFees = snapshot.lines.reduce((sum, line) => sum + (Number.isFinite(line.quantity * line.unit_price) ? line.quantity * line.unit_price : 0), 0);
@@ -75,11 +101,8 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
       if (!active) return;
       const first = element.querySelector<HTMLElement>('.invoice-sheet');
       if (!first || !first.offsetWidth) return;
-      for (const cell of element.querySelectorAll<HTMLElement>('.invoice-bank-value')) {
-        const text = cell.firstElementChild as HTMLElement;
-        const width = text.offsetWidth;
-        text.style.transform = width > cell.clientWidth ? `scaleX(${cell.clientWidth / width})` : '';
-      }
+      const bank = element.querySelector<HTMLTableElement>('.invoice-bank-table');
+      if (bank) sizeBankTable(bank);
       const css = getComputedStyle(first);
       const usable = first.offsetWidth * 270 / 190 - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom) - 4;
       const heading = height(first.querySelector('.document-heading'));
