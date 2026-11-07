@@ -27,7 +27,7 @@ const defaultAuctionDays = (month: string) => {
     .filter(day => [1, 3, 5].includes(new Date(Date.UTC(year, monthNumber - 1, day)).getUTCDay()))
     .map(day => `${month}-${String(day).padStart(2, '0')}`);
 };
-const auctionWorkdayLine = (date: string): InvoiceLine => ({ date, description: 'ヤフオク入札作業日', quantity: 1, unit_price: 4500 });
+const auctionWorkdayLine = (date: string): InvoiceLine => ({ date, description: 'ヤフオク入札作業日', quantity: 1, unit_price: 2500 });
 const workdaysPerRow = 8;
 
 function ProfileEditor({ profile, onSave }: { profile: InvoiceProfile; onSave: (p: InvoiceProfile) => void }) {
