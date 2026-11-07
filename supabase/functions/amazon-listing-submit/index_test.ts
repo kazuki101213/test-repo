@@ -1,4 +1,4 @@
-import {handler,listingBody,verifiedListing,offerImages,verifiedImages,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,type ListingItem} from './index.ts';
+import {handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,type ListingItem} from './index.ts';
 import {photographSignature,samePhotograph,verifyAmazonPhotoCopies} from '../_shared/amazonImageVerification.ts';
 import jpeg from 'npm:jpeg-js@0.4.4';
 const assert=(v:unknown,m='assertion failed')=>{if(!v)throw Error(m)};
@@ -157,3 +157,16 @@ for(const mode of ['anonymous','inactive','other','photo','invalidPrice','invali
 
 
 Deno.test('offer photo order uses SKU image slots and ignores expiring signatures for comparisons',()=>{const images=offerImages(['https://photos.example/first.jpg?a=1','https://photos.example/second.jpg']);assert(images.main_offer_image_locator[0].media_location.includes('first'));assert(images.other_offer_image_locator_1[0].media_location.includes('second'));assert(verifiedImages({attributes:offerImages(['https://photos.example/first.jpg?a=2','https://photos.example/second.jpg'])},images));assert(!verifiedImages({attributes:offerImages(['https://photos.example/second.jpg','https://photos.example/first.jpg'])},images));});
+
+Deno.test('Amazon catalog markup issue identifies the attribute without recommending a resubmission',()=>{
+ const report={severity:'ERROR',code:'100339',message:'noncompliant markup',attributeNames:['product_accolade']};
+ const body=listingBody(item());
+ assert(!('product_accolade' in body.attributes),'Offer payload must not contribute accolades');
+ const remote={issues:[report],attributes:body.attributes};
+ const message=listingIssueMessage(remote,'B07WZK3RJR');
+ assert(message.includes('product_accolade')&&message.includes('B07WZK3RJR')&&!message.includes('再送'));
+ const offerIssue={...remote,issues:[{...report,attributeNames:['condition_note']}]};
+ assert(listingIssueMessage(offerIssue,'B07WZK3RJR')==='100339：noncompliant markup');
+ const existingContribution={...remote,attributes:{...body.attributes,product_accolade:[{value:'old'}]}};
+ assert(listingIssueMessage(existingContribution,'B07WZK3RJR')==='100339：noncompliant markup');
+});
