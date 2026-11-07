@@ -26,7 +26,7 @@ const auctionLine={date:'2026-11-01',description:'ヤフオク入札作業日',q
 const auctionSheet=context.exports.default({snapshot:{profile:{},lines:[],tax_percent:0},month:'2026-11',issued:'2026-12-01',extras:[auctionLine],note:''});
 const auctionRow=all(auctionSheet).find(n=>n.type==='tbody').props.children[0];
 assert.equal(text(auctionRow.props.children[0]),'11/01');
-assert.equal(text(auctionRow.props.children[1]),'ヤフオク入力作業');
+assert.equal(text(auctionRow.props.children[1]),'ヤフオク入札作業');
 assert.equal(auctionLine.description,'ヤフオク入札作業日','Display wording must preserve saved workday data');
 function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}

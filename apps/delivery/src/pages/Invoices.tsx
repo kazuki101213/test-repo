@@ -19,6 +19,7 @@ import '../invoice.css';
 
 const errorText = (e: unknown) => e instanceof Error ? e.message : (e as { message?: string })?.message ?? '読み込みに失敗しました。';
 const defaultAuctionDays = (month: string) => {
+  if (month === '2026-11') return ['02', '05', '07', '09', '12', '14', '16', '19', '21', '23', '26', '28', '30'].map(day => `${month}-${day}`);
   const [year, monthNumber] = month.split('-').map(Number);
   if (!year || !monthNumber) return [] as string[];
   const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
@@ -27,7 +28,7 @@ const defaultAuctionDays = (month: string) => {
     .map(day => `${month}-${String(day).padStart(2, '0')}`);
 };
 const auctionWorkdayLine = (date: string): InvoiceLine => ({ date, description: 'ヤフオク入札作業日', quantity: 1, unit_price: 4500 });
-const auctionDayRanges = ['1〜9日', '10〜19日', '20〜29日', '30〜31日'];
+const workdaysPerRow = 8;
 
 function ProfileEditor({ profile, onSave }: { profile: InvoiceProfile; onSave: (p: InvoiceProfile) => void }) {
   const [draft, setDraft] = useState(profile);
@@ -159,12 +160,8 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
     setWorkdays(rows => [...rows, auctionWorkdayLine(newWorkday)].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))); setNewWorkday(''); setDirty(true); setMessage('');
   };
   const editableExtras: InvoiceLine[] = [...extras, ...workdays];
-  const workdayGroups = auctionDayRanges.map(() => [] as { line: InvoiceLine; index: number; day: number | null }[]);
-  workdays.forEach((line, index) => {
-    const dateDay = Number(line.date?.slice(8, 10));
-    const day = dateDay >= 1 && dateDay <= 31 ? dateDay : null;
-    workdayGroups[Math.floor((day ?? 0) / 10)]!.push({ line, index, day });
-  });
+  const workdayRows = Array.from({ length: Math.ceil(workdays.length / workdaysPerRow) }, (_, row) =>
+    workdays.slice(row * workdaysPerRow, (row + 1) * workdaysPerRow));
   const auctionBasePay = workdays.reduce((sum, row) => sum + (Number.isFinite(row.unit_price) ? row.quantity * row.unit_price : 0), 0);
   const auctionProfitPay = Math.floor(Math.max(grossProfit ?? 0, 0) * 0.1);
   const auctionAdjustment = Math.max(0, auctionProfitPay - auctionBasePay);
@@ -228,15 +225,19 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
       <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save(); }}>
         {isIshikawa && <section className="invoice-auction-workdays">
-          <h3>ヤフオク入力作業</h3>
+          <h3>ヤフオク入札作業</h3>
           <div className="invoice-auction-add"><DateInput aria-label="作業日を追加" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.some(row => row.date === newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
-          {workdays.length > 0 && <div className="invoice-auction-groups">
-            {workdayGroups.map((group, groupIndex) => <div className="invoice-auction-group" key={auctionDayRanges[groupIndex]} role="group" aria-label={auctionDayRanges[groupIndex]}>
-              {group.map(({ line, index, day }) => <div className="invoice-auction-day" key={line.date ?? index}>
-                <span>{day === null ? '—' : `${day}日`}</span>
-                <input aria-label={`${line.date ?? '日付未設定'}の料金(円)`} required type="number" min="0" max="10000000" step="1" value={Number.isFinite(line.unit_price) ? line.unit_price : ''} disabled={busy || receiptBusy || pdfBusy} onChange={e => { const price = e.target.valueAsNumber; setWorkdays(rows => rows.map((row, i) => i === index ? { ...row, unit_price: price } : row)); setDirty(true); setMessage(''); }} />
-                <button type="button" className="invoice-auction-day-remove" aria-label={`${line.date ?? '日付未設定'}の作業日を削除`} disabled={busy} onClick={() => { setWorkdays(rows => rows.filter((_, i) => i !== index)); setDirty(true); }}>×</button>
-              </div>)}
+          {workdays.length > 0 && <div className="invoice-auction-workday-list">
+            {workdayRows.map((row, rowIndex) => <div className="invoice-auction-row" key={rowIndex}>
+              {row.map((line, columnIndex) => {
+                const index = rowIndex * workdaysPerRow + columnIndex;
+                const dateLabel = line.date ? `${Number(line.date.slice(5, 7))}/${Number(line.date.slice(8, 10))}` : '—';
+                return <div className="invoice-auction-day" key={line.date ?? index}>
+                  <span>{dateLabel}</span>
+                  <input aria-label={`${line.date ?? '日付未設定'}の料金(円)`} required type="number" min="0" max="10000000" step="1" value={Number.isFinite(line.unit_price) ? line.unit_price : ''} disabled={busy || receiptBusy || pdfBusy} onChange={e => { const price = e.target.valueAsNumber; setWorkdays(rows => rows.map((row, i) => i === index ? { ...row, unit_price: price } : row)); setDirty(true); setMessage(''); }} />
+                  <button type="button" className="invoice-auction-day-remove" aria-label={`${line.date ?? '日付未設定'}の作業日を削除`} disabled={busy} onClick={() => { setWorkdays(rows => rows.filter((_, i) => i !== index)); setDirty(true); }}>×</button>
+                </div>;
+              })}
             </div>)}
           </div>}
           <p>作業日分：¥{auctionBasePay.toLocaleString('ja-JP')}　粗利益の10%：{grossProfitLoading ? '計算中…' : `¥${auctionProfitPay.toLocaleString('ja-JP')}`}</p>
@@ -249,6 +250,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       <div className="receipt-section">
       <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onSavingChange={setReceiptSaving} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
+      {review && <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />}
       </div>
       {review ? <div className="invoice-review-documents">
         <InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} renderPage={reviewPage('請求書')}/>
@@ -264,7 +266,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
 
     </>}
     </div>
-    <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />
+    {!review && <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />}
     {!review&&<div className="no-print"><GrossProfitSummary staff={staff} /></div>}
     {!review&&<div className="card no-print"><PackedSummary staffId={staff.id} /></div>}
   </section>;

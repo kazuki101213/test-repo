@@ -73,7 +73,7 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
   const lines: PrintLine[] = [
     ...groupedInvoiceLines(snapshot, []),
     ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true })),
-    ...extras.map(line => ({ ...line, description: line.description === 'ヤフオク入札作業日' ? 'ヤフオク入力作業' : line.description, extra: true })),
+    ...extras.map(line => ({ ...line, description: line.description === 'ヤフオク入札作業日' ? 'ヤフオク入札作業' : line.description, extra: true })),
   ];
   const subtotal = lines.filter(line => !line.taxIncluded).reduce((sum, l) => sum + (Number.isFinite(l.quantity * l.unit_price) ? l.quantity * l.unit_price : 0), 0);
   const workFees = snapshot.lines.reduce((sum, line) => sum + (Number.isFinite(line.quantity * line.unit_price) ? line.quantity * line.unit_price : 0), 0);
