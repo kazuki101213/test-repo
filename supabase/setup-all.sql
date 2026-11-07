@@ -17175,7 +17175,7 @@ begin
   or i.asin::text is distinct from r.asin or i.sales_channel is distinct from r.sales_channel
   or i.planned_price is distinct from r.price or i.condition::text is distinct from r.item_condition
   or coalesce(i.description,'') is distinct from r.description
-  or r.seller_id is distinct from case when i.sales_channel::text in ('FBA2','自己発送2') then 'A3E7BXJWH9TP11' else 'A1WI3OGPE43N2T' end
+  or r.seller_id is distinct from (case when i.sales_channel::text in ('FBA2','自己発送2') then 'A3E7BXJWH9TP11' else 'A1WI3OGPE43N2T' end)
   or not(i.sku=r.sku or exists(select 1 from app.item_sku_aliases a where a.item_id=i.id and a.sku=r.sku))
  then raise exception '確認後に商品情報が変更されています' using errcode='40001';end if;
  select s.* into actor from app.staff s join app.profiles p on p.staff_id=s.id where p.user_id=r.requested_by;

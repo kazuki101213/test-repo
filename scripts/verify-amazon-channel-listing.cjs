@@ -11,16 +11,18 @@ async function confirm(channel,approved=true,verified=true,scenario='normal'){
  const task={id:'fixture',sku:'9000-AAII-date-100',asin:'B015INS3IE',planned_price:scenario==='freshPrice'?null:400,sales_channel:channel,status:'商品登録前',purchased_at:'2026-10-01',packed_on:null,title:'ホコリセンサーフィルター',condition:'非常に良い',photo_review_approved:approved};
  const full={...task,planned_price:scenario==='missingPrice'?null:scenario==='freshPrice'?390:400},context={assignee:'担当者',revision:'revision',operations:[],photo_review_approved:approved};
  const react={useState(v){const n=cursor++;hooks[n]??={value:typeof v==='function'?v():v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((d,i)=>d!==hooks[n].deps[i])){hooks[n]?.cleanup?.();const slot=hooks[n]={deps};effects.push(()=>{slot.cleanup=fn()})}}};
- const api={fetchAmazonListingPending:async()=>null,fetchTask:async()=>full,fetchSellerContext:async()=>context,fetchPhotoUrls:async()=>[{id:'photo-1',url:'https://photos/one.jpg'},{id:'photo-2',url:'https://photos/two.jpg'}],fetchProductMaker:async()=>'',queueSellerOperation:async()=>{queued++},submitAmazonListing:async(id,date,key,photoIds,expected,resume)=>{
+ const api={fetchAmazonListingPending:async()=>scenario==='restoredPending'?{requestId:'server-receipt',date:'2026-11-06',photoIds:['photo-2','photo-1']}:null,fetchTask:async()=>full,fetchSellerContext:async()=>context,fetchPhotoUrls:async()=>[{id:'photo-1',url:'https://photos/one.jpg'},{id:'photo-2',url:'https://photos/two.jpg'}],fetchProductMaker:async()=>'',queueSellerOperation:async()=>{queued++},submitAmazonListing:async(id,date,key,photoIds,expected,resume)=>{
   assert.equal(id,task.id);assert.equal(date,'2026-11-06');assert.deepEqual(Array.from(photoIds),['photo-2','photo-1']);assert.equal(expected.price,full.planned_price);assert.equal(expected.sku,task.sku);
-  if(resume){resumes++;assert.equal(key,'server-receipt');if(scenario==='resumeNetwork'&&resumes===1)throw Object.assign(new Error('通信'),{status:502});if(scenario==='resumeConflict')throw Object.assign(new Error('出品内容が変更されています'),{status:409});return{verified:resumes>=2,state:resumes>=2?'verified':'accepted',note:'確認中'};}
+  if(resume){resumes++;assert.equal(key,'server-receipt');if(scenario==='resumeRetryable')return{verified:false,state:'retryable',note:'同じSKUで出品を再確認できます。'};if(scenario==='resumeNetwork'&&resumes===1)throw Object.assign(new Error('通信'),{status:502});if(scenario==='resumeConflict')throw Object.assign(new Error('出品内容が変更されています'),{status:409});return{verified:resumes>=2,state:resumes>=2?'verified':'accepted',note:'確認中'};}
   writes++;return{verified,state:scenario==='failed'?'failed':verified?'verified':'accepted',note:scenario==='failed'?'Amazonが出品内容を拒否しました':'Amazon受付済み：登録結果を確認中',requestId:'server-receipt',workCompletedOn:date};
  }};
  const c={exports:{},document,crypto:{randomUUID:()=>String(Math.random())},window:{setInterval(fn){timers.set(++nextTimer,fn);return nextTimer},clearInterval(id){timers.delete(id)}},require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx,jsxs:jsx}:n==='@bussan/shared'?{...seller,...channels,canViewDeliveryAssignee:()=>true}:n==='../api'?api:n==='../listingDraft'?{listingDraft:()=>({...seller.sellerDefaults(full),description:'説明文',listingCategory:''})}:{__esModule:true,default:n.split('/').at(-1)}};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/delivery/src/components/SellerPanel.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);
  async function settle(){for(let i=0;i<80;i++){if(dirty){cursor=0;dirty=false;tree=c.exports.default({mode:'listing',task,staff:{id:'admin',name:'管理者',role:'admin'},onClose(){},onChanged(){changed++}});effects.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
  const button=()=>all(tree).find(n=>n.type==='button'&&text(n)==='出品'),dialog=()=>all(tree).find(n=>n.type==='WorkDateConfirmation');
- await settle();assert(button());assert.equal(button().props.disabled,!approved);assert(!all(tree).some(n=>n.type==='label'&&text(n).startsWith('出品カテゴリ')));
+ await settle();assert(button());
+ if(scenario==='restoredPending'){assert(button().props.disabled);assert.equal(writes,0);assert.equal(timers.size,1);const tick=[...timers.values()][0];tick();await settle();tick();await settle();assert.equal(resumes,2);assert.equal(writes,0,'restored receipt must never create another listing');assert.equal(changed,1);assert.equal(timers.size,0);return;}
+ assert.equal(button().props.disabled,!approved);assert(!all(tree).some(n=>n.type==='label'&&text(n).startsWith('出品カテゴリ')));
  if(!approved){assert.equal(writes,0);return;}
  assert(all(tree).some(n=>n.props?.['aria-label']==='出品写真の掲載順'));
  all(tree).find(n=>n.props?.['aria-label']==='写真1を後へ').props.onClick();await settle();button().props.onClick();await settle();
@@ -31,6 +33,7 @@ async function confirm(channel,approved=true,verified=true,scenario='normal'){
  if(!verified){
   assert(all(tree).some(n=>n.props?.role==='status'&&text(n).includes('自動確認')));assert(!all(tree).some(n=>n.props?.role==='alert'));assert(button().props.disabled);assert.equal(timers.size,1);
   const tick=[...timers.values()][0];document.visibilityState='hidden';tick();await settle();assert.equal(resumes,0);document.visibilityState='visible';tick();await settle();
+  if(scenario==='resumeRetryable'){assert.equal(timers.size,0);assert(!button().props.disabled);assert.equal(writes,1);assert(all(tree).some(n=>n.props?.role==='status'&&text(n).includes('同じSKU')));return;}
   if(scenario==='resumeConflict'){assert.equal(timers.size,0);assert.equal(changed,0);assert(all(tree).some(n=>n.props?.role==='alert'&&text(n).includes('変更')));return;}
   assert.equal(changed,0);assert.equal(writes,1);if(scenario==='resumeNetwork')assert(all(tree).some(n=>n.props?.role==='status'&&text(n).includes('通信')));
   tick();await settle();assert.equal(resumes,2);assert.equal(changed,1);assert.equal(writes,1,'polling must not submit a listing again');assert.equal(timers.size,0,'timer cleanup after verified result');assert(!all(tree).some(n=>n.props?.role==='alert'));
@@ -44,7 +47,7 @@ async function confirm(channel,approved=true,verified=true,scenario='normal'){
   assert.equal(workflow.canAddPackingPhotos({status:'出品中',sales_channel:channel}),channels.isSelfShippingChannel(channel));
   await confirm(channel);await confirm(channel,false);await confirm(channel,true,false);await confirm(channel,true,true,'missingPrice');await confirm(channel,true,true,'freshPrice');
  }
- await confirm('FBA2',true,false,'resumeNetwork');await confirm('自己発送2',true,false,'resumeConflict');await confirm('FBA2',true,false,'failed');
+ await confirm('FBA2',true,false,'restoredPending');await confirm('FBA2',true,false,'resumeRetryable');await confirm('FBA2',true,false,'resumeNetwork');await confirm('自己発送2',true,false,'resumeConflict');await confirm('FBA2',true,false,'failed');
  assert.deepEqual(palette.inventorySiteStyle('FBA1'),palette.inventorySiteStyle('FBA2'));
  assert.deepEqual(palette.inventorySiteStyle('自己発送1'),palette.inventorySiteStyle('自己発送2'));
  assert.notEqual(palette.inventorySiteStyle('FBA1').backgroundColor,palette.inventorySiteStyle('自己発送1').backgroundColor);

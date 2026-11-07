@@ -1,9 +1,15 @@
-import {handler,listingPrice,pricePatch} from './index.ts';
+import {handler,listingPrice,pricePatch,bindPriceItems} from './index.ts';
 const assert=(v:unknown,message='assertion failed')=>{if(!v)throw Error(message)};
 const id='11111111-1111-4111-8111-111111111111',sku='9003c-AAII-20261029-40',marketplace='A1VC38T7YXB528';
 const listing=()=>({sku,summaries:[{marketplaceId:marketplace,asin:'B000TEST01',productType:'ELECTRONIC_DEVICE'}],attributes:{purchasable_offer:[{audience:'ALL',currency:'JPY',marketplace_id:marketplace,our_price:[{schedule:[{value_with_tax:1000}]}],minimum_seller_allowed_price:[{schedule:[{value_with_tax:800}]}]},{audience:'B2B',currency:'JPY',our_price:[{schedule:[{value_with_tax:900}]}]}]}});
 Deno.test('price patch preserves business prices and minimum price',()=>{const before=listing(),patch=pricePatch(before,1200);assert(patch.productType==='ELECTRONIC_DEVICE');assert(patch.patches[0].value[0].our_price[0].schedule[0].value_with_tax===1200);assert(patch.patches[0].value[1].our_price[0].schedule[0].value_with_tax===900);assert(patch.patches[0].value[0].minimum_seller_allowed_price[0].schedule[0].value_with_tax===800);assert(listingPrice(before)===1000,'must not mutate original');});
 Deno.test('scheduled/ambiguous price is not editable',()=>{const row=listing();(row.attributes.purchasable_offer[0].our_price[0].schedule[0] as Record<string,unknown>).start_at='2026-12-01';assert(listingPrice(row)===null);let failed=false;try{pricePatch(row,100)}catch{failed=true}assert(failed)});
+Deno.test('price operations bind the verified Amazon SKU while preserving generated inventory identity',()=>{
+ const item={id,sku:'9003c-AAII-20261029-34',asin:'B000TEST01',sales_channel:'自己発送2',status:'出品中',is_accessory:true};
+ const receipt={item_id:id,sku,asin:item.asin,sales_channel:item.sales_channel,account_id:'amazon-2'};
+ const [bound]=bindPriceItems([item],[receipt],[{item_id:id,sku}]);assert(bound.sku===sku&&bound.inventorySku===item.sku&&bound.listingAccount==='amazon-2');assert(item.sku.endsWith('-34'));
+ let rejected=false;try{bindPriceItems([item],[receipt],[{item_id:'other-item',sku}])}catch{rejected=true}assert(rejected,'foreign alias must never redirect a price write');
+});
 for(const mode of ['anonymous','nonadmin','read','duplicate','stale','wrongAsin','wrongAccount','stateChanged','invalidPrice','accepted','pending','verifyFails','rejected'])Deno.test(mode,async()=>{
  const originalFetch=globalThis.fetch,keys=['SUPABASE_URL','SUPABASE_ANON_KEY',...['AMAZON_','AMAZON_2_'].flatMap(prefix=>['LWA_CLIENT_ID','LWA_CLIENT_SECRET','LWA_REFRESH_TOKEN','SELLER_ID'].map(field=>prefix+field))],originalEnv=keys.map(k=>Deno.env.get(k));
  let amazonCalls=0,patches=0,gets=0,patchBody:Record<string,any>|null=null;const urls:string[]=[];
@@ -14,6 +20,7 @@ for(const mode of ['anonymous','nonadmin','read','duplicate','stale','wrongAsin'
    if(url.includes('/auth/v1/user'))return json({id:'admin',aud:'authenticated'});
    if(url.includes('/rpc/is_admin'))return json(mode!=='nonadmin');
    if(url.includes('/rest/v1/items'))return url.includes('select=sku%2Casin%2Cstatus%2Csales_channel')?json({sku,asin:'B000TEST01',sales_channel:'FBA',status:mode==='stateChanged'?'販売済':'出品中'}):json([{id,sku,asin:'B000TEST01',sales_channel:mode==='wrongAccount'?'FBA1':'FBA',status:'出品中',is_accessory:true}]);
+   if(url.includes('/rest/v1/amazon_listing_submissions')||url.includes('/rest/v1/item_sku_aliases'))return json([]);
    if(url.includes('/auth/o2/token'))return json({access_token:new URLSearchParams(String(init?.body)).get('client_id')});
    amazonCalls++;assert(url.startsWith('https://sellingpartnerapi-fe.amazon.com/'),'wrong endpoint');const second=url.includes('/two');
    if(init?.method==='PATCH'){patches++;assert(second,'must write only resolved account2');patchBody=JSON.parse(String(init.body));return json(mode==='rejected'?{status:'INVALID',issues:[{severity:'ERROR',message:'private-token'}]}:{status:'ACCEPTED'});}
