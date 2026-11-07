@@ -108,8 +108,9 @@
 .receipt-entry-row input:not([aria-hidden=true]),.receipt-entry-row button,.invoice-extra input:not([aria-hidden=true]),.invoice-extra button { box-sizing:border-box; height:42px; min-height:42px; margin:0; }
 .invoice-extra button,.receipt-entry-row button { padding:8px; }
 .invoice-extra label > span > button,.receipt-entry-row label > span > button { width:30px; display:inline-flex; align-items:center; justify-content:center; padding:4px; }
-.invoice-extra input[type=number],.receipt-entry-row input[type=number] { appearance:textfield; -moz-appearance:textfield; }
-.invoice-extra input[type=number]::-webkit-inner-spin-button,.invoice-extra input[type=number]::-webkit-outer-spin-button,.receipt-entry-row input[type=number]::-webkit-inner-spin-button,.receipt-entry-row input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+:is(.invoice-extra,.receipt-entry-row,.invoice-auction-day) input[type=number] { appearance:textfield; -moz-appearance:textfield; }
+:is(.invoice-extra,.receipt-entry-row,.invoice-auction-day) input[type=number]::-webkit-inner-spin-button,
+:is(.invoice-extra,.receipt-entry-row,.invoice-auction-day) input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 .receipt-attachment { display:grid; gap:5px; font-size:13px; }
 .receipt-entry-row .receipt-camera-btn { width:100%; }
 .receipt-attachment-options { display:flex; flex-wrap:wrap; gap:8px; }
