@@ -5,9 +5,17 @@ function load(source,extra={}) {
  return context.exports;
 }
 const validation=load(fs.readFileSync(__dirname+'/validation.ts','utf8'));
-function fixture({auth=true,active=true,role='deliverer',configured=true,linked=true,botStatus=200,rows=[],pushStatus=200,prepare=true,mediaFail=false,enabled=true,photoSelectionFail=false}={}) {
+function fixture({auth=true,active=true,role='deliverer',configured=true,linked=true,botStatus=200,rows=[],pushStatus=200,prepare=true,mediaFail=false,enabled=true,photoSelectionFail=false,invoiceRows=[],invoiceRecipients={}}={}) {
  const state={rpc:[],calls:[]};let handler;
  const client={auth:{getUser:async()=>({data:{user:auth?{id:'self'}:null}})},from(table){const query={select(){return query;},eq(field,value){state.lastFilter={table,field,value};return query;},maybeSingle:async()=>({data:table==='profiles'?{staff_id:'own-staff'}:table==='staff'?{id:'own-staff',role,is_active:active}:table==='delivery_line_settings'?{enabled}:linked?{linked_at:'2026-10-24',blocked:false}:null,error:null})};return query;},rpc:async(name,args)=>{state.rpc.push({name,args});return {data:name==='delivery_push_config'?{delivery_push_dispatch_token:'private-dispatch'}:name==='claim_delivery_line'?rows:name==='prepare_delivery_line_message'?prepare:name==='handle_delivery_line_event',error:null};}};
+ const shippingRpc=client.rpc;
+ client.rpc=async(name,args)=>{
+  if(name==='claim_invoice_approval_line'||name==='invoice_approval_line_recipient'||name==='finish_invoice_approval_line'){
+   state.rpc.push({name,args});
+   return {data:name==='claim_invoice_approval_line'?invoiceRows:name==='invoice_approval_line_recipient'?invoiceRecipients[args.p_invoice]:null,error:null};
+  }
+  return shippingRpc(name,args);
+ };
  const source=fs.readFileSync(__dirname+'/index.ts','utf8').replace(/^import [^\r\n]*(?:\r?\n|$)/gm,'');
  load(source,{...validation,QRCode:{},selectLinePhotos:async()=>{state.photoSelectionCalls=(state.photoSelectionCalls||0)+1;if(photoSelectionFail)throw Error('temporary AI failure');return{processed:0};},prepareShippingMedia:async({media})=>{if(mediaFail)throw Error('fixture media unavailable');return media;},createClient:()=>client,fetch:async(url,init)=>{state.calls.push({url,init});if(url.endsWith('/push')&&pushStatus===0)throw Error('network response lost');return Response.json(url.endsWith('/info')?{basicId:'@fixture',displayName:'Fixture'}:{},{status:url.endsWith('/info')?botStatus:url.endsWith('/push')?pushStatus:200});},Deno:{env:{get:name=>name==='LINE_CHANNEL_SECRET'?'fixture-secret':name==='LINE_CHANNEL_ACCESS_TOKEN'?(configured?'fixture-token':undefined):undefined},serve:fn=>handler=fn}});
  const request=(action,headers={})=>handler(new Request('https://fixture.invalid/delivery-line',{method:'POST',headers:{Origin:validation.deliveryOrigin,Authorization:'Bearer fixture',...headers},body:JSON.stringify({action,staffId:'someone-else'})}));
@@ -107,4 +115,42 @@ test('Automatic media failure still sends one exact-item request using the same 
  const f=fixture({rows:[row],mediaFail:true});await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
  const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);const body=JSON.parse(push.init.body);assert.equal(body.messages.length,1);assert.equal(body.to,'fixture-recipient');assert(body.messages[0].text.includes('?itemId='+media.itemId));assert.equal(push.init.headers['X-Line-Retry-Key'],retryKey);assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,'sent');
  const stopped=fixture({rows:[row],mediaFail:true,prepare:false});await stopped.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert(!stopped.state.calls.some(x=>x.url.endsWith('/push')),'Trade/assignee recheck is still mandatory');
+});
+
+test('Invoice dispatch sends each approved amount and protected link only to its verified recipient',async()=>{
+ const a={invoice_id:'872a63bb-6095-43af-98be-7fb1a0623ac4',lease:'lease-a',retry_key:'63004842-ad1d-4d5c-8c57-6556d9ba98ae',staff_name:'担当者A',billing_month:'2026-10',total:21970};
+ const b={invoice_id:'d55a612b-c7cd-4b4e-8c34-e7f1d17fa730',lease:'lease-b',retry_key:'ed0298e4-47a2-4206-82cc-7f6c48be1d86',staff_name:'担当者B',billing_month:'2026-10',total:18838};
+ const recipients={[a.invoice_id]:'U'+'a'.repeat(32),[b.invoice_id]:'U'+'b'.repeat(32)};
+ const auth={'x-delivery-dispatch':'private-dispatch'};
+ const f=fixture({invoiceRows:[a,b],invoiceRecipients:recipients,enabled:false,pushStatus:409});
+ assert.equal((await f.request('dispatch-invoice-approvals')).status,401);
+ assert.equal(f.state.calls.length,0);
+ const result=await (await f.request('dispatch-invoice-approvals',auth)).json();
+ assert.deepEqual(result,{processed:2,sent:2});
+ assert.equal(f.state.calls.length,2);
+ for(const [index,row] of [a,b].entries()){
+  const request=f.state.calls[index].init;
+  const body=JSON.parse(request.body);
+  assert.equal(body.to,recipients[row.invoice_id]);
+  assert.equal(body.messages.length,1);
+  const text=body.messages[0].text;
+  assert(text.startsWith(row.staff_name));
+  assert(text.includes('承認金額 ¥'+row.total.toLocaleString('ja-JP')));
+  const link=new URL(text.split('［請求書を確認］')[1]);
+  assert.equal(link.origin,validation.deliveryOrigin);
+  assert.equal(link.searchParams.get('invoiceId'),row.invoice_id);
+  assert.equal(link.searchParams.get('invoiceMonth'),row.billing_month);
+  assert.equal(request.headers['X-Line-Retry-Key'],row.retry_key);
+ }
+ assert(f.state.rpc.filter(call=>call.name==='finish_invoice_approval_line').every(call=>call.args.p_state==='sent'));
+ const missing=fixture({invoiceRows:[a],invoiceRecipients:{}});
+ await missing.request('dispatch-invoice-approvals',auth);
+ assert.equal(missing.state.calls.length,0);
+ assert.equal(missing.state.rpc.at(-1).args.p_state,'pending');
+ const timeout=fixture({invoiceRows:[a],invoiceRecipients:recipients,pushStatus:0});
+ await timeout.request('dispatch-invoice-approvals',auth);
+ await timeout.request('dispatch-invoice-approvals',auth);
+ assert.equal(timeout.state.calls[0].init.body,timeout.state.calls[1].init.body);
+ assert.equal(timeout.state.calls[0].init.headers['X-Line-Retry-Key'],timeout.state.calls[1].init.headers['X-Line-Retry-Key']);
+ assert.equal(timeout.state.rpc.at(-1).args.p_state,'pending');
 });

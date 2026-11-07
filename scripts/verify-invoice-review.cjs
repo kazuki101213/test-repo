@@ -6,7 +6,7 @@ const compile=source=>ts.transpileModule(source,{compilerOptions:{target:ts.Scri
 function mount(file,props,mocks={},append=''){
  let hooks=[],cursor=0,pending=[],dirty=true,tree;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{const next=typeof v==='function'?v(hooks[n].value):v;if(next!==hooks[n].value){hooks[n].value=next;dirty=true}}]},useRef(value){return hooks[cursor++]??={current:value}},useCallback(fn){const n=cursor++;return(hooks[n]??={value:fn}).value},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
- const ctx={exports:{},window:{confirm:()=>true,addEventListener(){},removeEventListener(){}},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:mocks[name]??(name.endsWith('.css')?{}:{__esModule:true,default:name.split('/').at(-1)})};
+ const ctx={exports:{},window:{confirm:()=>true,addEventListener(){},removeEventListener(){}},require:name=>name==='react'?{...react,lazy:()=>null}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:mocks[name]??(name.endsWith('.css')?{}:{__esModule:true,default:name.split('/').at(-1)})};
  vm.runInNewContext(compile(fs.readFileSync(file,'utf8')+append),ctx);
  return {get tree(){return tree},async settle(){for(let n=0;n<70;n++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default(props);pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}};
 }
@@ -53,7 +53,8 @@ const clone=value=>JSON.parse(JSON.stringify(value));
  all(refreshed.tree).find(n=>n.type==='form'&&n.props.id==='invoice-submit-form').props.onSubmit({preventDefault(){}});await refreshed.settle();assert.equal(state.receiptVersion,10,'Combined submission updates the approval receipt version');
  let approvalCalls=[],approved=0,closed=0,approvalRequest;
  const task={id:'task',staff_id:'worker',month:'2026-10-01',name:'担当者',invoice:{...canonical,delivery_invoice_approvals:null},receipts:{version:9}};
- const parent=mount('apps/admin/src/components/InvoiceTasks.tsx',{task,staff:admin,onClose(){closed++},onApproved(){approved++}}, {'@bussan/shared':{staffDisplayName:v=>v,getSupabase:()=>({rpc:async(name,args)=>{approvalCalls.push({name,args});return{error:null}}})},'./TaskConfirmation':{useTaskConfirmation:()=>({ask(label,action,notice){approvalRequest={label,action,notice}},pending:false,confirmation:null})}},'\nexports.default = InvoiceReview;');
+ let approvalNotice;
+ const parent=mount('apps/admin/src/components/InvoiceTasks.tsx',{task,staff:admin,onClose(){closed++},onApproved(notice){approved++;approvalNotice=notice}}, {'@bussan/shared':{staffDisplayName:v=>v,getSupabase:()=>({rpc:async(name,args)=>{approvalCalls.push({name,args});return{error:null,data:name==='invoice_approval_line_status'?'waiting_link':null}}})},'./TaskConfirmation':{useTaskConfirmation:()=>({ask(label,action,notice){approvalRequest={label,action,notice}},pending:false,confirmation:null})}},'\nexports.default = InvoiceReview;');
  await parent.settle();
  assert.equal(all(parent.tree).filter(n=>n.type==='button').length,0,'No duplicate top-right or bottom controls');
  const embedded=child(parent,'Invoices');assert(embedded);assert.equal(embedded.props.review.staffId,'worker');assert.equal(embedded.props.review.month,'2026-10');assert.equal(embedded.props.staff,admin);
@@ -67,7 +68,16 @@ const clone=value=>JSON.parse(JSON.stringify(value));
  actionButtons()[1].props.onClick();assert.equal(closed,1);assert.equal(approvalCalls.length,0,'Closing never approves');
  actionButtons()[0].props.onClick();await parent.settle();
  assert.equal(approvalRequest.label,'請求書の承認');assert.match(approvalRequest.notice,/外注費に追加/);assert.equal(approvalCalls.length,0,'Opening approval confirmation does not change the invoice');
- await approvalRequest.action();await parent.settle();assert.equal(approved,1);assert.equal(approvalCalls.length,1);assert.equal(approvalCalls[0].name,'approve_invoice_documents');assert.deepEqual(clone(approvalCalls[0].args),{p_invoice:'invoice',p_version:10,p_receipt_version:10,p_incurred_on:'2026-10-31'});
+ assert.match(approvalRequest.notice,/担当者に公式LINE/);
+ await approvalRequest.action();await parent.settle();assert.equal(approved,1);assert.equal(approvalCalls.length,2);assert.equal(approvalCalls[0].name,'approve_invoice_documents');assert.deepEqual(clone(approvalCalls[0].args),{p_invoice:'invoice',p_version:10,p_receipt_version:10,p_incurred_on:'2026-10-31'});
+ assert.deepEqual(clone(approvalCalls[1]),{name:'invoice_approval_line_status',args:{p_invoice:'invoice'}});
+ assert.match(approvalNotice,/連携待ち/);
+ for(const [account,invoice,expected] of [[owner,{id:'invoice',approved_at:'now'},true],[admin,{id:'other',approved_at:'now'},false],[owner,{id:'invoice'},false]]) {
+  const link=mount('apps/delivery/src/App.tsx',{target:{id:'invoice',month:'2026-10'},staff:account,onNavigationChange(){}},{'./invoices':{findInvoice:async(staffId,month)=>{assert.equal(staffId,account.id);assert.equal(month,'2026-10');return invoice;}}},'\nexports.default = ApprovedInvoiceLink;');
+  await link.settle();
+  assert.equal(!!child(link,'Invoices'),expected);
+  if(expected)assert.equal(child(link,'Invoices').props.initialMonth,'2026-10');
+ }
  assert(!fs.existsSync('apps/admin/src/components/InvoiceEditor.tsx'));assert(!fs.readFileSync('apps/admin/src/components/InvoiceTasks.tsx','utf8').includes('admin_edit_invoice'));
  // Per-day fees survive shared save/reload, while new workdays keep their default fee.
  profiles[1].details.issuer_name='石川秀樹';
