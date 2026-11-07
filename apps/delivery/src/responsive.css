@@ -19,7 +19,7 @@
   .app, .app:has(.invoices) { width:100%; max-width:none; padding:0 24px 96px; }
   .app > *, .app .card, .app fieldset, .app label { min-width:0; }
   .app input, .app select, .app textarea { min-width:0; max-width:100%; }
-  .app .btn, .app select, .app input:not([type=checkbox]):not([type=radio]):not([type=file]):not([aria-hidden=true]) { min-height:44px; }
+  .app select, .app input:not([type=checkbox]):not([type=radio]):not([type=file]):not([aria-hidden=true]) { min-height:44px; }
   .app .btn { white-space:nowrap; }
   .copy-icon-button { width:44px; height:44px; }
   .app .row, .app-switch-actions, .invoice-notification-actions { flex-wrap:nowrap; }
@@ -216,7 +216,7 @@
   .invoice-tabs > .btn:nth-child(3) { grid-column:1 / -1; }
 }
 @media screen {
-  .app .btn { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:44px; padding-inline:12px !important; white-space:nowrap; }
+  .app .btn { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:var(--action-button-min-height,44px); padding-inline:12px !important; white-space:nowrap; }
   .invoice-tabs > .btn:nth-child(3) { padding-inline:12px; }
 }
 .seller-photo { min-width:0; display:grid; align-content:start; justify-items:center; gap:6px; }
