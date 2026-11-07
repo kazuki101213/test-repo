@@ -139,6 +139,19 @@
  .app .approved-delivery-card .workflow-controls .btn { font-size:10px; min-height:28px; padding:5px 6px!important; }
 }
 
+@media(max-width:767px) {
+ .approved-delivery-body,.delivery-independent-record { position:relative; }
+ .approved-delivery-card .delivery-fba-select {
+  position:absolute;
+  top:6px;
+  right:3px;
+  width:44px;
+  height:44px;
+ }
+ .delivery-main-identity:has(.delivery-fba-select),
+ .delivery-independent-record .delivery-accessory-identity:has(.delivery-fba-select) { padding-right:38px; }
+}
+
 /* Match every expanded inventory panel to its workflow action controls. */
 .app .task-card.approved-delivery-card .task-detail-inline .btn {
  width:auto!important; height:auto!important; min-height:28px!important; min-width:0; margin:0;
