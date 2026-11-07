@@ -49,11 +49,16 @@
  height:44px;
 }
 @media(min-width:1280px) {
- .approved-delivery-head { display:grid; grid-template-columns:minmax(660px,1.7fr) minmax(285px,.9fr) minmax(150px,.5fr); gap:16px; padding:9px 12px; background:var(--surface-2); border-block:1px solid var(--border); color:var(--muted); font-size:12px; line-height:20px; align-items:center; }
+ .approved-delivery-head,.approved-delivery-card {
+  --delivery-main-column:minmax(590px,1.7fr);
+  --delivery-bundled-column:minmax(244px,.9fr);
+  --delivery-action-column:minmax(320px,.7fr);
+ }
+ .approved-delivery-head,.approved-delivery-body { grid-template-columns:var(--delivery-main-column) var(--delivery-bundled-column) var(--delivery-action-column); }
+ .approved-delivery-head { display:grid; gap:16px; padding:9px 12px; background:var(--surface-2); border-block:1px solid var(--border); color:var(--muted); font-size:12px; line-height:20px; align-items:center; }
  .delivery-head-main { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr); gap:12px; }
  .delivery-head-bundled { display:grid; grid-template-columns:minmax(130px,1fr) minmax(100px,.7fr); gap:12px; }
- .approved-delivery-body { display:grid; grid-template-columns:minmax(660px,1.7fr) minmax(285px,.9fr) minmax(150px,.5fr); gap:8px 16px; min-height:112px; padding:0 12px; align-items:center; }
- .approved-delivery-body > .delivery-record-actions { grid-column:1 / -1; justify-self:end; padding-bottom:8px; max-width:100%; }
+ .approved-delivery-body { display:grid; gap:8px 16px; min-height:112px; padding:0 12px; align-items:center; }
  .delivery-main-info { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr); gap:12px; align-items:center; }
  .delivery-main-identity { display:flex; align-items:center; gap:12px; }
  .app .approved-delivery-card .task-card-photo-button { flex:0 0 96px; width:96px; height:96px; min-height:0; padding:0; margin:8px 0; border:0; border-radius:4px; background:var(--surface-2); overflow:hidden; }
@@ -66,7 +71,7 @@
  .delivery-bundled-record .delivery-accessory-identity { grid-column:1; grid-row:1; }
  .delivery-bundled-record .delivery-people { grid-column:2; grid-row:1/4; align-self:center; }
  .delivery-bundled-record .delivery-accessory-details { grid-column:1; grid-row:2; }
- .delivery-independent-record { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr) minmax(285px,.9fr) minmax(150px,.5fr); gap:8px 12px; align-items:center; min-height:64px; border-top:1px solid var(--border); padding:4px 12px; }
+ .delivery-independent-record { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr) var(--delivery-bundled-column) var(--delivery-action-column); gap:8px 12px; align-items:center; min-height:64px; border-top:1px solid var(--border); padding:4px 12px; }
  .delivery-independent-record .delivery-accessory-identity { display:grid; grid-template-columns:96px minmax(0,1fr); gap:12px; }
  .delivery-independent-record .delivery-accessory-state { align-self:start; padding-top:3px; }
  .delivery-independent-record .delivery-accessory-state .inventory-label { font-size:10px; }
@@ -76,17 +81,26 @@
  .delivery-independent-record .delivery-accessory-details > .copyable-text { grid-column:1; }
  .delivery-independent-record .delivery-accessory-details > .task-detail-field { grid-column:2; }
  .delivery-independent-record .delivery-accessory-details > .task-detail-field:nth-child(3) { grid-row:1; }
- .delivery-independent-record > .delivery-record-actions { grid-column:1 / -1; justify-self:end; max-width:100%; }
+ :is(.approved-delivery-body,.delivery-independent-record) > :is(.delivery-record-actions,.task-read-only),
+ .app .task-card.approved-delivery-card .delivery-record-actions:has(.workflow-action-form) .workflow-buttons { grid-column:-2; grid-row:1; align-self:end; }
+ .approved-delivery-body > :is(.delivery-record-actions,.task-read-only),
+ .app .task-card.approved-delivery-card .approved-delivery-body .delivery-record-actions:has(.workflow-action-form) .workflow-buttons { padding-bottom:8px; }
+ :is(.approved-delivery-body,.delivery-independent-record):has(.delivery-fba-select) > .delivery-record-actions,
+ .app .task-card.approved-delivery-card :is(.approved-delivery-body,.delivery-independent-record):has(.delivery-fba-select) .delivery-record-actions:has(.workflow-action-form) .workflow-buttons { margin-right:44px; }
  .delivery-record-actions:has(.workflow-buttons:empty) { display:none; }
- .app .task-card.approved-delivery-card .delivery-record-actions .workflow-buttons { flex-wrap:nowrap; width:max-content; max-width:100%; }
+ .app .task-card.approved-delivery-card .delivery-record-actions .workflow-buttons { flex-wrap:wrap; }
  .app .task-card.approved-delivery-card .delivery-record-actions .workflow-controls .btn { flex:none; white-space:nowrap; }
+ /* An opened action form can use the full record width beneath the compact buttons. */
+ .app .task-card.approved-delivery-card .delivery-record-actions:has(.workflow-action-form),
+ .app .task-card.approved-delivery-card .delivery-record-actions:has(.workflow-action-form) .workflow-controls { display:contents; }
+ .delivery-record-actions .workflow-action-form { grid-column:1 / -1; margin:0 0 8px; }
 }
 @media(min-width:1700px) {
- .approved-delivery-head,.approved-delivery-body { grid-template-columns:minmax(660px,1.7fr) minmax(285px,.9fr) 620px; }
- .approved-delivery-body > .delivery-record-actions { grid-column:3; grid-row:1; padding-block:8px; }
- .delivery-independent-record { grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr) minmax(285px,.9fr) 620px; }
- .delivery-independent-record > .delivery-record-actions { grid-column:5; grid-row:1; }
- :is(.approved-delivery-body,.delivery-independent-record):has(.delivery-fba-select) > .delivery-record-actions { margin-right:44px; }
+ .approved-delivery-head,.approved-delivery-card {
+  --delivery-main-column:minmax(660px,1.7fr);
+  --delivery-bundled-column:minmax(285px,.9fr);
+  --delivery-action-column:620px;
+ }
 }
 @media(min-width:1280px) and (max-width:1599px) {
  .approved-delivery-card { font-size:12px; }
