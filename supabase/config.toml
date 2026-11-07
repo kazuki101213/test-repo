@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.amazon-fba-labels]
 verify_jwt = false
+
+[functions.amazon-fba-inbound]
+verify_jwt = false

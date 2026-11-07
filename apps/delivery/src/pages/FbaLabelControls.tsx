@@ -4,7 +4,8 @@ import {getSupabase, inventorySerial, type DeliveryTask} from '@bussan/shared';
 import {deliveryErrorMessage} from '../errors';
 import {FbaProductLabelSheet, fbaLabelSku, type FbaProductLabel} from './FbaProductLabelSheet';
 
-async function fetchLabel(item: DeliveryTask, withSku: boolean, withPhoto: boolean): Promise<FbaProductLabel> {
+type LabelItem = Pick<DeliveryTask, 'id'|'sku'|'sales_channel'|'reference_image_url'>;
+async function fetchLabel(item: LabelItem, withSku: boolean, withPhoto: boolean): Promise<FbaProductLabel> {
   const sku = withSku ? fbaLabelSku(item.sku) : '';
   if (withSku && !sku) throw new Error('金額を除いたSKUに変換できません。SKUの表示を外すか、在庫でSKUをご確認ください。');
   const {data, error} = await getSupabase().functions.invoke('amazon-fba-labels', {
@@ -22,7 +23,7 @@ async function fetchLabel(item: DeliveryTask, withSku: boolean, withPhoto: boole
   return {id: item.id, fnsku: data.fnsku, title: data.title, condition: data.condition, sku, image};
 }
 
-export default function FbaLabelControls({items}: {items: DeliveryTask[]}) {
+export default function FbaLabelControls({items,productOnly=false}: {items: LabelItem[];productOnly?:boolean}) {
   const [withSku, setWithSku] = useState(true), [withPhoto, setWithPhoto] = useState(true);
   const [labels, setLabels] = useState<FbaProductLabel[] | null>(null);
   const [file, setFile] = useState<{name: string; url: string} | null>(null);
@@ -74,14 +75,14 @@ export default function FbaLabelControls({items}: {items: DeliveryTask[]}) {
   }
 
   return <section className="fba-label-controls" aria-label="配送・ラベル">
-    <h4>配送・ラベル</h4>
+    {!productOnly&&<h4>配送・ラベル</h4>}
     <div className="fba-label-actions">
       <label><input type="checkbox" checked={withSku} disabled={busy} onChange={event => setWithSku(event.target.checked)}/> 金額を除いたSKU</label>
       <label><input type="checkbox" checked={withPhoto} disabled={busy} onChange={event => setWithPhoto(event.target.checked)}/> Amazonの商品写真</label>
-      <button type="button" className="btn primary" disabled={busy} onClick={() => void preview()}>{busy ? '取得中…' : '商品ラベル'}</button>
+      <button type="button" className="btn primary" disabled={busy||!items.length} onClick={() => void preview()}>{busy ? '取得中…' : '商品ラベル'}</button>
     </div>
     {error && !labels && <p role="alert" className="error">{error}</p>}
-    <div className="fba-label-actions">
+    {!productOnly&&<><div className="fba-label-actions">
       <input ref={fileInput} type="file" accept=".pdf,application/pdf" hidden onChange={event => {
         const pdf = event.currentTarget.files?.[0]; event.currentTarget.value = '';
         if (pdf) void selectShippingPdf(pdf);
@@ -90,7 +91,7 @@ export default function FbaLabelControls({items}: {items: DeliveryTask[]}) {
       {file && <><a className="btn" href={file.url} target="_blank" rel="noopener noreferrer">配送ラベルを開いて印刷</a><span>{file.name}</span></>}
     </div>
     {shippingError && <p role="alert" className="error">{shippingError}</p>}
-    <p className="muted">セラーセントラルで発行済みの配送ラベルPDFを選択し、開いたPDFの印刷メニューを使います。</p>
+    <p className="muted">セラーセントラルで発行済みの配送ラベルPDFを選択し、開いたPDFの印刷メニューを使います。</p></>}
     {labels && createPortal(<>
 
       <dialog ref={labelDialog} className="fba-label-dialog" aria-label="商品ラベルの印刷" onClose={() => { setLabels(null); setError(''); }}>

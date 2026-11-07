@@ -343,3 +343,5 @@
  .app .export-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
  .app .export-actions > span { margin-left:0; white-space:nowrap; }
 }
+.app .delivery-stock-navigation { gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.app .delivery-stock-navigation [aria-current="page"] { border-color:var(--accent); color:var(--accent); }
