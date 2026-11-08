@@ -10,8 +10,12 @@ import {useTaskConfirmation} from '../components/TaskConfirmation';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { MARKETPLACES, deleteSpareAccessories, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
-import { createSpareAccessory, findInventoryAccessoryForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory } from '../api';
-import type { SpareAccessoryField, SpareAccessoryInput } from '../api';
+import { createSpareAccessory, findInventoryAccessoriesForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory } from '../api';
+import type { SpareAccessoryField, SpareAccessoryInput, SpareInventoryAccessory } from '../api';
+
+type SpareReferenceMode = 'remote' | 'body';
+type SpareReferenceItem = NonNullable<Awaited<ReturnType<typeof findInventoryForSpare>>>;
+const referenceSerial = (value: string) => value.trim().toLowerCase();
 
 const emptyForm = (owner: Staff | null): SpareAccessoryInput => ({
   source_sku: null, owner_staff_id: owner?.id ?? null, owner_name: owner?.name ?? '',
@@ -31,10 +35,13 @@ export default function Spares({ me }: { me: Staff }) {
   const [form, setForm] = useState<SpareAccessoryInput>(() => emptyForm(me.role === 'purchaser' ? me : null));
   const [saving, setSaving] = useState(false);
   const [autofillBusy, setAutofillBusy] = useState(false);
-  const [referenceMode, setReferenceMode] = useState<'remote' | 'body'>('body');
+  const [referenceMode, setReferenceMode] = useState<SpareReferenceMode>('body');
+  const [referenceCandidates, setReferenceCandidates] = useState<SpareInventoryAccessory[]>([]);
   const [sourceItemId, setSourceItemId] = useState<string | null>(null);
   const [referenceFound, setReferenceFound] = useState(false);
   const [referenceMessage, setReferenceMessage] = useState('');
+  const referenceLookup = useRef<{ key: string; ready: boolean } | null>(null);
+  const saveLock = useRef(false);
   const [editFor, setEditFor] = useState<{ row: SpareAccessory; field: SpareAccessoryField } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [deleting, setDeleting] = useState(false);
@@ -67,61 +74,112 @@ export default function Spares({ me }: { me: Staff }) {
     setForm(current => ({ ...current, owner_staff_id: owner?.id ?? null, owner_name: owner?.name ?? (id ? current.owner_name : '') }));
   }
 
-  async function autofillFromUsageSerial(serial: string, mode = referenceMode) {
-    const match = serial.trim().match(/^(\d+)[a-z]*$/i);
-    if (!match) return;
-    setAutofillBusy(true);
+  function resetReference() {
+    referenceLookup.current = null;
+    setAutofillBusy(false);
     setSourceItemId(null);
     setReferenceFound(false);
-    setReferenceMessage('商品情報を読み込み中…');
-    try {
-      const item = mode === 'remote'
-        ? await findInventoryAccessoryForSpare(match[0])
-        : await findInventoryForSpare(match[0]);
-      if (!item) {
-        setReferenceMessage(mode === 'remote' ? `通番号 ${match[1]} にリモコン行がありません。手入力で登録できます。` : `通番号 ${match[1]} の本体が見つかりません。`);
-        setForm(current => mode === 'body' ? { ...current, title: 'リモコン', cost_amount: 0, source_sku: null } : current);
-        return;
-      }
-      setReferenceFound(true);
-      if (mode === 'remote') setSourceItemId(item.id);
-      setForm(current => ({
-        ...current,
-        source_sku: mode === 'remote' ? item.sku : null,
-        owner_staff_id: item.deliverer_id ?? current.owner_staff_id,
-        owner_name: item.deliverer_name ?? current.owner_name,
-        purchased_at: item.purchased_at,
-        title: mode === 'remote' ? item.title : 'リモコン',
-        cost_amount: mode === 'remote' ? item.cost_amount : 0,
-        marketplace: item.marketplace,
-        marketplace_item_id: item.marketplace_item_id,
-        tracking_no: item.tracking_no,
-        manufacturer: item.maker,
-        model_no: item.model_no,
-        asin: item.asin,
-      }));
-      setReferenceMessage(mode === 'remote' ? `${item.sku} のリモコン情報を反映します。登録後、在庫のこのリモコン行を削除します。` : '');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally { setAutofillBusy(false); }
+    setReferenceCandidates([]);
+    setReferenceMessage('');
+    setError('');
+    if (referenceFound) {
+      setForm(current => ({ ...emptyForm(null), usage_note: current.usage_note, owner_staff_id: current.owner_staff_id, owner_name: current.owner_name }));
+    }
   }
+
+  function applyReference(item: SpareReferenceItem, mode: SpareReferenceMode) {
+    setReferenceFound(true);
+    setSourceItemId(mode === 'remote' ? item.id : null);
+    setForm(current => ({
+      ...current,
+      source_sku: mode === 'remote' ? item.sku : null,
+      owner_staff_id: item.deliverer_id ?? current.owner_staff_id,
+      owner_name: item.deliverer_name ?? current.owner_name,
+      purchased_at: item.purchased_at,
+      title: mode === 'remote' ? item.title : 'リモコン',
+      cost_amount: mode === 'remote' ? item.cost_amount : 0,
+      marketplace: item.marketplace,
+      marketplace_item_id: item.marketplace_item_id,
+      tracking_no: item.tracking_no,
+      manufacturer: item.maker,
+      model_no: item.model_no,
+      asin: item.asin,
+    }));
+    setReferenceMessage(mode === 'remote' ? `${item.sku} の情報を反映しました。登録すると選んだ行が在庫から予備へ移動します。` : '');
+  }
+
+  async function autofillFromUsageSerial(serial: string, mode = referenceMode) {
+    const match = referenceSerial(serial).match(/^(\d+)[a-z]*$/);
+    if (!match) return;
+    const key = `${mode}:${match[0]}`;
+    if (referenceLookup.current?.key === key) return;
+    const lookup = { key, ready: false };
+    referenceLookup.current = lookup;
+    setAutofillBusy(true);
+    setReferenceMessage('');
+    setError('');
+    try {
+      if (mode === 'remote') {
+        const candidates = await findInventoryAccessoriesForSpare(match[0]);
+        if (referenceLookup.current !== lookup) return;
+        setReferenceCandidates(candidates);
+        const [first, second] = candidates;
+        if (first && !second) applyReference(first, mode);
+        if (!candidates.length) setReferenceMessage(`通番号 ${match[0]} にリモコン行がありません。手入力で登録できます。`);
+      } else {
+        const item = await findInventoryForSpare(match[0]);
+        if (referenceLookup.current !== lookup) return;
+        if (item) applyReference(item, mode);
+        else {
+          setReferenceMessage(`通番号 ${match[0]} の本体が見つかりません。`);
+          setForm(current => ({ ...current, title: 'リモコン', cost_amount: 0, source_sku: null }));
+        }
+      }
+      lookup.ready = true;
+    } catch (cause) {
+      if (referenceLookup.current === lookup) {
+        referenceLookup.current = null;
+        setAutofillBusy(false);
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    } finally {
+      if (referenceLookup.current === lookup) setAutofillBusy(false);
+    }
+  }
+
+  function changeReferenceMode(mode: SpareReferenceMode) {
+    resetReference();
+    setReferenceMode(mode);
+    void autofillFromUsageSerial(form.usage_note ?? '', mode);
+  }
+
+  const needsAccessorySelection = referenceMode === 'remote' && referenceCandidates.length > 1 && !sourceItemId;
 
   async function add(event: FormEvent) {
     event.preventDefault();
-    if (referenceMode === 'remote' && sourceItemId && !window.confirm('このリモコン情報を予備へ登録し、在庫のリモコン行を削除します。続けますか？')) return;
+    if (saveLock.current || autofillBusy || needsAccessorySelection) return;
+    const serial = referenceSerial(form.usage_note ?? '');
+    if (/^\d+[a-z]*$/.test(serial) &&
+      (!referenceLookup.current?.ready || referenceLookup.current.key !== `${referenceMode}:${serial}`)) {
+      await autofillFromUsageSerial(serial);
+      return;
+    }
+    const source = referenceCandidates.find(item => item.id === sourceItemId);
+    if (source && !window.confirm(`${source.title}（${source.marketplace_item_id ? `${source.marketplace_item_id} ／ ` : ''}${source.sku}）を在庫から予備へ移動します。続けますか？`)) return;
+    saveLock.current = true;
     setSaving(true); setError('');
     try {
       if (!form.title.trim()) throw new Error('品名を入力してください。');
       if (!Number.isSafeInteger(form.cost_amount) || form.cost_amount < 0) throw new Error('仕入金額は0以上の整数で入力してください。');
       let input = { ...form, title: form.title.trim(), owner_name: form.owner_name?.trim() || null };
       if (referenceMode === 'body' && referenceFound) input = { ...input, title: 'リモコン', cost_amount: 0, source_sku: null };
-      if (referenceMode === 'remote' && sourceItemId) await moveInventoryAccessoryToSpares(sourceItemId, input);
+      if (source) await moveInventoryAccessoryToSpares(source.id, { ...input, usage_note: serial });
       else await createSpareAccessory(input);
+      resetReference();
       setForm(emptyForm(me.role === 'purchaser' ? me : null));
-      setSourceItemId(null); setReferenceFound(false); setReferenceMessage('');
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setSaving(false); }
+    finally { saveLock.current = false; setSaving(false); }
   }
 
   const selectedRows = filtered.filter(row => selected.has(row.id));
@@ -189,7 +247,7 @@ export default function Spares({ me }: { me: Staff }) {
     {<form className="card spare-entry registration-entry registration-sidebar registration-form" onSubmit={event => void add(event)}>
       <div className="toolbar"><h2>予備登録</h2></div>
       <div className="grid cols2 registration-fields">
-        <label className="field"><span>利用記録（通番号）</span><input value={form.usage_note ?? ''} onChange={event => { setSourceItemId(null); setReferenceFound(false); setForm(current => ({ ...current, usage_note: event.target.value || null })); }} onBlur={event => void autofillFromUsageSerial(event.target.value)} /></label>
+        <label className="field"><span>利用記録（通番号）</span><input value={form.usage_note ?? ''} disabled={saving} onChange={event => { const value = event.target.value; if (referenceSerial(value) !== referenceSerial(form.usage_note ?? '')) resetReference(); setForm(current => ({ ...current, usage_note: value || null })); }} onBlur={event => void autofillFromUsageSerial(event.target.value)} /></label>
         <label className="field"><span>購入日</span><DateInput className="registration-date" value={form.purchased_at ?? ''} onChange={event => setForm(current => ({ ...current, purchased_at: event.target.value || null }))} /></label>
         {me.role === 'admin' ? <label className="field"><span>保管担当者</span>
           <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff).map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
@@ -202,10 +260,17 @@ export default function Spares({ me }: { me: Staff }) {
         <label className="field"><span>商品ID</span><input value={form.marketplace_item_id ?? ''} onChange={event => setForm(current => ({ ...current, marketplace_item_id: event.target.value || null }))} /></label>
         <label className="field"><span>追跡番号</span><input value={form.tracking_no ?? ''} onChange={event => setForm(current => ({ ...current, tracking_no: event.target.value || null }))} /></label>
         <label className="field registration-wide"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
-        <div role="group" aria-label="登録情報参照元" className="field registration-wide spare-reference-choices spare-reference-footer" style={{ border: 0, padding: 0, margin: 0 }}><div className="spare-reference-heading"><span>登録情報参照元</span><button className="btn primary" disabled={saving || autofillBusy}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '予備登録'}</button></div>
-          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'remote'} onChange={() => { setReferenceMode('remote'); void autofillFromUsageSerial(form.usage_note ?? '', 'remote'); }} />リモコン情報参照</label>
-          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} onChange={() => { setReferenceMode('body'); void autofillFromUsageSerial(form.usage_note ?? '', 'body'); }} />本体情報参照</label>
+        <div role="group" aria-label="登録情報参照元" className="field registration-wide spare-reference-choices spare-reference-footer" style={{ border: 0, padding: 0, margin: 0 }}><div className="spare-reference-heading"><span>登録情報参照元</span><button className="btn primary" disabled={saving || autofillBusy || needsAccessorySelection}>{saving ? '登録中…' : autofillBusy ? '商品情報を確認中…' : '予備登録'}</button></div>
+          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'remote'} disabled={saving} onChange={() => changeReferenceMode('remote')} />リモコン情報参照</label>
+          <label className="row"><input type="radio" name="spare-reference-mode" checked={referenceMode === 'body'} disabled={saving} onChange={() => changeReferenceMode('body')} />本体情報参照</label>
         </div>
+        {referenceMode === 'remote' && referenceCandidates.length > 1 && <fieldset className="field registration-wide spare-reference-candidates" disabled={saving}>
+          <legend>予備へ移す付属品を選択</legend>
+          {referenceCandidates.map(item => <label className="spare-reference-candidate" key={item.id}>
+            <input type="radio" name="spare-reference-item" value={item.id} checked={item.id === sourceItemId} onChange={() => applyReference(item, 'remote')} />
+            <span><strong>{item.title}</strong> {item.marketplace_item_id || '商品ID未登録'}<small>{item.sku}</small></span>
+          </label>)}
+        </fieldset>}
         {autofillBusy && <p className="muted">通番号の商品情報を読み込み中…</p>}
         {referenceMessage && <p className="muted" role="status" style={{ gridColumn: '1 / -1' }}>{referenceMessage}</p>}
       </div>

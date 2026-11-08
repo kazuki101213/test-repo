@@ -496,28 +496,33 @@ export async function moveInventoryAccessoryToSpares(itemId: string, input: Spar
   if (error) throw error;
 }
 
-export async function findInventoryAccessoryForSpare(serial: string): Promise<(Pick<ItemView,
+export type SpareInventoryAccessory = Pick<ItemView,
   'id' | 'sku' | 'lot_seq' | 'is_accessory' | 'title' | 'purchaser_id' | 'purchaser_name' | 'deliverer_id' | 'deliverer_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'
-> & { marketplace_item_id: string | null }) | null> {
+> & { marketplace_item_id: string | null };
+
+export async function findInventoryAccessoriesForSpare(serial: string): Promise<SpareInventoryAccessory[]> {
   const match = serial.trim().match(/^(\d+)[a-z]*$/i);
-  if (!match) return null;
+  if (!match) return [];
   const lotSeq = Number(match[1]);
-  if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return null;
+  if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return [];
   const { data, error } = await getSupabase().from('v_items')
     .select('id,sku,lot_seq,is_accessory,title,purchaser_id,purchaser_name,deliverer_id,deliverer_name,purchased_at,cost_amount,marketplace,tracking_no,asin,model_no,maker')
     .eq('lot_seq', lotSeq).eq('is_accessory', true);
   if (error) throw error;
   const remotes = (data ?? []).filter(row => row.title.toLocaleLowerCase().includes('リモコン') && productSerial(row.sku,row.lot_seq) === serial.trim().toLowerCase());
-  if (remotes.length > 1) throw new Error(`通番号 ${lotSeq} にリモコン行が複数あります。対象を1件に特定できないため、在庫を確認してください。`);
-  const item = remotes[0];
-  if (!item) return null;
-  const { data: reference, error: refError } = await getSupabase().from('items').select('marketplace_item_id').eq('id', item.id).single();
+  if (!remotes.length) return [];
+  const [{ data: references, error: refError }, body] = await Promise.all([
+    getSupabase().from('items').select('id,marketplace_item_id').in('id', remotes.map(item => item.id)),
+    findInventoryForSpare(serial),
+  ]);
   if (refError) throw refError;
-  const body = await findInventoryForSpare(serial);
-  return { ...item, maker: item.maker?.trim() || body?.maker || null,
+  const byId = new Map((references ?? []).map(reference => [reference.id, reference.marketplace_item_id]));
+  if (remotes.some(item => !byId.has(item.id))) throw new Error('付属品の在庫が変わりました。通番号を確認して再読み込みしてください。');
+  return remotes.map(item => ({ ...item, maker: item.maker?.trim() || body?.maker || null,
     deliverer_id: body?.deliverer_id ?? item.deliverer_id,
     deliverer_name: body?.deliverer_name ?? item.deliverer_name,
-    marketplace_item_id: reference.marketplace_item_id };
+    marketplace_item_id: byId.get(item.id) ?? null,
+  })).sort((a, b) => a.sku.localeCompare(b.sku) || a.id.localeCompare(b.id));
 }
 
 export async function deleteInventoryItem(item: InventoryItem): Promise<void> {
