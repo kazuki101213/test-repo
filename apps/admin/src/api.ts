@@ -434,9 +434,12 @@ export type InventoryEdit = Pick<ItemView,
   'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount' | 'refund_amount'
 > & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount' | 'inventory_refund_amount' | 'marketplace_item_id'>;
 
-function normalizeInventoryAsin(value: string | null): string | null {
+function normalizeInventoryAsin(value: string | null, productId: string | null): string | null {
   const asin = value?.trim().toUpperCase();
-  if (!asin) return null;
+  if (!asin) {
+    if (productId) throw new Error('商品リストに紐づく商品にはASINを入力してください。');
+    return null;
+  }
   if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは半角英数字10文字で入力してください。');
   return asin;
 }
@@ -465,7 +468,7 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
     }
   }
   const { asin, ...otherFields } = fields;
-  const asinChange = asin !== item.asin ? { asin: normalizeInventoryAsin(asin) } : {};
+  const asinChange = asin !== item.asin ? { asin: normalizeInventoryAsin(asin, item.product_id) } : {};
   const { data, error } = await getSupabase().from('items').update({ ...otherFields, ...asinChange, title })
     .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
@@ -584,7 +587,7 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
   }
   if (field === 'cost_amount' && !text) throw new Error('仕入金額を入力してください。');
   const requiredText = new Set<InventoryField>(['title', 'status', 'marketplace']);
-  const next = field === 'asin' ? normalizeInventoryAsin(text) : numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
+  const next = field === 'asin' ? normalizeInventoryAsin(text, item.product_id) : numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
   const { data, error } = await getSupabase().from('items').update({ [field]: next }).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
