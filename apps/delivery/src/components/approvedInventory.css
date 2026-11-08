@@ -71,6 +71,7 @@
  .delivery-bundled-record .delivery-accessory-identity { grid-column:1; grid-row:1; }
  .delivery-bundled-record .delivery-people { grid-column:2; grid-row:1/4; align-self:center; }
  .delivery-bundled-record .delivery-accessory-details { grid-column:1; grid-row:2; }
+ .approved-delivery-card .delivery-accessory-details :is(.delivery-accessory-usage,.task-item-id-line .copyable-text) > span:first-child { display:inline; margin-right:4px; color:var(--muted); }
  .delivery-independent-record { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr) var(--delivery-bundled-column) var(--delivery-action-column); gap:8px 12px; align-items:center; min-height:64px; border-top:1px solid var(--border); padding:4px 12px; }
  .delivery-independent-record .delivery-accessory-identity { display:grid; grid-template-columns:96px minmax(0,1fr); gap:12px; }
  .delivery-independent-record .delivery-accessory-state { align-self:start; padding-top:3px; }

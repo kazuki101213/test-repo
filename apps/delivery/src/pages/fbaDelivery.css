@@ -63,9 +63,13 @@
 }
 .fba-workflow { margin-top:12px; min-width:0; }
 .fba-workflow h3,.fba-workflow h4,.fba-workflow p { margin:0 0 8px; }
-.fba-work-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; }
+.fba-work-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; align-items:start; }
+.fba-work-shipping { min-width:0; }
 .fba-work-box { margin-top:8px; border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--surface); min-width:0; overflow-wrap:anywhere; }
 .fba-work-box .fba-label-controls { border-top:0; padding-top:0; margin-top:0; }
+.fba-work-box .fba-label-actions,.fba-work-header-actions { display:flex; flex-wrap:nowrap; align-items:center; gap:var(--control-gap); }
+.fba-work-box .fba-label-actions > .btn,.fba-work-header-actions > .btn { white-space:nowrap; }
+.fba-work-field.fba-label-destination { width:max-content; max-width:100%; }
 .fba-work-items { list-style:none; margin:0 0 8px; padding:0; }
 .fba-work-items li { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
 .fba-work-items li+li { border-top:1px solid var(--border); }
@@ -85,13 +89,15 @@
 .fba-work-field,.fba-carton-fields label { display:grid; gap:4px; min-width:0; }
 .fba-work-field { margin-bottom:8px; }
 .fba-carton { border-top:1px solid var(--border); padding:8px 0; }
-.fba-carton-fields { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
-.fba-carton-fields input,.fba-work-field select { width:100%; min-width:0; }
+.fba-carton-fields { display:grid; grid-template-columns:repeat(4,max-content); gap:var(--control-gap); justify-content:start; }
+.fba-carton-fields input { min-width:52px; justify-self:start; box-sizing:border-box; }
+.fba-work-field select { width:100%; min-width:0; }
 .fba-history { display:grid; grid-template-columns:minmax(0,max-content) max-content; gap:8px; margin:12px 0; }
 .fba-history label { display:flex; gap:8px; }
 .fba-history label > span { align-self:center; white-space:nowrap; }
 .app .fba-history > .btn { min-height:var(--input-min-height); }
 @media(max-width:767px) {
  .fba-work-grid { grid-template-columns:minmax(0,1fr); gap:0; }
- .fba-carton-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .fba-carton-fields { grid-template-columns:repeat(2,max-content); }
+ .fba-work-box .fba-label-actions > .btn { font-size:12px; }
 }

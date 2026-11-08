@@ -16,9 +16,6 @@ export default function InventoryStateFilter({ value, onChange, assignee }: { va
   return <details ref={container} className="inventory-multi-filter">
     <summary>フィルター{count > 0 ? `（${count}）` : ''}</summary>
     <div className="inventory-multi-filter-panel">
-      <div className="inventory-multi-filter-actions">
-      <button type="button" className="btn" onClick={() => { onChange({}); assignee?.onChange([]); }}>すべて解除</button>
-      </div>
       {assignee && <fieldset className="inventory-assignee-filter"><legend>納品担当者</legend>
         {assignee.options.map(person => <label key={person.id}><input type="checkbox" checked={assignee.value.includes(person.id)} onChange={event => assignee.onChange(event.target.checked ? [...assignee.value, person.id] : assignee.value.filter(id => id !== person.id))} /><span>{person.name}</span></label>)}
       </fieldset>}

@@ -302,11 +302,11 @@ textarea { min-height: 80px; resize: vertical; }
 
 .inventory-multi-filter { position:relative; flex:0 0 auto; }
 .inventory-multi-filter summary { cursor:pointer; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); }
-.inventory-multi-filter-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:30; width:min(300px, calc(100vw - 32px)); max-height:60dvh; overflow:auto; padding:12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 6px 20px #0002; }
+.inventory-multi-filter-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:30; width:min(300px, calc(100vw - 32px)); max-height:calc(60dvh - var(--input-min-height)); overflow:auto; padding:12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:0 6px 20px #0002; }
 .inventory-multi-filter-panel fieldset { margin:12px 0 0; padding:8px; border:1px solid var(--border); min-width:0; }
+.inventory-multi-filter-panel fieldset:first-child { margin-top:0; }
 .inventory-multi-filter-panel label { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; }
 .inventory-multi-filter-panel input[type=checkbox] { width:18px; height:18px; margin:0; flex:0 0 18px; }
-.inventory-multi-filter-actions { position:sticky; top:0; z-index:1; display:flex; align-items:center; gap:8px; padding-bottom:8px; background:var(--surface); }
 .workflow-report-actions { display:flex; align-items:center; gap:8px; }
 .workflow-report-photo { display:inline-flex; align-items:center; justify-content:center; gap:4px; }
 .workflow-report-photo-list { grid-column:1 / -1; padding-left:20px; margin:0; }
@@ -314,7 +314,7 @@ textarea { min-height: 80px; resize: vertical; }
 .workflow-report-photo-list .btn { margin-left:8px; }
 
 @media (max-width: 640px), (pointer: coarse) {
-  .inventory-multi-filter-panel { position: fixed; z-index: 1200; left: 0; right: auto; top: 8px; width: min(300px, 55vw); max-width: calc(100vw - 96px); max-height: calc(100dvh - 16px); box-sizing: border-box; }
+  .inventory-multi-filter-panel { position: fixed; z-index: 1200; left: 0; right: auto; top: 8px; width: min(300px, 55vw); max-width: calc(100vw - 96px); max-height: calc(100dvh - 16px - var(--input-min-height)); box-sizing: border-box; }
 }
 
 

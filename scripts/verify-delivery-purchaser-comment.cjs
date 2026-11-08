@@ -21,4 +21,7 @@ for(const staff of [{id:'own',code:'AA',role:'admin'},{id:'own',code:'XX',role:'
  const readonly=context.exports.default({...props,readOnly:true,expandedId:'separate'});assert(!nodes(readonly).some(n=>['workflow','detail','seller-panel'].includes(n.type)));
 }
 const blank=context.exports.default({task:{...body,memo:' '},members:[{...body,memo:' '}],originalMarketplaceIds:new Map(),staff:{id:'own',role:'deliverer'},unreadItemIds:new Set()});assert.equal(text(nodes(blank).find(n=>n.props?.className==='task-detail-field purchaser-comment').props.children[1]),'—');
+const usage=context.exports.default({task:body,members:[body,{...bundled,accessory_usage_note:'2380',memo:'2380'},{...separate,memo:null}],originalMarketplaceIds:new Map(),staff:{id:'own',role:'deliverer'},unreadItemIds:new Set()});
+assert.deepEqual(nodes(usage).filter(n=>n.props?.className==='task-detail-field delivery-accessory-usage').map(n=>text(n.props.children[1])),['2380','未記録']);
+assert.equal(nodes(usage).filter(n=>n.props?.className==='task-detail-field purchaser-comment').length,1);
 console.log('Approved staff/source labels, original comments, no financial disclosure, separate-item actions/listing SKU and read-only permissions passed');

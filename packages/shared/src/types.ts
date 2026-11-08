@@ -215,6 +215,9 @@ export interface DeliveryTask {
   malfunction_resolved_at: string | null;
 }
 
+/** Delivery inventory page RPC augments the task view with the previous use note. */
+export type DeliveryInventoryRow = DeliveryTask & { accessory_usage_note?: string | null };
+
 export interface DeliveryReturnRequestTask {
   id: string;
   item_id: string;

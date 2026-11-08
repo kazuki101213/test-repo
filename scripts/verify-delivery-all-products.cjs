@@ -30,6 +30,15 @@ const detailedFilter=()=>nodes(tree).find(n=>typeof n.type==='function'&&n.props
 detailedFilter().props.onChange({status:['検品中','販売済'],marketplace:['ヤフオク']});tree=render();
 button(tree,'作業中').props.onClick();tree=render();assert.deepEqual(Array.from(filters.states.status),['検品中']);assert.deepEqual(Array.from(filters.states.marketplace),['ヤフオク']);
 detailedFilter().props.onChange({status:['販売済']});tree=render();button(tree,'販売中').props.onClick();tree=render();assert.equal(filters.status,'出品中');assert.deepEqual(Array.from(filters.states.status),['販売済']);assert.equal(nodes(tree).filter(n=>n.type===TaskCard).length,0,'Disjoint group and detailed state return no inventory');
+const change=(label,value)=>nodes(tree).find(n=>n.props['aria-label']===label).props.onChange({target:{value}});
+change('検索項目','sku');tree=render();change('在庫を検索','100');tree=render();
+change('仕入日・開始日','2026-11-01');tree=render();change('仕入日・終了日','2026-11-09');tree=render();
+assert.equal(filters.from,'2026-11-01');assert.equal(filters.to,'2026-11-09');assert.equal(filters.query,'100');
+button(tree,'全て解除').props.onClick();tree=render();
+assert.equal(scope,'delivery');assert.equal(filters.status,'all');assert.equal(Object.keys(filters.states).length,0);
+assert.equal(filters.from,'');assert.equal(filters.to,'');assert.equal(filters.query,'');assert.equal(filters.queryField,'serial');
+button(tree,'全商品').props.onClick();tree=render();change('仕入日・開始日','2026-11-01');tree=render();
+button(tree,'全て解除').props.onClick();tree=render();assertOnlyCatalogSelected(tree);assert.equal(scope,'delivery-all');assert.equal(filters.from,'');
 extraRows=[];
 const cardHooks=hooks(),WorkflowControls=()=>{},detail=()=>{},cardContext={exports:{},URL,URLSearchParams,window:{location:{search:''}},require:id=>id==='react'?cardHooks.react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id.endsWith('/WorkflowControls')?{default:WorkflowControls}:id.endsWith('/TaskDetail')?{default:detail}:{}};
 vm.runInNewContext(compile('apps/delivery/src/components/TaskCard.tsx'),cardContext);
