@@ -64,8 +64,14 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   if(path.endsWith('/packingInformation'))equal(body.packageGroupings,[{packingGroupId:'group',boxes:[{contentInformationSource:'BOX_CONTENT_PROVIDED',
     dimensions:{length:40,width:30,height:20,unitOfMeasurement:'CM'},weight:{value:4,unit:'KG'},quantity:1,items:[{msku:sku,quantity:1,prepOwner:labelRequired?'SELLER':'NONE',labelOwner:'SELLER'}]}]}]);
   if(path.endsWith('/placementOptions')&&method==='GET')return json({placementOptions:[{placementOptionId:'placement',shipmentIds:[shipment],status:'OFFERED',fees:[]}]});
-  if(path.endsWith('/transportationOptions')&&method==='GET')return json({transportationOptions:[{transportationOptionId:'transport',shipmentId:shipment,
-    carrier:{name:'配送会社'},shippingMode:'GROUND_SMALL_PARCEL',shippingSolution:'USE_YOUR_OWN_CARRIER',preconditions:['CONFIRMED_DELIVERY_WINDOW']}]});
+  if(path.endsWith('/transportationOptions')&&method==='POST'){
+   equal(body.shipmentTransportationConfigurations[0].readyToShipWindow.start,plan.work.shipDate+'T00:00:00.000Z');
+   equal(plan.work.transport,undefined);
+  }
+  if(path.endsWith('/transportationOptions')&&method==='GET')return json({transportationOptions:[
+    {transportationOptionId:'transport',shipmentId:shipment,carrier:{name:'配送会社',alphaCode:'YAMATO'},shippingMode:'GROUND_SMALL_PARCEL',shippingSolution:'USE_YOUR_OWN_CARRIER',preconditions:['CONFIRMED_DELIVERY_WINDOW']},
+    {transportationOptionId:'pallet',shipmentId:shipment,carrier:{name:'ヤマト運輸'},shippingMode:'FREIGHT_LTL',shippingSolution:'USE_YOUR_OWN_CARRIER',preconditions:[]},
+  ]});
   if(path.endsWith('/'+shipment))return json({shipmentId:shipment,placementOptionId:'placement',status:received?'RECEIVING':'WORKING',
     shipmentConfirmationId:'FBA123',destination:{warehouseId:'TEST'}});
   if(path.endsWith('/deliveryWindowOptions')&&method==='GET')return json({deliveryWindowOptions:[{deliveryWindowOptionId:'window',startDate:'2030-01-03T00:00:00Z',endDate:'2030-01-05T00:00:00Z',validUntil:'2030-01-01T00:00:00Z'}]});
@@ -130,6 +136,8 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   await step('packing','packing-options');await send('choosePacking',{option:'packing'},422);
   await step('choosePacking','packing-confirmed',{option:'packing',confirmed:true});await step('boxes','packed');
   await step('placements','placement-options');await step('transport','transport-options',{option:'placement',shipDate:'2030-01-01'});
+  equal(plan.work.transport?.map(t=>[t.id,t.carrierCode]),[['transport','YAMATO']]);
+  await step('transport','transport-options',{option:'placement',shipDate:'2030-01-02'});
   await send('confirmPlacement',{options:['transport']},422);
   await step('confirmPlacement','placement-confirmed',{options:['transport'],confirmed:true});
   await send('confirmTransport',{confirmed:true},422);

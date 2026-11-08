@@ -1,5 +1,5 @@
 import {getSupabase} from '@bussan/shared';
-import type {Box,Plan,Shipment} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
+import type {Box,Plan,Shipment,Transport} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
 
 export type {Box,Shipment};
 export type InboundPlan=Plan & {sender:{name:string;postalCode:string;stateOrProvinceCode:string;city:string;addressLine1:string;addressLine2?:string;phoneNumber:string}};
@@ -11,7 +11,15 @@ export const fbaState:Record<Plan['stage'],string>={
 export const amount=(charges:{amount:number;code:string}[]=[])=>charges.length
  ? charges.map(x=>new Intl.NumberFormat('ja-JP',{style:'currency',currency:x.code}).format(x.amount)).join(' ＋ ')
  : 'Amazonからの請求なし';
-export const tokyoDate=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const tokyoCalendar=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'});
+export const tokyoDate=(daysAhead=0,now=new Date())=>tokyoCalendar.format(new Date(now.getTime()+daysAhead*86_400_000));
+
+const isYamato=(option:Transport)=>[option.carrier,option.carrierCode].some(value=>value&&/ヤマト|クロネコ|yamato|kuroneko/i.test(value.normalize('NFKC')));
+export const fbaCarrierName=(option:Transport)=>isYamato(option)&&!option.carrier.includes('ヤマト')?'ヤマト運輸':option.carrier;
+export function preferredFbaCarrier(options:Transport[]) {
+ const yamato=options.filter(isYamato);
+ return yamato.find(option=>option.solution==='AMAZON_PARTNERED_CARRIER')??yamato[0];
+}
 export async function inboundRequest<T>(action:string, body:Record<string,unknown>={}):Promise<T>{
  const {data,error}=await getSupabase().functions.invoke('amazon-fba-inbound',{body:{action,...body}});
  if(error){
