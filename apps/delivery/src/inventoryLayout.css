@@ -339,7 +339,8 @@
 @media screen {
  .app .delivery-inventory-search { height:auto; flex:none; align-items:center; }
  .app .delivery-inventory-search > :is(input,select,.btn), .app .delivery-inventory-search > .inventory-multi-filter > summary { box-sizing:border-box; height:var(--input-min-height); min-height:var(--input-min-height); }
- .app .delivery-inventory-date-range { display:flex; flex-wrap:nowrap; align-items:center; gap:8px; width:max-content; max-width:100%; overflow-x:auto; margin:0; }
+ .app .delivery-inventory-period { display:flex; flex-wrap:wrap; align-items:center; gap:var(--control-gap); min-width:0; max-width:100%; }
+ .app .delivery-inventory-date-range { --date-field-width:120px; display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:var(--control-gap); width:min(100%, calc(2 * var(--date-field-width) + 2 * var(--control-gap) + 1em)); }
  .app .delivery-inventory-date-range > span:not(.calendar-control) { flex:none; white-space:nowrap; }
  .app .export-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
  .app .export-actions > span { margin-left:0; white-space:nowrap; }

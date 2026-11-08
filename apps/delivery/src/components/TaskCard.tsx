@@ -100,7 +100,12 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
    <div className="delivery-accessory-text"><div className="delivery-accessory-title">{selectItem(item)}<strong>{independent(item)?inventorySerial(item):task.inventory_group_serial||inventorySerial(task)}</strong>{independent(item)&&<b>{item.title}</b>}{badge(item.is_accessory?accessoryDisplayLabel(item):'本体')}{!independent(item)&&<b>{item.title}</b>}</div>{independent(item)&&<CopyableText label="SKU" value={item.sku}/>}</div>
   </div>
   {people(item)}
-  <div className={`delivery-accessory-details${compact?' compact':''}`}>{source(item)}<CopyableText label={trackingLabel(item)} value={item.tracking_no||'—'}/>{field('仕入日',jpDate(item.purchased_at))}{field('利用記録',task.inventory_group_serial||inventorySerial(task))}{comments(item)}</div>
+  <div className={`delivery-accessory-details${compact?' compact':''}`}>
+   {source(item)}<CopyableText label={trackingLabel(item)} value={item.tracking_no||'—'}/>
+   {field('仕入日',jpDate(item.purchased_at))}
+   {item.is_accessory&&field('利用記録',item.accessory_usage_note||'未記録','delivery-accessory-usage')}
+   {item.memo?.trim()&&item.memo.trim()!==item.accessory_usage_note&&comments(item)}
+  </div>
  </>;
  const mainAccessory=task.is_accessory;
  return <div id={`delivery-task-${task.id}`} className="card task-card approved-delivery-card" data-expanded={!!expandedId} data-item-status={task.status} style={{backgroundColor:inventoryBoxColor(task.status,task.purchased_at)}}>

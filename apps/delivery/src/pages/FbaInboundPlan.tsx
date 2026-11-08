@@ -21,6 +21,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const [option,setOption]=useState(''),[date,setDate]=useState(work.shipDate??tokyoDate),[selected,setSelected]=useState<Record<string,string>>({});
  const [tracking,setTracking]=useState<Record<string,string>>({}),[windowIds,setWindowIds]=useState<Record<string,string>>({});
  const [pdf,setPdf]=useState<{id:string;url:string}|null>(null);
+ const [labelShipmentId,setLabelShipmentId]=useState('');
  const [labelError,setLabelError]=useState('');
  const [prep,setPrep]=useState<PrepReview|null>(null);
  useEffect(()=>()=>{if(pdf)URL.revokeObjectURL(pdf.url);},[pdf]);
@@ -69,21 +70,28 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const finalOptions=work.selections??[];
  const ready=plan.stage==='ready';
  const labelDestinations=ready?work.placement?.shipmentIds??[]:[];
+ const labelDestination=labelDestinations.includes(labelShipmentId)?labelShipmentId:labelDestinations[0];
  const sent=work.shipments?.some(s=>s.trackingSaved||['SHIPPED','IN_TRANSIT','DELIVERED','CHECKED_IN','RECEIVING','CLOSED'].includes(s.status));
+ const canCancel=!ready&&!sent&&plan.stage!=='cancelled'&&!plan.pending;
  const sender=plan.sender;
  return <section className="card fba-workflow" aria-label={plan.name}>
-  <div className="fba-selection-group-heading"><div><h3>{plan.name} <span className="inventory-label">{plan.account}</span></h3><span>{fbaState[plan.stage]}</span></div><button type="button" className="btn" onClick={onClose}>閉じる</button></div>
+  <div className="fba-selection-group-heading">
+   <div><h3>{plan.name} <span className="inventory-label">{plan.account}</span></h3><span>{fbaState[plan.stage]}</span></div>
+   <div className="fba-work-header-actions">
+    {canCancel&&<button className="btn" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品取消</button>}
+    <button type="button" className="btn" onClick={onClose}>閉じる</button>
+   </div>
+  </div>
   <div className="fba-work-grid">
    <section className="fba-work-box"><h4>納品商品</h4><ul className="fba-work-items">{items.map(i=><li key={i.item_id}><div><strong className="fba-item-name" title={i.title}>{serial(i.sku)} {i.title}</strong><span>{i.sku} ／ {i.asin}</span></div><span>1点{i.published_at?'・出品中':''}</span></li>)}</ul></section>
+   <div className="fba-work-shipping">
    <section className="fba-work-box"><h4>発送元</h4><p>{sender.name}<br/>〒{sender.postalCode}<br/>{sender.stateOrProvinceCode}{sender.city}{sender.addressLine1}{sender.addressLine2}<br/>{sender.phoneNumber}</p>
-   <dl className="fba-work-settings"><dt>ワークフロー名</dt><dd>{plan.name}</dd><dt>梱包カテゴリー</dt><dd>{Object.values(work.owners??prep?.owners??{}).some(x=>x.prepOwner==='SELLER')?'Amazon指定の梱包あり':'梱包不要'}</dd>
-   <dt>商品のラベル貼付</dt><dd>{Object.values(work.owners??prep?.owners??{}).some(x=>x.labelOwner==='NONE')?'一部ラベル不要':'出品者'}</dd><dt>商品数</dt><dd>{items.length}点（各1点）</dd></dl></section>
-  </div>
+   <dl className="fba-work-settings"><dt>ワークフロー名</dt><dd>{plan.name}</dd><dt>商品数</dt><dd>{items.length}点（各1点）</dd></dl></section>
   <section className="fba-work-box">
    <h4>輸送箱</h4>
    {boxes.map((box,index)=><div className="fba-carton" key={index}>
     <div className="fba-work-actions"><strong>箱 {index+1}</strong>{editable&&boxes.length>1&&<button className="btn" type="button" disabled={blocked} onClick={()=>editBoxes(boxes.filter((_,j)=>index!==j))}>箱を削除</button>}</div>
-    <div className="fba-carton-fields">{(['length','width','height','weight'] as const).map((field,i)=><label key={field}>{['長さ (cm)','幅 (cm)','高さ (cm)','重量 (kg)'][i]}<input type="number" min="0.01" step="0.01" inputMode="decimal" disabled={!editable||blocked} value={box[field]||''} onChange={event=>changeBox(index,{[field]:Number(event.target.value)})}/></label>)}</div>
+    <div className="fba-carton-fields">{(['length','width','height','weight'] as const).map((field,i)=><label key={field}>{['長さ (cm)','幅 (cm)','高さ (cm)','重量 (kg)'][i]}<input type="number" min="0.01" step="0.01" inputMode="decimal" disabled={!editable||blocked} value={box[field]||''} style={{width:`calc(${String(box[field]||'').length}ch + 32px)`}} onChange={event=>changeBox(index,{[field]:Number(event.target.value)})}/></label>)}</div>
     {!editable&&<p>{box.items.map(id=>serial(items.find(i=>i.item_id===id)?.sku??'')).join('、')}</p>}
    </div>)}
    {editable&&<>
@@ -98,10 +106,12 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
     {act('保存','saveBoxes',{boxes},!dirty,'primary')}
    </>}
   </section>
+   </div>
+  </div>
   {!ready&&plan.stage!=='cancelled'&&<section className="fba-work-box">
    <h4>Amazonの納品手続き</h4>
    {plan.stage==='draft'&&<>
-    {dirty?<p className="muted">箱情報を保存すると納品プランを作成できます。</p>:<p className="muted">梱包カテゴリーが未設定の商品は、梱包不要として登録します。</p>}
+    {dirty&&<p className="muted">箱情報を保存すると納品プランを作成できます。</p>}
     {prep&&<div role="status"><p>Amazonが指定した梱包・ラベル条件を確認してください。</p>
      {Object.entries(prep.owners).map(([id,owner])=><p key={id}>{serial(items.find(i=>i.item_id===id)?.sku??'')}：{owner.prepOwner==='NONE'?'梱包不要':`出品者が梱包（Amazon指定：${(prep.requirements[id]??[]).join('、')}）`} ／ {owner.labelOwner==='NONE'?'ラベル不要':'出品者がラベル貼付'}</p>)}
     </div>}
@@ -151,15 +161,15 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    </>}
   </section>}
   {plan.stage!=='cancelled'&&<section className="fba-work-box">
-   <h4>配送・ラベル</h4>
-   <FbaLabelControls productOnly items={items.filter(i=>!i.published_at&&(work.owners?.[i.item_id]?.labelOwner??'SELLER')==='SELLER').map(i=>({
+   <h4>配送ラベル、納品ラベル</h4>
+   {labelDestinations.length>1&&<label className="fba-work-field fba-label-destination">納品先<select value={labelDestination} disabled={blocked} onChange={event=>{setLabelShipmentId(event.target.value);setPdf(null);setLabelError('');}}>
+    {labelDestinations.map((id,index)=><option value={id} key={id}>{work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${index+1}`}</option>)}
+   </select></label>}
+   <FbaLabelControls productOnly shippingLabel={<button type="button" className="btn primary" disabled={blocked||!labelDestination} onClick={()=>{if(labelDestination)void label(labelDestination);}}>配送ラベル</button>}
+    items={items.filter(i=>!i.published_at&&(work.owners?.[i.item_id]?.labelOwner??'SELLER')==='SELLER').map(i=>({
     id:i.item_id,sku:i.sku,sales_channel:i.sales_channel,
    }))}/>
-   <div className="fba-work-actions">
-    {labelDestinations.length?labelDestinations.map((id,index)=><button type="button" className="btn" key={id} disabled={blocked} onClick={()=>void label(id)}>配送ラベルを印刷{labelDestinations.length>1?`（${work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${index+1}`}）`:''}</button>):<button type="button" className="btn" disabled>配送ラベルを印刷</button>}
-    {pdf&&<a className="btn" href={pdf.url} target="_blank" rel="noopener noreferrer">配送ラベルPDFを開いて印刷</a>}
-   </div>
-   {!labelDestinations.length&&<p className="muted">配送が確定すると、Amazonの配送ラベルを印刷できます。</p>}
+   {pdf&&<div className="fba-work-actions"><a className="btn" href={pdf.url} target="_blank" rel="noopener noreferrer">配送ラベルPDFを開いて印刷</a></div>}
    {labelError&&<p className="error" role="alert">{labelError}</p>}
   </section>}
   {ready&&<section className="fba-work-box">
@@ -184,6 +194,5 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   {plan.pending&&<div className="fba-work-actions" role="status"><span>{plan.pending.op?'Amazonの結果を確認中…':'Amazonの受付番号を確認できていません。'}</span>
    <button type="button" className="btn" disabled={busy} onClick={()=>void apply(plan.pending?.op?'poll':'recover')}>処理結果を確認</button></div>}
   {plan.stage!=='draft'&&(error||work.notice)&&<p className="error" role="alert">{error||work.notice}</p>}
-  {!ready&&!sent&&plan.stage!=='cancelled'&&!plan.pending&&<button className="btn" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品を取り消す</button>}
  </section>;
 }

@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {getSupabase, inventorySerial, type DeliveryTask} from '@bussan/shared';
 import {deliveryErrorMessage} from '../errors';
@@ -23,7 +23,7 @@ async function fetchLabel(item: LabelItem): Promise<FbaProductLabel> {
   return {id: item.id, fnsku: data.fnsku, condition: data.condition, sku, image: data.image};
 }
 
-export default function FbaLabelControls({items,productOnly=false}: {items: LabelItem[];productOnly?:boolean}) {
+export default function FbaLabelControls({items,productOnly=false,shippingLabel}: {items: LabelItem[];productOnly?:boolean;shippingLabel?:ReactNode}) {
   const [labels, setLabels] = useState<FbaProductLabel[] | null>(null);
   const [printMode, setPrintMode] = useState<'product' | 'alignment' | null>(null);
   const [firstPosition, setFirstPosition] = useState(1);
@@ -97,6 +97,7 @@ export default function FbaLabelControls({items,productOnly=false}: {items: Labe
     {!productOnly&&<h4>配送・ラベル</h4>}
     <div className="fba-label-actions">
       <button type="button" className="btn primary" disabled={busy||!items.length} onClick={() => void preview()}>{busy ? '取得中…' : '商品ラベル'}</button>
+      {shippingLabel}
       <button type="button" className="btn" disabled={busy} onClick={() => setPrintMode('alignment')}>位置合わせシート</button>
     </div>
     {error && !printMode && <p role="alert" className="error">{error}</p>}

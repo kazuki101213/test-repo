@@ -55,7 +55,7 @@ export default function FbaDelivery({staff,itemIds,onSelectionChange,onBack}:{st
     <option value="">納品を選択</option>
     {plans.map(p=><option key={p.id} value={p.id}>{p.account} ／ {p.name} ／ {p.fba_inbound_items.length}点 ／ {fbaState[p.stage]}</option>)}
    </select></label>
-   <button type="button" className="btn" onClick={()=>setHistoryReload(value=>value+1)}>履歴を更新</button>
+   <button type="button" className="btn" onClick={()=>setHistoryReload(value=>value+1)}>履歴更新</button>
   </div>
   {historyError&&<p className="error" role="alert">{historyError}</p>}
   {open&&<FbaInboundPlan key={open.id} plan={open} onUpdate={updatePlan} onClose={()=>setOpenId('')}/>}

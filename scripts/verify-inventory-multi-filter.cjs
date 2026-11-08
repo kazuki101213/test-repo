@@ -22,14 +22,22 @@ for(const app of ['admin','delivery']){
  toggle('仕入先','Amazon返品',false);assert.equal(value.marketplace.join(','),'ヤフオク');assert.equal(value.status.length,2);
  listeners.pointerdown({target:'inside'});assert(ref.current.open);listeners.pointerdown({target:'outside'});assert(!ref.current.open);
  ref.current.open=true;listeners.keydown({key:'Escape'});assert(!ref.current.open);assert(focused);
- all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除').props.onClick();render();assert.equal(Object.keys(value).length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
+ const clearButton=()=>all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除');
+ if(app==='admin'){
+  clearButton().props.onClick();render();assert.equal(Object.keys(value).length,0);
+ }else{
+  assert.equal(clearButton(),undefined);
+  toggle('仕入先','ヤフオク',false);toggle('販売先','FBA1',false);toggle('販売先','自己発送1',false);
+  toggle('販売状態','受取前',false);toggle('販売状態','販売済',false);
+ }
+ assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
  assignee={value:[],options:[{id:'II',name:'II 久保田 真由'},{id:'LL',name:'LL 土井 花菜'}],onChange:ids=>{assignee.value=ids;}};render();
  toggle('納品担当者','II 久保田 真由',true);toggle('納品担当者','LL 土井 花菜',true);
  assert.deepEqual(Array.from(assignee.value),['II','LL']);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（2）');
  toggle('納品担当者','II 久保田 真由',false);assert.deepEqual(Array.from(assignee.value),['LL']);
  toggle('仕入先','ヤフオク',true);ref.current.open=true;listeners.pointerdown({target:'outside'});render();
  assert(!ref.current.open);assert.deepEqual(Array.from(assignee.value),['LL']);assert.equal(value.marketplace.join(','),'ヤフオク','Closing preserves the selected filters');
- all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除').props.onClick();render();assert.equal(assignee.value.length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
+ if(app==='admin'){clearButton().props.onClick();render();assert.equal(assignee.value.length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');}
  cleanup();assert.equal(Object.keys(listeners).length,0);
 }
 console.log('Both real filter components: one menu, multi-select OR/AND, exact return matching, clear, keyboard, outside click and cleanup passed');

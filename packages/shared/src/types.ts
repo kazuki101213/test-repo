@@ -162,6 +162,7 @@ export interface ItemView {
 /** app.v_delivery_tasks の 1 行 */
 export interface DeliveryTask {
   inventory_group_serial?: string;
+  accessory_usage_note?: string | null;
   photo_review_approved?: boolean;
   return_request_completed_at?: string | null;
   supplier_contact_requested_at?: string | null;
