@@ -28,7 +28,7 @@ interface Person {staff_id:string;details:{issuer_name:string}}
 interface Task {id:string;staff_id:string;month:string;name:string;updated:string;invoice?:Invoice;receipts?:Submission}
 const approval=(row?:Invoice)=>row?(Array.isArray(row.delivery_invoice_approvals)?row.delivery_invoice_approvals[0]:row.delivery_invoice_approvals):null;
 const messageOf=(e:unknown)=>e instanceof Error?e.message:(e as {message?:string})?.message??'処理に失敗しました。';
-const monthEnd=(month:string)=>{const date=new Date(month+'T00:00:00Z');date.setUTCMonth(date.getUTCMonth()+1,0);return date.toISOString().slice(0,10);};
+const nextMonthTenth=(month:string)=>{const date=new Date(month+'T00:00:00Z');date.setUTCMonth(date.getUTCMonth()+1,10);return date.toISOString().slice(0,10);};
 const approvalNotice=(state:unknown)=>{
  if(state==='sent')return '公式LINEが送信を受け付けました。';
  if(state==='pending'||state==='sending')return '担当者への公式LINE通知を送信します。';
@@ -56,7 +56,7 @@ function InvoiceReview({task,staff,onClose,onApproved,onSaved}:{task:Task;staff:
   if(!invoice||!documents.ready||documents.dirty||busy||documents.busy)return;
   setBusy(true);
   try{
-   const {error}=await getSupabase().rpc('approve_invoice_documents',{p_invoice:invoice.id,p_version:invoice.version,p_receipt_version:documents.receiptVersion,p_incurred_on:monthEnd(task.month)});
+   const {error}=await getSupabase().rpc('approve_invoice_documents',{p_invoice:invoice.id,p_version:invoice.version,p_receipt_version:documents.receiptVersion,p_incurred_on:nextMonthTenth(task.month)});
    if(error)throw new Error(messageOf(error));
    let lineState:unknown;
    try {

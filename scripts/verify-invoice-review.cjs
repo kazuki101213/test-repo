@@ -69,7 +69,7 @@ const clone=value=>JSON.parse(JSON.stringify(value));
  actionButtons()[0].props.onClick();await parent.settle();
  assert.equal(approvalRequest.label,'請求書の承認');assert.match(approvalRequest.notice,/外注費に追加/);assert.equal(approvalCalls.length,0,'Opening approval confirmation does not change the invoice');
  assert.match(approvalRequest.notice,/担当者に公式LINE/);
- await approvalRequest.action();await parent.settle();assert.equal(approved,1);assert.equal(approvalCalls.length,2);assert.equal(approvalCalls[0].name,'approve_invoice_documents');assert.deepEqual(clone(approvalCalls[0].args),{p_invoice:'invoice',p_version:10,p_receipt_version:10,p_incurred_on:'2026-10-31'});
+ await approvalRequest.action();await parent.settle();assert.equal(approved,1);assert.equal(approvalCalls.length,2);assert.equal(approvalCalls[0].name,'approve_invoice_documents');assert.deepEqual(clone(approvalCalls[0].args),{p_invoice:'invoice',p_version:10,p_receipt_version:10,p_incurred_on:'2026-11-10'});
  assert.deepEqual(clone(approvalCalls[1]),{name:'invoice_approval_line_status',args:{p_invoice:'invoice'}});
  assert.match(approvalNotice,/連携待ち/);
  for(const [account,invoice,expected] of [[owner,{id:'invoice',approved_at:'now'},true],[admin,{id:'other',approved_at:'now'},false],[owner,{id:'invoice'},false]]) {
