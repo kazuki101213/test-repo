@@ -50,8 +50,8 @@ export default function FbaDelivery({staff,itemIds,onSelectionChange,onBack}:{st
 
  return <section className="fba-delivery" aria-labelledby="fba-delivery-heading">
   <div className="fba-delivery-heading"><h2 id="fba-delivery-heading">FBA納品</h2><button type="button" className="btn ghost" onClick={onBack}>在庫に戻る</button></div>
-    <div className="fba-history fba-work-actions">
-   <label>納品履歴 <select value={openId} onChange={e=>setOpenId(e.target.value)}>
+  <div className="fba-history">
+   <label><span>納品履歴</span> <select value={openId} onChange={e=>setOpenId(e.target.value)}>
     <option value="">納品を選択</option>
     {plans.map(p=><option key={p.id} value={p.id}>{p.account} ／ {p.name} ／ {p.fba_inbound_items.length}点 ／ {fbaState[p.stage]}</option>)}
    </select></label>
@@ -73,7 +73,7 @@ export default function FbaDelivery({staff,itemIds,onSelectionChange,onBack}:{st
     <div className="fba-selection-group-heading"><h3><span className="inventory-label" style={inventorySiteStyle(account)}>{account}</span></h3><span>{items.length}商品・{items.length}点</span></div>
     <div className="fba-selection-head" aria-hidden="true"><span>通番号・商品 / SKU</span><span>納品担当者</span><span>数量</span><span/></div>
     {items.map(item=><article key={item.id} className="fba-selection-item">
-     <div className="fba-selection-identity">{item.reference_image_url&&<img src={item.reference_image_url} alt="" loading="lazy"/>}<div><div><strong>{inventorySerial(item)}</strong> <b>{productModelText(item)}</b></div><span>{item.asin}</span><p>{item.sku}</p><span>{item.condition}</span></div></div>
+     <div className="fba-selection-identity">{item.reference_image_url&&<img src={item.reference_image_url} alt="" loading="lazy"/>}<div><div className="fba-item-name" title={productModelText(item)}><strong>{inventorySerial(item)}</strong> <b>{productModelText(item)}</b></div><span>{item.asin}</span><p>{item.sku}</p><span>{item.condition}</span></div></div>
      <span className="fba-selection-assignee">{staffDisplayName(item.deliverer_name)||'未設定'}</span><span className="fba-selection-quantity">1点</span>
      <button type="button" className="fba-remove-item" aria-label={`${inventorySerial(item)}を選択から外す`} onClick={()=>onSelectionChange(itemIds.filter(id=>id!==item.id))}>×</button>
     </article>)}

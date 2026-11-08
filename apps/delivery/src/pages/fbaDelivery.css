@@ -6,6 +6,8 @@
 .fba-selection-item { padding:12px 0; border-bottom:1px solid var(--border); }
 .fba-selection-item:last-child { border-bottom:0; padding-bottom:0; }
 .fba-selection-identity { display:flex; align-items:center; gap:8px; min-width:0; overflow-wrap:anywhere; }
+.fba-selection-identity > div,.fba-work-items li > div { min-width:0; }
+.fba-item-name { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .fba-selection-identity img { width:64px; height:64px; object-fit:contain; border-radius:4px; }
 .fba-selection-identity strong { font-size:20px; }
 .fba-selection-identity p,.fba-selection-identity span { font-size:12px; }
@@ -71,6 +73,13 @@
 .fba-work-items li+li { border-top:1px solid var(--border); }
 .fba-work-items li div span { display:block; font-size:.85em; color:var(--muted); }
 .fba-work-items li>span { white-space:nowrap; }
+.fba-box-assignments { display:grid; grid-template-columns:minmax(0,max-content) max-content; column-gap:8px; }
+.fba-box-assignments li { display:grid; grid-column:1/-1; grid-template-columns:minmax(0,14rem) max-content; justify-content:start; }
+.fba-box-assignments select { width:max-content; justify-self:start; }
+.fba-box-assignments small { display:block; color:var(--muted); }
+@supports (grid-template-columns:subgrid) {
+ .fba-box-assignments li { grid-template-columns:subgrid; }
+}
 .fba-work-settings { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 8px; margin:0; }
 .fba-work-settings dd { margin:0; }
 .fba-work-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0; }
@@ -80,8 +89,10 @@
 .fba-carton { border-top:1px solid var(--border); padding:8px 0; }
 .fba-carton-fields { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
 .fba-carton-fields input,.fba-work-field select { width:100%; min-width:0; }
-.fba-history { margin:12px 0; }
-.fba-history select { max-width:100%; }
+.fba-history { display:grid; grid-template-columns:minmax(0,max-content) max-content; gap:8px; margin:12px 0; }
+.fba-history label { display:flex; gap:8px; }
+.fba-history label > span { align-self:center; white-space:nowrap; }
+.app .fba-history > .btn { min-height:var(--input-min-height); }
 @media(max-width:767px) {
  .fba-work-grid { grid-template-columns:minmax(0,1fr); gap:0; }
  .fba-carton-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
