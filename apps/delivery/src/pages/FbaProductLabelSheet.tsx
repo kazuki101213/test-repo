@@ -1,4 +1,5 @@
 import JsBarcode from 'jsbarcode';
+import {labelPaper, labelPosition, labelSlots, type LabelCalibration} from './fbaLabelLayout';
 
 export interface FbaProductLabel {
   id: string;
@@ -23,24 +24,39 @@ function FbaBarcode({value}: {value: string}) {
   </svg>;
 }
 
-export function FbaProductLabelSheet({labels, onPhotoError}: {
-  labels: FbaProductLabel[]; onPhotoError?: () => void;
+export function FbaProductLabelSheet({labels, calibration, firstPosition = 1, alignment = false, onPhotoError}: {
+  labels: FbaProductLabel[];
+  calibration: LabelCalibration;
+  firstPosition?: number;
+  alignment?: boolean;
+  onPhotoError?: () => void;
 }) {
+  const firstSlot = firstPosition - 1;
+  const pages = alignment ? 1 : Math.ceil((labels.length + firstSlot) / labelSlots);
+
   return <div className="fba-label-sheet">
-    {Array.from({length: Math.ceil(labels.length / 24)}, (_, page) =>
-      <div className="fba-label-page" key={page}>
-        {labels.slice(page * 24, page * 24 + 24).map(label =>
-          <article className="fba-product-label" key={label.id}>
-            <div className="fba-label-identity">
-              <FbaBarcode value={label.fnsku}/>
-              <strong>{label.fnsku}</strong>
-              {label.sku && <span>SKU {label.sku}</span>}
-              <span className="fba-label-name">{label.title}</span>
-              <span>{label.condition}</span>
+    {Array.from({length: pages}, (_, page) =>
+      <div className="fba-label-page" key={page} style={{width: `${labelPaper.width}mm`, height: `${labelPaper.height}mm`}}>
+        {Array.from({length: labelSlots}, (_, slot) => {
+          const position = labelPosition(slot, calibration);
+          if (alignment) {
+            return <div className="fba-label-guide" key={slot} style={position}>{slot + 1}</div>;
+          }
+          const label = labels[page * labelSlots + slot - firstSlot];
+          if (!label) return null;
+          return <article className="fba-product-label" key={label.id} style={position}>
+            <FbaBarcode value={label.fnsku}/>
+            <div className="fba-label-details">
+              {label.image && <img src={label.image} alt="" onError={onPhotoError}/>}
+              <div className="fba-label-identity">
+                <strong>{label.fnsku}</strong>
+                <span className="fba-label-name">{label.title}</span>
+                <span>{label.condition}</span>
+                {label.sku && <span className="fba-label-name">SKU {label.sku}</span>}
+              </div>
             </div>
-            {label.image && <img src={label.image} alt="" onError={onPhotoError}/>}
-          </article>
-        )}
+          </article>;
+        })}
       </div>
     )}
   </div>;

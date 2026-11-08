@@ -31,12 +31,26 @@
 .fba-label-dialog::backdrop { background:#0008; }
 .fba-label-dialog-actions { margin-bottom:8px; }
 .fba-label-paper { overflow:auto; }
-.fba-label-page { box-sizing:border-box; display:grid; grid-template-columns:repeat(3,66mm); grid-auto-rows:33.9mm; width:210mm; padding:12.9mm 6mm; background:#fff; color:#000; }
-.fba-product-label { box-sizing:border-box; min-width:0; display:flex; align-items:center; position:relative; border:1px dashed #d8d8d8; }
-.fba-label-identity { flex:1; min-width:0; padding:3.18mm 6.35mm 1mm; display:grid; gap:.2mm; font-size:8pt; line-height:1.12; text-align:center; }
-.fba-label-barcode { display:block; width:100%; height:11mm; margin-bottom:3.18mm; fill:#000; shape-rendering:crispEdges; }
+.fba-label-print-instructions { margin:0 0 8px; }
+.fba-label-adjustment { min-width:0; margin:0 0 8px; border:1px solid var(--border); border-radius:6px; padding:8px; }
+.fba-label-adjustment-fields { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.fba-label-adjustment-fields label { display:grid; gap:4px; min-width:0; }
+.fba-label-adjustment-fields input { width:100%; min-width:0; box-sizing:border-box; }
+.fba-label-adjustment-fields small { color:var(--muted); }
+.fba-label-adjustment .fba-label-dialog-actions { margin:8px 0 0; }
+@media(max-width:600px) {
+ .fba-label-adjustment-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+.fba-label-page { position:relative; box-sizing:border-box; overflow:hidden; background:#fff; color:#000; }
+.fba-product-label,.fba-label-guide { position:absolute; box-sizing:border-box; }
+.fba-product-label { overflow:hidden; outline:1px dashed #d8d8d8; outline-offset:-1px; }
+.fba-label-guide { display:grid; place-items:center; outline:.18mm solid #111; outline-offset:-.09mm; font-size:14pt; font-weight:700; }
+.fba-label-barcode { display:block; width:48mm; height:13.5mm; margin:1.5mm auto 0; fill:#000; shape-rendering:crispEdges; }
+.fba-label-details { display:flex; align-items:center; gap:3mm; height:17mm; padding:0 4mm; }
+.fba-label-identity { display:grid; flex:1; min-width:0; gap:.2mm; font-size:7pt; line-height:1.13; }
+.fba-label-details:not(:has(img)) .fba-label-identity { text-align:center; }
 .fba-label-name { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.fba-product-label img { width:13mm; height:15mm; object-fit:contain; margin-right:2mm; }
+.fba-product-label img { width:17mm; height:16mm; object-fit:contain; }
 .fba-print-copy { display:none; }
 @media print {
   @page fbaLabels { size:A4; margin:0; }
@@ -45,7 +59,7 @@
   .fba-label-dialog::backdrop { display:none; }
   .fba-print-copy { display:block; page:fbaLabels; }
   .fba-label-page + .fba-label-page { break-before:page; }
-  .fba-product-label { border-color:transparent; break-inside:avoid; }
+  .fba-product-label { outline:none; }
 }
 .fba-workflow { margin-top:12px; min-width:0; }
 .fba-workflow h3,.fba-workflow h4,.fba-workflow p { margin:0 0 8px; }
