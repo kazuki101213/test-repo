@@ -15,7 +15,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  let plan:Plan={id,account:'FBA2',name:'担当者2026/11/7',staff_id:'own',stage:'draft',revision:0,created_at:'',amazon_id:null,pending:null,work:{},
   fba_inbound_items:[{item_id:itemId,sku,asin,title:'商品',condition:'非常に良い',sales_channel:'FBA2'}]};
  let received=0,available=0,buyable=false,published=0,remoteCalls=0,failAfterCreate=false,ambiguousPacking=false,staff='own';
- let prepCategory='NONE',inventoryChanged=false,prepRejected=false;
+ let prepCategory='NONE',inventoryChanged=false,prepRejected=false,labelRequired=false;
  const box={length:40,width:30,height:20,weight:4,items:[itemId]};
  const requests:{path:string;method:string;body:any}[]=[];
  globalThis.fetch=async(input,init)=>{
@@ -47,12 +47,13 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
    }
    equal(url.searchParams.getAll('mskus'),[plan.fba_inbound_items.map(item=>item.sku).join(',')]);
    const requested=url.searchParams.get('mskus')!.split(',');
-   return json({mskuPrepDetails:prepCategory?requested.map(msku=>({msku,prepCategory,prepTypes:[prepCategory==='NONE'?'ITEM_NO_PREP':'ITEM_BUBBLEWRAP']})):[]});
+   const prepTypes=prepCategory==='NONE'?(labelRequired?['ITEM_LABELING','ITEM_NO_PREP']:['ITEM_NO_PREP']):['ITEM_BUBBLEWRAP'];
+   return json({mskuPrepDetails:prepCategory?requested.map(msku=>({msku,prepCategory,prepTypes})):[]});
   }
   if(path.endsWith('/inboundPlans')&&method==='POST'){
    equal(body.sourceAddress,senders.FBA2);
    equal(body.destinationMarketplaces,[market]);
-   equal(body.items,[{msku:sku,quantity:1,prepOwner:'NONE',labelOwner:'SELLER'}]);
+   equal(body.items,[{msku:sku,quantity:1,prepOwner:labelRequired?'SELLER':'NONE',labelOwner:'SELLER'}]);
    if(failAfterCreate)throw new Error('response lost');
    return json({operationId:'create-op',inboundPlanId:'wf-test'},202);
   }
@@ -61,7 +62,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   if(path.endsWith('/packingOptions')&&ambiguousPacking)throw new Error('response lost');
   if(path.endsWith('/packingGroups/group/items'))return json({items:[{msku:sku,asin,quantity:1}]});
   if(path.endsWith('/packingInformation'))equal(body.packageGroupings,[{packingGroupId:'group',boxes:[{contentInformationSource:'BOX_CONTENT_PROVIDED',
-    dimensions:{length:40,width:30,height:20,unitOfMeasurement:'CM'},weight:{value:4,unit:'KG'},quantity:1,items:[{msku:sku,quantity:1,prepOwner:'NONE',labelOwner:'SELLER'}]}]}]);
+    dimensions:{length:40,width:30,height:20,unitOfMeasurement:'CM'},weight:{value:4,unit:'KG'},quantity:1,items:[{msku:sku,quantity:1,prepOwner:labelRequired?'SELLER':'NONE',labelOwner:'SELLER'}]}]}]);
   if(path.endsWith('/placementOptions')&&method==='GET')return json({placementOptions:[{placementOptionId:'placement',shipmentIds:[shipment],status:'OFFERED',fees:[]}]});
   if(path.endsWith('/transportationOptions')&&method==='GET')return json({transportationOptions:[{transportationOptionId:'transport',shipmentId:shipment,
     carrier:{name:'配送会社'},shippingMode:'GROUND_SMALL_PARCEL',shippingSolution:'USE_YOUR_OWN_CARRIER',preconditions:['CONFIRMED_DELIVERY_WINDOW']}]});
@@ -121,7 +122,8 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   inventoryChanged=true;prepCategory='NONE';await send('poll');
   equal(plan.pending,null);equal(plan.stage,'draft');assert(plan.work.notice?.includes('商品の情報が変更'));equal(writes(),before+2);
   inventoryChanged=false;prepCategory='';await send('create',{autoPrep:true});
-  prepCategory='NONE';await send('poll');equal(plan.pending?.action,'create');equal(plan.pending?.op,'create-op');equal(plan.amazon_id,'wf-test');
+  prepCategory='NONE';labelRequired=true;
+  await send('poll');equal(plan.pending?.action,'create');equal(plan.pending?.op,'create-op');equal(plan.amazon_id,'wf-test');
   await send('create',{autoPrep:true},409);await send('poll');equal(plan.stage,'created');equal(plan.pending,null);equal(writes(),before+4);
   ambiguousPacking=true;await send('packing',{},502);await send('packing',{},409);
   plan.pending!.at='2020-01-01T00:00:00Z';await send('recover');ambiguousPacking=false;
