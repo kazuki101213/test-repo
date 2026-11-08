@@ -69,18 +69,25 @@ async function prep(api:Amazon,items:Item[]) {
  const owners:Record<string,Owner>={};
  const requirements:Record<string,string[]>={};
  const unset:string[]=[];
+ let reviewRequired=false;
  for(const item of items){
   const detail=found.get(item.sku);
   if(!detail||!detail.prepCategory||detail.prepCategory==='UNKNOWN'){unset.push(item.sku);continue;}
   if(detail.prepOwnerConstraint==='AMAZON_ONLY'||detail.labelOwnerConstraint==='AMAZON_ONLY') return invalid(item.sku+'：Amazon指定の梱包・ラベル貼付条件を確認してください。');
-  owners[item.item_id]={prepOwner:detail.prepOwnerConstraint==='SELLER_ONLY'?'SELLER':detail.prepOwnerConstraint==='NONE_ONLY'||detail.prepCategory==='NONE'?'NONE':'SELLER',labelOwner:detail.labelOwnerConstraint==='NONE_ONLY'?'NONE':'SELLER'};
+  const types:string[]=detail.prepTypes??[];
+  const labelOnly=detail.prepCategory==='NONE'&&types.includes('ITEM_LABELING')&&types.every(type=>['ITEM_LABELING','ITEM_NO_PREP','NONE'].includes(type));
+  const labelOwner=detail.labelOwnerConstraint==='NONE_ONLY'?'NONE':'SELLER';
+  // Amazon Japan requires a prep owner when the seller applies the label, even with no physical prep.
+  const sellerPrep=detail.prepOwnerConstraint==='SELLER_ONLY'||detail.prepCategory!=='NONE'||(labelOnly&&labelOwner==='SELLER');
+  const prepOwner=detail.prepOwnerConstraint!=='NONE_ONLY'&&sellerPrep?'SELLER':'NONE';
+  owners[item.item_id]={prepOwner,labelOwner};
+  reviewRequired||=(prepOwner==='SELLER'&&!labelOnly)||labelOwner!=='SELLER';
   if(detail.allOwnersConstraint==='MUST_MATCH'&&owners[item.item_id].prepOwner!==owners[item.item_id].labelOwner) return invalid(item.sku+'：梱包とラベルの担当をAmazonの指定どおりに設定してください。');
-  requirements[item.item_id]=[detail.prepCategory,...(detail.prepTypes??[])];
+  requirements[item.item_id]=[detail.prepCategory,...types];
  }
- return {owners,requirements,unset};
+ return {owners,requirements,unset,reviewRequired};
 }
 type PrepDetails=Awaited<ReturnType<typeof prep>>;
-const needsPrepReview=({owners}:PrepDetails)=>Object.values(owners).some(x=>x.prepOwner==='SELLER'||x.labelOwner!=='SELLER');
 async function getShipments(api:Amazon,plan:Plan,withBoxes:boolean,ids=plan.work.placement?.shipmentIds??[]):Promise<Shipment[]> {
  const result:Shipment[]=[];
  for(const id of ids) {
@@ -276,7 +283,7 @@ export async function handler(req:Request):Promise<Response>{
     throw error;
    });
    if(!details)return result();
-   if(pending.createAfterPrep&&needsPrepReview(details)){
+   if(pending.createAfterPrep&&details.reviewRequired){
     await patch({pending:null});return reviewPrep(details);
    }
    if(details.unset.length){
@@ -395,7 +402,7 @@ export async function handler(req:Request):Promise<Response>{
   }
   if(action==='create'){
    const details=await createDetails();
-   if(needsPrepReview(details)&&input.acceptPrep!==true){
+   if(details.reviewRequired&&input.acceptPrep!==true){
     if(input.autoPrep===true)return reviewPrep(details);
     return invalid('Amazonが指定した梱包・ラベル条件を確認してください。');
    }

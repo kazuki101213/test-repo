@@ -113,7 +113,11 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    {plan.stage==='draft'&&<>
     {dirty&&<p className="muted">箱情報を保存すると納品プランを作成できます。</p>}
     {prep&&<div role="status"><p>Amazonが指定した梱包・ラベル条件を確認してください。</p>
-     {Object.entries(prep.owners).map(([id,owner])=><p key={id}>{serial(items.find(i=>i.item_id===id)?.sku??'')}：{owner.prepOwner==='NONE'?'梱包不要':`出品者が梱包（Amazon指定：${(prep.requirements[id]??[]).join('、')}）`} ／ {owner.labelOwner==='NONE'?'ラベル不要':'出品者がラベル貼付'}</p>)}
+     {Object.entries(prep.owners).map(([id,owner])=>{
+      const requirements=prep.requirements[id]??[];
+      const labelOnly=requirements[0]==='NONE'&&requirements.includes('ITEM_LABELING')&&requirements.every(type=>['NONE','ITEM_LABELING','ITEM_NO_PREP'].includes(type));
+      return <p key={id}>{serial(items.find(i=>i.item_id===id)?.sku??'')}：{owner.prepOwner==='NONE'||labelOnly?'梱包不要':`出品者が梱包（Amazon指定：${requirements.join('、')}）`} ／ {owner.labelOwner==='NONE'?'ラベル不要':'出品者がラベル貼付'}</p>;
+     })}
     </div>}
     <div className="fba-work-actions"><button type="button" className="btn primary" disabled={blocked||dirty} onClick={()=>{
      if(prep||window.confirm(`${plan.account}に「${plan.name}」を作成しますか？`))void apply('create',{autoPrep:true,acceptPrep:!!prep});

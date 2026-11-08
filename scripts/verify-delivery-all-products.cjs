@@ -27,6 +27,11 @@ for(const [label,statuses] of [['作業中',['受取前','検品中','商品登�
   assert.ok(displayed.every(status=>shared.STATUSES.includes(status)));
 }
 const detailedFilter=()=>nodes(tree).find(n=>typeof n.type==='function'&&n.props.value&&n.props.onChange);
+const searchGroup=nodes(tree).find(n=>n.props['aria-label']==='在庫検索');
+const filterControls=nodes(searchGroup).find(n=>n.props.className==='delivery-inventory-filter-controls');
+assert.equal(filterControls.props.children[0],detailedFilter());
+assert.equal(filterControls.props.children[1].props['aria-label'],'仕入日の期間');
+assert.equal(filterControls.props.children[2],button(tree,'全て解除'));
 detailedFilter().props.onChange({status:['検品中','販売済'],marketplace:['ヤフオク']});tree=render();
 button(tree,'作業中').props.onClick();tree=render();assert.deepEqual(Array.from(filters.states.status),['検品中']);assert.deepEqual(Array.from(filters.states.marketplace),['ヤフオク']);
 detailedFilter().props.onChange({status:['販売済']});tree=render();button(tree,'販売中').props.onClick();tree=render();assert.equal(filters.status,'出品中');assert.deepEqual(Array.from(filters.states.status),['販売済']);assert.equal(nodes(tree).filter(n=>n.type===TaskCard).length,0,'Disjoint group and detailed state return no inventory');
