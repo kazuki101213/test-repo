@@ -31,7 +31,7 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  const selector=()=>all(tree).find(n=>n.props?.['aria-label']==='検索項目');
  const input=()=>all(tree).find(n=>n.props?.['aria-label']==='在庫を検索');
  assert.equal(input().props.placeholder,'検索');assert.equal(selector().props.value,'serial');
- assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['納品担当者','通番号','SKU','型番','ASIN','商品ID','追跡番号']);
+ assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['納品担当者','通番号','SKU','型番','付属品名','ASIN','商品ID','追跡番号']);
  const stateFilter=()=>all(tree).find(n=>n.type==='state-filter');assert(stateFilter());
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['II-item']);assert(input());
  stateFilter().props.onChange({marketplace:['Amazon返品','動作品Amazon返品'],sales_channel:['FBA','自己発送']});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
@@ -61,7 +61,7 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  stateFilter().props.onChange({});selector().props.onChange({target:{value:'serial'}});input().props.onChange({target:{value:''}});await settle();
  const card=all(tree).find(n=>n.props?.task?.id==='II-item');card.props.onDetailOpened('II-item');await settle();assert.deepEqual(acknowledged,['II-item']);assert(!text(all(tree).find(n=>n.type==='section')).includes('写真が承認されました'));
  hooks=[];pending=[];staff={id:'II',code:'II',role:'deliverer',name:'久保田真由'};dirty=true;await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2,'Delivery staff default to the work group including awaiting receipt');assert.equal(stateFilter().props.assignee,undefined);assert.equal(lastPageFilters.delivererIds.length,0);assert(!text(all(tree).find(n=>n.type==='section')).includes('動作不良の報告が届きました'));
- assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['通番号','SKU','型番','ASIN','商品ID','追跡番号']);
+ assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['通番号','SKU','型番','付属品名','ASIN','商品ID','追跡番号']);
  hooks=[];pending=[];staff={id:'AA',code:'AA',role:'admin',name:'長部一輝'};context.window.location.search='?itemId=II-item';dirty=true;await settle();
  assert.equal(selector().props.value,'sku');assert.equal(input().props.value,tasks[0].sku);assert.equal(all(tree).filter(n=>n.props?.task).length,1,'Deep links use SKU search');
  context.window.location.search='';

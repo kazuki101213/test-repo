@@ -5,27 +5,25 @@ import {deliveryErrorMessage} from '../errors';
 import {FbaProductLabelSheet, fbaLabelSku, type FbaProductLabel} from './FbaProductLabelSheet';
 import {calibrationFields, calibrationInput, defaultCalibration, labelSlots, parseCalibration, readCalibration, saveCalibration, type CalibrationInput} from './fbaLabelLayout';
 
-type LabelItem = Pick<DeliveryTask, 'id'|'sku'|'sales_channel'|'reference_image_url'>;
-async function fetchLabel(item: LabelItem, withSku: boolean, withPhoto: boolean): Promise<FbaProductLabel> {
-  const sku = withSku ? fbaLabelSku(item.sku) : '';
-  if (withSku && !sku) throw new Error('金額を除いたSKUに変換できません。SKUの表示を外すか、在庫でSKUをご確認ください。');
+type LabelItem = Pick<DeliveryTask, 'id'|'sku'|'sales_channel'>;
+async function fetchLabel(item: LabelItem): Promise<FbaProductLabel> {
+  const sku = fbaLabelSku(item.sku);
+  if (!sku) throw new Error('金額を除いたSKUに変換できません。在庫でSKUをご確認ください。');
   const {data, error} = await getSupabase().functions.invoke('amazon-fba-labels', {
-    body: {itemId: item.id, expectedSku: item.sku, expectedChannel: item.sales_channel, includePhoto: withPhoto},
+    body: {itemId: item.id, expectedSku: item.sku, expectedChannel: item.sales_channel, includePhoto: true},
   });
   if (error) {
     const detail = error.context instanceof Response ? await error.context.json().catch(() => null) : null;
     throw new Error(detail?.error || 'Amazonの商品ラベル情報を取得できませんでした。');
   }
-  if (!/^X[A-Z0-9]{9}$/.test(data?.fnsku ?? '') || typeof data?.title !== 'string' || typeof data?.condition !== 'string') {
+  if (!/^X[A-Z0-9]{9}$/.test(data?.fnsku ?? '') || typeof data?.condition !== 'string') {
     throw new Error('商品ラベル情報を確認できません。');
   }
-  const image = withPhoto ? data.image || item.reference_image_url : null;
-  if (withPhoto && !image) throw new Error('Amazonの商品写真を取得できません。写真の表示を外すと印刷できます。');
-  return {id: item.id, fnsku: data.fnsku, title: data.title, condition: data.condition, sku, image};
+  if (typeof data.image !== 'string' || !data.image) throw new Error('Amazonの商品写真を取得できません。もう一度「商品ラベル」を押してください。');
+  return {id: item.id, fnsku: data.fnsku, condition: data.condition, sku, image: data.image};
 }
 
 export default function FbaLabelControls({items,productOnly=false}: {items: LabelItem[];productOnly?:boolean}) {
-  const [withSku, setWithSku] = useState(true), [withPhoto, setWithPhoto] = useState(true);
   const [labels, setLabels] = useState<FbaProductLabel[] | null>(null);
   const [printMode, setPrintMode] = useState<'product' | 'alignment' | null>(null);
   const [firstPosition, setFirstPosition] = useState(1);
@@ -51,7 +49,7 @@ export default function FbaLabelControls({items,productOnly=false}: {items: Labe
       const result: FbaProductLabel[] = [];
       for (const item of items) {
         try {
-          result.push(await fetchLabel(item, withSku, withPhoto));
+          result.push(await fetchLabel(item));
         } catch (cause) {
           throw new Error(inventorySerial(item) + '：' + deliveryErrorMessage(cause));
         }
@@ -98,8 +96,6 @@ export default function FbaLabelControls({items,productOnly=false}: {items: Labe
   return <section className="fba-label-controls" aria-label="配送・ラベル">
     {!productOnly&&<h4>配送・ラベル</h4>}
     <div className="fba-label-actions">
-      <label><input type="checkbox" checked={withSku} disabled={busy} onChange={event => setWithSku(event.target.checked)}/> 金額を除いたSKU</label>
-      <label><input type="checkbox" checked={withPhoto} disabled={busy} onChange={event => setWithPhoto(event.target.checked)}/> Amazonの商品写真</label>
       <button type="button" className="btn primary" disabled={busy||!items.length} onClick={() => void preview()}>{busy ? '取得中…' : '商品ラベル'}</button>
       <button type="button" className="btn" disabled={busy} onClick={() => setPrintMode('alignment')}>位置合わせシート</button>
     </div>
@@ -146,7 +142,7 @@ export default function FbaLabelControls({items,productOnly=false}: {items: Labe
           {!calibrationValid && <p role="alert" className="error">調整値を表示範囲内で、0.1 mm刻みで入力してください。</p>}
         </fieldset>
         {alignment && <p className="fba-label-print-instructions">普通紙に印刷してラベル用紙に重ね、枠のずれを確認してください。</p>}
-        {(error || (!alignment && photoError)) && <p role="alert" className="error">{!alignment && photoError ? '写真を読み込めません。写真の表示を外すか、もう一度取得してください。' : error}</p>}
+        {(error || (!alignment && photoError)) && <p role="alert" className="error">{!alignment && photoError ? 'Amazonの商品写真を読み込めません。画面を閉じて、もう一度「商品ラベル」を押してください。' : error}</p>}
         <div className="fba-label-paper" ref={sheet}>
           <FbaProductLabelSheet labels={labels ?? []} calibration={calibration} firstPosition={firstPosition} alignment={alignment} onPhotoError={() => setPhotoError(true)}/>
         </div>

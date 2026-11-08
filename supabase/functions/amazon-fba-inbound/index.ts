@@ -61,7 +61,8 @@ async function prep(api:Amazon,items:Item[]) {
  const found=new Map<string,any>();
  for(let offset=0;offset<items.length;offset+=40){
   const chunk=items.slice(offset,offset+40);
-  const result=await api.call(inbound+'/items/prepDetails',{marketplaceId:marketplace,mskus:chunk.map(i=>i.sku)});
+  // In Japan, repeated mskus query parameters only return the first SKU.
+  const result=await api.call(inbound+'/items/prepDetails',{marketplaceId:marketplace,mskus:chunk.map(i=>i.sku).join(',')});
   if(!Array.isArray(result.mskuPrepDetails))throw new WorkflowError(502,'Amazonの梱包条件を確認できませんでした。');
   for(const row of result.mskuPrepDetails)found.set(row.msku,row);
  }
