@@ -18,7 +18,7 @@ begin
  if (v_ctx->>'count')::int<>1 or (v_ctx->>'inventory_count')::int<>2 or (v_ctx->>'receipt_group_size')::int<>2 then raise exception 'Verified allocation did not resolve to one purchase';end if;
  if (app.marketplace_extension_probe('ヤフオク','receipt-group-fixture')->>'count')::int<>2 then raise exception 'Tracking count was weakened';end if;
  update app.items set cleaned_at=null where id=v_source;
- if (app.marketplace_receipt_context('ヤフオク','receipt-group-fixture')->>'count')::int<>2 then raise exception 'Unchecked original purchase was accepted';end if;
+ if (app.marketplace_extension_receipt('reserve','ヤフオク','receipt-group-fixture','fixture-account')->>'eligible')::boolean is not false then raise exception 'Unchecked original purchase was accepted';end if;
  update app.items set cleaned_at=now() where id=v_source;
  v_r=app.marketplace_extension_receipt('reserve','ヤフオク','receipt-group-fixture','fixture-account');
  if (v_r->>'eligible')::boolean is not true then raise exception 'Group reservation rejected';end if;
