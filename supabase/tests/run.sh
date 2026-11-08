@@ -133,6 +133,7 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/return_sku_original_cost.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_accessory_receipt_readiness.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_receipt_purchase_groups.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/yahoo_bundle_receipt_gate.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/admin_invoice_edit.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/invoice_approval_line.sql"
