@@ -17763,7 +17763,7 @@ where expense.id = approval.expense_id
   and expense.incurred_on = date '2026-10-31';
 
 
--- ▼▼▼ 20261108153127_inventory_accessory_search.sql ▼▼▼
+-- ▼▼▼ 20261108154307_inventory_accessory_search.sql ▼▼▼
 
 -- Search actual accessory names and purchase IDs within the existing inventory scopes.
 create or replace function app.inventory_page_matches(d jsonb,f jsonb,scope text)

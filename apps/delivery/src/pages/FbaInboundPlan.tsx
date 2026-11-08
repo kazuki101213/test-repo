@@ -153,7 +153,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   {plan.stage!=='cancelled'&&<section className="fba-work-box">
    <h4>配送・ラベル</h4>
    <FbaLabelControls productOnly items={items.filter(i=>!i.published_at&&(work.owners?.[i.item_id]?.labelOwner??'SELLER')==='SELLER').map(i=>({
-    id:i.item_id,sku:i.sku,sales_channel:i.sales_channel,reference_image_url:null,
+    id:i.item_id,sku:i.sku,sales_channel:i.sales_channel,
    }))}/>
    <div className="fba-work-actions">
     {labelDestinations.length?labelDestinations.map((id,index)=><button type="button" className="btn" key={id} disabled={blocked} onClick={()=>void label(id)}>配送ラベルを印刷{labelDestinations.length>1?`（${work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${index+1}`}）`:''}</button>):<button type="button" className="btn" disabled>配送ラベルを印刷</button>}

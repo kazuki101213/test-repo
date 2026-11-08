@@ -4,10 +4,9 @@ import {labelPaper, labelPosition, labelSlots, type LabelCalibration} from './fb
 export interface FbaProductLabel {
   id: string;
   fnsku: string;
-  title: string;
   condition: string;
   sku: string;
-  image: string | null;
+  image: string;
 }
 
 /** Remove the cost suffix only from the inventory SKU format, including accessory/return suffixes. */
@@ -47,12 +46,11 @@ export function FbaProductLabelSheet({labels, calibration, firstPosition = 1, al
           return <article className="fba-product-label" key={label.id} style={position}>
             <FbaBarcode value={label.fnsku}/>
             <div className="fba-label-details">
-              {label.image && <img src={label.image} alt="" onError={onPhotoError}/>}
+              <img src={label.image} alt="" onError={onPhotoError}/>
               <div className="fba-label-identity">
                 <strong>{label.fnsku}</strong>
-                <span className="fba-label-name">{label.title}</span>
                 <span>{label.condition}</span>
-                {label.sku && <span className="fba-label-name">SKU {label.sku}</span>}
+                <span className="fba-label-sku">SKU {label.sku}</span>
               </div>
             </div>
           </article>;
