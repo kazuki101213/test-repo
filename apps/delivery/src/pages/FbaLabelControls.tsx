@@ -123,9 +123,6 @@ export default function FbaLabelControls({items,productOnly=false}: {items: Labe
         <div className="fba-label-dialog-actions">
           <button type="button" className="btn primary" onClick={printSheet} disabled={!calibrationValid || (!alignment && photoError)}>印刷</button>
           <button type="button" className="btn" onClick={() => labelDialog.current?.close()}>閉じる</button>
-          {labels && <button type="button" className="btn" onClick={() => setPrintMode(alignment ? 'product' : 'alignment')}>
-            {alignment ? '商品ラベルに戻る' : '位置合わせシート'}
-          </button>}
         </div>
         <p className="fba-label-print-instructions">A4・24面（66 × 33.9 mm）／倍率100%・余白なし・ヘッダーとフッターなし</p>
         <fieldset className="fba-label-adjustment">
