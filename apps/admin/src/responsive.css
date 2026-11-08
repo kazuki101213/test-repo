@@ -146,6 +146,7 @@
 /* Keep the explicit grid rows, but size each command by its label. */
 @media screen {
   .layout .btn, .layout button.nav { width:fit-content !important; max-width:100%; justify-self:start; flex:0 0 auto; min-height:var(--action-button-min-height,44px); padding-inline:12px !important; white-space:nowrap; }
+  .layout .management-navigation.management-inventory-navigation { column-gap:20px !important; margin-bottom:8px; }
 }
 
 @media screen and (max-width:1023px) {
