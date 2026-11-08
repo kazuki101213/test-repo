@@ -162,7 +162,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   </section>}
   {plan.stage!=='cancelled'&&<section className="fba-work-box">
    <h4>配送ラベル、納品ラベル</h4>
-   {labelDestinations.length>1&&<label className="fba-work-field fba-label-destination">納品先<select value={labelDestination} disabled={blocked} onChange={event=>{setLabelShipmentId(event.target.value);setPdf(null);setLabelError('');}}>
+   {labelDestinations.length>1&&<label className="fba-work-field fba-label-destination">納品先<select aria-label="納品先" value={labelDestination} disabled={blocked} onChange={event=>{setLabelShipmentId(event.target.value);setPdf(null);setLabelError('');}}>
     {labelDestinations.map((id,index)=><option value={id} key={id}>{work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${index+1}`}</option>)}
    </select></label>}
    <FbaLabelControls productOnly shippingLabel={<button type="button" className="btn primary" disabled={blocked||!labelDestination} onClick={()=>{if(labelDestination)void label(labelDestination);}}>配送ラベル</button>}

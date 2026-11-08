@@ -16,6 +16,9 @@ from app.items where lot_seq=990741 and not is_accessory;
 insert into app.spare_accessories(owner_staff_id,title,marketplace,marketplace_item_id,usage_note,used_for_item_id)
 select deliverer_id,'inventory accessory fixture remote','ヤフオク','fixture-accessory-990741','990701',id
 from app.items where lot_seq=990742 and not is_accessory;
+insert into app.spare_accessories(owner_staff_id,title,marketplace,marketplace_item_id,usage_note,used_for_item_id)
+select deliverer_id,'inventory accessory fixture remote','ヤフオク','fixture-accessory-990742','990702',id
+from app.items where lot_seq=990742 and is_accessory;
 do $$ declare f jsonb; p jsonb; scope text; begin
  f:=jsonb_build_object('queryField','model','query','multi assignee UI fixture','from','2099-08-01','to','2099-08-31',
   'delivererIds',jsonb_build_array((select id::text from app.staff where code='DD'),(select id::text from app.staff where code='HH')));
@@ -56,7 +59,7 @@ do $$declare p jsonb;f jsonb;begin
  then raise exception 'Assigned deliverer lost the matching use note: %',p;end if;
  p:=app.read_delivery_catalog_page(f,50,'{}');
  if (p->>'total')::integer<>2 or jsonb_array_length(p->'rows')<>4 then raise exception 'Catalog accessory search lost groups: %',p;end if;
- if exists(select 1 from jsonb_array_elements(p->'rows') r where r->>'marketplace_item_id'='fixture-accessory-990742' and r->>'accessory_usage_note' is not null)
- then raise exception 'Accessory use note matched a different product ID: %',p;end if;
+ if not exists(select 1 from jsonb_array_elements(p->'rows') r where r->>'marketplace_item_id'='fixture-accessory-990742' and r->>'accessory_usage_note'='990702')
+ then raise exception 'Catalog lost the direct accessory use note or matched a different product ID: %',p;end if;
 end $$;
 rollback;

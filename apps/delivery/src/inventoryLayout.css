@@ -345,3 +345,6 @@
  .app .export-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
  .app .export-actions > span { margin-left:0; white-space:nowrap; }
 }
+@media screen and (max-width:359px) {
+ .app .delivery-inventory-period > .btn { margin-left:auto; }
+}
