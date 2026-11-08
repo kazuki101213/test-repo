@@ -45,8 +45,9 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
     equal(body,{marketplaceId:market,mskuPrepDetails:[{msku:sku,prepCategory:'NONE',prepTypes:['ITEM_NO_PREP']}]});
     return json({operationId:'prep-op'},202);
    }
-   equal(url.searchParams.getAll('mskus'),[sku]);
-   return json({mskuPrepDetails:prepCategory?[{msku:sku,prepCategory,prepTypes:[prepCategory==='NONE'?'ITEM_NO_PREP':'ITEM_BUBBLEWRAP']}]:[]});
+   equal(url.searchParams.getAll('mskus'),[plan.fba_inbound_items.map(item=>item.sku).join(',')]);
+   const requested=url.searchParams.get('mskus')!.split(',');
+   return json({mskuPrepDetails:prepCategory?requested.map(msku=>({msku,prepCategory,prepTypes:[prepCategory==='NONE'?'ITEM_NO_PREP':'ITEM_BUBBLEWRAP']})):[]});
   }
   if(path.endsWith('/inboundPlans')&&method==='POST'){
    equal(body.sourceAddress,senders.FBA2);
@@ -92,6 +93,12 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  }
  try{
   staff='other';await send('get',{},404);equal(remoteCalls,0);staff='own';
+  const extra={...plan.fba_inbound_items[0],item_id:'33730aa0-3333-4333-8333-333333333333',sku:'2471-AAAA-20261107-400'};
+  plan.fba_inbound_items.push(extra);
+  const prep=await (await send('checkPrep')).json();
+  equal(prep.unset,[]);
+  equal(prep.owners[extra.item_id],{prepOwner:'NONE',labelOwner:'SELLER'});
+  plan.fba_inbound_items.pop();
   await send('saveBoxes',{boxes:[box,box]},422);equal(plan.work.boxes,undefined);
   await send('saveBoxes',{boxes:[box]});await send('saveBoxes',{boxes:[box],revision:0},409);
   failAfterCreate=true;await send('create',{},502);await send('create',{},409);
