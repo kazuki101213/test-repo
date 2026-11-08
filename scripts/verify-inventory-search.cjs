@@ -8,6 +8,8 @@ const checks=[['serial',' 2198B '],['sku',base.sku.toLowerCase()],['model','bdz-
 for(const [field,value] of checks){assert(search.matchesInventorySearch(target,field,value));assert(!search.matchesInventorySearch(collision,field,value),'A different field must not match '+field);}
 assert(!search.matchesInventorySearch({...target,model_no:null,title:'X000FNSKU'},'model','X000FNSKU'));
 assert(search.matchesInventorySearch({...target,is_accessory:true,title:'リモコン'},'model','リモコン'));
+assert(search.matchesInventorySearch({...target,is_accessory:true,title:'純正リモコン'},'accessory_name','リモコン'));
+assert(!search.matchesInventorySearch({...target,title:'純正リモコン'},'accessory_name','リモコン'));
 assert(!search.matchesInventorySearch({...target,tracking_no:null},'tracking_no','null'));
 assert(search.matchesInventorySearch(target,'serial','  '));
 const filler=Array.from({length:1001},(_,n)=>({...base,id:String(n),sku:`${n+5000}-AAII-20261007-1`,lot_seq:n+5000,title:'filler',model_no:null,asin:null,tracking_no:null,marketplace_item_id:null}));
