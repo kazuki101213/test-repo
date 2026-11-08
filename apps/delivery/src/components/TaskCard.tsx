@@ -103,7 +103,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   <div className={`delivery-accessory-details${compact?' compact':''}`}>
    {source(item)}<CopyableText label={trackingLabel(item)} value={item.tracking_no||'—'}/>
    {field('仕入日',jpDate(item.purchased_at))}
-   {item.is_accessory&&field('利用記録',item.accessory_usage_note||'未記録','delivery-accessory-usage')}
+   {item.is_accessory&&field('利用記録',item.accessory_usage_note?.trim()||'—','delivery-accessory-usage')}
    {item.memo?.trim()&&item.memo.trim()!==item.accessory_usage_note&&comments(item)}
   </div>
  </>;
