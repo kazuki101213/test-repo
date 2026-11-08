@@ -14,7 +14,7 @@ export type Work = {
  placement?:Placement; transport?:Transport[]; selections?:Transport[]; shipDate?:string;
  windows?:Record<string,Window[]>; selectedWindows?:Record<string,string>; shipments?:Shipment[]; notice?:string;
 };
-export type Pending = {action:string; at:string; op?:string; shipmentId?:string; windowId?:string; tracking?:Record<string,string>; remote?:string};
+export type Pending = {action:string; at:string; op?:string; createAfterPrep?:boolean; shipmentId?:string; windowId?:string; tracking?:Record<string,string>; remote?:string};
 export type Plan = {id:string; account:Account; name:string; staff_id:string; stage:Stage; revision:number; amazon_id:string|null; pending:Pending|null; work:Work; created_at:string; fba_inbound_items:Item[]};
 export const senders = {
  FBA1:{name:'長部一輝',postalCode:'224-0057',stateOrProvinceCode:'神奈川県',city:'横浜市都筑区',addressLine1:'川和町1249-1',addressLine2:'メルヴェイユ2番館204',countryCode:'JP',phoneNumber:'08022407916'},

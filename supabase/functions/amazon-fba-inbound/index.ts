@@ -62,7 +62,8 @@ async function prep(api:Amazon,items:Item[]) {
  for(let offset=0;offset<items.length;offset+=40){
   const chunk=items.slice(offset,offset+40);
   const result=await api.call(inbound+'/items/prepDetails',{marketplaceId:marketplace,mskus:chunk.map(i=>i.sku)});
-  for(const row of result.mskuPrepDetails??[])found.set(row.msku,row);
+  if(!Array.isArray(result.mskuPrepDetails))throw new WorkflowError(502,'Amazonの梱包条件を確認できませんでした。');
+  for(const row of result.mskuPrepDetails)found.set(row.msku,row);
  }
  const owners:Record<string,Owner>={};
  const requirements:Record<string,string[]>={};
@@ -77,8 +78,9 @@ async function prep(api:Amazon,items:Item[]) {
  }
  return {owners,requirements,unset};
 }
-async function getShipments(api:Amazon,plan:Plan,withBoxes:boolean):Promise<Shipment[]> {
- const ids=plan.work.placement?.shipmentIds??[];
+type PrepDetails=Awaited<ReturnType<typeof prep>>;
+const needsPrepReview=({owners}:PrepDetails)=>Object.values(owners).some(x=>x.prepOwner==='SELLER'||x.labelOwner!=='SELLER');
+async function getShipments(api:Amazon,plan:Plan,withBoxes:boolean,ids=plan.work.placement?.shipmentIds??[]):Promise<Shipment[]> {
  const result:Shipment[]=[];
  for(const id of ids) {
   const row=await api.call(shipmentPath(plan,id));
@@ -243,8 +245,49 @@ export async function handler(req:Request):Promise<Response>{
     if(error instanceof AmazonError&&[400,401,403,404,422,429].includes(error.remoteStatus))await patch({pending:null,work:previous});
     throw error;
    }
-   if(typeof response.operationId!=='string'||(action==='create'&&typeof response.inboundPlanId!=='string'))throw new WorkflowError(502,'Amazonの受付結果を確認できません。重複防止のため納品履歴を照合してください。');
-   await patch({pending:{...pending,op:response.operationId},...(action==='create'?{amazon_id:response.inboundPlanId}:{})});
+   if(typeof response.operationId!=='string'||(pending.action==='create'&&typeof response.inboundPlanId!=='string'))throw new WorkflowError(502,'Amazonの受付結果を確認できません。重複防止のため納品履歴を照合してください。');
+   await patch({pending:{...pending,op:response.operationId},...(pending.action==='create'?{amazon_id:response.inboundPlanId}:{})});
+  }
+  async function createDetails(){
+   eligiblePhase(plan,'draft');validateBoxes(plan.work.boxes,items);
+   const current=await db.from('items').select('id,sku,asin,condition,status,deliverer_id,sales_channel').in('id',items.map(i=>i.item_id));
+   if(current.error)throw new WorkflowError(502,'納品商品の最新情報を取得できませんでした。');
+   if(!items.every(i=>current.data?.some(x=>x.id===i.item_id&&x.sku===i.sku&&x.asin===i.asin&&x.condition===i.condition&&
+     x.status==='商品登録前'&&x.deliverer_id===plan.staff_id&&(x.sales_channel===plan.account||(x.sales_channel==='FBA'&&plan.account==='FBA1')))))
+    return invalid('商品の情報が変更されました。下書きを取り消し、在庫で選び直してください。');
+   return prep(api,items);
+  }
+  function setupPrep(unset:string[],createAfterPrep=false){
+   return start(plan.work,inbound+'/items/prepDetails','POST',
+    {marketplaceId:marketplace,mskuPrepDetails:unset.map(msku=>({msku,prepCategory:'NONE',prepTypes:['ITEM_NO_PREP']}))},
+    {action:'setupPrep',...(createAfterPrep?{createAfterPrep}:{})});
+  }
+  function startCreate(owners:PrepDetails['owners']){
+   return start({...plan.work,owners},inbound+'/inboundPlans','POST',{name:plan.name,sourceAddress:senders[plan.account],
+    destinationMarketplaces:[marketplace],items:items.map(i=>lineItem(i,owners))},{action:'create'});
+  }
+  const reviewPrep=(details:PrepDetails)=>reply(200,{plan:planSelect(plan),prepReview:details});
+  async function finishPrep(pending:Pending,problem='',terminal=false){
+   const details=await (pending.createAfterPrep?createDetails():prep(api,items)).catch(async error=>{
+    if(error instanceof WorkflowError&&error.status===422){
+     await patch({pending:null,work:{...plan.work,notice:error.message}});return null;
+    }
+    throw error;
+   });
+   if(!details)return result();
+   if(pending.createAfterPrep&&needsPrepReview(details)){
+    await patch({pending:null});return reviewPrep(details);
+   }
+   if(details.unset.length){
+    const numbers=details.unset.map(sku=>sku.split('-')[0]).join('、');
+    const notice=`Amazonで梱包不要を確認できない商品：${numbers}。`+(problem||'時間をおいてから再試行してください。');
+    if(!pending.op)return invalid(notice);
+    if(terminal||Date.now()-Date.parse(pending.at)>120000)await patch({pending:null,work:{...plan.work,notice}});
+    return result();
+   }
+   if(pending.createAfterPrep)await startCreate(details.owners);
+   else await patch({pending:null,work:{...plan.work,notice:undefined}});
+   return result();
   }
   if(action==='recover'){
    const pending=plan.pending;
@@ -262,7 +305,7 @@ export async function handler(req:Request):Promise<Response>{
    }
    const work={...plan.work,notice:undefined};
    if(pending.action==='setupPrep'){
-    if((await prep(api,items)).unset.length)return invalid('Amazonに梱包条件が反映されていません。時間をおいて再確認してください。');
+    return finishPrep(pending);
    }else if(['packing','placements','transport','windows'].includes(pending.action)){
     // Regeneration only builds choices. No fee or shipment is confirmed.
     await patch({pending:null,work:{...work,notice:'候補の受付を確認できませんでした。候補を再取得してください。'}});return result();
@@ -307,11 +350,16 @@ export async function handler(req:Request):Promise<Response>{
    if(operation.operationStatus==='FAILED'){
     const detail=(operation.operationProblems??[]).map(amazonProblem).filter(Boolean).slice(0,4).join('／');
     if(pending.action==='create')await patch({pending:null,amazon_id:null,work:{...plan.work,notice:detail||'Amazonで納品作成に失敗しました。'}});
+    else if(pending.action==='setupPrep')await patch({pending:null,work:{...plan.work,notice:'Amazonで梱包不要の登録に失敗しました。'+detail}});
     else await patch({pending:null,work:{...plan.work,notice:detail||'Amazonで処理が失敗しました。'}});
     return result();
    }
    if(operation.operationStatus!=='SUCCESS')throw new WorkflowError(502,'Amazonの処理状態を確認できません。');
    if(pending.action==='cancel'){await cancel();return result();}
+   if(pending.action==='setupPrep'){
+    const problems:({severity?:string}|null)[]=Array.isArray(operation.operationProblems)?operation.operationProblems:[];
+    return finishPrep(pending,problems.map(amazonProblem).filter(Boolean).slice(0,4).join('／'),problems.some(x=>x?.severity==='ERROR'));
+   }
    const work={...plan.work,notice:undefined};
    if(pending.action==='packing')work.packing=(await api.pages(path+'/packingOptions','packingOptions')).filter(x=>x.status==='OFFERED').map(x=>({id:x.packingOptionId,groups:x.packingGroups,fees:charges(x.fees),expiration:x.expiration}));
    if(pending.action==='placements')work.placements=(await api.pages(path+'/placementOptions','placementOptions')).filter(x=>x.status==='OFFERED').map(x=>({id:x.placementOptionId,shipmentIds:x.shipmentIds,fees:charges(x.fees),expiration:x.expiration}));
@@ -341,23 +389,19 @@ export async function handler(req:Request):Promise<Response>{
    if(input.confirmed!==true)return invalid('梱包カテゴリーの登録を確認してください。');
    const {unset}=await prep(api,items);
    if(!unset.length)return result();
-   await start(plan.work,inbound+'/items/prepDetails','POST',
-    {marketplaceId:marketplace,mskuPrepDetails:unset.map(msku=>({msku,prepCategory:'NONE',prepTypes:['ITEM_NO_PREP']}))});
+   await setupPrep(unset);
    return result();
   }
   if(action==='create'){
-   eligiblePhase(plan,'draft');validateBoxes(plan.work.boxes,items);
-   const current=await db.from('items').select('id,sku,asin,condition,status,deliverer_id,sales_channel').in('id',items.map(i=>i.item_id));
-   if(current.error||!items.every(i=>current.data?.some(x=>x.id===i.item_id&&x.sku===i.sku&&x.asin===i.asin&&x.condition===i.condition&&
-     x.status==='商品登録前'&&x.deliverer_id===plan.staff_id&&(x.sales_channel===plan.account||(x.sales_channel==='FBA'&&plan.account==='FBA1')))))
-    return invalid('商品の情報が変更されました。下書きを取り消し、在庫で選び直してください。');
-   const details=await prep(api,items);
-   if(details.unset.length)return invalid('梱包カテゴリーが未設定の商品があります。先に梱包条件を確認してください。');
-   const owners=details.owners;
-   if(Object.values(owners).some(x=>x.prepOwner==='SELLER'||x.labelOwner!=='SELLER')&&input.acceptPrep!==true)
+   const details=await createDetails();
+   if(needsPrepReview(details)&&input.acceptPrep!==true){
+    if(input.autoPrep===true)return reviewPrep(details);
     return invalid('Amazonが指定した梱包・ラベル条件を確認してください。');
-   await start({...plan.work,owners},inbound+'/inboundPlans','POST',{name:plan.name,sourceAddress:senders[plan.account],
-    destinationMarketplaces:[marketplace],items:items.map(i=>lineItem(i,owners))});
+   }
+   if(details.unset.length){
+    if(input.autoPrep!==true)return invalid('梱包カテゴリーが未設定の商品があります。先に梱包条件を確認してください。');
+    await setupPrep(details.unset,true);
+   }else await startCreate(details.owners);
   }else if(action==='packing'){
    eligiblePhase(plan,'created','packing-options');await start(plan.work,path+'/packingOptions');
   }else if(action==='choosePacking'){
@@ -420,8 +464,10 @@ export async function handler(req:Request):Promise<Response>{
    await patch({work:{...plan.work,shipments}});plan=await read(plan.id);
   }else if(action==='label'){
    eligiblePhase(plan,'ready');
-   const shipment=plan.work.shipments?.find(s=>s.id===input.shipment);
-   if(!shipment?.confirmationId||!shipment.boxes?.length)return invalid('発送・受領確認を更新し、Amazonの輸送箱を取得してください。');
+   if(!plan.work.placement?.shipmentIds.includes(input.shipment))return invalid('納品先を確認してください。');
+   let shipment=plan.work.shipments?.find(s=>s.id===input.shipment);
+   if(!shipment?.confirmationId||!shipment.boxes?.length)[shipment]=await getShipments(api,plan,true,[input.shipment]);
+   if(!shipment?.confirmationId||!shipment.boxes?.length)return invalid('Amazonで配送ラベルを準備しています。時間をおいてから再試行してください。');
    const chosen=shipment.boxes.find(b=>b.id===input.box);
    if(input.box&&!chosen)return invalid('輸送箱を確認できません。');
    const params={PageType:'PackageLabel_A4_4',LabelType:'UNIQUE',NumberOfPackages:String(shipment.boxes.length),

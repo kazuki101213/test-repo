@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
-import {amount,fbaState,inboundRequest,tokyoDate,type Box,type InboundPlan,type Shipment} from './fbaInboundApi';
+import {amount,fbaState,inboundRequest,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
@@ -10,6 +10,8 @@ const needWindow=(s:{solution:string;preconditions:string[]})=>s.solution==='USE
 const blank=(items:string[]=[]):Box=>({length:0,width:0,height:0,weight:0,items});
 const serial=(sku:string)=>sku.split('-')[0]||sku;
 const shortDate=(s:string)=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'}).format(new Date(s));
+type PrepReview={owners:Record<string,{prepOwner:string;labelOwner:string}>;requirements:Record<string,string[]>};
+type PlanResult={plan:InboundPlan;prepReview?:PrepReview};
 
 export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan;onUpdate:(p:InboundPlan)=>void;onClose:()=>void}){
  const items=plan.fba_inbound_items;
@@ -19,7 +21,8 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const [option,setOption]=useState(''),[date,setDate]=useState(work.shipDate??tokyoDate),[selected,setSelected]=useState<Record<string,string>>({});
  const [tracking,setTracking]=useState<Record<string,string>>({}),[windowIds,setWindowIds]=useState<Record<string,string>>({});
  const [pdf,setPdf]=useState<{id:string;url:string}|null>(null);
- const [prep,setPrep]=useState<{owners:Record<string,{prepOwner:string;labelOwner:string}>;requirements:Record<string,string[]>;unset:string[]}|null>(null);
+ const [labelError,setLabelError]=useState('');
+ const [prep,setPrep]=useState<PrepReview|null>(null);
  useEffect(()=>()=>{if(pdf)URL.revokeObjectURL(pdf.url);},[pdf]);
  const editable=['draft','created','packing-options','packing-confirmed'].includes(plan.stage);
  const blocked=busy||!!plan.pending;
@@ -30,8 +33,8 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   if(!plan.pending?.op)return;
   let active=true;let timer:ReturnType<typeof setTimeout>;
   const run=()=>{timer=setTimeout(async()=>{
-   try{const {plan:next}=await inboundRequest<{plan:InboundPlan}>('poll',{id:plan.id});
-    if(active){onUpdate(next);if(next.pending?.op===plan.pending?.op)run();}
+   try{const {plan:next,prepReview}=await inboundRequest<PlanResult>('poll',{id:plan.id});
+    if(active){onUpdate(next);setPrep(prepReview??null);setError('');if(next.pending?.op===plan.pending?.op)run();}
    }catch(cause){if(active)setError(String((cause as Error).message));}
   },2500);};
   run();
@@ -41,21 +44,17 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  async function apply(action:string,fields:Record<string,unknown>={}){
   setBusy(true);setError('');
   try {
-   const {plan:next}=await inboundRequest<{plan:InboundPlan}>(action,{...requestBody,...fields});
-   onUpdate(next);if(action==='setupPrep')setPrep(null);if(action==='saveBoxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
+   const {plan:next,prepReview}=await inboundRequest<PlanResult>(action,{...requestBody,...fields});
+   onUpdate(next);setPrep(prepReview??null);if(action==='saveBoxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
   }catch(cause){
    setError((cause as Error).message);
    try {onUpdate((await inboundRequest<{plan:InboundPlan}>('get',{id:plan.id})).plan);}catch{/* Keep the current plan open. */}
   }finally{setBusy(false);}
  }
- async function checkPrep(){
-  setBusy(true);setError('');
-  try{setPrep(await inboundRequest('checkPrep',requestBody));}catch(cause){setError((cause as Error).message);}finally{setBusy(false);}
- }
- async function label(shipment:Shipment,box?:string){
-  setBusy(true);setError('');setPdf(null);
-  try{const response=await inboundRequest<Blob>('label',{...requestBody,shipment:shipment.id,box});
-   setPdf({id:box??shipment.id,url:URL.createObjectURL(new Blob([response],{type:"application/pdf"}))});}catch(cause){setError((cause as Error).message);}finally{setBusy(false);}
+ async function label(shipment:string,box?:string){
+  setBusy(true);setLabelError('');setPdf(null);
+  try{const response=await inboundRequest<Blob>('label',{...requestBody,shipment,box});
+   setPdf({id:box??shipment,url:URL.createObjectURL(new Blob([response],{type:"application/pdf"}))});}catch(cause){setLabelError((cause as Error).message);}finally{setBusy(false);}
  }
  function editBoxes(next:Box[]){setBoxes(next);setDirty(true);}
  function changeBox(index:number,patch:Partial<Box>){editBoxes(boxes.map((b,j)=>index===j?{...b,...patch}:b));}
@@ -69,6 +68,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const chosen=work.transport?.filter(t=>selected[t.shipmentId]===t.id)??[];
  const finalOptions=work.selections??[];
  const ready=plan.stage==='ready';
+ const labelDestinations=ready?work.placement?.shipmentIds??[]:[];
  const sent=work.shipments?.some(s=>s.trackingSaved||['SHIPPED','IN_TRANSIT','DELIVERED','CHECKED_IN','RECEIVING','CLOSED'].includes(s.status));
  const sender=plan.sender;
  return <section className="card fba-workflow" aria-label={plan.name}>
@@ -100,15 +100,17 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   </section>
   {!ready&&plan.stage!=='cancelled'&&<section className="fba-work-box">
    <h4>Amazonの納品手続き</h4>
-   {plan.stage==='draft'&&<div className="fba-work-actions">
-    <button type="button" className="btn" disabled={blocked||dirty} onClick={()=>void checkPrep()}>梱包条件を確認</button>
-    {prep&&!prep.unset.length&&<button type="button" className="btn primary" disabled={blocked||dirty} onClick={()=>{if(window.confirm(`${plan.account}に「${plan.name}」を作成しますか？`))void apply('create',{acceptPrep:true});}}>Amazonに納品プランを作成</button>}
-   </div>}
-   {plan.stage==='draft'&&!!prep?.unset.length&&<div>
-    <p>梱包カテゴリー未設定：{prep.unset.map(serial).join('、')}</p>
-    <button type="button" className="btn" disabled={blocked} onClick={()=>{if(window.confirm('未設定の商品を、Amazonに「梱包不要」として登録しますか？'))void apply('setupPrep',{confirmed:true});}}>梱包不要として登録</button>
-   </div>}
-   {plan.stage==='draft'&&prep&&Object.entries(prep.owners).map(([id,owner])=><p key={id}>{serial(items.find(i=>i.item_id===id)?.sku??'')}：{owner.prepOwner==='NONE'?'梱包不要':`出品者が梱包（Amazon指定：${(prep.requirements[id]??[]).join('、')}）`} ／ {owner.labelOwner==='NONE'?'ラベル不要':'出品者がラベル貼付'}</p>)}
+   {plan.stage==='draft'&&<>
+    {dirty?<p className="muted">箱情報を保存すると納品プランを作成できます。</p>:<p className="muted">梱包カテゴリーが未設定の商品は、梱包不要として登録します。</p>}
+    {prep&&<div role="status"><p>Amazonが指定した梱包・ラベル条件を確認してください。</p>
+     {Object.entries(prep.owners).map(([id,owner])=><p key={id}>{serial(items.find(i=>i.item_id===id)?.sku??'')}：{owner.prepOwner==='NONE'?'梱包不要':`出品者が梱包（Amazon指定：${(prep.requirements[id]??[]).join('、')}）`} ／ {owner.labelOwner==='NONE'?'ラベル不要':'出品者がラベル貼付'}</p>)}
+    </div>}
+    <div className="fba-work-actions"><button type="button" className="btn primary" disabled={blocked||dirty} onClick={()=>{
+     if(prep||window.confirm(`${plan.account}に「${plan.name}」を作成しますか？`))void apply('create',{autoPrep:true,acceptPrep:!!prep});
+    }}>{prep?'指定条件で納品プランを作成':'Amazonに納品プランを作成'}</button></div>
+    {plan.pending?.createAfterPrep&&<p role="status">Amazonに梱包不要を登録しています。反映後に納品プランを作成します。</p>}
+    {(error||work.notice)&&<p className="error" role="alert">{error||work.notice}</p>}
+   </>}
    {plan.stage==='created'&&act('梱包方法を取得','packing')}
    {plan.stage==='packing-options'&&<>
     {work.packing?.length?<label className="fba-work-field">梱包方法<select disabled={blocked} value={option} onChange={e=>setOption(e.target.value)}><option value="">選択してください</option>
@@ -153,8 +155,12 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    <FbaLabelControls productOnly items={items.filter(i=>!i.published_at&&(work.owners?.[i.item_id]?.labelOwner??'SELLER')==='SELLER').map(i=>({
     id:i.item_id,sku:i.sku,sales_channel:i.sales_channel,reference_image_url:null,
    }))}/>
-   {ready&&<div className="fba-work-actions">{work.shipments?.filter(s=>s.confirmationId).map(s=><button type="button" className="btn" key={s.id} disabled={blocked} onClick={()=>void label(s)}>配送ラベル {s.warehouse||s.confirmationId}</button>)}
-    {pdf&&<a className="btn" href={pdf.url} target="_blank" rel="noopener noreferrer">PDFを開いて印刷</a>}</div>}
+   <div className="fba-work-actions">
+    {labelDestinations.length?labelDestinations.map((id,index)=><button type="button" className="btn" key={id} disabled={blocked} onClick={()=>void label(id)}>配送ラベルを印刷{labelDestinations.length>1?`（${work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${index+1}`}）`:''}</button>):<button type="button" className="btn" disabled>配送ラベルを印刷</button>}
+    {pdf&&<a className="btn" href={pdf.url} target="_blank" rel="noopener noreferrer">配送ラベルPDFを開いて印刷</a>}
+   </div>
+   {!labelDestinations.length&&<p className="muted">配送が確定すると、Amazonの配送ラベルを印刷できます。</p>}
+   {labelError&&<p className="error" role="alert">{labelError}</p>}
   </section>}
   {ready&&<section className="fba-work-box">
    <h4>発送・受領確認</h4>
@@ -169,7 +175,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
      {s.boxes?.map((b,j)=><div className="fba-work-actions" key={b.id}><span>箱 {j+1}（{b.skus.map(serial).join('、')}）</span>
       {self&&<label>追跡番号 <input inputMode="text" maxLength={60} disabled={blocked||['CANCELLED','CLOSED','DELETED','ABANDONED'].includes(s.status)} value={tracking[b.id]??b.tracking??''} onChange={e=>setTracking({...tracking,[b.id]:e.target.value})}/></label>}
       {!self&&b.tracking&&<span>追跡番号 {b.tracking}</span>}
-      <button className="btn" type="button" disabled={blocked} onClick={()=>void label(s,b.id)}>この箱のラベル</button></div>)}
+      <button className="btn" type="button" disabled={blocked} onClick={()=>void label(s.id,b.id)}>この箱のラベル</button></div>)}
      {self&&!!s.boxes?.length&&!['CANCELLED','CLOSED','DELETED','ABANDONED'].includes(s.status)&&<button type="button" className="btn" disabled={blocked||!s.boxes.every(b=>tracking[b.id]??b.tracking)} onClick={()=>{
       if(window.confirm('配送会社に引き渡しましたか？　追跡番号をAmazonに送信します。'))void apply('tracking',{shipment:s.id,confirmed:true,tracking:Object.fromEntries(s.boxes!.map(b=>[b.id,tracking[b.id]??b.tracking]))});}}>追跡番号をAmazonに送信</button>}
     </div>;
@@ -177,7 +183,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   </section>}
   {plan.pending&&<div className="fba-work-actions" role="status"><span>{plan.pending.op?'Amazonの結果を確認中…':'Amazonの受付番号を確認できていません。'}</span>
    <button type="button" className="btn" disabled={busy} onClick={()=>void apply(plan.pending?.op?'poll':'recover')}>処理結果を確認</button></div>}
-  {(error||work.notice)&&<p className="error" role="alert">{error||work.notice}</p>}
+  {plan.stage!=='draft'&&(error||work.notice)&&<p className="error" role="alert">{error||work.notice}</p>}
   {!ready&&!sent&&plan.stage!=='cancelled'&&!plan.pending&&<button className="btn" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品を取り消す</button>}
  </section>;
 }

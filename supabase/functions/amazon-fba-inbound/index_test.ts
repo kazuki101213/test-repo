@@ -15,6 +15,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  let plan:Plan={id,account:'FBA2',name:'担当者2026/11/7',staff_id:'own',stage:'draft',revision:0,created_at:'',amazon_id:null,pending:null,work:{},
   fba_inbound_items:[{item_id:itemId,sku,asin,title:'商品',condition:'非常に良い',sales_channel:'FBA2'}]};
  let received=0,available=0,buyable=false,published=0,remoteCalls=0,failAfterCreate=false,ambiguousPacking=false,staff='own';
+ let prepCategory='NONE',inventoryChanged=false,prepRejected=false;
  const box={length:40,width:30,height:20,weight:4,items:[itemId]};
  const requests:{path:string;method:string;body:any}[]=[];
  globalThis.fetch=async(input,init)=>{
@@ -25,7 +26,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
    if(path==='/auth/v1/user')return json({id:'user'});
    if(path.endsWith('/current_staff_id'))return json(staff);
    if(path.endsWith('/staff'))return json({id:staff,is_active:true,role:'deliverer'});
-   if(path.endsWith('/items'))return json([{id:itemId,sku,asin,condition:'非常に良い',sales_channel:'FBA2',status:'商品登録前',deliverer_id:'own'}]);
+   if(path.endsWith('/items'))return json([{id:itemId,sku,asin,condition:'非常に良い',sales_channel:'FBA2',status:inventoryChanged?'販売済':'商品登録前',deliverer_id:'own'}]);
    if(path.endsWith('/fba_inbound_plans')){
     if(method==='PATCH'){equal(url.searchParams.get('revision'),'eq.'+plan.revision);plan={...plan,...body};}
     return json(plan);
@@ -40,8 +41,12 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   assert(/^\d{8}T\d{6}Z$/.test(new Headers(init?.headers).get('x-amz-date')??''),'SP-API requests include their UTC timestamp');
   remoteCalls++;requests.push({path,method,body});
   if(path.endsWith('/items/prepDetails')){
+   if(method==='POST'){
+    equal(body,{marketplaceId:market,mskuPrepDetails:[{msku:sku,prepCategory:'NONE',prepTypes:['ITEM_NO_PREP']}]});
+    return json({operationId:'prep-op'},202);
+   }
    equal(url.searchParams.getAll('mskus'),[sku]);
-   return json({mskuPrepDetails:[{msku:sku,prepCategory:'NONE',prepTypes:['ITEM_NO_PREP']}]});
+   return json({mskuPrepDetails:prepCategory?[{msku:sku,prepCategory,prepTypes:[prepCategory==='NONE'?'ITEM_NO_PREP':'ITEM_BUBBLEWRAP']}]:[]});
   }
   if(path.endsWith('/inboundPlans')&&method==='POST'){
    equal(body.sourceAddress,senders.FBA2);
@@ -50,7 +55,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
    if(failAfterCreate)throw new Error('response lost');
    return json({operationId:'create-op',inboundPlanId:'wf-test'},202);
   }
-  if(path.includes('/operations/'))return json({operationStatus:'SUCCESS'});
+  if(path.includes('/operations/'))return json({operationStatus:'SUCCESS',operationProblems:prepRejected?[{severity:'ERROR',code:'PREP_REJECTED',message:'SKUの梱包を確認してください'}]:[]});
   if(path.endsWith('/packingOptions')&&method==='GET')return json({packingOptions:[{packingOptionId:'packing',status:'OFFERED',packingGroups:['group'],fees:[]}]});
   if(path.endsWith('/packingOptions')&&ambiguousPacking)throw new Error('response lost');
   if(path.endsWith('/packingGroups/group/items'))return json({items:[{msku:sku,asin,quantity:1}]});
@@ -64,7 +69,8 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   if(path.endsWith('/deliveryWindowOptions')&&method==='GET')return json({deliveryWindowOptions:[{deliveryWindowOptionId:'window',startDate:'2030-01-03T00:00:00Z',endDate:'2030-01-05T00:00:00Z',validUntil:'2030-01-01T00:00:00Z'}]});
   if(path.endsWith('/'+shipment+'/boxes'))return json({boxes:[{boxId:'box',items:[{msku:sku}]}]});
   if(path.endsWith('/FBA123/labels')){
-   equal(url.searchParams.get('PackageLabelsToPrint'),'box');
+   equal(url.searchParams.get('NumberOfPackages'),'1');
+   assert([null,'box'].includes(url.searchParams.get('PackageLabelsToPrint')));
    return json({payload:{DownloadURL:'https://labels.s3.amazonaws.com/test.pdf'}});
   }
   if(path.endsWith('/trackingDetails'))equal(body.trackingDetails.spdTrackingDetail.spdTrackingItems,[{boxId:'box',trackingId:'ABCD12345'}]);
@@ -90,9 +96,26 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   await send('saveBoxes',{boxes:[box]});await send('saveBoxes',{boxes:[box],revision:0},409);
   failAfterCreate=true;await send('create',{},502);await send('create',{},409);
   equal(requests.filter(r=>r.path.endsWith('/inboundPlans')&&r.method==='POST').length,1);
-  // Restore a fresh fixture to exercise the acknowledged path.
+  // Restore the draft to exercise the separate, opt-in automatic prep path.
   plan={...plan,pending:null};failAfterCreate=false;
-  await step('create','created');
+  const writes=()=>requests.filter(r=>r.method==='POST').length;
+  const before=writes();
+  prepCategory='FRAGILE';
+  const review=await (await send('create',{autoPrep:true})).json();
+  equal(review.prepReview.requirements[itemId],['FRAGILE','ITEM_BUBBLEWRAP']);
+  equal(writes(),before);equal(plan.pending,null);
+  prepCategory='';await send('create',{},422);equal(writes(),before);
+  await send('create',{autoPrep:true});
+  equal(plan.pending?.action,'setupPrep');equal(plan.pending?.createAfterPrep,true);equal(plan.pending?.op,'prep-op');
+  await send('create',{autoPrep:true},409);await send('poll');equal(plan.pending?.op,'prep-op');equal(writes(),before+1);
+  prepRejected=true;await send('poll');equal(plan.pending,null);equal(plan.stage,'draft');
+  assert(plan.work.notice?.includes('2470')&&plan.work.notice?.includes('PREP_REJECTED'));equal(writes(),before+1);
+  prepRejected=false;await send('create',{autoPrep:true});
+  inventoryChanged=true;prepCategory='NONE';await send('poll');
+  equal(plan.pending,null);equal(plan.stage,'draft');assert(plan.work.notice?.includes('商品の情報が変更'));equal(writes(),before+2);
+  inventoryChanged=false;prepCategory='';await send('create',{autoPrep:true});
+  prepCategory='NONE';await send('poll');equal(plan.pending?.action,'create');equal(plan.pending?.op,'create-op');equal(plan.amazon_id,'wf-test');
+  await send('create',{autoPrep:true},409);await send('poll');equal(plan.stage,'created');equal(plan.pending,null);equal(writes(),before+4);
   ambiguousPacking=true;await send('packing',{},502);await send('packing',{},409);
   plan.pending!.at='2020-01-01T00:00:00Z';await send('recover');ambiguousPacking=false;
   await step('packing','packing-options');await send('choosePacking',{option:'packing'},422);
@@ -102,7 +125,11 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   await step('confirmPlacement','placement-confirmed',{options:['transport'],confirmed:true});
   await send('confirmTransport',{confirmed:true},422);
   await step('windows','placement-confirmed',{shipment});await step('chooseWindow','placement-confirmed',{shipment,option:'window'});
-  await step('confirmTransport','ready',{confirmed:true});await send('refresh');
+  await step('confirmTransport','ready',{confirmed:true});
+  const revisionBeforePrint=plan.revision;
+  equal(await (await send('label',{shipment})).text(),'%PDF-test');
+  equal(plan.revision,revisionBeforePrint);assert(!plan.work.shipments?.[0].boxes);
+  await send('refresh');
   equal(published,0);equal(plan.work.shipments?.[0].status,'WORKING');
   const pdf=await send('label',{shipment,box:'box'});equal(await pdf.text(),'%PDF-test');
   await send('tracking',{shipment,tracking:{box:'ABCD12345'}},422);
