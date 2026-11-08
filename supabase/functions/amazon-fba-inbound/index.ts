@@ -17,6 +17,8 @@ const shipped=['SHIPPED','IN_TRANSIT','DELIVERED','CHECKED_IN','RECEIVING','CLOS
 const canCheckReceived=['DELIVERED','CHECKED_IN','RECEIVING','CLOSED'];
 const smallParcel=['GROUND_SMALL_PARCEL','AIR_SMALL_PARCEL','AIR_SMALL_PARCEL_EXPRESS'];
 const validSolutions=['AMAZON_PARTNERED_CARRIER','USE_YOUR_OWN_CARRIER'];
+// Amazon caps these three option lists at 20 entries per page.
+const optionPageSize={pageSize:'20'};
 const localDate=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const stageAfter:Record<string,Stage>={create:'created',packing:'packing-options',choosePacking:'packing-confirmed',boxes:'packed',
  placements:'placement-options',transport:'transport-options',confirmPlacement:'placement-confirmed',confirmTransport:'ready'};
@@ -369,10 +371,10 @@ export async function handler(req:Request):Promise<Response>{
     return finishPrep(pending,problems.map(amazonProblem).filter(Boolean).slice(0,4).join('／'),problems.some(x=>x?.severity==='ERROR'));
    }
    const work={...plan.work,notice:undefined};
-   if(pending.action==='packing')work.packing=(await api.pages(path+'/packingOptions','packingOptions')).filter(x=>x.status==='OFFERED').map(x=>({id:x.packingOptionId,groups:x.packingGroups,fees:charges(x.fees),expiration:x.expiration}));
-   if(pending.action==='placements')work.placements=(await api.pages(path+'/placementOptions','placementOptions')).filter(x=>x.status==='OFFERED').map(x=>({id:x.placementOptionId,shipmentIds:x.shipmentIds,fees:charges(x.fees),expiration:x.expiration}));
+   if(pending.action==='packing')work.packing=(await api.pages(path+'/packingOptions','packingOptions',optionPageSize)).filter(x=>x.status==='OFFERED').map(x=>({id:x.packingOptionId,groups:x.packingGroups,fees:charges(x.fees),expiration:x.expiration}));
+   if(pending.action==='placements')work.placements=(await api.pages(path+'/placementOptions','placementOptions',optionPageSize)).filter(x=>x.status==='OFFERED').map(x=>({id:x.placementOptionId,shipmentIds:x.shipmentIds,fees:charges(x.fees),expiration:x.expiration}));
    if(pending.action==='transport'){
-    const all=await api.pages(path+'/transportationOptions','transportationOptions',{placementOptionId:work.placement!.id});
+    const all=await api.pages(path+'/transportationOptions','transportationOptions',{...optionPageSize,placementOptionId:work.placement!.id});
     work.transport=all.filter(x=>smallParcel.includes(x.shippingMode)&&validSolutions.includes(x.shippingSolution))
       .map(x=>({id:x.transportationOptionId,shipmentId:x.shipmentId,carrier:x.carrier?.name??x.carrier?.alphaCode??'配送会社指定なし',
        carrierCode:x.carrier?.alphaCode,solution:x.shippingSolution,quote:charge(x.quote?.cost),expiration:x.quote?.expiration,preconditions:x.preconditions??[]}));
