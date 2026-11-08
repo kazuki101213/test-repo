@@ -1,7 +1,7 @@
 import { salesChannelLabel } from '@bussan/shared';
 import { lazy, Suspense, useState, type SyntheticEvent, type KeyboardEvent } from 'react';
 import { jpDate, canViewDeliveryAssignee, productModelText, inventorySerial, isSeparateAccessory, inventoryBoxColor, inventoryStaffStyle, inventorySiteStyle, inventoryStatusStyle, inventoryStatusText, staffDisplayName, accessoryDisplayLabel, noticeProductUrl } from '@bussan/shared';
-import type { DeliveryTask, Staff, ProductPanel } from '@bussan/shared';
+import type { DeliveryInventoryRow, DeliveryTask, Staff, ProductPanel } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
 import WorkflowControls from './WorkflowControls';
 import {fetchTask} from '../api';
@@ -67,7 +67,7 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
   </span>;
 }
 
-export default function TaskCard({ readOnly = false, showAssignee = false, task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange,selection }: { readOnly?: boolean; showAssignee?: boolean; task: DeliveryTask; amazonImageUrl: string | null; members: DeliveryTask[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void;selection?:{ids:string[];onChange:(ids:string[])=>void} }) {
+export default function TaskCard({ readOnly = false, showAssignee = false, task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange,selection }: { readOnly?: boolean; showAssignee?: boolean; task: DeliveryInventoryRow; amazonImageUrl: string | null; members: DeliveryInventoryRow[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void;selection?:{ids:string[];onChange:(ids:string[])=>void} }) {
  const [panel,setPanel]=useState<ProductPanel>(()=>new URLSearchParams(window.location.search).get('openMessages')==='1'?'messages':'photos');
  const [actionError,setActionError]=useState<string|null>(null);
  const productIdFor=(item:DeliveryTask)=>(item.is_accessory||item.marketplace==='動作品Amazon返品'?item.marketplace_item_id:originalMarketplaceIds.get(item.id)||item.marketplace_item_id)||'—';
@@ -94,7 +94,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
  const source=(item:DeliveryTask)=><span className="task-item-id-line"><CopyableText label={itemIdLabel(item)} value={productIdFor(item)}/>{sourceLink(item)}</span>;
  const comments=(item:DeliveryTask)=>field('仕入担当者からのコメント',item.memo?.trim()?item.memo:'—','purchaser-comment');
  const controls=(item:DeliveryTask)=>operate(item)?<div className="delivery-record-actions" data-record-id={item.id}><WorkflowControls task={item} onChanged={()=>refreshAction(item)} onError={message=>setActionError(message?`${item.sku}：${message}`:null)} onPanel={mode=>openPanel(item,mode)}/></div>:<span className="muted task-read-only">閲覧のみ</span>;
- const accessoryInfo=(item:DeliveryTask,compact=false)=> <>
+ const accessoryInfo=(item:DeliveryInventoryRow,compact=false)=> <>
   <div className={`delivery-accessory-identity${independent(item)?' independent':''}`}>
    {independent(item)&&<span className="delivery-accessory-state">{status(item)}<b className="delivery-mobile-accessory-name">{item.title}</b></span>}
    <div className="delivery-accessory-text"><div className="delivery-accessory-title">{selectItem(item)}<strong>{independent(item)?inventorySerial(item):task.inventory_group_serial||inventorySerial(task)}</strong>{independent(item)&&<b>{item.title}</b>}{badge(item.is_accessory?accessoryDisplayLabel(item):'本体')}{!independent(item)&&<b>{item.title}</b>}</div>{independent(item)&&<CopyableText label="SKU" value={item.sku}/>}</div>

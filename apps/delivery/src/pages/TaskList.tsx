@@ -1,6 +1,6 @@
 import ReturnTasks from '../components/ReturnTasks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
+import type { DeliveryInventoryRow, DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
 import { canViewDeliveryAssignee, inventorySiteStyle, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
 import { fetchDeliveryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
 import {useInventoryPage} from '../hooks/useInventoryPage';
@@ -63,7 +63,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
   const overlappingStatuses = groupedStatuses?.filter(status => !inventoryFilters.status?.length || inventoryFilters.status.includes(status));
   const requestStates = overlappingStatuses?.length ? {...inventoryFilters, status: overlappingStatuses} : inventoryFilters;
   const requestStatus = groupedStatuses ? (overlappingStatuses?.length ? 'all' : groupedStatuses[0]) : filter;
-  const inventory=useInventoryPage<DeliveryTask>(allProducts?'delivery-all':'delivery',staff.id,{status:requestStatus,states:requestStates,queryField,query:queryField==='deliverer'?'':query,delivererIds:effectiveDelivererIds,from:purchasedFrom,to:purchasedTo});
+  const inventory=useInventoryPage<DeliveryInventoryRow>(allProducts?'delivery-all':'delivery',staff.id,{status:requestStatus,states:requestStates,queryField,query:queryField==='deliverer'?'':query,delivererIds:effectiveDelivererIds,from:purchasedFrom,to:purchasedTo});
   const tasks=inventory.rows,loading=inventory.loading;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const detailRevision = 0;
@@ -105,7 +105,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
       const productId = original?.marketplace_item_id || task.original_marketplace_item_id || task.marketplace_item_id;
       if (productId) originalIds.set(task.id, productId);
     }
-    const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
+    const groups = new Map<string, [DeliveryInventoryRow, ...DeliveryInventoryRow[]]>();
     for (const task of tasks) {
       if (effectiveDelivererIds.length && !effectiveDelivererIds.includes(task.deliverer_id ?? '')) continue;
       const key = serialNumber(task);
