@@ -301,6 +301,9 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         current = await fetchInventoryItem(item.id);
       }
       await updateInventoryItem(current, { ...values, card_id: cardId || null });
+      if (values.asin !== item.asin && (identity.product_no !== item.product_no || identity.model_no !== item.model_no)) {
+        current = await fetchInventoryItem(item.id);
+      }
       if (identity.product_no !== item.product_no) await updateInventoryField(current, 'product_no', String(identity.product_no ?? ''));
       if (identity.model_no !== item.model_no) await updateInventoryField(current, 'model_no', String(identity.model_no ?? ''));
       }

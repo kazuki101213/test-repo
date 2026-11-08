@@ -434,6 +434,13 @@ export type InventoryEdit = Pick<ItemView,
   'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount' | 'refund_amount'
 > & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount' | 'inventory_refund_amount' | 'marketplace_item_id'>;
 
+function normalizeInventoryAsin(value: string | null): string | null {
+  const asin = value?.trim().toUpperCase();
+  if (!asin) return null;
+  if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは半角英数字10文字で入力してください。');
+  return asin;
+}
+
 export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit & { card_id?: string | null }): Promise<void> {
   const title = fields.title.trim();
   if (!title || title.length > 500) throw new Error('商品名を入力してください。');
@@ -457,14 +464,12 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
       throw new Error('付属品にするには、同じ商品番号の本体を先に登録してください。');
     }
   }
-  const { data, error } = await getSupabase().from('items').update({ ...fields, title })
+  const { asin, ...otherFields } = fields;
+  const asinChange = asin !== item.asin ? { asin: normalizeInventoryAsin(asin) } : {};
+  const { data, error } = await getSupabase().from('items').update({ ...otherFields, ...asinChange, title })
     .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
-  if (item.product_id && fields.asin !== item.asin) {
-    const { error: productError } = await getSupabase().from('products').update({ asin: fields.asin }).eq('id', item.product_id);
-    if (productError) throw productError;
-  }
 }
 
 export type ExpenseField = 'incurred_on' | 'category' | 'name' | 'amount';
@@ -562,11 +567,6 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
     if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
     return;
   }
-  if (field === 'asin' && item.product_id) {
-    const { error } = await getSupabase().from('products').update({ asin: text || null }).eq('id', item.product_id);
-    if (error) throw error;
-    return;
-  }
   if (field === 'model_no') {
     if (!item.product_id && !item.asin) throw new Error('商品リストに紐付いていないため型番を編集できません。');
     let query = getSupabase().from('products').update({ model_no: text || null });
@@ -584,7 +584,7 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
   }
   if (field === 'cost_amount' && !text) throw new Error('仕入金額を入力してください。');
   const requiredText = new Set<InventoryField>(['title', 'status', 'marketplace']);
-  const next = numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
+  const next = field === 'asin' ? normalizeInventoryAsin(text) : numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
   const { data, error } = await getSupabase().from('items').update({ [field]: next }).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
