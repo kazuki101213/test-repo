@@ -1,6 +1,6 @@
 import ColoredSelect from './ColoredSelect';
 import { useListingKeywords } from '../useListingKeywords';
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { productListingName, type DeliveryTask, type SellerDraft } from '@bussan/shared';
 import { fetchProductMaker, saveDeliveryDescription } from '../api';
 import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, withReportedDamage, type DescriptionTarget } from '../description';
@@ -70,6 +70,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
   const generatedListing = splitMarketplaceListing(generated);
   const listing = splitMarketplaceListing(description);
   const listingTitle = embedded?embedded.value.title:listing.title || generatedListing.title;
+  const accessoryChoices = accessoryOptions(product);
   const selected = accessories.split(/[、,\n]+/).map(value => value.trim()).filter(Boolean);
   const [regenerate,setRegenerate] = useState(false);
   useEffect(()=>{if(!embedded||!regenerate)return;const next=splitMarketplaceListing(generated);embedded.onChange({title:target==='amazon'?embedded.value.title:next.title,description:target==='amazon'?generated:next.body,condition,...(PRODUCT_TYPES.includes(product as typeof PRODUCT_TYPES[number])?{category:product as SellerDraft['category']}:{})});setRegenerate(false);},[generated,regenerate]);
@@ -146,7 +147,10 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
     <fieldset disabled={busy||embedded?.disabled}>
       {!listingLayout && options}
       {target === 'amazon' && <>
-        <fieldset className="accessory-options"><legend>付属品</legend>{accessoryOptions(product).map(value => <label key={value}><input type="checkbox" checked={selected.includes(value)} onChange={() => toggleAccessory(value)} />{value}</label>)}</fieldset>
+        <fieldset className="accessory-options" style={{ '--accessory-rows': Math.ceil(accessoryChoices.length / 2) } as CSSProperties}>
+          <legend>付属品</legend>
+          {accessoryChoices.map(value => <label key={value}><input type="checkbox" checked={selected.includes(value)} onChange={() => toggleAccessory(value)} />{value}</label>)}
+        </fieldset>
         <label>付属品<textarea maxLength={2000} value={accessories} onChange={e => { setAccessories(e.target.value); updateSelection(); }} placeholder="手入力" /></label>
       </>}
       {target !== 'amazon' && description ? <div className="marketplace-listing-fields">
