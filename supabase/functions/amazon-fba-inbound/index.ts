@@ -375,7 +375,7 @@ export async function handler(req:Request):Promise<Response>{
     const all=await api.pages(path+'/transportationOptions','transportationOptions',{placementOptionId:work.placement!.id});
     work.transport=all.filter(x=>smallParcel.includes(x.shippingMode)&&validSolutions.includes(x.shippingSolution))
       .map(x=>({id:x.transportationOptionId,shipmentId:x.shipmentId,carrier:x.carrier?.name??x.carrier?.alphaCode??'配送会社指定なし',
-       solution:x.shippingSolution,quote:charge(x.quote?.cost),expiration:x.quote?.expiration,preconditions:x.preconditions??[]}));
+       carrierCode:x.carrier?.alphaCode,solution:x.shippingSolution,quote:charge(x.quote?.cost),expiration:x.quote?.expiration,preconditions:x.preconditions??[]}));
     work.shipments=await getShipments(api,plan,false);
    }
    if(pending.action==='windows'){
@@ -431,7 +431,7 @@ export async function handler(req:Request):Promise<Response>{
    if(!placement||!placement.shipmentIds.length||expired(placement.expiration))return invalid('有効な納品先を選択してください。');
    const startAt=dateWindow(input.shipDate);
    const {name,phoneNumber}=senders[plan.account];
-   await start({...plan.work,placement,shipDate:input.shipDate,windows:undefined,selectedWindows:undefined},path+'/transportationOptions','POST',
+   await start({...plan.work,placement,shipDate:input.shipDate,transport:undefined,windows:undefined,selectedWindows:undefined},path+'/transportationOptions','POST',
     {placementOptionId:placement.id,shipmentTransportationConfigurations:placement.shipmentIds.map(shipmentId=>({shipmentId,readyToShipWindow:{start:startAt},contactInformation:{name,phoneNumber}}))});
   }else if(action==='confirmPlacement'){
    eligiblePhase(plan,'transport-options');

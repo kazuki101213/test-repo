@@ -12,6 +12,16 @@ assert(!helper.canSelectFbaItem(base,staff,true));assert(!helper.canSelectFbaIte
 const bundled={...base,id:'bundled',is_accessory:true,sku:'9001a-AAII-date-10'},separate={...base,id:'separate',is_accessory:true,sku:'9001c-AAII-date-10'};
 assert(!helper.canSelectFbaItem(bundled,staff));assert(helper.canSelectFbaItem(separate,staff));assert.equal(helper.fbaSelectionAccount({...base,sales_channel:'FBA'}),'FBA1');assert.equal(helper.fbaSelectionAccount(base),'FBA2');
 function harness(){let slots=[],cursor=0,effects=[],dirty=true,tree;const react={useState(initial){const n=cursor++;slots[n]??={value:typeof initial==='function'?initial():initial};return[slots[n].value,next=>{slots[n].value=typeof next==='function'?next(slots[n].value):next;dirty=true}];},useEffect(fn,deps){const n=cursor++;if(!slots[n]||deps.some((v,i)=>v!==slots[n].deps[i])){slots[n]?.cleanup?.();const slot=slots[n]={deps};effects.push(()=>{slot.cleanup=fn();});}},lazy:f=>f,Suspense:'Suspense'};return{react,async settle(render){for(let i=0;i<40;i++){if(dirty){dirty=false;cursor=0;tree=render();effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}return tree;},renderOnce(render){cursor=0;return render();}};}
+const shipping=load('apps/delivery/src/pages/fbaInboundApi.ts',{'@bussan/shared':{}});
+assert.equal(shipping.tokyoDate(3,new Date('2026-12-31T14:59:00Z')),'2027-01-03');
+assert.equal(shipping.tokyoDate(3,new Date('2026-12-31T15:00:00Z')),'2027-01-04');
+const yamatoDirect={carrier:'ヤマト運輸',solution:'USE_YOUR_OWN_CARRIER'};
+const yamatoPartner={carrier:'Amazon提携配送',carrierCode:'YAMATO',solution:'AMAZON_PARTNERED_CARRIER'};
+const japanPost={carrier:'日本郵便',solution:'AMAZON_PARTNERED_CARRIER'};
+assert.equal(shipping.preferredFbaCarrier([yamatoDirect,japanPost,yamatoPartner]),yamatoPartner);
+assert.equal(shipping.preferredFbaCarrier([japanPost,yamatoDirect]),yamatoDirect);
+assert.equal(shipping.preferredFbaCarrier([japanPost]),undefined);
+assert.equal(shipping.fbaCarrierName(yamatoPartner),'ヤマト運輸');
 const cardHarness=harness(),card=load('apps/delivery/src/components/TaskCard.tsx',{'react':cardHarness.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper},{URL,URLSearchParams,window:{location:{search:''}}}).default;
 let selected=[];const selection={ids:selected,onChange:ids=>{selected=Array.from(ids)}};
 const props={task:base,amazonImageUrl:null,members:[base,bundled,separate],originalMarketplaceIds:new Map(),staff,unreadItemIds:new Set(),expandedId:null,onDetailOpened(){},selection};

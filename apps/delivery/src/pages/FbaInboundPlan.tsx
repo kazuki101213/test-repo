@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
-import {amount,fbaState,inboundRequest,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
+import {amount,fbaCarrierName,fbaState,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
@@ -18,7 +18,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const work=plan.work;
  const [boxes,setBoxes]=useState<Box[]>(()=>work.boxes??[blank(items.map(i=>i.item_id))]);
  const [dirty,setDirty]=useState(!work.boxes),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const [option,setOption]=useState(''),[date,setDate]=useState(work.shipDate??tokyoDate),[selected,setSelected]=useState<Record<string,string>>({});
+ const [option,setOption]=useState(''),[date,setDate]=useState(()=>work.shipDate||tokyoDate(3)),[selected,setSelected]=useState<Record<string,string>>({});
  const [tracking,setTracking]=useState<Record<string,string>>({}),[windowIds,setWindowIds]=useState<Record<string,string>>({});
  const [pdf,setPdf]=useState<{id:string;url:string}|null>(null);
  const [labelShipmentId,setLabelShipmentId]=useState('');
@@ -66,7 +66,17 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   return <button type="button" className={'btn '+style} disabled={blocked||disabled} onClick={()=>void apply(action,fields)}>{text}</button>;
  }
  const placement=work.placements?.find(p=>p.id===option)??work.placement;
- const chosen=work.transport?.filter(t=>selected[t.shipmentId]===t.id)??[];
+ const today=tokyoDate();
+ const validDate=/^\d{4}-\d{2}-\d{2}$/.test(date)&&date>=today;
+ const showCarriers=plan.stage==='transport-options'&&placement?.id===work.placement?.id&&date===work.shipDate&&validDate;
+ const carrierRows=showCarriers?(placement?.shipmentIds??[]).map(id=>{
+  const options=(work.transport??[]).filter(t=>t.shipmentId===id&&(!t.expiration||Date.parse(t.expiration)>Date.now())
+   &&(t.solution!=='AMAZON_PARTNERED_CARRIER'||t.quote)
+   &&t.preconditions.every(key=>key==='CONFIRMED_DELIVERY_WINDOW'||key==='CONFIRMED_PLACEMENT_REQUIRED'));
+  const choice=selected[id]===undefined?preferredFbaCarrier(options):options.find(t=>t.id===selected[id]);
+  return {id,options,choice};
+ }):[];
+ const chosen=carrierRows.flatMap(row=>row.choice?[row.choice]:[]);
  const finalOptions=work.selections??[];
  const ready=plan.stage==='ready';
  const labelDestinations=ready?work.placement?.shipmentIds??[]:[];
@@ -135,24 +145,28 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    {plan.stage==='packed'&&act('納品先を取得','placements')}
    {['placement-options','transport-options'].includes(plan.stage)&&<>
     <div className="fba-work-actions">
-    <label className="fba-work-field">納品先の候補<select value={placement?.id??''} disabled={blocked} onChange={e=>{setOption(e.target.value);setSelected({});}}><option value="">選択してください</option>
+    <label className="fba-work-field">納品先の候補<select aria-label="納品先の候補" value={placement?.id??''} disabled={blocked} onChange={e=>{setOption(e.target.value);setSelected({});}}><option value="">選択してください</option>
      {work.placements?.map((p,i)=><option key={p.id} value={p.id}>候補 {i+1}：{p.shipmentIds.length}か所 ／ {amount(p.fees)}</option>)}</select></label>
-    <label className="fba-work-field">発送予定日<DateInput value={date} onChange={e=>setDate(e.target.value)} disabled={blocked}/></label>
-    {act('配送方法を取得','transport',{option:placement?.id,shipDate:date},!placement||!date)}
+    <label className="fba-work-field">出荷日<DateInput aria-label="出荷日" value={date} min={today} onChange={e=>{setDate(e.target.value);setSelected({});}} disabled={blocked}/></label>
+    <label className="fba-work-field">配送モード<select aria-label="配送モード" value="SPD" disabled><option value="SPD">個口配送（SPD）</option></select></label>
+    {act('配送方法を取得','transport',{option:placement?.id,shipDate:date},!placement||!validDate)}
     {act('納品先を再取得','placements')}</div>
-    {plan.stage==='transport-options'&&work.placement&&placement?.id===work.placement.id&&<>
-    {work.placement.shipmentIds.map((id,i)=><label className="fba-work-field" key={id}>{work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${i+1}`}
-     <select value={selected[id]??''} disabled={blocked} onChange={e=>setSelected({...selected,[id]:e.target.value})}><option value="">配送方法を選択</option>
-      {work.transport?.filter(t=>t.shipmentId===id).map(t=><option key={t.id} value={t.id}>{t.carrier} ／ {t.solution==='USE_YOUR_OWN_CARRIER'?'配送会社と直接精算':amount(t.quote?[t.quote]:[])}</option>)}
-     </select></label>)}
-    {!work.transport?.length&&<p>Amazonから利用できる小口配送が返されていません。</p>}
-    <button className="btn primary" type="button" disabled={blocked||chosen.length!==work.placement.shipmentIds.length} onClick={()=>{
-     if(window.confirm(`納品先を確定しますか？\n納品先の料金：${amount(work.placement?.fees)}\n${chosen.map(t=>`${t.carrier}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`).join('\n')}`))
+    {showCarriers&&carrierRows.length>0&&<>
+    {carrierRows.map(({id,options,choice},i)=>{
+     const label=carrierRows.length===1?'配送業者':`配送業者（${work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${i+1}`}）`;
+     return <label className="fba-work-field" key={id}>{label}
+      <select aria-label={label} value={choice?.id??''} disabled={blocked||!options.length} onChange={e=>setSelected({...selected,[id]:e.target.value})}>
+       <option value="">{options.length?'配送業者を選択':'選択できる配送業者がありません'}</option>
+       {options.map(t=><option key={t.id} value={t.id}>{fbaCarrierName(t)} ／ {t.solution==='USE_YOUR_OWN_CARRIER'?'配送会社と直接精算':amount(t.quote?[t.quote]:[])}</option>)}
+      </select></label>;
+    })}
+    <button className="btn primary" type="button" disabled={blocked||chosen.length!==carrierRows.length} onClick={()=>{
+     if(window.confirm(`納品先を確定しますか？\n出荷日：${date}\n納品先の料金：${amount(work.placement?.fees)}\n${chosen.map(t=>`${fbaCarrierName(t)}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`).join('\n')}`))
       void apply('confirmPlacement',{options:chosen.map(t=>t.id),confirmed:true});}}>納品先を確定</button></>}
    </>}
    {plan.stage==='placement-confirmed'&&<>
     {finalOptions.filter(needWindow).map((t,i)=><div className="fba-carton" key={t.shipmentId}>
-     <strong>{work.shipments?.find(s=>s.id===t.shipmentId)?.warehouse||`納品先 ${i+1}`}：{t.carrier}</strong>
+     <strong>{work.shipments?.find(s=>s.id===t.shipmentId)?.warehouse||`納品先 ${i+1}`}：{fbaCarrierName(t)}</strong>
      {work.selectedWindows?.[t.shipmentId]?<p>到着期間を確定済み</p>:<div className="fba-work-actions">
      {act('到着期間を取得','windows',{shipment:t.shipmentId})}
      {!!work.windows?.[t.shipmentId]?.length&&<><label>到着期間 <select disabled={blocked} value={windowIds[t.shipmentId]??''} onChange={e=>setWindowIds({...windowIds,[t.shipmentId]:e.target.value})}><option value="">選択してください</option>
@@ -161,7 +175,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
      </div>}
     </div>)}
     <button className="btn primary" type="button" disabled={blocked||finalOptions.some(t=>needWindow(t)&&!work.selectedWindows?.[t.shipmentId])} onClick={()=>{
-     if(window.confirm(`表示の配送方法で確定しますか？\n${finalOptions.map(t=>`${t.carrier}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`).join('\n')}`))void apply('confirmTransport',{confirmed:true});}}>配送を確定</button>
+     if(window.confirm(`表示の配送方法で確定しますか？\n${finalOptions.map(t=>`${fbaCarrierName(t)}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`).join('\n')}`))void apply('confirmTransport',{confirmed:true});}}>配送を確定</button>
    </>}
   </section>}
   {plan.stage!=='cancelled'&&<section className="fba-work-box">
