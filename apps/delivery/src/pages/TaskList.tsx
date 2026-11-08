@@ -175,10 +175,18 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
         {queryField === 'deliverer' && canViewDeliveryAssignee(staff)
           ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setAssigneeFilterIds([]); setExpandedId(null); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
           : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
-        <InventoryStateFilter value={inventoryFilters} assignee={canViewDeliveryAssignee(staff) ? {
-          value: assigneeFilterIds, options: deliverers.map(person => ({ id: person.id, name: staffDisplayName(person) })),
-          onChange: ids => { setAssigneeFilterIds(ids); setDelivererId(''); setExpandedId(null);  },
-        } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); }} />
+        <div className="delivery-inventory-filter-controls">
+          <InventoryStateFilter value={inventoryFilters} assignee={canViewDeliveryAssignee(staff) ? {
+            value: assigneeFilterIds, options: deliverers.map(person => ({ id: person.id, name: staffDisplayName(person) })),
+            onChange: ids => { setAssigneeFilterIds(ids); setDelivererId(''); setExpandedId(null); },
+          } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); }} />
+          <div className="delivery-inventory-date-range" role="group" aria-label="仕入日の期間">
+            <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
+            <span aria-hidden="true">〜</span>
+            <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
+          </div>
+          <button type="button" className="btn" onClick={clearFilters}>全て解除</button>
+        </div>
       </div>
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">やること</h3>
@@ -201,14 +209,6 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
         <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key} onClick={() => selectState(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
       </div>
       <div className="export-actions">
-        <div className="delivery-inventory-period">
-          <div className="delivery-inventory-date-range" role="group" aria-label="仕入日の期間">
-            <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
-            <span aria-hidden="true">〜</span>
-            <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
-          </div>
-          <button type="button" className="btn" onClick={clearFilters}>全て解除</button>
-        </div>
         <span>{shownRows.length} / {inventory.total}商品</span>
         {onFbaDelivery&&<div className="delivery-fba-actions"><span role="status" aria-live="polite">{selectedIds.length}商品選択</span><button type="button" className="btn" disabled={!selectedIds.length} onClick={onFbaDelivery}>FBA納品</button>{selectedIds.length>0&&<button type="button" className="btn ghost" onClick={()=>onSelectionChange?.([])}>選択解除</button>}</div>}
       </div>
