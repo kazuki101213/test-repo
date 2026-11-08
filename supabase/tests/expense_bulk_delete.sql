@@ -50,6 +50,7 @@ begin
  documents:=app.submit_invoice_documents((select id from app.staff where code='DD'),'2099-12-01',true,false,'2100-01-01','[{"date":null,"description":"検証料金","quantity":1,"unit_price":500}]','',null);
  invoice:=(documents->'invoice'->>'id')::uuid;
  expense:=app.approve_delivery_invoice(invoice,1,'2099-12-31');
+ if (select incurred_on from app.expenses where id=expense) is distinct from date '2100-01-10' then raise exception 'Invoice expense not posted on the tenth of the next month';end if;
  select jsonb_build_array(to_jsonb(e)-'created_at'-'updated_at'-'deleted_at'-'deletion_batch') into payload from app.expenses e where id=expense;
  perform app.delete_expenses(payload,gen_random_uuid());
  if not exists(select 1 from app.delivery_invoice_approvals where invoice_id=invoice and expense_id=expense) then raise exception 'Approval link lost';end if;
