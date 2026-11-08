@@ -3,8 +3,9 @@
 /* Approved inventory sample: shared state cells on desktop, one common mobile grid. */
 @media screen {
   .app .delivery-navigation { display:flex; flex-wrap:nowrap; gap:24px; justify-content:flex-start; border:0; background:transparent; padding:8px 0; margin:0 0 12px; }
-  .app .delivery-navigation > .btn { border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--text); box-shadow:none; font-size:15px; font-weight:400; padding:8px 4px !important; }
-  .app .delivery-navigation > .btn[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
+  .app .delivery-stock-navigation { flex-wrap:nowrap; gap:20px; margin-bottom:8px; }
+  .app :is(.delivery-navigation, .delivery-stock-navigation) > .btn { border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--text); box-shadow:none; font-size:15px; font-weight:400; padding:8px 4px !important; }
+  .app :is(.delivery-navigation, .delivery-stock-navigation) > .btn[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
   .topbar { position:static; border:0; background:transparent; }
   .delivery-inventory-workspace, .delivery-inventory-sidebar { display:contents; }
   .app .inventory-workflow-menu { --workflow-lane-height:30px; --workflow-row-gap:6px; display:grid; gap:var(--workflow-row-gap); padding:12px; align-content:center; margin-top:12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:visible; }
@@ -99,7 +100,7 @@
 
 @media screen and (max-width:1279px) {
   .app .delivery-navigation { display:flex; flex-wrap:nowrap; justify-content:space-between; gap:6px; }
-  .app .delivery-navigation > .btn { font-size:13px; padding:8px 0 !important; }
+  .app :is(.delivery-navigation, .delivery-stock-navigation) > .btn { font-size:13px; padding:8px 0 !important; }
   .app .delivery-inventory-search { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
   .app .delivery-inventory-search > select { width:100%; grid-column:1; grid-row:1; }
   .app .delivery-inventory-search > input, .app .delivery-inventory-search > select[aria-label="納品担当者で検索"] { grid-column:1 / -1; grid-row:2; }
@@ -343,5 +344,3 @@
  .app .export-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
  .app .export-actions > span { margin-left:0; white-space:nowrap; }
 }
-.app .delivery-stock-navigation { gap:8px; flex-wrap:wrap; margin-bottom:8px; }
-.app .delivery-stock-navigation [aria-current="page"] { border-color:var(--accent); color:var(--accent); }
