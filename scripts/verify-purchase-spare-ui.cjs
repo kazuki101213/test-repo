@@ -6,6 +6,8 @@ const codes=['AA','DD','EE','HH','II','KK','LL','MM'];
 const staff=[...codes,'FF','GG','JJ','NN'].reverse().map(code=>({id:code,code,name:code==='AA'?'長部一輝':code,role:code==='AA'?'admin':'deliverer',is_active:code!=='NN'}));
 assert.deepEqual(Array.from(names.exports.deliveryStaffOptions(staff),s=>s.code),codes);
 assert.equal(names.exports.staffDisplayName({name:'old',code:'AA',display_name:'old'}),'AA 長部 一輝');
+assert.equal(names.exports.staffDisplayName({name:'石川秀樹',code:'EE',display_name:'EE 石川 秀櫢'}),'EE 石川 秀樹');
+assert.equal(names.exports.staffDisplayName('石川 秀櫢'),'EE 石川 秀樹');
 const spare={id:'spare',title:'リモコン',cost_amount:1230,purchased_at:'2026-09-01',marketplace:'ヤフオク',marketplace_item_id:'spare-id',tracking_no:'spare-track',owner_staff_id:'AA'};
 let cursor=0, dirty=true, tree, pending=[], saved, selectedDraft;const hooks=[];
 const react={

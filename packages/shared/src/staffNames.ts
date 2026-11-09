@@ -1,6 +1,6 @@
 import type { Staff } from './types';
 export const STAFF_DISPLAY_NAMES: Record<string, string> = {
-  AA: 'AA 長部 一輝', DD: 'DD 久保田 ゆかり', EE: 'EE 石川 秀櫢', HH: 'HH 新川 水紀',
+  AA: 'AA 長部 一輝', DD: 'DD 久保田 ゆかり', EE: 'EE 石川 秀樹', HH: 'HH 新川 水紀',
   II: 'II 久保田 真由', KK: 'KK 株式会社 コエル', LL: 'LL 土井 花菜', MM: 'MM 株式会社吉光',
 };
 const labelsByName = new Map([
