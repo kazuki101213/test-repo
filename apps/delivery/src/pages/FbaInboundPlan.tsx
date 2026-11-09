@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
 import {amount,fbaCarrierName,fbaState,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
@@ -24,11 +24,16 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const [labelShipmentId,setLabelShipmentId]=useState('');
  const [labelError,setLabelError]=useState('');
  const [prep,setPrep]=useState<PrepReview|null>(null);
+ const autoPackingAttempt=useRef('');
  useEffect(()=>()=>{if(pdf)URL.revokeObjectURL(pdf.url);},[pdf]);
  const editable=['draft','created','packing-options','packing-confirmed'].includes(plan.stage);
  const blocked=busy||!!plan.pending;
  const requestBody={id:plan.id,revision:plan.revision};
  const groups=[...new Set(Object.values(work.groups??{}))];
+ const packing=(work.packing??[]).filter(p=>!p.expiration||Date.parse(p.expiration)>Date.now());
+ const singlePacking=packing.length===1?packing[0]:undefined;
+ const packingChoice=singlePacking??packing.find(p=>p.id===option);
+ const autoPackingId=plan.stage==='packing-options'&&singlePacking?.fees.every(fee=>fee.amount===0)?singlePacking.id:undefined;
 
  useEffect(()=>{
   if(!plan.pending?.op)return;
@@ -52,6 +57,13 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    try {onUpdate((await inboundRequest<{plan:InboundPlan}>('get',{id:plan.id})).plan);}catch{/* Keep the current plan open. */}
   }finally{setBusy(false);}
  }
+ useEffect(()=>{
+  if(!autoPackingId||blocked||dirty||error||work.notice)return;
+  const attempt=`${plan.revision}:${autoPackingId}`;
+  if(autoPackingAttempt.current===attempt)return;
+  autoPackingAttempt.current=attempt;
+  void apply('choosePacking',{option:autoPackingId,automatic:true});
+ },[autoPackingId,blocked,dirty,error,work.notice,plan.revision]);
  async function label(shipment:string,box?:string){
   setBusy(true);setLabelError('');setPdf(null);
   try{const response=await inboundRequest<Blob>('label',{...requestBody,shipment,box});
@@ -136,11 +148,18 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
     {(error||work.notice)&&<p className="error" role="alert">{error||work.notice}</p>}
    </>}
    {plan.stage==='created'&&act('梱包方法を取得','packing')}
-   {plan.stage==='packing-options'&&<>
-    {work.packing?.length?<label className="fba-work-field">梱包方法<select disabled={blocked} value={option} onChange={e=>setOption(e.target.value)}><option value="">選択してください</option>
-    {work.packing.map((p,i)=><option key={p.id} value={p.id}>候補 {i+1}：{p.groups.length}グループ ／ {amount(p.fees)}</option>)}</select></label>:<p>Amazonから梱包方法が返されていません。</p>}
-    <div className="fba-work-actions"><button className="btn primary" type="button" disabled={blocked||!work.packing?.some(p=>p.id===option)} onClick={()=>{if(window.confirm('表示の梱包方法と料金で確定しますか？'))void apply('choosePacking',{option,confirmed:true});}}>梱包方法を確定</button>{act('梱包方法を再取得','packing')}</div>
-   </>}
+   {plan.stage==='packing-options'&&(autoPackingId&&!error&&!work.notice
+    ? <p role="status">{dirty?'箱情報を保存すると、梱包方法が自動で確定します。':'料金のかからない梱包方法を自動で確定しています…'}</p>
+    : <>
+     {singlePacking&&!autoPackingId&&<p>梱包方法　{singlePacking.groups.length}グループ ／ {amount(singlePacking.fees)}</p>}
+     {packing.length>1&&<label className="fba-work-field">梱包方法<select aria-label="梱包方法" disabled={blocked} value={packingChoice?.id??''} onChange={e=>setOption(e.target.value)}><option value="">選択してください</option>
+     {packing.map((p,i)=><option key={p.id} value={p.id}>候補 {i+1}：{p.groups.length}グループ ／ {amount(p.fees)}</option>)}</select></label>}
+     {!packing.length&&<p>選択できる梱包方法がありません。</p>}
+     <div className="fba-work-actions">
+      {!autoPackingId&&packing.length>0&&<button className="btn primary" type="button" disabled={blocked||!packingChoice} onClick={()=>{if(packingChoice&&window.confirm('表示の梱包方法と料金で確定しますか？'))void apply('choosePacking',{option:packingChoice.id,confirmed:true});}}>梱包方法を確定</button>}
+      {act('梱包方法を再取得','packing')}
+     </div>
+    </>)}
    {plan.stage==='packing-confirmed'&&act('箱情報をAmazonに送信','boxes',{},dirty,'primary')}
    {plan.stage==='packed'&&act('納品先を取得','placements')}
    {['placement-options','transport-options'].includes(plan.stage)&&<>
