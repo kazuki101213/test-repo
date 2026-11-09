@@ -249,13 +249,15 @@ export async function handler(req:Request):Promise<Response>{
   const path=plan.amazon_id?planPath(plan.amazon_id):'';
   const items=plan.fba_inbound_items;
   async function start(work:Work,remote:string,method='POST',body?:unknown,details:Partial<Pending>={}){
-   const previous=plan.work;
    const pending:Pending={action,at:new Date().toISOString(),...details};
-   await patch({pending,work:{...work,notice:undefined}});
+   const submitted={...work,notice:undefined};
+   // Keep the box edits on a definite rejection so they can be corrected or retried.
+   const rejectedWork=pending.action==='boxes'?submitted:plan.work;
+   await patch({pending,work:submitted});
    let response;
    try {response=await api.call(remote,{},method,body);}
    catch(error){
-    if(error instanceof AmazonError&&[400,401,403,404,422,429].includes(error.remoteStatus))await patch({pending:null,work:previous});
+    if(error instanceof AmazonError&&[400,401,403,404,422,429].includes(error.remoteStatus))await patch({pending:null,work:rejectedWork});
     throw error;
    }
    if(typeof response.operationId!=='string'||(pending.action==='create'&&typeof response.inboundPlanId!=='string'))throw new WorkflowError(502,'Amazonの受付結果を確認できません。重複防止のため納品履歴を照合してください。');
@@ -333,10 +335,18 @@ export async function handler(req:Request):Promise<Response>{
      return invalid('Amazonで確定結果を確認できません。時間をおいて再確認してください。');
    }else if(pending.action==='boxes'){
     const remote=await api.pages(path+'/boxes','boxes');
-    const shapes=(list:string[][])=>list.map(x=>[...x].sort().join('\n')).sort().join('\n\n');
-    const expected=shapes(work.boxes!.map(box=>box.items.map(id=>items.find(item=>item.item_id===id)!.sku)));
-    const actual=shapes(remote.map(box=>(box.items??[]).map((i:any)=>i.msku)));
-    if(expected!==actual)return invalid('Amazonで箱情報を確認できません。時間をおいて再確認してください。');
+    const skuById=new Map(items.map(item=>[item.item_id,item.sku]));
+    const boxKey=(length:number,width:number,height:number,weight:number,skus:string[])=>
+     JSON.stringify([length,width,height,weight,[...skus].sort()]);
+    const expected=(work.boxes??[]).map(box=>boxKey(box.length,box.width,box.height,box.weight,box.items.map(id=>skuById.get(id)!))).sort();
+    const actual=remote.flatMap(box=>{
+     const d=box.dimensions,w=box.weight;
+     if(d?.unitOfMeasurement!=='CM'||w?.unit!=='KG'||(box.quantity??1)!==1||
+       !Array.isArray(box.items)||!box.items.every((item:{msku?:string;quantity?:number})=>typeof item?.msku==='string'&&item.quantity===1))return [];
+     return [boxKey(d.length,d.width,d.height,w.value,box.items.map((item:{msku:string})=>item.msku))];
+    }).sort();
+    if(!expected.length||actual.length!==remote.length||JSON.stringify(expected)!==JSON.stringify(actual))
+     return invalid('Amazonで箱の寸法・重量・商品を照合できません。時間をおいて再確認してください。');
    }else if(pending.action==='confirmTransport'){
     for(const option of work.selections??[]){
      const shipment=await api.call(shipmentPath(plan,option.shipmentId));
@@ -437,8 +447,9 @@ export async function handler(req:Request):Promise<Response>{
    await start({...plan.work,groups},path+'/packingOptions/'+enc(choice.id)+'/confirmation','POST',undefined,{remote:choice.id});
   }else if(action==='boxes'){
    eligiblePhase(plan,'packing-confirmed');
-   const boxes=validateBoxes(plan.work.boxes,items,plan.work.groups);
-   await start(plan.work,path+'/packingInformation','POST',groupedBoxes(boxes,plan));
+   if(!path||!plan.work.groups)return invalid('Amazonの梱包グループを確認できません。');
+   const boxes=validateBoxes(input.boxes===undefined?plan.work.boxes:input.boxes,items,plan.work.groups);
+   await start({...plan.work,boxes},path+'/packingInformation','POST',groupedBoxes(boxes,plan));
   }else if(action==='placements'){
    eligiblePhase(plan,'packed','placement-options','transport-options');
    await start({...plan.work,placement:undefined,transport:undefined,shipments:undefined,windows:undefined,selectedWindows:undefined},path+'/placementOptions','POST',{});

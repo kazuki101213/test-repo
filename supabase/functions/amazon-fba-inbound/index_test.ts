@@ -18,6 +18,8 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  let prepCategory='NONE',inventoryChanged=false,prepRejected=false,labelRequired=false,packingReadRejected=false;
  let packingFees:unknown=[],extraPackingChoice=false,packingAccepted=false;
  const box={length:40,width:30,height:20,weight:4,items:[itemId]};
+ const editedBox={...box,length:42.5,weight:5.25};
+ let boxResponse:'reject'|'lost'='reject',remoteBox=box;
  const requests:{path:string;method:string;body:any}[]=[];
  globalThis.fetch=async(input,init)=>{
   const url=new URL(input instanceof Request?input.url:String(input));
@@ -71,8 +73,15 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   if(path.endsWith('/packingOptions')&&ambiguousPacking)throw new Error('response lost');
   if(path.endsWith('/packingOptions/packing/confirmation')){packingAccepted=true;throw new Error('confirmation response lost');}
   if(path.endsWith('/packingGroups/group/items'))return json({items:[{msku:sku,asin,quantity:1}]});
-  if(path.endsWith('/packingInformation'))equal(body.packageGroupings,[{packingGroupId:'group',boxes:[{contentInformationSource:'BOX_CONTENT_PROVIDED',
-    dimensions:{length:40,width:30,height:20,unitOfMeasurement:'CM'},weight:{value:4,unit:'KG'},quantity:1,items:[{msku:sku,quantity:1,prepOwner:labelRequired?'SELLER':'NONE',labelOwner:'SELLER'}]}]}]);
+  if(path.endsWith('/packingInformation')){
+   equal(plan.work.boxes,[editedBox]);equal(plan.pending?.action,'boxes');
+   equal(body.packageGroupings,[{packingGroupId:'group',boxes:[{contentInformationSource:'BOX_CONTENT_PROVIDED',
+    dimensions:{length:42.5,width:30,height:20,unitOfMeasurement:'CM'},weight:{value:5.25,unit:'KG'},quantity:1,items:[{msku:sku,quantity:1,prepOwner:labelRequired?'SELLER':'NONE',labelOwner:'SELLER'}]}]}]);
+   if(boxResponse==='reject')return json({errors:[{code:'InvalidInput',message:'Rejected box'}]},400);
+   throw new Error('Box response lost');
+  }
+  if(path.endsWith('/wf-test/boxes'))return json({boxes:[{quantity:1,dimensions:{length:remoteBox.length,width:remoteBox.width,height:remoteBox.height,unitOfMeasurement:'CM'},
+   weight:{value:remoteBox.weight,unit:'KG'},items:[{msku:sku,quantity:1}]}]});
   if(path.endsWith('/placementOptions')&&method==='GET'){
    equal(url.searchParams.get('pageSize'),'20');
    return json({placementOptions:[{placementOptionId:'placement',shipmentIds:[shipment],status:'OFFERED',fees:[]}]});
@@ -168,7 +177,14 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   await send('choosePacking',{option:'packing',automatic:true},409);
   plan.pending!.at='2020-01-01T00:00:00Z';await send('recover');
   equal(plan.stage,'packing-confirmed');equal(plan.pending,null);
-  equal(writes(),writesBeforePackingRead+1);await step('boxes','packed');
+  const writesBeforeBoxes=writes();equal(writesBeforeBoxes,writesBeforePackingRead+1);
+  await send('boxes',{boxes:null},422);equal(writes(),writesBeforeBoxes);equal(plan.work.boxes,[box]);
+  await send('boxes',{boxes:[editedBox],revision:plan.revision-1},409);equal(writes(),writesBeforeBoxes);
+  await send('boxes',{boxes:[editedBox]},502);equal(plan.pending,null);equal(plan.work.boxes,[editedBox]);
+  boxResponse='lost';await send('boxes',{},502);equal(plan.pending?.action,'boxes');equal(plan.pending?.op,undefined);
+  await send('boxes',{boxes:[editedBox]},409);equal(writes(),writesBeforeBoxes+2);
+  plan.pending!.at='2020-01-01T00:00:00Z';await send('recover',{},422);equal(plan.stage,'packing-confirmed');
+  remoteBox=editedBox;await send('recover');equal(plan.stage,'packed');equal(plan.pending,null);equal(writes(),writesBeforeBoxes+2);
   await step('placements','placement-options');await step('transport','transport-options',{option:'placement',shipDate:'2030-01-01'});
   equal(plan.work.transport?.map(t=>[t.id,t.carrierCode]),[['transport','YAMATO']]);
   await step('transport','transport-options',{option:'placement',shipDate:'2030-01-02'});
