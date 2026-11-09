@@ -166,7 +166,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
       {act('梱包方法を再取得','packing')}
      </div>
     </>)}
-   {autoPlacements&&(error||work.notice?act('納品先を再取得','placements'):<p role="status">納品先の候補を取得しています…</p>)}
+   {autoPlacements&&(error||work.notice?act('再取得','placements'):<p role="status">納品先の候補を取得しています…</p>)}
    {['placement-options','transport-options'].includes(plan.stage)&&<>
     <div className="fba-work-actions fba-transport-actions">
     <label className="fba-work-field">納品先の候補<select aria-label="納品先の候補" value={placement?.id??''} disabled={blocked||!placements.length} onChange={e=>{setOption(e.target.value);setSelected({});}}>
@@ -174,8 +174,8 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
      {placements.map((p,i)=><option key={p.id} value={p.id}>候補 {i+1}：{p.shipmentIds.length}か所 ／ {amount(p.fees)}</option>)}</select></label>
     <label className="fba-work-field">出荷日<DateInput aria-label="出荷日" value={date} min={today} onChange={e=>{setDate(e.target.value);setSelected({});}} disabled={blocked}/></label>
     <label className="fba-work-field">配送モード<select aria-label="配送モード" value="SPD" disabled><option value="SPD">個口配送（SPD）</option></select></label>
-    {act('配送方法を取得','transport',{option:placement?.id,shipDate:date},!placement||!validDate)}
-    {act('納品先を再取得','placements')}</div>
+    {act('取得','transport',{option:placement?.id,shipDate:date},!placement||!validDate,'primary')}
+    {act('再取得','placements')}</div>
     {showCarriers&&carrierRows.length>0&&<>
     {carrierRows.map(({id,options,choice},i)=>{
      const label=carrierRows.length===1?'配送業者':`配送業者（${work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${i+1}`}）`;
