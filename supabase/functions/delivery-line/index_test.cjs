@@ -30,7 +30,11 @@ test('LINE HMAC verifies exact bytes and rejects missing/tampered signatures',as
 test('Only active authenticated delivery staff can issue, inspect or unlink their own binding',async()=>{
  for(const opts of [{auth:false},{active:false},{role:'unknown'}])for(const action of ['status','issue','unlink']){const f=fixture(opts);assert([401,403].includes((await f.request(action)).status));assert.equal(f.state.rpc.length,0);}
  const purchaser=fixture({role:'purchaser'});
- for(const action of ['status','issue','unlink'])assert.equal((await purchaser.request(action)).status,200);
+ for(const action of ['status','issue','unlink']){
+  const result=await purchaser.request(action,{Origin:'https://bussan-delivery.vercel.app'});
+  assert.equal(result.status,200);
+  assert.equal(result.headers.get('access-control-allow-origin'),'https://bussan-delivery.vercel.app');
+ }
  assert.equal(purchaser.state.rpc[0].args.p_staff,'own-staff');
  const f=fixture();assert.equal((await f.request('issue',{Origin:'https://evil.invalid'})).status,403);
  const issued=await (await f.request('issue')).json();assert(/^連携 [a-f0-9]{32}$/.test(issued.message));assert.equal(f.state.rpc[0].args.p_staff,'own-staff');assert.notEqual(f.state.rpc[0].args.p_hash,issued.message.slice(3));assert.equal(f.state.rpc[0].args.p_hash.length,64);

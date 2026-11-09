@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { deliveryOrigin, friendUrl, hashCode, linkCode, validSignature, shippingMessages, dispatchState, invoiceApprovalMessages } from './validation.ts';
+import { deliveryOrigins, friendUrl, hashCode, linkCode, validSignature, shippingMessages, dispatchState, invoiceApprovalMessages } from './validation.ts';
 import type { ShippingPayload } from './validation.ts';
 import QRCode from 'npm:qrcode@1.5.4';
 import { prepareShippingMedia } from './media.ts';
@@ -32,7 +32,7 @@ const shippingEnabled = async () => {
 function response(status: number, value: unknown, origin: string | null = null) {
   return new Response(status === 204 ? null : JSON.stringify(value), { status, headers: {
     'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Origin',
-    'Access-Control-Allow-Origin': origin === deliveryOrigin ? origin : 'null',
+    'Access-Control-Allow-Origin': origin && deliveryOrigins.has(origin) ? origin : 'null',
     'Access-Control-Allow-Headers': 'authorization, apikey, x-client-info, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   } });
@@ -108,7 +108,7 @@ async function webhook(req: Request) {
 }
 Deno.serve(async req => {
   const origin = req.headers.get('Origin');
-  if (req.method === 'OPTIONS') return response(origin === deliveryOrigin ? 204 : 403, {}, origin);
+  if (req.method === 'OPTIONS') return response(origin && deliveryOrigins.has(origin) ? 204 : 403, {}, origin);
   if (req.method !== 'POST') return response(405, {});
   try {
     // This public route is authenticated using LINE's signature, not user JWTs.
@@ -166,7 +166,7 @@ Deno.serve(async req => {
       await cleanupCodeImages().catch(() => {});
       return response(200, { processed: rows.length, sent });
     }
-    if (origin !== deliveryOrigin) return response(403, {});
+    if (!origin || !deliveryOrigins.has(origin)) return response(403, {});
     const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
     if (!token) return response(401, {}, origin);
     const { data: user, error: authError } = await admin.auth.getUser(token);
