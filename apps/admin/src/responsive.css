@@ -208,9 +208,6 @@
  .malfunction-report-row > .malfunction-task-content { grid-column:1; grid-row:1; }
  .malfunction-report-row .malfunction-conversation-body { grid-column:1; grid-row:2; }
  .malfunction-report-row .malfunction-management-actions { grid-column:2; grid-row:1 / span 2; }
- .malfunction-report-row .malfunction-management-actions .workflow-buttons > [data-action=supplier_check] { order:0; }
- .malfunction-report-row .malfunction-management-actions .workflow-buttons > [data-action=send_back] { order:1; }
- .malfunction-report-row .malfunction-management-actions .workflow-buttons > [data-action=yahoo_instruction] { order:2; }
 }
 @media screen and (max-width:1023px) {
  .malfunction-report-row > .malfunction-conversation { width:100%; }
