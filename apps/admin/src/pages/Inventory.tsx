@@ -38,6 +38,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
+  const [purchaserIds, setPurchaserIds] = useState<string[]>([]);
   const [assigneeFilterIds, setAssigneeFilterIds] = useState<string[]>([]);
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
@@ -45,7 +46,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [openColumn, setOpenColumn] = useState<{ field: string; anchor: HTMLElement } | null>(null);
   const closeColumn = useCallback(() => setOpenColumn(null), []);
   const activeColumnCount=Object.values(columnFilters).filter(isColumnFilterActive).length;
-  const inventory=useInventoryPage<InventoryItem>('management',me.id,{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters,delivererIds:assigneeFilterIds},!!openColumn||activeColumnCount>0);
+  const inventory=useInventoryPage<InventoryItem>('management',me.id,{queryField,query,from:purchasedFrom,to:purchasedTo,states:inventoryFilters,purchaserIds,delivererIds:assigneeFilterIds},!!openColumn||activeColumnCount>0);
   const items=inventory.rows,count=inventory.total,loading=inventory.loading;
   const viewItems=useMemo(()=>filterInventoryColumns(items.filter(item=>matchesInventoryFilters(item,inventoryFilters)),columnFilters),[items,columnFilters,inventoryFilters]);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
@@ -84,7 +85,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
   const load=async()=>{await inventory.refresh();};
   useEffect(() => { fetchStaff().then(setStaff).catch(() => undefined); }, []);
-  useEffect(() => { setVisibleCount(80); }, [queryField, query, purchasedFrom, purchasedTo, inventoryFilters, columnFilters]);
+  useEffect(() => { setVisibleCount(80); }, [queryField, query, purchasedFrom, purchasedTo, inventoryFilters, columnFilters, purchaserIds, assigneeFilterIds]);
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el || visibleCount >= viewItems.length) return;
@@ -105,7 +106,7 @@ export default function Inventory({ me }: { me: Staff }) {
 
   function clearFilters() {
     setInventoryFilters({}); setColumnFilters({}); setOpenColumn(null); setQueryField('serial');
-    setQuery(''); setPurchasedFrom(''); setPurchasedTo(''); setAssigneeFilterIds([]);
+    setQuery(''); setPurchasedFrom(''); setPurchasedTo(''); setPurchaserIds([]); setAssigneeFilterIds([]);
   }
   const filterHeading = (field: string) => <button type="button" className={`inventory-column-heading${isColumnFilterActive(columnFilters[field]) ? ' active' : ''}`}
     aria-label={`${inventoryColumns[field]!.label}のフィルター`} aria-expanded={openColumn?.field === field}
@@ -137,7 +138,9 @@ export default function Inventory({ me }: { me: Staff }) {
           </select>
           <input type="search" placeholder="検索" value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
         </div>
-        <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters} assignee={{value:assigneeFilterIds,options:deliveryStaffOptions(staff).map(person=>({id:person.id,name:staffDisplayName(person)})),onChange:setAssigneeFilterIds}} />
+        <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters}
+          purchaser={{ value: purchaserIds, options: staff.map(person => ({ id: person.id, name: staffDisplayName(person) })), onChange: setPurchaserIds }}
+          assignee={{ value: assigneeFilterIds, options: deliveryStaffOptions(staff).map(person => ({ id: person.id, name: staffDisplayName(person) })), onChange: setAssigneeFilterIds }} />
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field">
             <DateInput aria-label="仕入日・開始日" placeholder="YY-MM-DD" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />

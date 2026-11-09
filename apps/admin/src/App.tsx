@@ -106,7 +106,7 @@ export default function App() {
         {visiblePage === 'inventory' && <Inventory me={session.staff} />}
         {visiblePage === 'spares' && <Spares me={session.staff} />}
         {visiblePage === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
-        {visiblePage === 'products'  && <Products />}
+        {visiblePage === 'products'  && <Products key={session.staff.id} me={session.staff} />}
         {visiblePage === 'ledger'    && <Ledger />}
       </main>
     </div>

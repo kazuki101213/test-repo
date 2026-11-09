@@ -633,6 +633,15 @@ export type ProductDetailsInput = {
   list_price: string; payout_estimate: string; target_cost: string; has_sold_before: string;
 };
 
+export type ProductCatalogOwner = Pick<Staff, 'id' | 'code' | 'name' | 'display_name'>;
+
+export async function fetchProductCatalogOwners(): Promise<ProductCatalogOwner[]> {
+  const { data, error } = await getSupabase().from('staff')
+    .select('id,code,name,display_name').eq('role', 'admin').order('code');
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function updateProductShippingSettings(product: Product, input: { shipping_category: string; shipping_size: string }): Promise<void> {
   if (input.shipping_category && !['モ', 'ブ', '小'].includes(input.shipping_category)) throw new Error('サイズ区分を選択してください。');
   const sizes = ['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'];
@@ -699,9 +708,10 @@ export async function fetchDailySalesSummary(from:string,to:string):Promise<Dail
  if(error)throw error;return data as DailySalesSummary;
 }
 
-export async function fetchProducts(query?: string): Promise<Product[]> {
+export async function fetchProducts(query?: string, ownerStaffId?: string): Promise<Product[]> {
   return readAllRows<Product>(async (from, to) => {
     let q = getSupabase().from('products').select('*').eq('is_active', true).order('product_no').order('id').range(from, to);
+    if (ownerStaffId) q = q.eq('owner_staff_id', ownerStaffId);
     if (query) {
       const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;
       q = q.or(`product_no_search.ilike.${term},asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term},genre.ilike.${term}`);

@@ -4,11 +4,21 @@ set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,tracking_no)
 select n,(select id from app.staff where code='AA'),(select id from app.staff where code=case when n=990301 then 'DD' else 'HH' end),current_date,'catalog fixture',1000,'ヤフオク','123456' from generate_series(990301,990302) n;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
-do $$declare p jsonb;q jsonb;target uuid;n integer;begin
+do $$declare p jsonb;q jsonb;target uuid;n integer;
+ buyer uuid := (select id from app.staff where code='AA');
+ other_buyer uuid := (select id from app.staff where code='DD');
+ filters jsonb := '{"queryField":"serial","query":"990302"}';
+begin
  p:=app.read_delivery_catalog_page('{"queryField":"serial","query":"990302"}',50,'{}');
  if (p->>'total')::integer<>1 or jsonb_array_length(p->'rows')<>1 then raise exception 'Another deliverer not visible in catalog';end if;
  if not ((p->'rows'->0) ? 'deliverer_name') or exists(select 1 from jsonb_each(p->'rows'->0) e where e.key in ('cost_amount','sold_price','payout_amount','description','memo','malfunction_comment') and e.value<>'null'::jsonb) then raise exception 'Catalog card fields or cost visibility wrong';end if;
  target:=(p->'rows'->0->>'id')::uuid;
+ q:=app.read_delivery_catalog_page(filters || jsonb_build_object('purchaserIds',jsonb_build_array(buyer)),50,'{}');
+ if q->'ids' is distinct from p->'ids' or (q->'rows'->0) ? 'purchaser_id' then
+  raise exception 'Catalog purchaser filter changed row visibility or response fields';
+ end if;
+ q:=app.read_delivery_catalog_page(filters || jsonb_build_object('purchaserIds',jsonb_build_array(other_buyer)),50,'{}');
+ if (q->>'total')::integer<>0 then raise exception 'Catalog matched a different purchaser';end if;
  q:=app.read_delivery_catalog_page('{"queryField":"serial","query":"990302"}',50,(p->'fingerprints')||jsonb_build_object('__revision',p->>'revision'));
  if not (q->>'unchanged')::boolean or octet_length(q::text)>250 then raise exception 'Catalog repeatedly transfers unchanged inventory';end if;
  q:=app.read_inventory_page('delivery','{"queryField":"serial","query":"990302"}',50,'{}');

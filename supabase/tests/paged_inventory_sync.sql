@@ -8,6 +8,25 @@ select n,(select id from app.staff where code='AA'),(select id from app.staff wh
 insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
 select '990201a-AADD-'||to_char(current_date,'YYYYMMDD')||'-10',990201,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'paged accessory fixture',100,'ヤフオク',true;
 create temporary table page_probe as select app.read_inventory_page('delivery','{"queryField":"serial","query":"９９０２０１","status":"検品中"}',1,'{}') p;
+do $$
+declare
+  buyer uuid := (select id from app.staff where code='AA');
+  other_buyer uuid := (select id from app.staff where code='DD');
+  other_deliverer uuid := (select id from app.staff where code='HH');
+  filters jsonb := jsonb_build_object('queryField','serial','query','990201');
+  page jsonb;
+begin
+  page := app.read_inventory_page('management',filters || jsonb_build_object('purchaserIds',jsonb_build_array(buyer,other_buyer)),50,'{}');
+  if (page->>'total')::int <> 2 then raise exception 'Purchaser filter failed to match both management rows'; end if;
+  page := app.read_inventory_page('management',filters || jsonb_build_object('purchaserIds',jsonb_build_array(buyer),'delivererIds',jsonb_build_array(other_deliverer)),50,'{}');
+  if (page->>'total')::int <> 0 then raise exception 'Purchaser filter bypassed the deliverer filter'; end if;
+  page := app.read_inventory_page('delivery',filters || jsonb_build_object('purchaserIds',jsonb_build_array(buyer)),1,'{}');
+  if (page->>'total')::int <> 1 or jsonb_array_length(page->'rows') <> 2 then
+    raise exception 'Purchaser filter failed to preserve a delivery group';
+  end if;
+  page := app.read_inventory_page('delivery',filters || jsonb_build_object('purchaserIds',jsonb_build_array(other_buyer)),1,'{}');
+  if (page->>'total')::int <> 0 then raise exception 'Delivery matched a different purchaser'; end if;
+end $$;
 do $$declare p jsonb;q jsonb;begin
  select page_probe.p into p from page_probe;
  if (p->>'total')::integer<>1 or jsonb_array_length(p->'rows')<>2 then raise exception 'Serial page split a body/accessory group';end if;

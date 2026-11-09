@@ -18335,3 +18335,87 @@ end;
 $function$;
 
 
+-- ▼▼▼ 20261109061715_inventory_purchaser_filter.sql ▼▼▼
+
+-- Narrow each inventory scope before pagination without adding fields to its response.
+do $migration$
+declare
+  definition text;
+  function_name text;
+  filter_anchor text := 'where app.inventory_page_matches(d,$2,$1)';
+  validation_anchor text := ' -- Only whitelisted view names';
+  purchaser_filter text := $filter$where app.inventory_page_matches(d,$2,$1)
+   and case
+    when coalesce($2->'purchaserIds','[]'::jsonb) = '[]'::jsonb then true
+    else ($2->'purchaserIds') ? coalesce(d->>'purchaser_id', (
+     select i.purchaser_id::text from app.items i where i.id=(d->>'id')::uuid
+    ), '')
+   end$filter$;
+begin
+  foreach function_name in array array[
+    'app.read_inventory_page(text,jsonb,integer,jsonb)',
+    'app.read_delivery_catalog_snapshot(text,jsonb,integer,jsonb)'
+  ] loop
+    definition := pg_get_functiondef(function_name::regprocedure);
+    if position(purchaser_filter in definition) > 0 then continue; end if;
+    if position(filter_anchor in definition) = 0 or position(validation_anchor in definition) = 0 then
+      raise exception 'Inventory filter insertion point missing: %', function_name;
+    end if;
+    definition := replace(definition, validation_anchor,
+      $check$ if p_filters ? 'purchaserIds' and jsonb_typeof(p_filters->'purchaserIds') is distinct from 'array' then
+  raise exception '仕入担当者の条件が不正です' using errcode='22023';
+ end if;
+$check$ || validation_anchor);
+    execute replace(definition, filter_anchor, purchaser_filter);
+  end loop;
+end $migration$;
+
+
+-- ▼▼▼ 20261109061721_product_catalog_owner.sql ▼▼▼
+
+alter table app.products
+  add column owner_staff_id uuid references app.staff(id);
+
+-- The existing catalog belongs to the original administrator.
+update app.products
+   set owner_staff_id = (select id from app.staff where code = 'AA')
+ where owner_staff_id is null;
+
+alter table app.products alter column owner_staff_id set not null;
+create index products_owner_staff_id_idx on app.products (owner_staff_id);
+
+create function app.set_product_catalog_owner()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, app
+as $function$
+begin
+  if tg_op = 'UPDATE' then
+    if new.owner_staff_id is distinct from old.owner_staff_id and auth.uid() is not null then
+      raise exception '商品リストの管理者は変更できません。' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  if new.owner_staff_id is not null and auth.uid() is not null then
+    raise exception '商品リストの管理者は自動で設定されます。' using errcode = '42501';
+  end if;
+  if new.owner_staff_id is null then
+    if app.is_admin() then
+      new.owner_staff_id := app.current_staff_id();
+    else
+      -- Existing imports and staff registration can continue without an owner field.
+      select id into new.owner_staff_id from app.staff where code = 'AA';
+    end if;
+  end if;
+  return new;
+end;
+$function$;
+
+create trigger products_set_catalog_owner
+before insert or update of owner_staff_id on app.products
+for each row execute function app.set_product_catalog_owner();
+
+revoke all on function app.set_product_catalog_owner() from public, anon, authenticated;
+
+
