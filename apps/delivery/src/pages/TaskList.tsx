@@ -216,7 +216,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
         ))}
         <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key} onClick={() => selectState(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
       </div>
-      <div className="export-actions">
+      <div className="export-actions delivery-inventory-actions">
         <span>{shownRows.length} / {inventory.total}商品</span>
         {onFbaDelivery&&<div className="delivery-fba-actions"><span role="status" aria-live="polite">{selectedIds.length}商品選択</span><button type="button" className="btn" data-direction="forward" disabled={!selectedIds.length} onClick={onFbaDelivery}>FBA納品</button>{selectedIds.length>0&&<button type="button" className="btn ghost" onClick={()=>onSelectionChange?.([])}>選択解除</button>}</div>}
       </div>

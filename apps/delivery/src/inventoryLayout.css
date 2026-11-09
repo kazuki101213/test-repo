@@ -311,3 +311,9 @@
  .app .delivery-inventory-date-range { grid-template-columns:minmax(0,1fr); width:min(100%,var(--date-field-width)); row-gap:2px; }
  .app .delivery-inventory-date-range > [aria-hidden] { line-height:12px; padding-left:4px; }
 }
+
+@media screen and (min-width:768px) {
+ .app .delivery-inventory-actions { justify-content:space-between; }
+ .app .delivery-inventory-actions > span { order:0; margin-left:0; }
+ .app .delivery-inventory-actions > .delivery-fba-actions { justify-content:flex-end; margin-left:auto; }
+}
