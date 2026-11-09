@@ -10,6 +10,7 @@ const needWindow=(s:{solution:string;preconditions:string[]})=>s.solution==='USE
 const blank=(items:string[]=[]):Box=>({length:0,width:0,height:0,weight:0,items});
 const serial=(sku:string)=>sku.split('-')[0]||sku;
 const shortDate=(s:string)=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'}).format(new Date(s));
+const sellerCentralShipments='https://sellercentral.amazon.co.jp/gp/ssof/shipping-queue.html';
 type PrepReview={owners:Record<string,{prepOwner:string;labelOwner:string}>;requirements:Record<string,string[]>};
 type PlanResult={plan:InboundPlan;prepReview?:PrepReview};
 
@@ -114,7 +115,11 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    <section className="fba-work-box"><h4>納品商品</h4><ul className="fba-work-items">{items.map(i=><li key={i.item_id}><div><strong className="fba-item-name" title={i.title}>{serial(i.sku)} {i.title}</strong><span>{i.sku} ／ {i.asin}</span></div><span>1点{i.published_at?'・出品中':''}</span></li>)}</ul></section>
    <div className="fba-work-shipping">
    <section className="fba-work-box"><h4>発送元</h4><p>{sender.name}<br/>〒{sender.postalCode}<br/>{sender.stateOrProvinceCode}{sender.city}{sender.addressLine1}{sender.addressLine2}<br/>{sender.phoneNumber}</p>
-   <dl className="fba-work-settings"><dt>ワークフロー名</dt><dd>{plan.name}</dd><dt>商品数</dt><dd>{items.length}点（各1点）</dd></dl></section>
+   <dl className="fba-work-settings">
+    <dt>ワークフロー名</dt><dd>{plan.name}</dd>
+    <dt>商品数</dt><dd>{items.length}点（各1点）</dd>
+    {plan.amazon_id&&<><dt>Amazon納品プランID</dt><dd>{plan.amazon_id}</dd></>}
+   </dl></section>
   <section className="fba-work-box">
    <h4>輸送箱</h4>
    {boxes.map((box,index)=><div className="fba-carton" key={index}>
@@ -177,6 +182,8 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
     {act('取得','transport',{option:placement?.id,shipDate:date},!placement||!validDate,'primary')}
     {act('再取得','placements')}</div>
     {showCarriers&&carrierRows.length>0&&<>
+    <p className="muted">Amazonの配送料見積もり（{items.length}点、{work.boxes?.length??boxes.length}箱、出荷日 {work.shipDate}）</p>
+    <p className="muted">同じ納品をセラーセントラルで照合する場合は、配送確定後に納品番号を確認してください。確定前に切り替えると、Amazonが配送候補を作り直します。</p>
     {carrierRows.map(({id,options,choice},i)=>{
      const label=carrierRows.length===1?'配送業者':`配送業者（${work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${i+1}`}）`;
      const {primary,other}=fbaCarrierGroups(options);
@@ -220,12 +227,17 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   </section>}
   {ready&&<section className="fba-work-box">
    <h4>発送・受領確認</h4>
-   {act('Amazonの状況を確認','refresh',{},false,'primary')}
+   <div className="fba-work-actions">
+    {act('Amazonの状況を確認','refresh',{},false,'primary')}
+    <a className="btn" href={sellerCentralShipments} target="_blank" rel="noopener noreferrer">セラーセントラルの納品一覧</a>
+   </div>
    {!work.shipments?.some(s=>s.confirmationId)&&<p>Amazonの状況を確認すると、納品番号と輸送箱が表示されます。</p>}
    {work.shipments?.map((s,i)=>{
-    const self=finalOptions.find(t=>t.shipmentId===s.id)?.solution==='USE_YOUR_OWN_CARRIER';
+    const option=finalOptions.find(t=>t.shipmentId===s.id);
+    const self=option?.solution==='USE_YOUR_OWN_CARRIER';
     return <div className="fba-carton" key={s.id}>
      <strong>{s.warehouse||`納品先 ${i+1}`} {s.confirmationId||''}</strong>
+     {option&&<p>配送業者 {fbaCarrierName(option)} ／ {self?'配送会社と直接精算':option.quote?`Amazonの配送料見積もり ${amount([option.quote])}`:'見積もりなし'}</p>}
      <p>{shipmentStatus[s.status]??s.status}{s.trackingSaved&&!['SHIPPED','IN_TRANSIT','DELIVERED','CHECKED_IN','RECEIVING','CLOSED'].includes(s.status)?' ／ 追跡番号送信済み':''}
       {s.received?` ／ 受領 ${Object.values(s.received).reduce((a,b)=>a+b,0)}点`:''}</p>
      {s.boxes?.map((b,j)=><div className="fba-work-actions" key={b.id}><span>箱 {j+1}（{b.skus.map(serial).join('、')}）</span>
