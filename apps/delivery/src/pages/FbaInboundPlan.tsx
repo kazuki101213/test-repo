@@ -166,34 +166,37 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    </div>
   </div>
   <div className="fba-work-grid">
-   <section className="fba-work-box"><h4>納品商品</h4><ul className="fba-work-items">{items.map(i=><li key={i.item_id}><div><strong className="fba-item-name" title={i.title}>{serial(i.sku)} {i.title}</strong><span>{i.sku} ／ {i.asin}</span></div><span>1点{i.published_at?'・出品中':''}</span></li>)}</ul></section>
-   <div className="fba-work-shipping">
+   <section className="fba-work-box">
+    <h4>納品商品</h4>
+    {boxes.map((box,index)=><div className="fba-carton" key={index}>
+     <div className="fba-work-actions"><strong>箱 {index+1}</strong>{editable&&boxes.length>1&&<button className="btn" type="button" disabled={blocked} onClick={()=>editBoxes(boxes.filter((_,j)=>index!==j))}>箱を削除</button>}</div>
+     <div className="fba-carton-fields">{(['length','width','height','weight'] as const).map((field,i)=><label key={field}>{['長さ (cm)','幅 (cm)','高さ (cm)','重量 (kg)'][i]}<input type="number" min="0.01" step="0.01" inputMode="decimal" disabled={!editable||blocked} value={box[field]||''} style={{width:`calc(${String(box[field]||'').length}ch + 32px)`}} onChange={event=>changeBox(index,{[field]:Number(event.target.value)})}/></label>)}</div>
+    </div>)}
+    {editable&&<div className="fba-work-actions"><button type="button" className="btn" disabled={blocked||boxes.length>=items.length} onClick={()=>editBoxes([...boxes,blank()])}>追加</button></div>}
+    <ul className="fba-work-items">{items.map(item=>{
+     const boxIndex=boxes.findIndex(box=>box.items.includes(item.item_id));
+     return <li key={item.item_id}>
+      <div className="fba-work-item-details">
+       <strong className="fba-item-name" title={item.title}>{serial(item.sku)} {item.title}</strong>
+       <span>{item.sku} ／ {item.asin}</span>
+       {editable&&groups.length>1&&<small>梱包グループ {groups.indexOf(work.groups?.[item.item_id]??'')+1}</small>}
+      </div>
+      <div className="fba-work-item-controls">
+       {editable?<select id={'box-'+item.item_id} aria-label={`${item.sku} の箱`} disabled={blocked} value={boxIndex} onChange={e=>assign(item.item_id,Number(e.target.value))}>
+        <option value="-1">未割当</option>{boxes.map((_,i)=><option key={i} value={i}>箱 {i+1}</option>)}
+       </select>:boxIndex>=0&&<span>箱 {boxIndex+1}</span>}
+       <span>1点{item.published_at?'・出品中':''}</span>
+      </div>
+     </li>;
+    })}</ul>
+    {canSendBoxes&&(autoSendBoxes&&!problem?<p role="status">箱情報をAmazonに送信しています…</p>:act('送信','boxes',{boxes},false,'primary'))}
+   </section>
    <section className="fba-work-box"><h4>発送元</h4><p>{sender.name}<br/>〒{sender.postalCode}<br/>{sender.stateOrProvinceCode}{sender.city}{sender.addressLine1}{sender.addressLine2}<br/>{sender.phoneNumber}</p>
    <dl className="fba-work-settings">
     <dt>ワークフロー名</dt><dd>{plan.name}</dd>
     <dt>商品数</dt><dd>{items.length}点（各1点）</dd>
     {plan.amazon_id&&<><dt>Amazon納品プランID</dt><dd>{plan.amazon_id}</dd></>}
    </dl></section>
-  <section className="fba-work-box">
-   <h4>輸送箱</h4>
-   {boxes.map((box,index)=><div className="fba-carton" key={index}>
-    <div className="fba-work-actions"><strong>箱 {index+1}</strong>{editable&&boxes.length>1&&<button className="btn" type="button" disabled={blocked} onClick={()=>editBoxes(boxes.filter((_,j)=>index!==j))}>箱を削除</button>}</div>
-    <div className="fba-carton-fields">{(['length','width','height','weight'] as const).map((field,i)=><label key={field}>{['長さ (cm)','幅 (cm)','高さ (cm)','重量 (kg)'][i]}<input type="number" min="0.01" step="0.01" inputMode="decimal" disabled={!editable||blocked} value={box[field]||''} style={{width:`calc(${String(box[field]||'').length}ch + 32px)`}} onChange={event=>changeBox(index,{[field]:Number(event.target.value)})}/></label>)}</div>
-    {!editable&&<p>{box.items.map(id=>serial(items.find(i=>i.item_id===id)?.sku??'')).join('、')}</p>}
-   </div>)}
-   {editable&&<>
-    <div className="fba-work-actions"><button type="button" className="btn" disabled={blocked||boxes.length>=items.length} onClick={()=>editBoxes([...boxes,blank()])}>追加</button></div>
-    <ul className="fba-work-items fba-box-assignments">{items.map(item=><li key={item.item_id}>
-     <label htmlFor={'box-'+item.item_id}>
-      <span className="fba-item-name" title={item.title}>{serial(item.sku)} {item.title}</span>
-      {groups.length>1&&<small>梱包グループ {groups.indexOf(work.groups?.[item.item_id]??'')+1}</small>}
-     </label>
-     <select id={'box-'+item.item_id} disabled={blocked} value={boxes.findIndex(b=>b.items.includes(item.item_id))} onChange={e=>assign(item.item_id,Number(e.target.value))}><option value="-1">未割当</option>{boxes.map((_,i)=><option key={i} value={i}>箱 {i+1}</option>)}</select>
-    </li>)}</ul>
-    {canSendBoxes&&(autoSendBoxes&&!problem?<p role="status">箱情報をAmazonに送信しています…</p>:act('送信','boxes',{boxes},false,'primary'))}
-   </>}
-  </section>
-   </div>
   </div>
   {!ready&&plan.stage!=='cancelled'&&!canSendBoxes&&<section className="fba-work-box">
    <h4>Amazonの納品手続き</h4>
