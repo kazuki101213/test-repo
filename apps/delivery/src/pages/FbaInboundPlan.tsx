@@ -35,8 +35,10 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const packing=(work.packing??[]).filter(p=>!p.expiration||Date.parse(p.expiration)>Date.now());
  const singlePacking=packing.length===1?packing[0]:undefined;
  const packingChoice=singlePacking??packing.find(p=>p.id===option);
+ const autoPackingOptions=plan.stage==='created';
  const autoPackingId=plan.stage==='packing-options'&&singlePacking?.fees.every(fee=>fee.amount===0)?singlePacking.id:undefined;
  const autoPlacements=plan.stage==='packed';
+ const automaticAction=autoPackingOptions?'packing':autoPackingId?'choosePacking':autoPlacements?'placements':null;
 
  useEffect(()=>{
   if(!plan.pending?.op)return;
@@ -60,20 +62,19 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
     request={id:saved.id,revision:saved.revision};
    }
    const {plan:next,prepReview}=await inboundRequest<PlanResult>(action,{...request,...fields});
-   onUpdate(next);setPrep(prepReview??null);if(action==='saveBoxes'||action==='boxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
+   onUpdate(next);setPrep(prepReview??null);if(action==='boxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
   }catch(cause){
    setError((cause as Error).message);
    try {onUpdate((await inboundRequest<{plan:InboundPlan}>('get',{id:plan.id})).plan);}catch{/* Keep the current plan open. */}
   }finally{setBusy(false);}
  }
  useEffect(()=>{
-  if((!autoPackingId&&!autoPlacements)||blocked||(autoPackingId&&dirty)||error||work.notice)return;
-  const attempt=`${plan.revision}:${autoPackingId??'placements'}`;
+  if(!automaticAction||blocked||error||work.notice)return;
+  const attempt=`${plan.revision}:${automaticAction}:${autoPackingId??''}`;
   if(automaticAttempt.current===attempt)return;
   automaticAttempt.current=attempt;
-  if(autoPackingId)void apply('choosePacking',{option:autoPackingId,automatic:true});
-  else void apply('placements');
- },[autoPackingId,autoPlacements,blocked,dirty,error,work.notice,plan.revision]);
+  void apply(automaticAction,autoPackingId?{option:autoPackingId,automatic:true}:{});
+ },[automaticAction,autoPackingId,blocked,error,work.notice,plan.revision]);
  async function label(shipment:string,box?:string){
   setBusy(true);setLabelError('');setPdf(null);
   try{const response=await inboundRequest<Blob>('label',{...requestBody,shipment,box});
@@ -142,7 +143,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
      </label>
      <select id={'box-'+item.item_id} disabled={blocked} value={boxes.findIndex(b=>b.items.includes(item.item_id))} onChange={e=>assign(item.item_id,Number(e.target.value))}><option value="-1">未割当</option>{boxes.map((_,i)=><option key={i} value={i}>箱 {i+1}</option>)}</select>
     </li>)}</ul>
-    {canSendBoxes?act('送信','boxes',{boxes},false,'primary'):plan.stage!=='draft'&&act('保存','saveBoxes',{boxes},!dirty,'primary')}
+    {canSendBoxes&&act('送信','boxes',{boxes},false,'primary')}
    </>}
   </section>
    </div>
@@ -163,9 +164,9 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
     {plan.pending?.createAfterPrep&&<p role="status">Amazonに梱包不要を登録しています。反映後に納品プランを作成します。</p>}
     {(error||work.notice)&&<p className="error" role="alert">{error||work.notice}</p>}
    </>}
-   {plan.stage==='created'&&act('梱包方法を取得','packing')}
+   {autoPackingOptions&&(error||work.notice?act('梱包方法を再取得','packing'):<p role="status">梱包方法を取得しています…</p>)}
    {plan.stage==='packing-options'&&(autoPackingId&&!error&&!work.notice
-    ? <p role="status">{dirty?'箱情報を保存すると、梱包方法が自動で確定します。':'料金のかからない梱包方法を自動で確定しています…'}</p>
+    ? <p role="status">料金のかからない梱包方法を自動で確定しています…</p>
     : <>
      {singlePacking&&!autoPackingId&&<p>梱包方法　{singlePacking.groups.length}グループ ／ {amount(singlePacking.fees)}</p>}
      {packing.length>1&&<label className="fba-work-field">梱包方法<select aria-label="梱包方法" disabled={blocked} value={packingChoice?.id??''} onChange={e=>setOption(e.target.value)}><option value="">選択してください</option>
