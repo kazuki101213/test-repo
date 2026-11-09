@@ -10,11 +10,19 @@ const token = name => ['eyJhbGciOiJIUzI1NiJ9',Buffer.from(JSON.stringify({sub:us
 const session = name => ({access_token:token(name),refresh_token:name,expires_at:4102444800,expires_in:3600,token_type:'bearer',user});
 const active = new Set(['web','extension']);
 const requests = [];
+let requireVerification = false;
 global.fetch = async (input,options={}) => {
   const url = new URL(String(input));
   requests.push(url.pathname+url.search);
   let body;
-  if(url.pathname.endsWith('/email-only-login')) body = {session:session('web')};
+  if(url.pathname.endsWith('/email-only-login')) body = requireVerification ? {verificationRequired:true} : {session:session('web')};
+  else if(url.pathname.endsWith('/otp')) {
+    const payload=JSON.parse(options.body);
+    assert.equal(payload.email,user.email);
+    assert.equal(payload.create_user,false);
+    assert.equal(url.searchParams.get('redirect_to'),'https://app.fixture.invalid/');
+    body={};
+  }
   else if(url.pathname.endsWith('/user')) body = user;
   else if(url.pathname.endsWith('/logout')) {
     const scope=url.searchParams.get('scope');
@@ -36,7 +44,7 @@ global.fetch = async (input,options={}) => {
   const app=m.exports;
   const extension=createClient('https://fixture.invalid','fixture-public-key',{db:{schema:'app'},auth:{persistSession:false,autoRefreshToken:false}});
   try {
-    await app.signIn(user.email);
+    assert.equal(await app.signIn(user.email),'signed-in');
     assert.equal((await extension.auth.setSession(session('extension'))).error,null);
     await app.signOut();
     assert.equal((await app.getSupabase().auth.getSession()).data.session,null);
@@ -46,6 +54,10 @@ global.fetch = async (input,options={}) => {
     assert.equal((await extension.auth.refreshSession()).error,null);
     assert.equal((await extension.rpc('reconcile_marketplace_tracking',{})).data.updated,true);
     assert.equal((await extension.rpc('marketplace_purchase_import',{})).data.inserted,1);
+    global.window={location:{origin:'https://app.fixture.invalid',pathname:'/'}};
+    requireVerification=true;
+    assert.equal(await app.signIn(user.email),'check-email');
+    assert.equal((await app.getSupabase().auth.getSession()).data.session,null);
     console.log('PASS: actual app logout clears the web session; independent extension refresh and both registration RPCs continue.');
   } finally {await app.getSupabase().auth.stopAutoRefresh();await extension.auth.stopAutoRefresh();}
   // Supabase's Node transport retains background handles after client cleanup.
