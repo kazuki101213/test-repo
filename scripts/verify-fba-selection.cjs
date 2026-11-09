@@ -11,7 +11,7 @@ for(const status of ['検品中','出品中','取引中','販売済'])assert(!he
 assert(!helper.canSelectFbaItem(base,staff,true));assert(!helper.canSelectFbaItem({...base,deliverer_id:'other'},staff));assert(helper.canSelectFbaItem({...base,deliverer_id:'other'},{...staff,role:'admin'}));
 const bundled={...base,id:'bundled',is_accessory:true,sku:'9001a-AAII-date-10'},separate={...base,id:'separate',is_accessory:true,sku:'9001c-AAII-date-10'};
 assert(!helper.canSelectFbaItem(bundled,staff));assert(helper.canSelectFbaItem(separate,staff));assert.equal(helper.fbaSelectionAccount({...base,sales_channel:'FBA'}),'FBA1');assert.equal(helper.fbaSelectionAccount(base),'FBA2');
-function harness(){let slots=[],cursor=0,effects=[],dirty=true,tree;const react={useState(initial){const n=cursor++;slots[n]??={value:typeof initial==='function'?initial():initial};return[slots[n].value,next=>{slots[n].value=typeof next==='function'?next(slots[n].value):next;dirty=true}];},useEffect(fn,deps){const n=cursor++;if(!slots[n]||deps.some((v,i)=>v!==slots[n].deps[i])){slots[n]?.cleanup?.();const slot=slots[n]={deps};effects.push(()=>{slot.cleanup=fn();});}},lazy:f=>f,Suspense:'Suspense'};return{react,async settle(render){for(let i=0;i<40;i++){if(dirty){dirty=false;cursor=0;tree=render();effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}return tree;},renderOnce(render){cursor=0;return render();}};}
+function harness(){let slots=[],cursor=0,effects=[],dirty=true,tree;const react={useState(initial){const n=cursor++;slots[n]??={value:typeof initial==='function'?initial():initial};return[slots[n].value,next=>{slots[n].value=typeof next==='function'?next(slots[n].value):next;dirty=true}];},useEffect(fn,deps){const n=cursor++;if(!slots[n]||deps.some((v,i)=>v!==slots[n].deps[i])){slots[n]?.cleanup?.();const slot=slots[n]={deps};effects.push(()=>{slot.cleanup=fn();});}},useRef:value=>slots[cursor++]??={current:value},lazy:f=>f,Suspense:'Suspense'};return{react,async settle(render){for(let i=0;i<40;i++){if(dirty){dirty=false;cursor=0;tree=render();effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}return tree;},renderOnce(render){cursor=0;return render();}};}
 const shipping=load('apps/delivery/src/pages/fbaInboundApi.ts',{'@bussan/shared':{}});
 assert.equal(shipping.tokyoDate(3,new Date('2026-12-31T14:59:00Z')),'2027-01-03');
 assert.equal(shipping.tokyoDate(3,new Date('2026-12-31T15:00:00Z')),'2027-01-04');
@@ -37,11 +37,40 @@ tree=cardHarness.renderOnce(()=>card({...props,readOnly:true}));assert(nodes(tre
  const h=harness(),read=[],rows={main:base,one:{...base,id:'one',lot_seq:9002,sku:'9002-AAII-date-100',sales_channel:'FBA1'},other:{...base,id:'other',deliverer_id:'other'},self:{...base,id:'self',sales_channel:'自己発送2'}};
  const Page=load('apps/delivery/src/pages/FbaDelivery.tsx',{'react':h.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper,'../errors':{deliveryErrorMessage:String},'../api':{fetchTask:async(id,all)=>{read.push({id,all});return rows[id]}},'./fbaInboundApi':{inboundRequest:async()=>({plans:[]}),fbaState:{}}}).default;
  const itemIds=['main','one','other','self'];let removed,navigated=0;
- const render=()=>Page({staff,itemIds,onSelectionChange:ids=>{removed=Array.from(ids)},onBack:()=>navigated++});
+ const onSelectionChange=ids=>{removed=Array.from(ids)};
+ const render=()=>Page({staff,itemIds,createSelectedDrafts:false,onSelectionChange,onBack:()=>navigated++});
  tree=await h.settle(render);assert(read.every(r=>r.all===false));assert.equal(nodes(tree).filter(n=>n.type==='article').length,2,'Fresh permissions and FBA state exclude inappropriate selections');assert.equal(nodes(tree).filter(n=>n.props?.role==='alert').length,1);assert.equal(nodes(tree).filter(n=>String(n.props?.['aria-label']).endsWith('の納品商品')).length,2,'Accounts stay separate');assert(!text(tree).includes('undefined'));assert(text(tree).includes('納品履歴'));
  nodes(tree).find(n=>n.type==='button'&&String(n.props['aria-label'])==='9001を選択から外す').props.onClick();assert.deepEqual(removed,['one','other','self']);nodes(tree).find(n=>n.type==='button'&&text(n)==='在庫に戻る').props.onClick();assert.equal(navigated,1);assert.equal(base.status,'商品登録前');
+
+ const batch=harness(),submitted=[],history=[];
+ let pendingIds=['main','one'],failSecond=true;
+ const BatchPage=load('apps/delivery/src/pages/FbaDelivery.tsx',{'react':batch.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper,'../errors':{deliveryErrorMessage:String},'../api':{fetchTask:async id=>rows[id]},'./FbaInboundPlan':{default:'Plan'},'./fbaInboundApi':{fbaState:{draft:'下書き'},inboundRequest:async(action,payload)=>{
+  if(action==='list')return {plans:[...history]};
+  assert.equal(action,'new');
+  const [id]=payload.items;
+  submitted.push(Array.from(payload.items));
+  if(id==='main'&&failSecond){failSecond=false;throw Error('一時エラー');}
+  const plan={id:'plan-'+id,stage:'draft',revision:0,fba_inbound_items:[{item_id:id}]};
+  history.push(plan);
+  return {plan};
+ }}}).default;
+ const keepPending=ids=>{pendingIds=Array.from(ids)};
+ const renderBatch=()=>BatchPage({staff,itemIds:pendingIds,createSelectedDrafts:true,onSelectionChange:keepPending,onBack(){}});
+ tree=await batch.settle(renderBatch);
+ assert.deepEqual(submitted,[['one'],['main']]);
+ assert.deepEqual(pendingIds,['main']);
+ assert.equal(nodes(tree).find(n=>n.type==='Plan').props.plan.id,'plan-one');
+ nodes(tree).find(n=>n.type==='button'&&text(n)==='再試行').props.onClick();
+ tree=await batch.settle(renderBatch);
+ assert.deepEqual(submitted,[['one'],['main'],['main']]);
+ assert.deepEqual(pendingIds,[]);
+ assert.equal(nodes(tree).find(n=>n.type==='Plan').props.plan.id,'plan-main');
+ assert(!text(tree).includes('このグループの納品を作成'));
  const a=harness(),session={user:{id:'fixture-user'},staff};
  const App=load('apps/delivery/src/App.tsx',{'react':a.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...shared,loadSession:async()=>session,canOpenManagement:()=>false},'./pages/TaskList':{default:'Inventory'},'./hooks/useCompactBidViewport':{useCompactBidViewport:()=>false}},{URLSearchParams,window:{location:{hash:'',pathname:'/',search:''},addEventListener(){},removeEventListener(){}},history:{pushState(){},replaceState(){}}}).default;
- let appTree=await a.settle(()=>App()),inventory=nodes(appTree).find(n=>n.type==='Inventory');assert(inventory);inventory.props.onSelectionChange(['main']);appTree=await a.settle(()=>App());inventory=nodes(appTree).find(n=>n.type==='Inventory');assert.deepEqual(Array.from(inventory.props.selectedIds),['main']);inventory.props.onFbaDelivery();appTree=await a.settle(()=>App());const destination=nodes(appTree).find(n=>n.props?.itemIds);assert(destination);assert.deepEqual(Array.from(destination.props.itemIds),['main']);destination.props.onBack();appTree=await a.settle(()=>App());assert.deepEqual(Array.from(nodes(appTree).find(n=>n.type==='Inventory').props.selectedIds),['main'],'Returning to inventory retains checkmarks');
+ let appTree=await a.settle(()=>App()),inventory=nodes(appTree).find(n=>n.type==='Inventory');assert(inventory);inventory.props.onSelectionChange(['main']);appTree=await a.settle(()=>App());inventory=nodes(appTree).find(n=>n.type==='Inventory');assert.deepEqual(Array.from(inventory.props.selectedIds),['main']);inventory.props.onFbaDelivery();appTree=await a.settle(()=>App());const destination=nodes(appTree).find(n=>n.props?.itemIds);assert(destination);assert.equal(destination.props.createSelectedDrafts,true);assert.deepEqual(Array.from(destination.props.itemIds),['main']);destination.props.onBack();appTree=await a.settle(()=>App());assert.deepEqual(Array.from(nodes(appTree).find(n=>n.type==='Inventory').props.selectedIds),['main'],'Returning to inventory retains checkmarks');
+ nodes(appTree).find(n=>n.type==='button'&&text(n)==='FBA納品').props.onClick();
+ appTree=await a.settle(()=>App());
+ assert.equal(nodes(appTree).find(n=>n.props?.itemIds).props.createSelectedDrafts,false,'Opening the history tab has no create intent');
  console.log('FBA inventory selection, bundle boundaries, role/state recheck, account grouping and actual App navigation preserve selected IDs without marketplace writes');
 })().catch(e=>{console.error(e);process.exitCode=1});
