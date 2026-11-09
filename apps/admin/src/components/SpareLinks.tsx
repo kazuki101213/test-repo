@@ -4,7 +4,7 @@ import { noticeProductUrl } from '@bussan/shared';
 import { findInventoryForSpare } from '../api';
 import { deliveryAppUrl } from '../appUrls';
 
-const icon = <span aria-hidden="true">↗</span>;
+const icon = <span className="external-link-arrow" aria-hidden="true" />;
 
 export default function SpareLinks({ row, kind }: { row: SpareAccessory; kind: 'product' | 'usage' }) {
   const [busy, setBusy] = useState(false);
