@@ -33,9 +33,11 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
  const conversationRuntime=runtime();const conversation={exports:{},require:id=>id==='react'?conversationRuntime.react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){throw Error('Unexpected send');},pending:false,confirmation:null})}:id==='../inventory'?inventory.exports:{}};
  vm.runInNewContext(compile('apps/admin/src/components/MalfunctionTasks.tsx','\nexport { MalfunctionConversation };'),conversation);
  for(const status of ['Amazon補填申請中','動作不良']){
-  conversationRuntime.reset();const tree=conversation.exports.MalfunctionConversation({item:{...item,status},staff:{id:'AA',role:'admin'},onReplied:async()=>{},actions:jsx('button',{'data-action':'complete_compensation_report',children:'完了'})});
-  assert.equal(all(tree).filter(n=>n.type==='button'&&n.props['data-action']==='yahoo_instruction').length,status==='動作不良'?1:0,'Only malfunction reports retain the Yahoo instruction shortcut');
-  assert(all(tree).some(n=>n.props?.['data-action']==='complete_compensation_report'),'Removing the shortcut preserves the supplied completion actions');
+  const controls=status==='動作不良'?['supplier_check','send_back']:['complete_compensation_report','send_back'];
+  const actions=controls.map(key=>jsx('button',{'data-action':key}));
+  conversationRuntime.reset();const tree=conversation.exports.MalfunctionConversation({item:{...item,status},staff:{id:'AA',role:'admin'},onReplied:async()=>{},actions});
+  const shown=all(tree).filter(n=>n.type==='button'&&n.props['data-action']).map(n=>n.props['data-action']);
+  assert.deepEqual(shown,status==='動作不良'?['yahoo_instruction',...controls]:controls,'Action order follows the report status');
  }
  console.log('PASS: cancel/Escape write nothing, confirmation executes once, busy/error handling; all 10 templates use the actual suffixed serial, item ID and model');
 })().catch(e=>{console.error(e);process.exitCode=1;});
