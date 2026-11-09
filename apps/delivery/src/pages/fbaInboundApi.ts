@@ -27,11 +27,19 @@ export function preferredFbaCarrier(options:Transport[]) {
  const yamato=options.filter(isYamato);
  return yamato.find(option=>option.solution==='AMAZON_PARTNERED_CARRIER')??yamato[0];
 }
+export class InboundRequestError extends Error {
+ constructor(message:string,readonly status?:number){super(message);}
+ get retryable(){
+  return this.status===undefined||this.status===408||this.status===409||this.status===429||this.status>=500;
+ }
+}
+
 export async function inboundRequest<T>(action:string, body:Record<string,unknown>={}):Promise<T>{
  const {data,error}=await getSupabase().functions.invoke('amazon-fba-inbound',{body:{action,...body}});
  if(error){
-  const details=error.context instanceof Response?await error.context.json().catch(()=>null):null;
-  throw new Error(details?.error||'FBA納品を確認できません。時間をおいてもう一度お試しください。');
+  const response=error.context instanceof Response?error.context:undefined;
+  const details=await response?.json().catch(()=>null);
+  throw new InboundRequestError(details?.error||'FBA納品を確認できません。時間をおいてもう一度お試しください。',response?.status);
  }
  return data as T;
 }
