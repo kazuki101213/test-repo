@@ -34,6 +34,24 @@ insert into app.seller_operations(id,item_id,actor_id,kind,channel,account_id,ex
 select '99899300-0000-4000-8000-000000000002',id,deliverer_id,'shipping_code','メルカリ','mercari-1',status,updated_at,'{"trade_key":"m998993:current","size":"100","dropoff":"セブンイレブン"}','succeeded','{"qr_code":"fixture"}' from app.items where lot_seq=998993;
 set local role authenticated;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+savepoint manual_code_fixture;
+do $$declare item_id uuid:='99899300-0000-4000-8000-000000000001'; payload jsonb; request_id uuid:=gen_random_uuid(); bad jsonb;begin
+ select jsonb_build_object('trade_key','m998993:current','expected_revision',updated_at,'shippingMethod','らくらくメルカリ便',
+  'size','ネコポス','dropoff','セブンイレブン') into payload from app.items where id=item_id;
+ foreach bad in array array[payload-'size',payload||'{"dropoff":"郵便局"}',payload||'{"automatic_line":true}'] loop
+  begin
+   perform app.queue_seller_operation(item_id,'shipping_code',bad,gen_random_uuid());
+   raise exception 'Invalid manual or automatic code request was accepted';
+  exception when invalid_parameter_value then null;end;
+ end loop;
+ if app.queue_seller_operation(item_id,'shipping_code',payload,request_id) is distinct from request_id then
+  raise exception 'Valid manual shipping choice was rejected';
+ end if;
+ if app.queue_seller_operation(item_id,'shipping_code',payload,request_id) is distinct from request_id then
+  raise exception 'Manual shipping replay did not return its original request';
+ end if;
+end $$;
+rollback to manual_code_fixture;
 do $$declare payload jsonb;begin
  select jsonb_build_object('trade_key','m998993:current','proof_id','99899300-0000-4000-8000-000000000002','expected_revision',updated_at,'posted',false) into payload from app.items where lot_seq=998993;
  begin
