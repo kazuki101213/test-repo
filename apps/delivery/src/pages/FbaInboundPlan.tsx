@@ -246,8 +246,6 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
     {!plan.pending&&(!placements.length||problem||missingCarriers)&&act('納品先を再取得','placements')}</div>
     {quotePlacementId&&!problem&&<p role="status">配送料の見積もりを取得しています…</p>}
     {showCarriers&&carrierRows.length>0&&<>
-    <p className="muted">Amazonの配送料見積もり（{items.length}点、{work.boxes?.length??boxes.length}箱、出荷日 {work.shipDate}）</p>
-    <p className="muted">同じ納品をセラーセントラルで照合する場合は、配送確定後に納品番号を確認してください。確定前に切り替えると、Amazonが配送候補を作り直します。</p>
     {carrierRows.map(({id,options,choice},i)=>{
      const label=carrierRows.length===1?'配送業者':`配送業者（${work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${i+1}`}）`;
      const {primary,other}=fbaCarrierGroups(options);
