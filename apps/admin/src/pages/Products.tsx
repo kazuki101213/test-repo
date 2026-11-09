@@ -175,20 +175,16 @@ export default function Products({ me }: { me: Staff }) {
       <div className="dashboard-workspace with-expense product-workspace registration-workspace"><section className="card dashboard-content product-list">
       <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
-      <label className="product-owner-filter"><span>管理者</span>
-        <select value={ownerFilter} disabled={busy || deleting || confirmation.pending} onChange={event => showOwner(event.target.value)}>
+      <div className="toolbar product-search-toolbar">
+        <select aria-label="商品リストの表示対象" value={ownerFilter} disabled={busy || deleting || confirmation.pending} onChange={event => showOwner(event.target.value)}>
           <option value="">全員</option>
           {owners.map(ownerOption)}
         </select>
-      </label>
-      <div className="toolbar product-search-toolbar">
         <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} disabled={deleting || confirmation.pending} onChange={event => { setSelected(new Set()); setQuery(event.target.value); }} />
         <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
         <button type="button" className="btn" disabled={loading || busy || deleting || confirmation.pending || !selectedRows.length} onClick={askDelete}>削除</button>
+        <span className="sub product-result-count">{rows.length} 件</span>
       </div>
-      <p className="sub">{rows.length} 件</p>
-
-
 
       {error && <div className="error">{error}</div>}
       {ownerError && <div className="error" role="alert">{ownerError}</div>}
