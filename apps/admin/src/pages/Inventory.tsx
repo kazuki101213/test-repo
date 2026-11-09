@@ -1,7 +1,7 @@
 import { salesChannelLabel } from '@bussan/shared';
 import InventoryOverview from '../components/InventoryOverview';
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
-import { staffDisplayName, deliveryStaffOptions, inventorySiteStyle } from '@bussan/shared';
+import { staffDisplayName, deliveryStaffOptions, inventoryPurchaserOptions, inventorySiteStyle } from '@bussan/shared';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
@@ -139,7 +139,7 @@ export default function Inventory({ me }: { me: Staff }) {
           <input type="search" placeholder="検索" value={query} aria-label="在庫を検索" onChange={event => setQuery(event.target.value)} />
         </div>
         <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters}
-          purchaser={{ value: purchaserIds, options: staff.map(person => ({ id: person.id, name: staffDisplayName(person) })), onChange: setPurchaserIds }}
+          purchaser={{ value: purchaserIds, options: inventoryPurchaserOptions(staff), onChange: setPurchaserIds }}
           assignee={{ value: assigneeFilterIds, options: deliveryStaffOptions(staff).map(person => ({ id: person.id, name: staffDisplayName(person) })), onChange: setAssigneeFilterIds }} />
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field">
