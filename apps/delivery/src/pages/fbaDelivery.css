@@ -100,6 +100,8 @@
 .fba-carton-fields { display:grid; grid-template-columns:repeat(4,max-content); gap:var(--control-gap); justify-content:start; }
 .fba-carton-fields input { min-width:52px; justify-self:start; box-sizing:border-box; }
 .fba-work-field select { width:100%; min-width:0; }
+.fba-carrier-field { width:fit-content; max-width:100%; justify-items:start; }
+.fba-carrier-field select { width:auto; max-width:100%; field-sizing:content; }
 .fba-history { display:grid; grid-template-columns:minmax(0,max-content) max-content; gap:8px; margin:12px 0; }
 .fba-history label { display:flex; gap:8px; }
 .fba-history label > span { align-self:center; white-space:nowrap; }

@@ -14,8 +14,20 @@ export const amount=(charges:{amount:number;code:string}[]=[])=>charges.length
 const tokyoCalendar=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'});
 export const tokyoDate=(daysAhead=0,now=new Date())=>tokyoCalendar.format(new Date(now.getTime()+daysAhead*86_400_000));
 
-const isYamato=(option:Transport)=>[option.carrier,option.carrierCode].some(value=>value&&/ヤマト|クロネコ|yamato|kuroneko/i.test(value.normalize('NFKC')));
-export const fbaCarrierName=(option:Transport)=>isYamato(option)&&!option.carrier.includes('ヤマト')?'ヤマト運輸':option.carrier;
+const isYamato=(option:Transport)=>[option.carrier,option.carrierCode].some(value=>value&&/ヤマト|クロネコ|yamato|kuroneko|^yamat$|^ymtjp$/i.test(value.normalize('NFKC').trim()));
+const isJapanPost=(option:Transport)=>[option.carrier,option.carrierCode].some(value=>value&&/日本郵便|ゆうパック|japan\s*post|^npne$/i.test(value.normalize('NFKC').trim()));
+export const fbaCarrierName=(option:Transport)=>isYamato(option)?'ヤマト運輸':isJapanPost(option)?'日本郵便':option.carrier;
+
+export function fbaCarrierGroups(options:Transport[]) {
+ const yamato=options.filter(isYamato);
+ const japanPost=options.filter(isJapanPost);
+ const major=[...yamato,...japanPost];
+ const partnered=(option:Transport)=>option.solution==='AMAZON_PARTNERED_CARRIER';
+ return {
+  primary:[...major.filter(partnered),...major.filter(option=>!partnered(option))],
+  other:options.filter(option=>!isYamato(option)&&!isJapanPost(option)),
+ };
+}
 export function preferredFbaCarrier(options:Transport[]) {
  const yamato=options.filter(isYamato);
  return yamato.find(option=>option.solution==='AMAZON_PARTNERED_CARRIER')??yamato[0];

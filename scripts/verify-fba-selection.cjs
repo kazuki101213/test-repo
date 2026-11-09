@@ -22,6 +22,12 @@ assert.equal(shipping.preferredFbaCarrier([yamatoDirect,japanPost,yamatoPartner]
 assert.equal(shipping.preferredFbaCarrier([japanPost,yamatoDirect]),yamatoDirect);
 assert.equal(shipping.preferredFbaCarrier([japanPost]),undefined);
 assert.equal(shipping.fbaCarrierName(yamatoPartner),'ヤマト運輸');
+const japanPostQuote={carrier:'Japan Post',carrierCode:'NPNE',solution:'AMAZON_PARTNERED_CARRIER'};
+const otherCarrier={carrier:'佐川急便',solution:'USE_YOUR_OWN_CARRIER'};
+assert.equal(shipping.fbaCarrierName(japanPostQuote),'日本郵便');
+const carrierGroups=shipping.fbaCarrierGroups([otherCarrier,yamatoDirect,japanPostQuote,yamatoPartner]);
+assert.deepEqual(Array.from(carrierGroups.primary),[yamatoPartner,japanPostQuote,yamatoDirect]);
+assert.deepEqual(Array.from(carrierGroups.other),[otherCarrier]);
 const cardHarness=harness(),card=load('apps/delivery/src/components/TaskCard.tsx',{'react':cardHarness.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper},{URL,URLSearchParams,window:{location:{search:''}}}).default;
 let selected=[];const selection={ids:selected,onChange:ids=>{selected=Array.from(ids)}};
 const props={task:base,amazonImageUrl:null,members:[base,bundled,separate],originalMarketplaceIds:new Map(),staff,unreadItemIds:new Set(),expandedId:null,onDetailOpened(){},selection};
