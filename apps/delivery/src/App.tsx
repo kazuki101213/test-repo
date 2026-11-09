@@ -125,14 +125,14 @@ export default function App() {
         <button className="btn ghost" data-tab="tasks" disabled={invoiceNavigation === 'busy'} aria-current={inventoryTab ? 'page' : undefined} onClick={() => navigate('tasks')}>在庫</button>
         <button className="btn ghost" data-tab="invoices" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => navigate('invoices')}>請求書・領収書</button>
         {['admin','purchaser'].includes(session.staff.role) && <button className="btn ghost" data-tab="bid-calculator" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'bid-calculator' ? 'page' : undefined} onClick={() => navigate('bid-calculator')}>入札計算ツール</button>}
-        {['admin','deliverer'].includes(session.staff.role) && <button className="btn ghost" data-tab="notifications" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'notifications' ? 'page' : undefined} aria-controls="notification-settings" onClick={() => navigate('notifications')}>通知設定</button>}
+        <button className="btn ghost" data-tab="notifications" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'notifications' ? 'page' : undefined} aria-controls="notification-settings" onClick={() => navigate('notifications')}>通知設定</button>
       </nav>
       {inventoryTab&&<nav className="row delivery-stock-navigation no-print" aria-label="在庫の切り替え">
         <button type="button" className="btn" aria-current={tab==='tasks'?'page':undefined} onClick={()=>navigate('tasks')}>在庫</button>
         <button type="button" className="btn" aria-current={tab==='fba'?'page':undefined} onClick={()=>navigate('fba')}>FBA納品</button>
         <button type="button" className="btn" aria-current={tab==='spares'?'page':undefined} onClick={()=>navigate('spares')}>予備</button>
       </nav>}
-      {tab === 'notifications' && ['admin','deliverer'].includes(session.staff.role) && <div id="notification-settings">
+      {tab === 'notifications' && <div id="notification-settings">
         <PushSettings key={session.user.id} userId={session.user.id} />
         <LineSettings key={`line-${session.user.id}`} userId={session.user.id} />
       </div>}

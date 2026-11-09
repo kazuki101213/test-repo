@@ -28,7 +28,10 @@ test('LINE HMAC verifies exact bytes and rejects missing/tampered signatures',as
  for(const options of [{sign:false},{change:true}]){const f=fixture();assert.equal((await f.webhook([],options)).status,401);assert.equal(f.state.rpc.length,0);}
 });
 test('Only active authenticated delivery staff can issue, inspect or unlink their own binding',async()=>{
- for(const opts of [{auth:false},{active:false},{role:'purchaser'}])for(const action of ['status','issue','unlink']){const f=fixture(opts);assert([401,403].includes((await f.request(action)).status));assert.equal(f.state.rpc.length,0);}
+ for(const opts of [{auth:false},{active:false},{role:'unknown'}])for(const action of ['status','issue','unlink']){const f=fixture(opts);assert([401,403].includes((await f.request(action)).status));assert.equal(f.state.rpc.length,0);}
+ const purchaser=fixture({role:'purchaser'});
+ for(const action of ['status','issue','unlink'])assert.equal((await purchaser.request(action)).status,200);
+ assert.equal(purchaser.state.rpc[0].args.p_staff,'own-staff');
  const f=fixture();assert.equal((await f.request('issue',{Origin:'https://evil.invalid'})).status,403);
  const issued=await (await f.request('issue')).json();assert(/^連携 [a-f0-9]{32}$/.test(issued.message));assert.equal(f.state.rpc[0].args.p_staff,'own-staff');assert.notEqual(f.state.rpc[0].args.p_hash,issued.message.slice(3));assert.equal(f.state.rpc[0].args.p_hash.length,64);
  const status=await (await f.request('status')).json();assert(status.linked);assert(status.configured);assert.equal(status.officialUrl,'https://line.me/R/ti/p/%40fixture');assert(!('line_user_id' in status));

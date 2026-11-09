@@ -175,7 +175,7 @@ Deno.serve(async req => {
     if (profile.error) throw profile.error;
     const staff = await admin.from('staff').select('id,role,is_active').eq('id', profile.data?.staff_id || '').maybeSingle();
     if (staff.error) throw staff.error;
-    if (!staff.data?.is_active || !['admin','deliverer'].includes(staff.data.role)) return response(403, {}, origin);
+    if (!staff.data?.is_active || !['admin','purchaser','deliverer'].includes(staff.data.role)) return response(403, {}, origin);
     const staffId = staff.data.id;
     if (body.action === 'status') {
       const connection = await botConnection();

@@ -2,7 +2,7 @@
 .workflow-photo-row { display:contents; }
 /* Approved inventory sample: shared state cells on desktop, one common mobile grid. */
 @media screen {
-  .app .delivery-navigation { display:flex; flex-wrap:nowrap; gap:24px; justify-content:flex-start; border:0; background:transparent; padding:8px 0; margin:0 0 12px; }
+  .app .delivery-navigation { display:flex; flex-wrap:nowrap; gap:24px; border:0; background:transparent; padding:8px 0; margin:0 0 12px; }
   .app .delivery-stock-navigation { flex-wrap:nowrap; gap:20px; margin-bottom:8px; }
   .app :is(.delivery-navigation, .delivery-stock-navigation) > .btn { border:0; border-bottom:2px solid transparent; border-radius:0; background:transparent; color:var(--text); box-shadow:none; font-size:15px; font-weight:400; padding:8px 4px !important; }
   .app :is(.delivery-navigation, .delivery-stock-navigation) > .btn[aria-current=page] { border-bottom-color:var(--accent); color:var(--accent); }
@@ -43,13 +43,6 @@
   .app .task-card:not(.approved-delivery-card)[data-item-status="商品登録前"] .workflow-buttons { grid-template-columns:1fr; }
 }
 @media screen and (max-width:1279px) {
-  .app .delivery-navigation { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) max-content; gap:4px 8px; justify-items:start; }
-  .app .delivery-navigation > .btn { font-size:14px; grid-column:auto; grid-row:1; padding-inline:0 !important; }
-  .app .delivery-navigation > [data-tab="tasks"] { grid-column:1; }
-  .app .delivery-navigation > [data-tab="spares"] { grid-column:2; }
-  .app .delivery-navigation > [data-tab="invoices"] { grid-column:3; }
-  .app .delivery-navigation > [data-tab="bid-calculator"] { grid-column:1 / 3; grid-row:2; }
-  .app .delivery-navigation > [data-tab="notifications"] { grid-column:3; grid-row:2; }
   .app .inventory-workflow-menu { grid-template-columns:repeat(2,minmax(0,1fr)); width:auto; justify-content:stretch; gap:8px; padding:8px; }
   .inventory-workflow-lane { display:none; }
   .app .inventory-workflow-menu .btn { font-size:14px; }
@@ -94,7 +87,6 @@
 }
 
 @media screen and (max-width:1279px) {
-  .app .delivery-navigation { display:flex; flex-wrap:nowrap; justify-content:space-between; gap:6px; }
   .app :is(.delivery-navigation, .delivery-stock-navigation) > .btn { font-size:13px; padding:8px 0 !important; }
   .app .export-actions { display:flex; flex-wrap:nowrap; gap:4px; align-items:center; }
   .app .export-actions > button { order:1; font-size:12px; padding:7px 5px !important; white-space:nowrap; }
@@ -198,7 +190,7 @@
 }
 
 @media screen and (max-width:480px) {
-  .app .delivery-navigation { flex-wrap:wrap; justify-content:flex-start; gap:0 20px; }
+  .app .delivery-navigation { flex-wrap:wrap; }
 }
 
 @media screen and (max-width:374px) {

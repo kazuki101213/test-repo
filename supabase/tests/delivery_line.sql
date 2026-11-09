@@ -18,4 +18,12 @@ do $$declare target_staff uuid;other_id uuid;begin
 end $$;
 
 select app.unlink_delivery_line((select id from app.staff where code='DD'));
+
+do $$declare purchaser uuid;begin
+ select id into strict purchaser from app.staff where code='EE' and role='purchaser';
+ perform app.issue_delivery_line_code(purchaser,repeat('c',64));
+ if not app.handle_delivery_line_event('link-purchaser','link','U'||repeat('3',32),repeat('c',64))
+   or not exists(select 1 from app.delivery_line_links where staff_id=purchaser and line_user_id='U'||repeat('3',32))
+   then raise exception 'Purchaser could not link their LINE account';end if;
+end $$;
 rollback;
