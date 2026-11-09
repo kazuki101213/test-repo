@@ -96,7 +96,7 @@ export async function signIn(email: string): Promise<'signed-in' | 'check-email'
   if (data?.verificationRequired) {
     const { error: verificationError } = await sb.auth.signInWithOtp({
       email: address,
-      options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
+      options: { shouldCreateUser: false, emailRedirectTo: new URL(window.location.pathname, window.location.origin).href },
     });
     if (verificationError) throw new Error('ログイン用のメールを送信できませんでした。管理者にお問い合わせください。');
     return 'check-email';

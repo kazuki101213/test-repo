@@ -38,7 +38,7 @@ global.fetch = async (input,options={}) => {
   return new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}});
 };
 (async()=>{
-  const built=await esbuild.build({entryPoints:['packages/shared/src/supabase.ts'],bundle:true,platform:'node',format:'cjs',write:false,external:['@supabase/supabase-js'],define:{'import.meta.env.VITE_SUPABASE_URL':'"https://fixture.invalid"','import.meta.env.VITE_SUPABASE_ANON_KEY':'"fixture-public-key"','import.meta.env.BASE_URL':'"/"'}});
+  const built=await esbuild.build({entryPoints:['packages/shared/src/supabase.ts'],bundle:true,platform:'node',format:'cjs',write:false,external:['@supabase/supabase-js'],define:{'import.meta.env.VITE_SUPABASE_URL':'"https://fixture.invalid"','import.meta.env.VITE_SUPABASE_ANON_KEY':'"fixture-public-key"'}});
   const m=new Module(path.resolve('scripts/independent-auth-fixture.cjs'),module);
   m.filename=path.resolve('scripts/independent-auth-fixture.cjs');m.paths=module.paths;m._compile(built.outputFiles[0].text,m.filename);
   const app=m.exports;
@@ -54,7 +54,7 @@ global.fetch = async (input,options={}) => {
     assert.equal((await extension.auth.refreshSession()).error,null);
     assert.equal((await extension.rpc('reconcile_marketplace_tracking',{})).data.updated,true);
     assert.equal((await extension.rpc('marketplace_purchase_import',{})).data.inserted,1);
-    global.window={location:{origin:'https://app.fixture.invalid'}};
+    global.window={location:{origin:'https://app.fixture.invalid',pathname:'/'}};
     requireVerification=true;
     assert.equal(await app.signIn(user.email),'check-email');
     assert.equal((await app.getSupabase().auth.getSession()).data.session,null);
