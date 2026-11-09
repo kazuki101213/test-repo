@@ -83,20 +83,31 @@ export async function loadSession(): Promise<Session | null> {
   return { user: auth.user, staff: staff as Staff };
 }
 
-export async function signIn(email: string): Promise<void> {
+export async function signIn(email: string): Promise<'signed-in' | 'check-email'> {
   const sb = getSupabase();
+  const address = email.trim();
   const { data, error } = await sb.functions.invoke<{
     session?: { access_token: string; refresh_token: string };
+    verificationRequired?: boolean;
   }>('email-only-login', {
-    body: { email: email.trim() },
+    body: { email: address },
   });
   if (error) throw error;
+  if (data?.verificationRequired) {
+    const { error: verificationError } = await sb.auth.signInWithOtp({
+      email: address,
+      options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
+    });
+    if (verificationError) throw new Error('ログイン用のメールを送信できませんでした。管理者にお問い合わせください。');
+    return 'check-email';
+  }
   if (!data?.session?.access_token || !data.session.refresh_token) {
     throw new Error('ログインセッションを作成できませんでした。');
   }
 
   const { error: sessionError } = await sb.auth.setSession(data.session);
   if (sessionError) throw sessionError;
+  return 'signed-in';
 }
 
 export async function signOut(): Promise<void> {

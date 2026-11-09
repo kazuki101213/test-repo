@@ -4,17 +4,20 @@ import { signIn } from '@bussan/shared';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [verificationSent, setVerificationSent] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setVerificationSent(false);
     try {
-      await signIn(email);
-      window.location.reload();
-    } catch {
-      setError('ログインできませんでした。登録済みの担当者メールアドレスを確認してください。');
+      if (await signIn(email) === 'signed-in') window.location.reload();
+      else setVerificationSent(true);
+    } catch (cause) {
+      setError(cause instanceof Error && cause.message.startsWith('ログイン用のメール')
+        ? cause.message : 'ログインできませんでした。登録済みの担当者メールアドレスを確認してください。');
     } finally {
       setBusy(false);
     }
@@ -34,6 +37,7 @@ export default function Login() {
         </button>
         <p className="muted">入力したメールアドレスの担当者としてログインします。</p>
       </form>
+      {verificationSent && <p role="status">メールに記載されたログインリンクを開いてください。</p>}
       {error && <div className="error">{error}</div>}
     </div>
   );

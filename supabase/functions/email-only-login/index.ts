@@ -4,6 +4,7 @@ const allowedOrigins = new Set([
   'https://kazuki101213.github.io',
   'https://bussan-admin.vercel.app',
   'https://test-repo-delivery.vercel.app',
+  'https://bussan-delivery.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
 ]);
@@ -66,6 +67,9 @@ Deno.serve(async (req: Request) => {
 
     const { data: authUser, error: userError } = await admin.auth.admin.getUserById(profile.user_id);
     if (userError || !authUser.user?.email) return response(403, { error: 'この担当者のログイン設定を確認してください。' }, origin);
+    if (authUser.user.app_metadata?.staff_email_verification_required === true) {
+      return response(200, { verificationRequired: true }, origin);
+    }
 
     // Deliberately skip mailbox verification: the user chose email-only login.
     // Generate and immediately redeem a one-time Supabase token server-side.
