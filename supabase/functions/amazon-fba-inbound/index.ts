@@ -19,6 +19,9 @@ const smallParcel=['GROUND_SMALL_PARCEL','AIR_SMALL_PARCEL','AIR_SMALL_PARCEL_EX
 const validSolutions=['AMAZON_PARTNERED_CARRIER','USE_YOUR_OWN_CARRIER'];
 // Amazon caps these three option lists at 20 entries per page.
 const optionPageSize={pageSize:'20'};
+const listPacking=(api:Amazon,path:string)=>api.pages(path+'/packingOptions','packingOptions',optionPageSize);
+const availablePacking=async(api:Amazon,path:string)=>(await listPacking(api,path))
+ .filter(row=>row.status==='OFFERED'&&(!row.expiration||Date.parse(row.expiration)>Date.now()));
 const localDate=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const stageAfter:Record<string,Stage>={create:'created',packing:'packing-options',choosePacking:'packing-confirmed',boxes:'packed',
  placements:'placement-options',transport:'transport-options',confirmPlacement:'placement-confirmed',confirmTransport:'ready'};
@@ -319,12 +322,14 @@ export async function handler(req:Request):Promise<Response>{
    }else if(['packing','placements','transport','windows'].includes(pending.action)){
     // Regeneration only builds choices. No fee or shipment is confirmed.
     await patch({pending:null,work:{...work,notice:'候補の受付を確認できませんでした。候補を再取得してください。'}});return result();
-   }else if(pending.action==='choosePacking'||pending.action==='confirmPlacement'||pending.action==='cancel'){
+   }else if(pending.action==='choosePacking'){
+    const choices=await listPacking(api,path);
+    if(!choices.some(choice=>choice.status==='ACCEPTED'&&choice.packingOptionId===pending.remote))
+     return invalid('Amazonで梱包方法の確定結果を確認できません。時間をおいて再確認してください。');
+   }else if(pending.action==='confirmPlacement'||pending.action==='cancel'){
     const remote=await api.call(path);
     if(pending.action==='cancel'&&remote.status==='VOIDED'){await cancel();return result();}
-    const choices=pending.action==='choosePacking'?remote.packingOptions:remote.placementOptions;
-    const key=pending.action==='choosePacking'?'packingOptionId':'placementOptionId';
-    if(pending.action==='cancel'||!choices?.some((choice:any)=>choice.status==='ACCEPTED'&&choice[key]===pending.remote))
+    if(pending.action==='cancel'||!remote.placementOptions?.some((choice:any)=>choice.status==='ACCEPTED'&&choice.placementOptionId===pending.remote))
      return invalid('Amazonで確定結果を確認できません。時間をおいて再確認してください。');
    }else if(pending.action==='boxes'){
     const remote=await api.pages(path+'/boxes','boxes');
@@ -371,7 +376,7 @@ export async function handler(req:Request):Promise<Response>{
     return finishPrep(pending,problems.map(amazonProblem).filter(Boolean).slice(0,4).join('／'),problems.some(x=>x?.severity==='ERROR'));
    }
    const work={...plan.work,notice:undefined};
-   if(pending.action==='packing')work.packing=(await api.pages(path+'/packingOptions','packingOptions',optionPageSize)).filter(x=>x.status==='OFFERED').map(x=>({id:x.packingOptionId,groups:x.packingGroups,fees:charges(x.fees),expiration:x.expiration}));
+   if(pending.action==='packing')work.packing=(await availablePacking(api,path)).map(x=>({id:x.packingOptionId,groups:x.packingGroups,fees:charges(x.fees),expiration:x.expiration}));
    if(pending.action==='placements')work.placements=(await api.pages(path+'/placementOptions','placementOptions',optionPageSize)).filter(x=>x.status==='OFFERED').map(x=>({id:x.placementOptionId,shipmentIds:x.shipmentIds,fees:charges(x.fees),expiration:x.expiration}));
    if(pending.action==='transport'){
     const all=await api.pages(path+'/transportationOptions','transportationOptions',{...optionPageSize,placementOptionId:work.placement!.id});
@@ -417,8 +422,18 @@ export async function handler(req:Request):Promise<Response>{
   }else if(action==='choosePacking'){
    eligiblePhase(plan,'packing-options');
    const choice=plan.work.packing?.find(option=>option.id===input.option);
-   if(!choice||expired(choice.expiration)||input.confirmed!==true) return invalid('有効な梱包方法を確認して選択してください。');
-   const groups=await packingGroups(api,path,choice.groups,items);
+   if(!choice||expired(choice.expiration)||(input.confirmed!==true&&input.automatic!==true)) return invalid('有効な梱包方法を確認して選択してください。');
+   let groupIds=choice.groups;
+   if(input.automatic===true){
+    const candidates=await availablePacking(api,path);
+    const [current]=candidates;
+    if(candidates.length!==1||current?.packingOptionId!==choice.id||!Array.isArray(current.fees)||
+      !current.fees.every((fee:{value?:unknown}|null)=>charge(fee?.value)?.amount===0)||
+      !Array.isArray(current.packingGroups)||!current.packingGroups.length||current.packingGroups.some((id:unknown)=>typeof id!=='string'||!id))
+     return invalid('Amazonの梱包候補または料金を確認してください。梱包方法を再取得してください。');
+    groupIds=current.packingGroups;
+   }
+   const groups=await packingGroups(api,path,groupIds,items);
    await start({...plan.work,groups},path+'/packingOptions/'+enc(choice.id)+'/confirmation','POST',undefined,{remote:choice.id});
   }else if(action==='boxes'){
    eligiblePhase(plan,'packing-confirmed');
