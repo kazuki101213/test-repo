@@ -3,11 +3,6 @@ import type {Box,Plan,Shipment,Transport} from '../../../../supabase/functions/a
 
 export type {Box,Shipment};
 export type InboundPlan=Plan & {sender:{name:string;postalCode:string;stateOrProvinceCode:string;city:string;addressLine1:string;addressLine2?:string;phoneNumber:string}};
-export const fbaState:Record<Plan['stage'],string>={
- draft:'下書き',created:'Amazonに納品プランを作成済み','packing-options':'梱包方法の選択',
- 'packing-confirmed':'輸送箱の確定',packed:'箱情報を送信済み','placement-options':'納品先の選択',
- 'transport-options':'配送方法の選択','placement-confirmed':'配送の確定',ready:'発送・受領確認',cancelled:'取消済み',
-};
 export const amount=(charges:{amount:number;code:string}[]=[])=>charges.length
  ? charges.map(x=>new Intl.NumberFormat('ja-JP',{style:'currency',currency:x.code}).format(x.amount)).join(' ＋ ')
  : 'Amazonからの請求なし';

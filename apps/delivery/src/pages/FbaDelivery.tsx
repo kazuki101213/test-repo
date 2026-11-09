@@ -5,7 +5,7 @@ import {fetchTask} from '../api';
 import {canSelectFbaItem,fbaSelectionAccount} from '../fbaSelection';
 import {deliveryErrorMessage} from '../errors';
 import FbaInboundPlan from './FbaInboundPlan';
-import {fbaState,inboundRequest,type InboundPlan} from './fbaInboundApi';
+import {inboundRequest,type InboundPlan} from './fbaInboundApi';
 import './fbaDelivery.css';
 
 function groupSelection(rows:DeliveryTask[]) {
@@ -21,8 +21,8 @@ function groupSelection(rows:DeliveryTask[]) {
  });
 }
 
-export default function FbaDelivery({staff,itemIds,createSelectedDrafts,onSelectionChange,onBack}:{
- staff:Staff;itemIds:string[];createSelectedDrafts:boolean;onSelectionChange:(ids:string[])=>void;onBack:()=>void;
+export default function FbaDelivery({staff,itemIds,createSelectedDrafts,onSelectionChange}:{
+ staff:Staff;itemIds:string[];createSelectedDrafts:boolean;onSelectionChange:(ids:string[])=>void;
 }) {
  const [rows,setRows]=useState<DeliveryTask[]>([]),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const [plans,setPlans]=useState<InboundPlan[]>([]),[openId,setOpenId]=useState(''),[historyError,setHistoryError]=useState(''),[creating,setCreating]=useState(false);
@@ -92,16 +92,16 @@ export default function FbaDelivery({staff,itemIds,createSelectedDrafts,onSelect
  },[selectionKey,staff.id,staff.role,createSelectedDrafts,waitingToCreate,draftAttempt,onSelectionChange]);
 
  return <section className="fba-delivery" aria-labelledby="fba-delivery-heading">
-  <div className="fba-delivery-heading"><h2 id="fba-delivery-heading">FBA納品</h2><button type="button" className="btn ghost" disabled={creating} onClick={onBack}>在庫に戻る</button></div>
+  <h2 id="fba-delivery-heading">FBA納品</h2>
   <div className="fba-history">
    <label><span>納品履歴</span> <select value={openId} disabled={creating} onChange={e=>setOpenId(e.target.value)}>
     <option value="">納品を選択</option>
-    {plans.map(p=><option key={p.id} value={p.id}>{p.account} ／ {p.name} ／ {p.fba_inbound_items.length}点 ／ {fbaState[p.stage]}</option>)}
+    {plans.map(p=><option key={p.id} value={p.id}>{p.account}/{p.name}/{p.fba_inbound_items.length}点</option>)}
    </select></label>
    <button type="button" className="btn" disabled={creating||loading} onClick={()=>setHistoryReload(value=>value+1)}>履歴更新</button>
   </div>
   {historyError&&<p className="error" role="alert">{historyError}</p>}
-  {open&&<FbaInboundPlan key={open.id} plan={open} onUpdate={updatePlan} onClose={()=>setOpenId('')}/>}
+  {open&&<FbaInboundPlan key={open.id} plan={open} onUpdate={updatePlan}/>}
   {loading&&<p role="status">選択商品を確認中…</p>}
   {creating&&<p role="status">納品の下書きを準備中…</p>}
   {error&&<p className="error" role="alert">{error}</p>}

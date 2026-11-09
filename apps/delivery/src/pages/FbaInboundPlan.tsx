@@ -22,7 +22,7 @@ function shippingApprovalKey(work:InboundPlan['work'],options:Transport[]){
  return JSON.stringify([work.placement?.id,work.placement?.shipmentIds,work.shipDate,charges,shipments]);
 }
 
-export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan;onUpdate:(p:InboundPlan)=>void;onClose:()=>void}){
+export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdate:(p:InboundPlan)=>void}){
  const items=plan.fba_inbound_items;
  const work=plan.work;
  const [boxes,setBoxes]=useState<Box[]>(()=>work.boxes??[blank(items.map(i=>i.item_id))]);
@@ -160,10 +160,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  return <section className="card fba-workflow" aria-label={plan.name}>
   <div className="fba-selection-group-heading">
    <h3>{plan.name} <span className="inventory-label">{plan.account}</span></h3>
-   <div className="fba-work-header-actions">
-    {canCancel&&<button className="btn" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品取消</button>}
-    <button type="button" className="btn" onClick={onClose}>閉じる</button>
-   </div>
+   {canCancel&&<button className="btn fba-work-cancel" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品取消</button>}
   </div>
   <div className="fba-work-grid">
    <section className="fba-work-box">
