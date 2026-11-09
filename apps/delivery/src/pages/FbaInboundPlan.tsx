@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
-import {amount,fbaCarrierGroups,fbaCarrierName,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
+import {amount,fbaCarrierGroups,fbaCarrierName,InboundRequestError,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
 import {canResizeBoxes,needsWindow,validateBoxes,type Transport} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
@@ -60,17 +60,29 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
  useEffect(()=>{
   const op=plan.pending?.op;
   if(!op||op===failedPoll)return;
-  let active=true;let timer:ReturnType<typeof setTimeout>;
-  const run=()=>{timer=setTimeout(async()=>{
+  let active=true;
+  let failures=0;
+  let timer:ReturnType<typeof setTimeout>;
+  const retryDelays=[2500,5000,10000];
+  const run=(delay=2500)=>{timer=setTimeout(async()=>{
    try{const {plan:next,prepReview}=await inboundRequest<PlanResult>('poll',{id:plan.id});
     if(active){
+     failures=0;
      if(resizePending)finishResize(next);
      onUpdate(next);setPrep(prepReview??null);setError('');
      if(next.work.notice)setShippingApproval(null);
      if(next.pending?.op===op)run();
     }
-   }catch(cause){if(active){setFailedPoll(op);setError(String((cause as Error).message));}}
-  },2500);};
+   }catch(cause){
+    if(!active)return;
+    // Retry checking the existing operation. Never submit it to Amazon again.
+    if(cause instanceof InboundRequestError&&cause.retryable&&failures<retryDelays.length){
+     run(retryDelays[failures++]);
+     return;
+    }
+    setFailedPoll(op);setError(String((cause as Error).message));
+   }
+  },delay);};
   run();
   return()=>{active=false;clearTimeout(timer);};
  },[plan.id,plan.pending?.op,failedPoll]);
