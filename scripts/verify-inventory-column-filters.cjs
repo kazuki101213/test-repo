@@ -39,19 +39,21 @@ let initialRead=true, finishInitial;
 const jsx=(type,props)=>type==='approved-overview'?overviewModule.exports.default(props):({type,props});const api={fetchItems:async (q,signal,progress)=>{lastRequest=q;if(initialRead){initialRead=false;progress?.({items:rows,count:2});return new Promise(resolve=>{finishInitial=()=>resolve({items:rows,count:2})});}return{items:rows,count:2};},fetchStaff:async()=>[],fetchPurchaseDrafts:async()=>[]};
 const draftsModule={exports:{},require:()=>react,Date};vm.runInNewContext(compile('apps/admin/src/hooks/usePurchaseDrafts.ts'),draftsModule);
 const presentation={exports:{}};vm.runInNewContext(compile('packages/shared/src/inventoryPresentation.ts'),presentation);Object.assign(shared,presentation.exports);
-const overviewModule={exports:{},require:name=>name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../inventoryFilters'?filters.exports:{default:'component'}};vm.runInNewContext(compile('apps/admin/src/components/InventoryOverview.tsx'),overviewModule);
+const overviewJsx=(type,props)=>typeof type==='function'?type(props):jsx(type,props);
+const overviewModule={exports:{},require:name=>name==='react/jsx-runtime'?{jsx:overviewJsx,jsxs:overviewJsx}:name==='@bussan/shared'?shared:name==='../inventoryFilters'?filters.exports:{default:'component'}};vm.runInNewContext(compile('apps/admin/src/components/InventoryOverview.tsx'),overviewModule);
 const context={exports:{},require:name=>name==='../components/InventoryOverview'?{default:'approved-overview'}:name==='../hooks/usePurchaseSync'?{usePurchaseSync:()=>({syncing:false,message:'',error:null,startSync:async()=>{}})}:name==='../hooks/usePurchaseDrafts'?draftsModule.exports:name==='../hooks/useInventoryPage'?{useInventoryPage:(_scope,_owner,q)=>{lastRequest=q;return {rows,total:2,loading:initialRead,more:false,error:null,refresh:async()=>{},loadMore:()=>{}};}}:name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../api'?api:name==='../inventory'?inventory.exports:name==='../inventoryFilters'?filters.exports:name==='../inventorySearch'?search.exports:{default:name.includes('InventoryStateFilter')?'state-filter':name.includes('InventoryColumnFilter')?'popup':'component'},AbortController,Date,Set,URL,Intl,window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
 vm.runInNewContext(compile('apps/admin/src/pages/Inventory.tsx'),context);
 let me={role:'admin',id:'AA',code:'AA'};
 function render(){cursor=0;dirty=false;tree=context.exports.default({me});pending.splice(0).forEach(fn=>fn());}
 async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.resolve();}}
 function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)){n.forEach(v=>all(v,out));return out;}out.push(n);all(n.props?.children,out);return out;}
+const records=()=>all(tree).filter(n=>n.type==='article'&&n.props?.['data-item-id']);
 (async()=>{
  await settle();
- assert(all(tree).some(n=>n.props?.role==='table'&&n.props.className==='approved-inventory'),'Show first batch while remaining rows load');
+ assert.equal(records().length,3,'Show first batch while remaining rows load');
  const purchaseLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.sku+'の仕入先の商品ページを開く');assert(purchaseLink);assert.equal(purchaseLink.props.href,row.marketplace_url);assert(purchaseLink.props.className.includes('inline-reference-link'));assert.equal(purchaseLink.props.target,'_blank');assert.equal(purchaseLink.props.rel,'noopener noreferrer');
  const amazonLink=all(tree).find(n=>n.type==='a'&&n.props['aria-label']===row.asin+'をAmazonで開く');assert(amazonLink);assert.equal(amazonLink.props.href,'https://www.amazon.co.jp/dp/'+row.asin);assert(amazonLink.props.className.includes('inline-reference-link'));assert.equal(amazonLink.props.target,'_blank');
- all(tree).find(n=>n.type==='button'&&n.props.title==='商品IDをクリックして編集').props.onClick();await settle();const idEditor=all(tree).find(n=>n.props?.field==='marketplace_item_id');assert.equal(idEditor.props.item.id,row.id);idEditor.props.onClose();await settle();
+ all(tree).find(n=>n.type==='button'&&n.props.title==='商品IDを編集').props.onClick();await settle();const idEditor=all(tree).find(n=>n.props?.field==='marketplace_item_id');assert.equal(idEditor.props.item.id,row.id);idEditor.props.onClose();await settle();
  assert(!all(tree).some(n=>n.type==='button'&&['一覧をCSV','再読込'].includes(n.props.children)),'Requested inventory export and reload controls are absent');
  initialRead=false;dirty=true;await settle();
  const commentHeadings=all(tree).filter(n=>n.type==='button'&&['仕入担当者からのコメントのフィルター','納品担当者からのコメントのフィルター'].includes(n.props['aria-label']));assert.equal(commentHeadings[0].props['aria-label'],'仕入担当者からのコメントのフィルター');
@@ -67,12 +69,11 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,'検索');}
  const stateFilter=()=>all(tree).find(n=>n.type==='state-filter');
  assert(stateFilter());assert(!all(tree).some(n=>['仕入先フィルター','販売先フィルター','販売状態フィルター'].includes(n.props?.['aria-label'])));
- stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],4);
- stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],1);
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.equal(records().length,3);
+ stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['受取前']});await settle();assert.equal(records().length,0);
  all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();assert.equal(Object.keys(stateFilter().props.value).length,0);
- const accessoryRow=all(tree).find(n=>n.props?.role==='row'&&all(n).some(c=>c.type==='button'&&c.props.children===accessory.sku));
- const saleCell=all(accessoryRow).filter(n=>n.props?.role==='cell')[5];
- const moneyButtons=all(saleCell).filter(n=>n.type==='button').slice(-2);
+ const accessoryRow=records().find(n=>n.props['data-item-id']===accessory.id);
+ const moneyButtons=all(accessoryRow).filter(n=>n.type==='button'&&['販売金額を編集','振込金額を編集'].includes(n.props.title));
  assert.deepEqual(moneyButtons.map(n=>n.props.children),['200','150']);
  moneyButtons[0].props.onClick();await settle();
  const editor=all(tree).find(n=>n.props?.field==='sold_price');
@@ -84,15 +85,16 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  fullEditor.props.onClose();await settle();
  const heading=all(tree).find(n=>n.props?.['aria-label']==='Amazon返金金額のフィルター');assert(heading);
  heading.props.onClick({currentTarget:{}});await settle();all(tree).find(n=>n.type==='popup').props.onApply(f(null,'-2000','-1'));await settle();
- assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],3);
+ assert.equal(records().length,2);
  all(tree).find(n=>n.props?.['aria-label']==='Amazon返金金額のフィルター').props.onClick({currentTarget:{}});await settle();all(tree).find(n=>n.type==='popup').props.onApply(f([]));await settle();
- assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],1,'Keep headings with zero matching rows');
+ assert.equal(records().length,0);
+ assert(all(tree).some(n=>n.props?.['aria-label']==='Amazon返金金額のフィルター'),'Keep filters with zero matching rows');
  selector().props.onChange({target:{value:'serial'}});await settle();
  all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.onChange({target:{value:'search'}});await settle();
  all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();
  assert.equal(lastRequest.queryField,'serial');assert.equal(selector().props.value,'serial');
  assert.equal(lastRequest.query,'');assert.equal(lastRequest.statuses,undefined);assert.equal(lastRequest.delivererIds.length,0);assert.equal(lastRequest.from,'');assert.equal(lastRequest.to,'');
- assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],4);
+ assert.equal(records().length,3);
  const assignee=all(tree).find(n=>n.type==='state-filter').props.assignee;assert(assignee,'AA management has the assignee filter');assignee.onChange(['II','LL']);await settle();assert.deepEqual(Array.from(lastRequest.delivererIds),['II','LL']);all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();assert.equal(lastRequest.delivererIds.length,0);
  for(const identity of [{id:'EE',code:'EE',role:'purchaser'},{id:'XX',code:'XX',role:'admin'}]){me=identity;dirty=true;await settle();assert(stateFilter().props.assignee,'Every management inventory user can filter assignees');stateFilter().props.assignee.onChange(['II','LL']);await settle();assert.deepEqual(Array.from(lastRequest.delivererIds),['II','LL']);all(tree).find(n=>n.type==='button'&&n.props.children==='全て解除').props.onClick();await settle();assert.equal(lastRequest.delivererIds.length,0);}
  console.log('34 headings, combined filters, signed ranges, dates, empty values, all fetched rows, zero-match recovery and clear-all UI passed');
