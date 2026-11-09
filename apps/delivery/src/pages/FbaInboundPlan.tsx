@@ -24,9 +24,10 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const [labelShipmentId,setLabelShipmentId]=useState('');
  const [labelError,setLabelError]=useState('');
  const [prep,setPrep]=useState<PrepReview|null>(null);
- const autoPackingAttempt=useRef('');
+ const automaticAttempt=useRef('');
  useEffect(()=>()=>{if(pdf)URL.revokeObjectURL(pdf.url);},[pdf]);
  const editable=['draft','created','packing-options','packing-confirmed'].includes(plan.stage);
+ const canSendBoxes=plan.stage==='packing-confirmed';
  const blocked=busy||!!plan.pending;
  const requestBody={id:plan.id,revision:plan.revision};
  const groups=[...new Set(Object.values(work.groups??{}))];
@@ -34,6 +35,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const singlePacking=packing.length===1?packing[0]:undefined;
  const packingChoice=singlePacking??packing.find(p=>p.id===option);
  const autoPackingId=plan.stage==='packing-options'&&singlePacking?.fees.every(fee=>fee.amount===0)?singlePacking.id:undefined;
+ const autoPlacements=plan.stage==='packed';
 
  useEffect(()=>{
   if(!plan.pending?.op)return;
@@ -51,19 +53,20 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   setBusy(true);setError('');
   try {
    const {plan:next,prepReview}=await inboundRequest<PlanResult>(action,{...requestBody,...fields});
-   onUpdate(next);setPrep(prepReview??null);if(action==='saveBoxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
+   onUpdate(next);setPrep(prepReview??null);if(action==='saveBoxes'||action==='boxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
   }catch(cause){
    setError((cause as Error).message);
    try {onUpdate((await inboundRequest<{plan:InboundPlan}>('get',{id:plan.id})).plan);}catch{/* Keep the current plan open. */}
   }finally{setBusy(false);}
  }
  useEffect(()=>{
-  if(!autoPackingId||blocked||dirty||error||work.notice)return;
-  const attempt=`${plan.revision}:${autoPackingId}`;
-  if(autoPackingAttempt.current===attempt)return;
-  autoPackingAttempt.current=attempt;
-  void apply('choosePacking',{option:autoPackingId,automatic:true});
- },[autoPackingId,blocked,dirty,error,work.notice,plan.revision]);
+  if((!autoPackingId&&!autoPlacements)||blocked||(autoPackingId&&dirty)||error||work.notice)return;
+  const attempt=`${plan.revision}:${autoPackingId??'placements'}`;
+  if(automaticAttempt.current===attempt)return;
+  automaticAttempt.current=attempt;
+  if(autoPackingId)void apply('choosePacking',{option:autoPackingId,automatic:true});
+  else void apply('placements');
+ },[autoPackingId,autoPlacements,blocked,dirty,error,work.notice,plan.revision]);
  async function label(shipment:string,box?:string){
   setBusy(true);setLabelError('');setPdf(null);
   try{const response=await inboundRequest<Blob>('label',{...requestBody,shipment,box});
@@ -125,12 +128,12 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
      </label>
      <select id={'box-'+item.item_id} disabled={blocked} value={boxes.findIndex(b=>b.items.includes(item.item_id))} onChange={e=>assign(item.item_id,Number(e.target.value))}><option value="-1">未割当</option>{boxes.map((_,i)=><option key={i} value={i}>箱 {i+1}</option>)}</select>
     </li>)}</ul>
-    {act('保存','saveBoxes',{boxes},!dirty,'primary')}
+    {canSendBoxes?act('送信','boxes',{boxes},false,'primary'):act('保存','saveBoxes',{boxes},!dirty,'primary')}
    </>}
   </section>
    </div>
   </div>
-  {!ready&&plan.stage!=='cancelled'&&<section className="fba-work-box">
+  {!ready&&plan.stage!=='cancelled'&&!canSendBoxes&&<section className="fba-work-box">
    <h4>Amazonの納品手続き</h4>
    {plan.stage==='draft'&&<>
     {dirty&&<p className="muted">箱情報を保存すると納品プランを作成できます。</p>}
@@ -160,8 +163,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
       {act('梱包方法を再取得','packing')}
      </div>
     </>)}
-   {plan.stage==='packing-confirmed'&&act('箱情報をAmazonに送信','boxes',{},dirty,'primary')}
-   {plan.stage==='packed'&&act('納品先を取得','placements')}
+   {autoPlacements&&(error||work.notice?act('納品先を再取得','placements'):<p role="status">納品先の候補を取得しています…</p>)}
    {['placement-options','transport-options'].includes(plan.stage)&&<>
     <div className="fba-work-actions">
     <label className="fba-work-field">納品先の候補<select aria-label="納品先の候補" value={placement?.id??''} disabled={blocked} onChange={e=>{setOption(e.target.value);setSelected({});}}><option value="">選択してください</option>
