@@ -37,7 +37,7 @@ set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 savepoint manual_code_fixture;
 do $$declare item_id uuid:='99899300-0000-4000-8000-000000000001'; payload jsonb; request_id uuid:=gen_random_uuid(); bad jsonb;begin
  select jsonb_build_object('trade_key','m998993:current','expected_revision',updated_at,'shippingMethod','らくらくメルカリ便',
-  'size','ネコポス','dropoff','セブンイレブン') into payload from app.items where id=item_id;
+  'size','100','dropoff','セブンイレブン') into payload from app.items where id=item_id;
  foreach bad in array array[payload-'size',payload||'{"dropoff":"郵便局"}',payload||'{"automatic_line":true}'] loop
   begin
    perform app.queue_seller_operation(item_id,'shipping_code',bad,gen_random_uuid());
@@ -50,8 +50,39 @@ do $$declare item_id uuid:='99899300-0000-4000-8000-000000000001'; payload jsonb
  if app.queue_seller_operation(item_id,'shipping_code',payload,request_id) is distinct from request_id then
   raise exception 'Manual shipping replay did not return its original request';
  end if;
+ begin
+  perform app.extension_claim_seller_operation(request_id,'mercari-1');
+  raise exception 'A deliverer claimed an extension operation';
+ exception when insufficient_privilege then null;end;
+ perform set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111',true);
+ if app.extension_claim_seller_operation(request_id,'mercari-2') is distinct from false
+   or app.extension_claim_seller_operation(request_id,'mercari-1') is distinct from true then
+  raise exception 'The correct account could not claim the validated manual code request';
+ end if;
+ if app.extension_claim_seller_operation(request_id,'mercari-1') is distinct from false then
+  raise exception 'The same shipping operation was claimed twice';
+ end if;
 end $$;
 rollback to manual_code_fixture;
+savepoint stale_trade_fixture;
+select app.queue_seller_operation(id,'shipping_code',
+  jsonb_build_object('trade_key','m998993:current','expected_revision',updated_at,'shippingMethod','らくらくメルカリ便',
+    'size','100','dropoff','セブンイレブン'),'99899300-0000-4000-8000-000000000003')
+from app.items where lot_seq=998993;
+reset role;
+update app.seller_listings set trade_key='m998993:changed' where external_id='m998993';
+set local role authenticated;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+do $$begin
+ if app.extension_claim_seller_operation('99899300-0000-4000-8000-000000000003','mercari-1') is distinct from false then
+  raise exception 'A stale trade shipping request was claimed';
+ end if;
+ if has_function_privilege('authenticated','app.seller_shipping_validation_error(uuid,text,text,jsonb)','execute')
+   or has_function_privilege('anon','app.seller_shipping_validation_error(uuid,text,text,jsonb)','execute') then
+  raise exception 'Internal shipping validation is exposed';
+ end if;
+end $$;
+rollback to stale_trade_fixture;
 do $$declare payload jsonb;begin
  select jsonb_build_object('trade_key','m998993:current','proof_id','99899300-0000-4000-8000-000000000002','expected_revision',updated_at,'posted',false) into payload from app.items where lot_seq=998993;
  begin
