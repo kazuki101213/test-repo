@@ -2,18 +2,25 @@ import {useEffect,useRef,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
 import {amount,fbaCarrierGroups,fbaCarrierName,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
-import {validateBoxes} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
+import {needsWindow,validateBoxes,type Transport} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
  DELETED:'削除済み',ABANDONED:'中止'};
-const needWindow=(s:{solution:string;preconditions:string[]})=>s.solution==='USE_YOUR_OWN_CARRIER'||s.preconditions.includes('CONFIRMED_DELIVERY_WINDOW');
 const blank=(items:string[]=[]):Box=>({length:0,width:0,height:0,weight:0,items});
 const serial=(sku:string)=>sku.split('-')[0]||sku;
 const shortDate=(s:string)=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'}).format(new Date(s));
 const sellerCentralShipments='https://sellercentral.amazon.co.jp/gp/ssof/shipping-queue.html';
 type PrepReview={owners:Record<string,{prepOwner:string;labelOwner:string}>;requirements:Record<string,string[]>};
 type PlanResult={plan:InboundPlan;prepReview?:PrepReview};
+
+function shippingApprovalKey(work:InboundPlan['work'],options:Transport[]){
+ const charges=work.placement?.fees?.map(fee=>[fee.code,fee.amount]);
+ const shipments=[...options].sort((a,b)=>a.shipmentId.localeCompare(b.shipmentId)).map(option=>[
+  option.shipmentId,option.id,fbaCarrierName(option),option.solution,option.quote?.code,option.quote?.amount,
+ ]);
+ return JSON.stringify([work.placement?.id,work.placement?.shipmentIds,work.shipDate,charges,shipments]);
+}
 
 export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan;onUpdate:(p:InboundPlan)=>void;onClose:()=>void}){
  const items=plan.fba_inbound_items;
@@ -27,6 +34,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const [labelError,setLabelError]=useState('');
  const [prep,setPrep]=useState<PrepReview|null>(null);
  const [failedPoll,setFailedPoll]=useState('');
+ const [shippingApproval,setShippingApproval]=useState<string|null>(null);
  const automaticAttempt=useRef('');
  useEffect(()=>()=>{if(pdf)URL.revokeObjectURL(pdf.url);},[pdf]);
  const editable=['draft','created','packing-options','packing-confirmed'].includes(plan.stage);
@@ -51,7 +59,11 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   let active=true;let timer:ReturnType<typeof setTimeout>;
   const run=()=>{timer=setTimeout(async()=>{
    try{const {plan:next,prepReview}=await inboundRequest<PlanResult>('poll',{id:plan.id});
-    if(active){onUpdate(next);setPrep(prepReview??null);setError('');if(next.pending?.op===op)run();}
+    if(active){
+     onUpdate(next);setPrep(prepReview??null);setError('');
+     if(next.work.notice)setShippingApproval(null);
+     if(next.pending?.op===op)run();
+    }
    }catch(cause){if(active){setFailedPoll(op);setError(String((cause as Error).message));}}
   },2500);};
   run();
@@ -69,7 +81,9 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    }
    const {plan:next,prepReview}=await inboundRequest<PlanResult>(action,{...request,...fields});
    onUpdate(next);setPrep(prepReview??null);if(action==='boxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
+   if(action==='confirmTransport')setShippingApproval(null);
   }catch(cause){
+   if(action==='confirmPlacement'||action==='confirmTransport')setShippingApproval(null);
    setError((cause as Error).message);
    try {onUpdate((await inboundRequest<{plan:InboundPlan}>('get',{id:plan.id})).plan);}catch{/* Keep the current plan open. */}
   }finally{setBusy(false);}
@@ -108,10 +122,15 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const chosen=carrierRows.flatMap(row=>row.choice?[row.choice]:[]);
  const missingCarriers=carrierRows.some(row=>!row.options.length);
  const finalOptions=work.selections??[];
- const missingWindowId=plan.stage==='placement-confirmed'?finalOptions.find(t=>needWindow(t)&&!work.selectedWindows?.[t.shipmentId]&&
+ const confirmTogether=chosen.length>0&&!chosen.some(needsWindow);
+ const autoConfirmTransport=plan.stage==='placement-confirmed'&&shippingApproval!==null&&!!work.shipDate&&work.shipDate>=today&&
+  finalOptions.length>0&&finalOptions.every(t=>!needsWindow(t)&&(!t.expiration||Date.parse(t.expiration)>Date.now()))&&
+  shippingApproval===shippingApprovalKey(work,finalOptions);
+ const missingWindowId=plan.stage==='placement-confirmed'?finalOptions.find(t=>needsWindow(t)&&!work.selectedWindows?.[t.shipmentId]&&
   !work.windows?.[t.shipmentId])?.shipmentId:undefined;
  const problem=error||work.notice;
  useEffect(()=>{
+  if(shippingApproval&&plan.stage==='placement-confirmed'&&!autoConfirmTransport)setShippingApproval(null);
   if(blocked||problem)return;
   let action:string;
   let fields:Record<string,unknown>={};
@@ -121,6 +140,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   else if(autoPlacements)action='placements';
   else if(quotePlacementId){action='transport';fields={option:quotePlacementId,shipDate:date};}
   else if(missingWindowId){action='windows';fields={shipment:missingWindowId};}
+  else if(autoConfirmTransport){action='confirmTransport';fields={confirmed:true};}
   else return;
   const attempt=`${plan.revision}:${action}:${JSON.stringify(fields)}`;
   if(automaticAttempt.current===attempt)return;
@@ -130,7 +150,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    return()=>clearTimeout(timer);
   }
   run();
- },[autoPackingOptions,autoPackingId,autoSendBoxes,autoPlacements,quotePlacementId,date,missingWindowId,blocked,problem,plan.revision]);
+ },[autoPackingOptions,autoPackingId,autoSendBoxes,autoPlacements,quotePlacementId,date,missingWindowId,shippingApproval,autoConfirmTransport,blocked,problem,plan.stage,plan.revision]);
  const ready=plan.stage==='ready';
  const labelDestinations=ready?work.placement?.shipmentIds??[]:[];
  const labelDestination=labelDestinations.includes(labelShipmentId)?labelShipmentId:labelDestinations[0];
@@ -230,11 +250,19 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
       </select></label>;
     })}
     <button className="btn primary" type="button" disabled={blocked||chosen.length!==carrierRows.length} onClick={()=>{
-     if(window.confirm(`納品先を確定しますか？\n出荷日：${date}\n納品先の料金：${amount(work.placement?.fees)}\n${chosen.map(t=>`${fbaCarrierName(t)}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`).join('\n')}`))
-      void apply('confirmPlacement',{options:chosen.map(t=>t.id),confirmed:true});}}>納品先を確定</button></>}
+     const title=confirmTogether?'納品先と配送を確定しますか？':'納品先を確定しますか？';
+     const destinations=chosen.map((t,i)=>{
+      const warehouse=work.shipments?.find(s=>s.id===t.shipmentId)?.warehouse||`納品先 ${i+1}`;
+      return `${warehouse} ／ ${fbaCarrierName(t)}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`;
+     });
+     if(window.confirm([title,`出荷日：${date}`,`納品先の料金：${amount(work.placement?.fees)}`,...destinations].join('\n'))){
+      setShippingApproval(confirmTogether?shippingApprovalKey(work,chosen):null);
+      void apply('confirmPlacement',{options:chosen.map(t=>t.id),confirmed:true});
+     }
+    }}>{confirmTogether?'納品先と配送を確定':'納品先を確定'}</button></>}
    </>}
    {plan.stage==='placement-confirmed'&&<>
-    {finalOptions.filter(needWindow).map((t,i)=>{
+    {finalOptions.filter(needsWindow).map((t,i)=>{
      const windows=work.windows?.[t.shipmentId]?.filter(w=>!w.expiration||Date.parse(w.expiration)>Date.now());
      return <div className="fba-carton" key={t.shipmentId}>
      <strong>{work.shipments?.find(s=>s.id===t.shipmentId)?.warehouse||`納品先 ${i+1}`}：{fbaCarrierName(t)}</strong>
@@ -246,8 +274,9 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
       {act('到着期間を確定','chooseWindow',{shipment:t.shipmentId,option:windowIds[t.shipmentId]},!windows.some(w=>w.id===windowIds[t.shipmentId]))}</>}
      </div>}
     </div>;})}
-    <button className="btn primary" type="button" disabled={blocked||finalOptions.some(t=>needWindow(t)&&!work.selectedWindows?.[t.shipmentId])} onClick={()=>{
-     if(window.confirm(`表示の配送方法で確定しますか？\n${finalOptions.map(t=>`${fbaCarrierName(t)}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`).join('\n')}`))void apply('confirmTransport',{confirmed:true});}}>配送を確定</button>
+    {plan.pending?.action==='confirmTransport'||(autoConfirmTransport&&!problem)?<p role="status">配送を確定しています…</p>:
+     <button className="btn primary" type="button" disabled={blocked||!finalOptions.length||finalOptions.some(t=>needsWindow(t)&&!work.selectedWindows?.[t.shipmentId])} onClick={()=>{
+      if(window.confirm(`表示の配送方法で確定しますか？\n${finalOptions.map(t=>`${fbaCarrierName(t)}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`).join('\n')}`))void apply('confirmTransport',{confirmed:true});}}>配送を確定</button>}
    </>}
   </section>}
   {plan.stage!=='cancelled'&&<section className="fba-work-box">
