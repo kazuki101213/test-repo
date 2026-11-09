@@ -1,5 +1,7 @@
 const fs=require('fs'),vm=require('vm'),ts=require('typescript'),assert=require('assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const estimates={exports:{}};
+vm.runInNewContext(compile('apps/admin/src/productEstimates.ts'),estimates);
 const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);}return out;};
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
 let cursor=0,hooks=[],effects=[],dirty=true,tree,historyCalls=[];
@@ -10,11 +12,26 @@ const product={id:'p',asin:'BTEST00001',model_no:'MODEL',owner_staff_id:me.id,am
 const otherProduct={...product,id:'q',model_no:'OTHER',owner_staff_id:other.id};
 let history=[{id:'sale',product_id:'p',sku:'sale-SKU',sold_on:'2026-10-10',sold_price:301,payout_amount:270,sales_channel:'FBA'}];
 const api={fetchProductCatalogOwners:async()=>[me,other],fetchProducts:async(query,owner)=>[product,otherProduct].filter(row=>!owner||row.owner_staff_id===owner),fetchProductSaleSummaries:async()=>[{product_id:'p',history_count:5,amazon_count:3,amazon_average:301}],fetchProductSaleHistory:async rows=>{historyCalls.push(rows);return history;}};
-const jsx=(type,props)=>({type,props});const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>n==null?'—':'¥'+n,staffDisplayName:staff=>staff.name}:id==='../components/TaskConfirmation'?{useTaskConfirmation:()=>({pending:false,confirmation:null})}:id==='../api'?api:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
+const jsx=(type,props)=>({type,props});const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>n==null?'—':'¥'+n,staffDisplayName:staff=>staff.name}:id==='../components/TaskConfirmation'?{useTaskConfirmation:()=>({pending:false,confirmation:null})}:id==='../api'?api:id==='../productEstimates'?estimates.exports:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
 vm.runInNewContext(compile('apps/admin/src/pages/Products.tsx'),ctx);
 async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me});effects.splice(0).forEach(f=>f());}await Promise.resolve();}}
 (async()=>{
  await settle();assert.equal(historyCalls.length,0,'List must not fetch sale history');assert(text(tree).includes('¥301'));assert(text(tree).includes('3件'));
+ assert(all(tree).some(node=>node.type==='th'&&text(node)==='Amazon販売金額'));
+ const form=()=>all(tree).find(node=>node.type==='form');
+ const control=label=>all(form()).find(node=>node.type==='label'&&text(node.props.children[0])===label)?.props.children[1];
+ assert.equal(control('品番'),undefined);
+ control('ジャンル').props.onChange({target:{value:'パソコン・周辺機器'}});
+ control('販売想定金額').props.onChange({target:{value:'10870'}});
+ await settle();
+ assert.deepEqual(all(form()).filter(node=>node.type==='output').map(text),['¥10000','¥7500'],'The threshold uses the unrounded payout');
+ let inserted;
+ const apiModule={exports:{},require:id=>id==='./productEstimates'?estimates.exports:id==='@bussan/shared'?{
+  getSupabase:()=>({from:table=>{assert.equal(table,'products');return {insert:async row=>{inserted=row;return {error:null};}};}}),
+ }:{}};
+ vm.runInNewContext(compile('apps/admin/src/api.ts'),apiModule);
+ await apiModule.exports.createProduct({asin:'btest00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:'20000',shipping_category:'ブ',shipping_size:'100'});
+ assert.deepEqual(JSON.parse(JSON.stringify(inserted)),{asin:'BTEST00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:20000,shipping_category:'ブ',shipping_size:'100',payout_estimate:17000,target_cost:12920});
  const owner=()=>all(tree).find(n=>n.type==='select');
  assert.equal(owner().props.value,me.id);
  assert(!text(tree).includes('OTHER'));
