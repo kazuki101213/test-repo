@@ -15,7 +15,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  let plan:Plan={id,account:'FBA2',name:'担当者2026/11/7',staff_id:'own',stage:'draft',revision:0,created_at:'',amazon_id:null,pending:null,work:{},
   fba_inbound_items:[{item_id:itemId,sku,asin,title:'商品',condition:'非常に良い',sales_channel:'FBA2'}]};
  let received=0,available=0,buyable=false,published=0,remoteCalls=0,failAfterCreate=false,ambiguousPacking=false,staff='own';
- let prepCategory='NONE',inventoryChanged=false,prepRejected=false,labelRequired=false;
+ let prepCategory='NONE',inventoryChanged=false,prepRejected=false,labelRequired=false,packingReadRejected=false;
  const box={length:40,width:30,height:20,weight:4,items:[itemId]};
  const requests:{path:string;method:string;body:any}[]=[];
  globalThis.fetch=async(input,init)=>{
@@ -58,20 +58,34 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
    return json({operationId:'create-op',inboundPlanId:'wf-test'},202);
   }
   if(path.includes('/operations/'))return json({operationStatus:'SUCCESS',operationProblems:prepRejected?[{severity:'ERROR',code:'PREP_REJECTED',message:'SKUの梱包を確認してください'}]:[]});
-  if(path.endsWith('/packingOptions')&&method==='GET')return json({packingOptions:[{packingOptionId:'packing',status:'OFFERED',packingGroups:['group'],fees:[]}]});
+  if(path.endsWith('/packingOptions')&&method==='GET'){
+   equal(url.searchParams.get('pageSize'),'20');
+   if(packingReadRejected)return json({errors:[{code:'InvalidInput',message:'Packing options could not be read'}]},400);
+   const token=url.searchParams.get('paginationToken');
+   if(!token)return json({packingOptions:[{packingOptionId:'expired',status:'EXPIRED'}],pagination:{nextToken:'next-packing-page'}});
+   equal(token,'next-packing-page');
+   return json({packingOptions:[{packingOptionId:'packing',status:'OFFERED',packingGroups:['group'],fees:[]}]});
+  }
   if(path.endsWith('/packingOptions')&&ambiguousPacking)throw new Error('response lost');
   if(path.endsWith('/packingGroups/group/items'))return json({items:[{msku:sku,asin,quantity:1}]});
   if(path.endsWith('/packingInformation'))equal(body.packageGroupings,[{packingGroupId:'group',boxes:[{contentInformationSource:'BOX_CONTENT_PROVIDED',
     dimensions:{length:40,width:30,height:20,unitOfMeasurement:'CM'},weight:{value:4,unit:'KG'},quantity:1,items:[{msku:sku,quantity:1,prepOwner:labelRequired?'SELLER':'NONE',labelOwner:'SELLER'}]}]}]);
-  if(path.endsWith('/placementOptions')&&method==='GET')return json({placementOptions:[{placementOptionId:'placement',shipmentIds:[shipment],status:'OFFERED',fees:[]}]});
+  if(path.endsWith('/placementOptions')&&method==='GET'){
+   equal(url.searchParams.get('pageSize'),'20');
+   return json({placementOptions:[{placementOptionId:'placement',shipmentIds:[shipment],status:'OFFERED',fees:[]}]});
+  }
   if(path.endsWith('/transportationOptions')&&method==='POST'){
    equal(body.shipmentTransportationConfigurations[0].readyToShipWindow.start,plan.work.shipDate+'T00:00:00.000Z');
    equal(plan.work.transport,undefined);
   }
-  if(path.endsWith('/transportationOptions')&&method==='GET')return json({transportationOptions:[
+  if(path.endsWith('/transportationOptions')&&method==='GET'){
+   equal(url.searchParams.get('pageSize'),'20');
+   equal(url.searchParams.get('placementOptionId'),'placement');
+   return json({transportationOptions:[
     {transportationOptionId:'transport',shipmentId:shipment,carrier:{name:'配送会社',alphaCode:'YAMATO'},shippingMode:'GROUND_SMALL_PARCEL',shippingSolution:'USE_YOUR_OWN_CARRIER',preconditions:['CONFIRMED_DELIVERY_WINDOW']},
     {transportationOptionId:'pallet',shipmentId:shipment,carrier:{name:'ヤマト運輸'},shippingMode:'FREIGHT_LTL',shippingSolution:'USE_YOUR_OWN_CARRIER',preconditions:[]},
-  ]});
+   ]});
+  }
   if(path.endsWith('/'+shipment))return json({shipmentId:shipment,placementOptionId:'placement',status:received?'RECEIVING':'WORKING',
     shipmentConfirmationId:'FBA123',destination:{warehouseId:'TEST'}});
   if(path.endsWith('/deliveryWindowOptions')&&method==='GET')return json({deliveryWindowOptions:[{deliveryWindowOptionId:'window',startDate:'2030-01-03T00:00:00Z',endDate:'2030-01-05T00:00:00Z',validUntil:'2030-01-01T00:00:00Z'}]});
@@ -133,7 +147,14 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   await send('create',{autoPrep:true},409);await send('poll');equal(plan.stage,'created');equal(plan.pending,null);equal(writes(),before+4);
   ambiguousPacking=true;await send('packing',{},502);await send('packing',{},409);
   plan.pending!.at='2020-01-01T00:00:00Z';await send('recover');ambiguousPacking=false;
-  await step('packing','packing-options');await send('choosePacking',{option:'packing'},422);
+  await send('packing');
+  const pendingPacking=plan.pending;
+  assert(pendingPacking?.op);
+  const writesBeforePackingRead=writes();
+  packingReadRejected=true;await send('poll',{},502);equal(plan.pending,pendingPacking);equal(plan.stage,'created');
+  packingReadRejected=false;await send('poll');equal(plan.pending,null);equal(plan.stage,'packing-options');
+  equal(plan.work.packing?.map(row=>row.id),['packing']);equal(writes(),writesBeforePackingRead);
+  await send('choosePacking',{option:'packing'},422);
   await step('choosePacking','packing-confirmed',{option:'packing',confirmed:true});await step('boxes','packed');
   await step('placements','placement-options');await step('transport','transport-options',{option:'placement',shipDate:'2030-01-01'});
   equal(plan.work.transport?.map(t=>[t.id,t.carrierCode]),[['transport','YAMATO']]);
