@@ -6,6 +6,7 @@ import { matchesInventorySearch, type InventorySearchField } from './inventorySe
 import type { SaleRow } from './sales';
 import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
+import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
   DelivererWorkload, ItemInsert, ItemView, LedgerRow,
   MonthlySummary, Product, PurchaseDraft, SpareAccessory, Staff, StockSummary,
@@ -633,6 +634,9 @@ export type ProductDetailsInput = {
   list_price: string; payout_estimate: string; target_cost: string; has_sold_before: string;
 };
 
+export type ProductRegistrationInput = Pick<ProductDetailsInput,
+  'asin' | 'model_no' | 'maker' | 'genre' | 'turnover' | 'list_price' | 'shipping_category' | 'shipping_size'>;
+
 export type ProductCatalogOwner = Pick<Staff, 'id' | 'code' | 'name' | 'display_name'>;
 
 export async function fetchProductCatalogOwners(): Promise<ProductCatalogOwner[]> {
@@ -643,9 +647,8 @@ export async function fetchProductCatalogOwners(): Promise<ProductCatalogOwner[]
 }
 
 export async function updateProductShippingSettings(product: Product, input: { shipping_category: string; shipping_size: string }): Promise<void> {
-  if (input.shipping_category && !['モ', 'ブ', '小'].includes(input.shipping_category)) throw new Error('サイズ区分を選択してください。');
-  const sizes = ['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'];
-  if (input.shipping_size && !sizes.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+  if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
+  if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
   const next = { shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null };
   let query = getSupabase().from('products').update(next).eq('id', product.id);
   query = product.shipping_category === null ? query.is('shipping_category', null) : query.eq('shipping_category', product.shipping_category);
@@ -666,10 +669,9 @@ export async function updateProductDetails(product: Product, input: ProductDetai
   const listPrice = parseNumber('list_price', 0);
   const payout = parseNumber('payout_estimate', 0);
   const targetCost = parseNumber('target_cost', 0);
-  if (input.turnover && !['高','中','低'].includes(input.turnover)) throw new Error('回転を選択してください。');
-  if (input.shipping_category && !['モ','ブ','小'].includes(input.shipping_category)) throw new Error('サイズ区分を選択してください。');
-  const sizes = ['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'];
-  if (input.shipping_size && !sizes.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+  if (input.turnover && !PRODUCT_TURNOVER.includes(input.turnover)) throw new Error('回転を選択してください。');
+  if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
+  if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
   const next = {
     product_no: productNo, asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
     genre: input.genre.trim() || null, turnover: input.turnover || null,
@@ -687,12 +689,22 @@ export async function updateProductDetails(product: Product, input: ProductDetai
   if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
 }
 
-export async function createProduct(input: { asin: string; model_no: string; maker: string; product_no: string }): Promise<void> {
+export async function createProduct(input: ProductRegistrationInput): Promise<void> {
   const asin = input.asin.trim().toUpperCase();
   if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは英数字10文字で入力してください。');
-  const productNo = input.product_no.trim() ? Number(input.product_no) : null;
-  if (productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
-  const { error } = await getSupabase().from('products').insert({ asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null, product_no: productNo });
+  const listPrice = input.list_price.trim() ? Number(input.list_price) : null;
+  if (listPrice !== null && (!Number.isSafeInteger(listPrice) || listPrice < 0)) throw new Error('販売想定金額は0円以上の整数で入力してください。');
+  if (input.genre && !PRODUCT_GENRES.includes(input.genre)) throw new Error('ジャンルを選択してください。');
+  if (input.turnover && !PRODUCT_TURNOVER.includes(input.turnover)) throw new Error('回転を選択してください。');
+  if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
+  if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+
+  const { error } = await getSupabase().from('products').insert({
+    asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
+    genre: input.genre || null, turnover: input.turnover || null, list_price: listPrice,
+    shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null,
+    ...estimateProductAmounts(input.genre, listPrice),
+  });
   if (error) throw error;
 }
 
