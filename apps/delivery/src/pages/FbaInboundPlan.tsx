@@ -53,7 +53,13 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  async function apply(action:string,fields:Record<string,unknown>={}){
   setBusy(true);setError('');
   try {
-   const {plan:next,prepReview}=await inboundRequest<PlanResult>(action,{...requestBody,...fields});
+   let request=requestBody;
+   if(action==='create'&&dirty){
+    const {plan:saved}=await inboundRequest<PlanResult>('saveBoxes',{...request,boxes});
+    onUpdate(saved);setBoxes(saved.work.boxes??boxes);setDirty(false);
+    request={id:saved.id,revision:saved.revision};
+   }
+   const {plan:next,prepReview}=await inboundRequest<PlanResult>(action,{...request,...fields});
    onUpdate(next);setPrep(prepReview??null);if(action==='saveBoxes'||action==='boxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
   }catch(cause){
    setError((cause as Error).message);
@@ -136,7 +142,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
      </label>
      <select id={'box-'+item.item_id} disabled={blocked} value={boxes.findIndex(b=>b.items.includes(item.item_id))} onChange={e=>assign(item.item_id,Number(e.target.value))}><option value="-1">未割当</option>{boxes.map((_,i)=><option key={i} value={i}>箱 {i+1}</option>)}</select>
     </li>)}</ul>
-    {canSendBoxes?act('送信','boxes',{boxes},false,'primary'):act('保存','saveBoxes',{boxes},!dirty,'primary')}
+    {canSendBoxes?act('送信','boxes',{boxes},false,'primary'):plan.stage!=='draft'&&act('保存','saveBoxes',{boxes},!dirty,'primary')}
    </>}
   </section>
    </div>
@@ -144,7 +150,6 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   {!ready&&plan.stage!=='cancelled'&&!canSendBoxes&&<section className="fba-work-box">
    <h4>Amazonの納品手続き</h4>
    {plan.stage==='draft'&&<>
-    {dirty&&<p className="muted">箱情報を保存すると納品プランを作成できます。</p>}
     {prep&&<div role="status"><p>Amazonが指定した梱包・ラベル条件を確認してください。</p>
      {Object.entries(prep.owners).map(([id,owner])=>{
       const requirements=prep.requirements[id]??[];
@@ -152,7 +157,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
       return <p key={id}>{serial(items.find(i=>i.item_id===id)?.sku??'')}：{owner.prepOwner==='NONE'||labelOnly?'梱包不要':`出品者が梱包（Amazon指定：${requirements.join('、')}）`} ／ {owner.labelOwner==='NONE'?'ラベル不要':'出品者がラベル貼付'}</p>;
      })}
     </div>}
-    <div className="fba-work-actions"><button type="button" className="btn primary" disabled={blocked||dirty} onClick={()=>{
+    <div className="fba-work-actions"><button type="button" className="btn primary" disabled={blocked} onClick={()=>{
      if(prep||window.confirm(`${plan.account}に「${plan.name}」を作成しますか？`))void apply('create',{autoPrep:true,acceptPrep:!!prep});
     }}>{prep?'指定条件で納品プランを作成':'Amazonに納品プランを作成'}</button></div>
     {plan.pending?.createAfterPrep&&<p role="status">Amazonに梱包不要を登録しています。反映後に納品プランを作成します。</p>}

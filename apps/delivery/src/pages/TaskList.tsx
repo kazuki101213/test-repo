@@ -218,7 +218,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
       </div>
       <div className="export-actions">
         <span>{shownRows.length} / {inventory.total}商品</span>
-        {onFbaDelivery&&<div className="delivery-fba-actions"><span role="status" aria-live="polite">{selectedIds.length}商品選択</span><button type="button" className="btn" disabled={!selectedIds.length} onClick={onFbaDelivery}>FBA納品</button>{selectedIds.length>0&&<button type="button" className="btn ghost" onClick={()=>onSelectionChange?.([])}>選択解除</button>}</div>}
+        {onFbaDelivery&&<div className="delivery-fba-actions"><span role="status" aria-live="polite">{selectedIds.length}商品選択</span><button type="button" className="btn" data-direction="forward" disabled={!selectedIds.length} onClick={onFbaDelivery}>FBA納品</button>{selectedIds.length>0&&<button type="button" className="btn ghost" onClick={()=>onSelectionChange?.([])}>選択解除</button>}</div>}
       </div>
       </div>
 
