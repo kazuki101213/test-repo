@@ -35,16 +35,16 @@ let tree=cardHarness.renderOnce(()=>card(props)),checks=nodes(tree).filter(n=>n.
 tree=cardHarness.renderOnce(()=>card({...props,readOnly:true}));assert(nodes(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox').every(n=>n.props.disabled),'Catalog does not grant selection permissions');
 (async()=>{
  const h=harness(),read=[],rows={main:base,one:{...base,id:'one',lot_seq:9002,sku:'9002-AAII-date-100',sales_channel:'FBA1'},other:{...base,id:'other',deliverer_id:'other'},self:{...base,id:'self',sales_channel:'自己発送2'}};
- const Page=load('apps/delivery/src/pages/FbaDelivery.tsx',{'react':h.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper,'../errors':{deliveryErrorMessage:String},'../api':{fetchTask:async(id,all)=>{read.push({id,all});return rows[id]}},'./fbaInboundApi':{inboundRequest:async()=>({plans:[]}),fbaState:{}}}).default;
- const itemIds=['main','one','other','self'];let removed,navigated=0;
+ const Page=load('apps/delivery/src/pages/FbaDelivery.tsx',{'react':h.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper,'../errors':{deliveryErrorMessage:String},'../api':{fetchTask:async(id,all)=>{read.push({id,all});return rows[id]}},'./fbaInboundApi':{inboundRequest:async()=>({plans:[]})}}).default;
+ const itemIds=['main','one','other','self'];let removed;
  const onSelectionChange=ids=>{removed=Array.from(ids)};
- const render=()=>Page({staff,itemIds,createSelectedDrafts:false,onSelectionChange,onBack:()=>navigated++});
+ const render=()=>Page({staff,itemIds,createSelectedDrafts:false,onSelectionChange});
  tree=await h.settle(render);assert(read.every(r=>r.all===false));assert.equal(nodes(tree).filter(n=>n.type==='article').length,2,'Fresh permissions and FBA state exclude inappropriate selections');assert.equal(nodes(tree).filter(n=>n.props?.role==='alert').length,1);assert.equal(nodes(tree).filter(n=>String(n.props?.['aria-label']).endsWith('の納品商品')).length,2,'Accounts stay separate');assert(!text(tree).includes('undefined'));assert(text(tree).includes('納品履歴'));
- nodes(tree).find(n=>n.type==='button'&&String(n.props['aria-label'])==='9001を選択から外す').props.onClick();assert.deepEqual(removed,['one','other','self']);nodes(tree).find(n=>n.type==='button'&&text(n)==='在庫に戻る').props.onClick();assert.equal(navigated,1);assert.equal(base.status,'商品登録前');
+ nodes(tree).find(n=>n.type==='button'&&String(n.props['aria-label'])==='9001を選択から外す').props.onClick();assert.deepEqual(removed,['one','other','self']);assert.equal(base.status,'商品登録前');
 
  const batch=harness(),submitted=[],history=[];
  let pendingIds=['main','one'],failSecond=true;
- const BatchPage=load('apps/delivery/src/pages/FbaDelivery.tsx',{'react':batch.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper,'../errors':{deliveryErrorMessage:String},'../api':{fetchTask:async id=>rows[id]},'./FbaInboundPlan':{default:'Plan'},'./fbaInboundApi':{fbaState:{draft:'下書き'},inboundRequest:async(action,payload)=>{
+ const BatchPage=load('apps/delivery/src/pages/FbaDelivery.tsx',{'react':batch.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper,'../errors':{deliveryErrorMessage:String},'../api':{fetchTask:async id=>rows[id]},'./FbaInboundPlan':{default:'Plan'},'./fbaInboundApi':{inboundRequest:async(action,payload)=>{
   if(action==='list')return {plans:[...history]};
   assert.equal(action,'new');
   const [id]=payload.items;
@@ -55,7 +55,7 @@ tree=cardHarness.renderOnce(()=>card({...props,readOnly:true}));assert(nodes(tre
   return {plan};
  }}}).default;
  const keepPending=ids=>{pendingIds=Array.from(ids)};
- const renderBatch=()=>BatchPage({staff,itemIds:pendingIds,createSelectedDrafts:true,onSelectionChange:keepPending,onBack(){}});
+ const renderBatch=()=>BatchPage({staff,itemIds:pendingIds,createSelectedDrafts:true,onSelectionChange:keepPending});
  tree=await batch.settle(renderBatch);
  assert.deepEqual(submitted,[['one'],['main']]);
  assert.deepEqual(pendingIds,['main']);
@@ -68,7 +68,10 @@ tree=cardHarness.renderOnce(()=>card({...props,readOnly:true}));assert(nodes(tre
  assert(!text(tree).includes('このグループの納品を作成'));
  const a=harness(),session={user:{id:'fixture-user'},staff};
  const App=load('apps/delivery/src/App.tsx',{'react':a.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...shared,loadSession:async()=>session,canOpenManagement:()=>false},'./pages/TaskList':{default:'Inventory'},'./hooks/useCompactBidViewport':{useCompactBidViewport:()=>false}},{URLSearchParams,window:{location:{hash:'',pathname:'/',search:''},addEventListener(){},removeEventListener(){}},history:{pushState(){},replaceState(){}}}).default;
- let appTree=await a.settle(()=>App()),inventory=nodes(appTree).find(n=>n.type==='Inventory');assert(inventory);inventory.props.onSelectionChange(['main']);appTree=await a.settle(()=>App());inventory=nodes(appTree).find(n=>n.type==='Inventory');assert.deepEqual(Array.from(inventory.props.selectedIds),['main']);inventory.props.onFbaDelivery();appTree=await a.settle(()=>App());const destination=nodes(appTree).find(n=>n.props?.itemIds);assert(destination);assert.equal(destination.props.createSelectedDrafts,true);assert.deepEqual(Array.from(destination.props.itemIds),['main']);destination.props.onBack();appTree=await a.settle(()=>App());assert.deepEqual(Array.from(nodes(appTree).find(n=>n.type==='Inventory').props.selectedIds),['main'],'Returning to inventory retains checkmarks');
+ let appTree=await a.settle(()=>App()),inventory=nodes(appTree).find(n=>n.type==='Inventory');assert(inventory);inventory.props.onSelectionChange(['main']);appTree=await a.settle(()=>App());inventory=nodes(appTree).find(n=>n.type==='Inventory');assert.deepEqual(Array.from(inventory.props.selectedIds),['main']);inventory.props.onFbaDelivery();appTree=await a.settle(()=>App());const destination=nodes(appTree).find(n=>n.props?.itemIds);assert(destination);assert.equal(destination.props.createSelectedDrafts,true);assert.deepEqual(Array.from(destination.props.itemIds),['main']);
+ const stockMenu=nodes(appTree).find(n=>n.type==='nav'&&n.props['aria-label']==='在庫の切り替え');
+ nodes(stockMenu).find(n=>n.type==='button'&&text(n)==='在庫').props.onClick();
+ appTree=await a.settle(()=>App());assert.deepEqual(Array.from(nodes(appTree).find(n=>n.type==='Inventory').props.selectedIds),['main'],'Returning to inventory retains checkmarks');
  nodes(appTree).find(n=>n.type==='button'&&text(n)==='FBA納品').props.onClick();
  appTree=await a.settle(()=>App());
  assert.equal(nodes(appTree).find(n=>n.props?.itemIds).props.createSelectedDrafts,false,'Opening the history tab has no create intent');

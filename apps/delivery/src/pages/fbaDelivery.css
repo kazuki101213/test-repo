@@ -1,4 +1,4 @@
-.fba-delivery-heading,.fba-selection-group-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.fba-selection-group-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
 .fba-delivery h2 { margin:12px 0; font-size:18px; }
 .fba-selection-group h3,.fba-selection-identity p { margin:0; }
 .fba-selection-head,.fba-selection-item { display:grid; grid-template-columns:minmax(0,1fr) minmax(100px,.25fr) 50px 32px; gap:8px; align-items:center; }
@@ -66,8 +66,8 @@
 .fba-work-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; align-items:start; }
 .fba-work-box { margin-top:8px; border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--surface); min-width:0; overflow-wrap:anywhere; }
 .fba-work-box .fba-label-controls { border-top:0; padding-top:0; margin-top:0; }
-.fba-work-box .fba-label-actions,.fba-work-header-actions { display:flex; flex-wrap:nowrap; align-items:center; gap:var(--control-gap); }
-.fba-work-box .fba-label-actions > .btn,.fba-work-header-actions > .btn { white-space:nowrap; }
+.fba-work-box .fba-label-actions { display:flex; flex-wrap:nowrap; align-items:center; gap:var(--control-gap); }
+.fba-work-box .fba-label-actions > .btn,.fba-work-cancel { white-space:nowrap; }
 .fba-work-field.fba-label-destination { width:max-content; max-width:100%; }
 .fba-work-items { list-style:none; margin:0 0 8px; padding:0; }
 .fba-work-items li { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
@@ -98,6 +98,7 @@
 .fba-history { display:grid; grid-template-columns:minmax(0,max-content) max-content; gap:8px; margin:12px 0; }
 .fba-history label { display:flex; gap:8px; }
 .fba-history label > span { align-self:center; white-space:nowrap; }
+.fba-history label select { width:17rem; min-width:0; field-sizing:fixed; }
 .app .fba-history > .btn { min-height:var(--input-min-height); }
 @media(max-width:767px) {
  .fba-work-grid { grid-template-columns:minmax(0,1fr); gap:0; }
