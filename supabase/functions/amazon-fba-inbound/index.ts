@@ -520,8 +520,9 @@ export async function handler(req:Request):Promise<Response>{
    if(!shipment?.confirmationId||!shipment.boxes?.length)return invalid('Amazonで配送ラベルを準備しています。時間をおいてから再試行してください。');
    const chosen=shipment.boxes.find(b=>b.id===input.box);
    if(input.box&&!chosen)return invalid('輸送箱を確認できません。');
+   const boxIds=chosen?[chosen.id]:shipment.boxes.map(box=>box.id);
    const params={PageType:'PackageLabel_A4_4',LabelType:'UNIQUE',NumberOfPackages:String(shipment.boxes.length),
-    ...(chosen?{PackageLabelsToPrint:chosen.id}:{})};
+    PackageLabelsToPrint:boxIds.join(',')};
    const labels=await api.call('/fba/inbound/v0/shipments/'+enc(shipment.confirmationId)+'/labels',params);
    const document=await fetch(amazonPdfUrl(labels.payload?.DownloadURL),{redirect:'error',signal:AbortSignal.timeout(8000)});
    const raw=document.ok?await document.arrayBuffer():null;
