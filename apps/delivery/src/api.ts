@@ -380,17 +380,13 @@ export async function addPhotosToDrive(itemId: string, purpose: 'product'|'packi
 }
 
 export async function fetchDeliveryStaff(): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await getSupabase().from('staff').select('id,code,name').eq('is_active', true);
+  const { data, error } = await getSupabase().from('staff').select('id,code,name,display_name,role')
+    .eq('is_active', true).order('code');
   if (error) throw error;
   return deliveryStaffOptions(data ?? []);
 }
 
-export async function fetchSpareOwners(): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await getSupabase().from('staff').select('id,code,name')
-    .in('role', ['admin', 'purchaser', 'deliverer']).eq('is_active', true).order('name');
-  if (error) throw error;
-  return deliveryStaffOptions(data ?? []);
-}
+export const fetchSpareOwners = fetchDeliveryStaff;
 
 export async function setInventoryWorkflow(itemId:string,status:ItemStatus):Promise<void>{
  const {error}=await getSupabase().rpc('set_inventory_workflow',{p_item_id:itemId,p_status:status});

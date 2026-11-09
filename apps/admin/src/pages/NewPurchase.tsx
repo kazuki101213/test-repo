@@ -1,5 +1,5 @@
 import { salesChannelLabel } from '@bussan/shared';
-import { STAFF_DISPLAY_NAMES, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
+import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
@@ -16,7 +16,7 @@ import PurchaseDraftToSpare from '../components/PurchaseDraftToSpare';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
-const purchaserNames = ['長部一輝', '石川秀樹'];
+const canAssignPurchase = (staff: Staff) => staff.is_active && (staff.role === 'admin' || staff.role === 'purchaser');
 const workStreamLabels: Record<WorkStream, string> = { 'テレビ': 'モニター・テレビ', 'ブルーレイ': 'ブルーレイレコーダー', '付属品': '付属品', 'その他': '小物' };
 const handoffTemplates = [
   '着払いです。',
@@ -147,8 +147,8 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   useEffect(() => {
     fetchStaff().then(rows => {
       setStaff(rows);
-      setPurchaserId(current => rows.some(s => s.id === current && s.role !== 'deliverer' && purchaserNames.includes(s.name))
-        ? current : rows.find(s => s.name === purchaserNames[0] && s.role !== 'deliverer')?.id ?? '');
+      const purchasers = rows.filter(canAssignPurchase);
+      setPurchaserId(current => purchasers.some(s => s.id === current) ? current : purchasers[0]?.id ?? '');
     }).catch((e) => setError(errorMessage(e)));
     fetchCards().then(rows => {
       setCards(rows);
@@ -193,7 +193,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setUrlOverride(null);
     setMarketplace(selectedSpare.marketplace && MARKETPLACES.includes(selectedSpare.marketplace as Marketplace)
       ? selectedSpare.marketplace as Marketplace : 'その他');
-    const spareOwner = staff.find(row => row.id === selectedSpare.owner_staff_id && row.role !== 'deliverer' && purchaserNames.includes(row.name));
+    const spareOwner = staff.find(row => row.id === selectedSpare.owner_staff_id && canAssignPurchase(row));
     if (spareOwner) setPurchaserId(spareOwner.id);
   }
   useEffect(() => {
@@ -267,7 +267,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setError(null);
     setDone(null);
     try {
-      if (!purchaser || purchaser.role === 'deliverer' || !purchaserNames.includes(purchaser.name)) throw new Error('仕入担当者を選択してください。');
+      if (!purchaser || !canAssignPurchase(purchaser)) throw new Error('仕入担当者を選択してください。');
       const accessorySerial = lotSeq.trim().toLowerCase();
       if (workStream === '付属品' && !/^[1-9][0-9]*[a-z]*$/.test(accessorySerial)) {
         throw new Error('付属品には本体と同じ通番号を入力してください（例：1894aa）。');
@@ -442,13 +442,13 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
             <div className="grid inventory-registration-fields">
               <label className="field"><span>仕入担当者</span>
                 <select value={purchaserId} onChange={(e) => setPurchaserId(e.target.value)} required>
-                  {staff.filter(s => s.role !== 'deliverer' && purchaserNames.includes(s.name)).map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code] || `${s.code} ${s.name}`}</option>)}
+                  {staff.filter(canAssignPurchase).map(s => <option key={s.id} value={s.id}>{staffDisplayName(s)}</option>)}
                 </select>
               </label>
               <label className="field"><span>納品担当者</span>
                 <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)} required={workStream !== '付属品'}>
                   <option value="">— 未定 —</option>
-                  {deliveryStaffOptions(staff).map((s) => <option key={s.id} value={s.id}>{STAFF_DISPLAY_NAMES[s.code]}</option>)}
+                  {deliveryStaffOptions(staff).map(s => <option key={s.id} value={s.id}>{staffDisplayName(s)}</option>)}
                 </select>
               </label>
               <label className="field"><span>作業ライン</span>
