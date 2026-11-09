@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
-import {amount,fbaCarrierName,fbaState,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
+import {amount,fbaCarrierName,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
@@ -101,7 +101,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const sender=plan.sender;
  return <section className="card fba-workflow" aria-label={plan.name}>
   <div className="fba-selection-group-heading">
-   <div><h3>{plan.name} <span className="inventory-label">{plan.account}</span></h3><span>{fbaState[plan.stage]}</span></div>
+   <h3>{plan.name} <span className="inventory-label">{plan.account}</span></h3>
    <div className="fba-work-header-actions">
     {canCancel&&<button className="btn" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品取消</button>}
     <button type="button" className="btn" onClick={onClose}>閉じる</button>
