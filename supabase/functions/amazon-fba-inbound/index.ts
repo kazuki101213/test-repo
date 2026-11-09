@@ -521,7 +521,10 @@ export async function handler(req:Request):Promise<Response>{
    const chosen=shipment.boxes.find(b=>b.id===input.box);
    if(input.box&&!chosen)return invalid('輸送箱を確認できません。');
    const boxIds=chosen?[chosen.id]:shipment.boxes.map(box=>box.id);
-   const params={PageType:'PackageLabel_A4_4',LabelType:'UNIQUE',NumberOfPackages:String(shipment.boxes.length),
+   const option=plan.work.selections?.find(s=>s.shipmentId===shipment.id);
+   const yamatoPartner=option?.solution==='AMAZON_PARTNERED_CARRIER'&&
+    (/^YAMAT(?:O)?$/i.test(option.carrierCode??'')||/yamato|ヤマト/i.test(option.carrier));
+   const params={PageType:yamatoPartner?'PackageLabel_A4_2_YAMATO':'PackageLabel_A4_4',LabelType:'UNIQUE',NumberOfPackages:String(shipment.boxes.length),
     PackageLabelsToPrint:boxIds.join(',')};
    const labels=await api.call('/fba/inbound/v0/shipments/'+enc(shipment.confirmationId)+'/labels',params);
    const document=await fetch(amazonPdfUrl(labels.payload?.DownloadURL),{redirect:'error',signal:AbortSignal.timeout(8000)});
