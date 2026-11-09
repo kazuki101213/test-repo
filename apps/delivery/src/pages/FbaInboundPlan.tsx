@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
-import {amount,fbaCarrierName,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
+import {amount,fbaCarrierGroups,fbaCarrierName,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
@@ -179,10 +179,13 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
     {showCarriers&&carrierRows.length>0&&<>
     {carrierRows.map(({id,options,choice},i)=>{
      const label=carrierRows.length===1?'配送業者':`配送業者（${work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${i+1}`}）`;
-     return <label className="fba-work-field" key={id}>{label}
+     const {primary,other}=fbaCarrierGroups(options);
+     const renderOption=(t:(typeof options)[number])=><option key={t.id} value={t.id}>{fbaCarrierName(t)} ／ {t.solution==='USE_YOUR_OWN_CARRIER'?'配送会社と直接精算':amount(t.quote?[t.quote]:[])}</option>;
+     return <label className="fba-work-field fba-carrier-field" key={id}>{label}
       <select aria-label={label} value={choice?.id??''} disabled={blocked||!options.length} onChange={e=>setSelected({...selected,[id]:e.target.value})}>
        <option value="">{options.length?'配送業者を選択':'選択できる配送業者がありません'}</option>
-       {options.map(t=><option key={t.id} value={t.id}>{fbaCarrierName(t)} ／ {t.solution==='USE_YOUR_OWN_CARRIER'?'配送会社と直接精算':amount(t.quote?[t.quote]:[])}</option>)}
+       {primary.map(renderOption)}
+       {other.length>0&&<optgroup label="それ以外の配送業者">{other.map(renderOption)}</optgroup>}
       </select></label>;
     })}
     <button className="btn primary" type="button" disabled={blocked||chosen.length!==carrierRows.length} onClick={()=>{
