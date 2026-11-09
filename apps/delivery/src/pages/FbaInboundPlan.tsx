@@ -188,10 +188,10 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
     </div>)}
     {canResize&&<div className="fba-work-actions">
      {editingSize?<>
-      {act('箱サイズを変更して再見積もり','resizeBoxes',{dimensions:boxes.map(({length,width,height,weight})=>({length,width,height,weight}))},
+      {act('変更','resizeBoxes',{dimensions:boxes.map(({length,width,height,weight})=>({length,width,height,weight}))},
        !boxes.every(box=>[box.length,box.width,box.height,box.weight].every(value=>Number.isFinite(value)&&value>0)),'primary')}
-      <button className="btn" type="button" disabled={blocked} onClick={stopResize}>変更をやめる</button>
-     </>:<button className="btn" type="button" disabled={blocked} onClick={()=>{setResizing(true);setError('');}}>箱サイズを変更</button>}
+      <button className="btn" type="button" disabled={blocked} onClick={stopResize}>閉じる</button>
+     </>:<button className="btn" type="button" disabled={blocked} onClick={()=>{setResizing(true);setError('');}}>変更</button>}
     </div>}
     {editable&&<div className="fba-work-actions"><button type="button" className="btn" disabled={blocked||boxes.length>=items.length} onClick={()=>editBoxes([...boxes,blank()])}>追加</button></div>}
     <ul className="fba-work-items">{items.map(item=>{
