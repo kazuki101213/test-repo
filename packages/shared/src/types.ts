@@ -35,6 +35,7 @@ export interface Staff {
 
 export interface Product {
   id: string;
+  owner_staff_id?: string;
   product_no: number | null;
   asin: string;
   model_no: string | null;

@@ -1,6 +1,6 @@
 import {sessionRead,stablePhotoUrls,invalidateReadCache,clearPhotoUrlCache,sellerShippingError} from '@bussan/shared';
 import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
-import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition, ItemStatus } from '@bussan/shared';
+import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition, ItemStatus, Staff } from '@bussan/shared';
 
 export async function completeDeliveryWork(itemId:string,date:string):Promise<void>{
  const {error}=await getSupabase().rpc('complete_delivery_work',{p_item_id:itemId,p_on:date});
@@ -379,11 +379,17 @@ export async function addPhotosToDrive(itemId: string, purpose: 'product'|'packi
   } finally {invalidatePhotoReads();}
 }
 
-export async function fetchDeliveryStaff(): Promise<{ id: string; name: string }[]> {
+export type InventoryStaff = Pick<Staff, 'id' | 'code' | 'name' | 'display_name' | 'role'>;
+
+export async function fetchInventoryStaff(): Promise<InventoryStaff[]> {
   const { data, error } = await getSupabase().from('staff').select('id,code,name,display_name,role')
     .eq('is_active', true).order('code');
   if (error) throw error;
-  return deliveryStaffOptions(data ?? []);
+  return data ?? [];
+}
+
+export async function fetchDeliveryStaff(): Promise<InventoryStaff[]> {
+  return deliveryStaffOptions(await fetchInventoryStaff());
 }
 
 export const fetchSpareOwners = fetchDeliveryStaff;

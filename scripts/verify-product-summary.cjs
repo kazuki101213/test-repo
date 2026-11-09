@@ -4,14 +4,25 @@ const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&t
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
 let cursor=0,hooks=[],effects=[],dirty=true,tree,historyCalls=[];
 const react={useState(initial){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof initial==='function'?initial():initial};return[hooks[i].value,v=>{hooks[i].value=typeof v==='function'?v(hooks[i].value):v;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useEffect(fn,deps){const i=cursor++;if(!hooks[i]||deps.some((x,j)=>x!==hooks[i].deps[j])){hooks[i]?.cleanup?.();hooks[i]={deps};effects.push(()=>{hooks[i].cleanup=fn();});}}};
-const product={id:'p',asin:'BTEST00001',model_no:'MODEL',amazon_url:'https://www.amazon.co.jp/dp/BTEST00001'};
+const me={id:'owner-a',name:'管理者A'};
+const other={id:'owner-b',name:'管理者B'};
+const product={id:'p',asin:'BTEST00001',model_no:'MODEL',owner_staff_id:me.id,amazon_url:'https://www.amazon.co.jp/dp/BTEST00001'};
+const otherProduct={...product,id:'q',model_no:'OTHER',owner_staff_id:other.id};
 let history=[{id:'sale',product_id:'p',sku:'sale-SKU',sold_on:'2026-10-10',sold_price:301,payout_amount:270,sales_channel:'FBA'}];
-const api={fetchProducts:async()=>[product],fetchProductSaleSummaries:async()=>[{product_id:'p',history_count:5,amazon_count:3,amazon_average:301}],fetchProductSaleHistory:async rows=>{historyCalls.push(rows);return history;}};
-const jsx=(type,props)=>({type,props});const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>n==null?'—':'¥'+n}:id==='../components/TaskConfirmation'?{useTaskConfirmation:()=>({pending:false,confirmation:null})}:id==='../api'?api:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
+const api={fetchProductCatalogOwners:async()=>[me,other],fetchProducts:async(query,owner)=>[product,otherProduct].filter(row=>!owner||row.owner_staff_id===owner),fetchProductSaleSummaries:async()=>[{product_id:'p',history_count:5,amazon_count:3,amazon_average:301}],fetchProductSaleHistory:async rows=>{historyCalls.push(rows);return history;}};
+const jsx=(type,props)=>({type,props});const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>n==null?'—':'¥'+n,staffDisplayName:staff=>staff.name}:id==='../components/TaskConfirmation'?{useTaskConfirmation:()=>({pending:false,confirmation:null})}:id==='../api'?api:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
 vm.runInNewContext(compile('apps/admin/src/pages/Products.tsx'),ctx);
-async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default();effects.splice(0).forEach(f=>f());}await Promise.resolve();}}
+async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me});effects.splice(0).forEach(f=>f());}await Promise.resolve();}}
 (async()=>{
  await settle();assert.equal(historyCalls.length,0,'List must not fetch sale history');assert(text(tree).includes('¥301'));assert(text(tree).includes('3件'));
+ const owner=()=>all(tree).find(n=>n.type==='select');
+ assert.equal(owner().props.value,me.id);
+ assert(!text(tree).includes('OTHER'));
+ owner().props.onChange({target:{value:other.id}});await settle();
+ assert(text(tree).includes('OTHER'));assert(!text(tree).includes('MODEL'));
+ owner().props.onChange({target:{value:''}});await settle();
+ assert(text(tree).includes('OTHER'));assert(text(tree).includes('MODEL'));
+ owner().props.onChange({target:{value:me.id}});await settle();
  all(tree).find(n=>n.type==='button'&&n.props.title==='直近3件のAmazon販売金額の平均').props.onClick();await settle();
  assert.equal(historyCalls.length,1);assert.equal(historyCalls[0].length,1);assert.equal(historyCalls[0][0].id,'p');assert(text(tree).includes('sale-SKU'));assert(text(tree).includes('¥270'));
  all(tree).find(n=>n.type==='button'&&text(n)==='閉じる').props.onClick();await settle();

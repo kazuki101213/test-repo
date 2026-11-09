@@ -13,7 +13,7 @@ for(const app of ['admin','delivery']){
  let value={},cleanup,focused=false;const listeners={};const ref={current:{open:true,contains:target=>target==='inside',querySelector:()=>({focus(){focused=true;}})}};
  const jsx=(type,props)=>({type,props});const context={exports:{},require:name=>name==='react'?{useRef:()=>ref,useEffect:fn=>{cleanup=fn();}}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared.exports,document:{addEventListener:(name,fn)=>listeners[name]=fn,removeEventListener:(name,fn)=>{assert.equal(listeners[name],fn);delete listeners[name];}}};
  vm.runInNewContext(compile(`apps/${app}/src/components/InventoryStateFilter.tsx`),context);
- let assignee;let tree;const render=()=>tree=context.exports.default({value,assignee,onChange:next=>value=next});render();
+ let assignee,purchaser;let tree;const render=()=>tree=context.exports.default({value,assignee,purchaser,onChange:next=>value=next});render();
  assert.equal(all(tree).filter(n=>n.type==='details').length,1);assert.equal(all(tree).filter(n=>n.type==='select').length,0);
  assert.deepEqual(all(tree).filter(n=>n.type==='legend').map(text),['仕入先','販売先','販売状態']);
  const toggle=(group,option,checked)=>{const fieldset=all(tree).find(n=>n.type==='fieldset'&&all(n).some(v=>v.type==='legend'&&text(v)===group));const label=all(fieldset).find(n=>n.type==='label'&&text(n)===option);assert(label);all(label).find(n=>n.type==='input').props.onChange({target:{checked}});render();};
@@ -32,12 +32,16 @@ for(const app of ['admin','delivery']){
  }
  assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
  assignee={value:[],options:[{id:'II',name:'II 久保田 真由'},{id:'LL',name:'LL 土井 花菜'}],onChange:ids=>{assignee.value=ids;}};render();
+ purchaser={value:[],options:[{id:'AA',name:'AA 長部 一輝'},{id:'EE',name:'EE 石川 秀樹'}],onChange:ids=>{purchaser.value=ids;}};render();
+ assert.deepEqual(all(tree).filter(n=>n.type==='legend').map(text),['仕入担当者','納品担当者','仕入先','販売先','販売状態']);
  toggle('納品担当者','II 久保田 真由',true);toggle('納品担当者','LL 土井 花菜',true);
  assert.deepEqual(Array.from(assignee.value),['II','LL']);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（2）');
  toggle('納品担当者','II 久保田 真由',false);assert.deepEqual(Array.from(assignee.value),['LL']);
+ toggle('仕入担当者','AA 長部 一輝',true);toggle('仕入担当者','EE 石川 秀樹',true);
+ assert.deepEqual(Array.from(purchaser.value),['AA','EE']);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（3）');
  toggle('仕入先','ヤフオク',true);ref.current.open=true;listeners.pointerdown({target:'outside'});render();
  assert(!ref.current.open);assert.deepEqual(Array.from(assignee.value),['LL']);assert.equal(value.marketplace.join(','),'ヤフオク','Closing preserves the selected filters');
- if(app==='admin'){clearButton().props.onClick();render();assert.equal(assignee.value.length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');}
+ if(app==='admin'){clearButton().props.onClick();render();assert.equal(assignee.value.length,0);assert.equal(purchaser.value.length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');}
  cleanup();assert.equal(Object.keys(listeners).length,0);
 }
 console.log('Both real filter components: one menu, multi-select OR/AND, exact return matching, clear, keyboard, outside click and cleanup passed');

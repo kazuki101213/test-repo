@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { yen } from '@bussan/shared';
-import type { Product } from '@bussan/shared';
-import { createProduct, deleteProducts, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductSaleHistory } from '../api';
+import { staffDisplayName, yen } from '@bussan/shared';
+import type { Product, Staff } from '@bussan/shared';
+import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
 import ColoredLabel from '../components/ColoredLabel';
 import { useTaskConfirmation } from '../components/TaskConfirmation';
 import '../components/ExpenseSelection.css';
 import './ProductSelection.css';
 
-export default function Products() {
+export default function Products({ me }: { me: Staff }) {
   const confirmation = useTaskConfirmation();
   const [rows, setRows] = useState<Product[]>([]);
   const [salesByProduct, setSalesByProduct] = useState<Record<string, ProductSaleHistory[]>>({});
@@ -17,6 +17,9 @@ export default function Products() {
   const [historyError,setHistoryError]=useState('');
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
   const [query, setQuery] = useState('');
+  const [owners, setOwners] = useState<ProductCatalogOwner[]>([me]);
+  const [ownerFilter, setOwnerFilter] = useState(me.id);
+  const [ownerError, setOwnerError] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [newProduct, setNewProduct] = useState({ asin: '', model_no: '', maker: '', product_no: '' });
@@ -33,10 +36,20 @@ export default function Products() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    let active = true;
+    void fetchProductCatalogOwners().then(result => {
+      if (active) setOwners(result);
+    }).catch(() => {
+      if (active) setOwnerError('管理者一覧を読み込めませんでした。画面を再読み込みしてください。');
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     const id = setTimeout(() => {
-      fetchProducts(query || undefined)
+      fetchProducts(query || undefined, ownerFilter || undefined)
         .then(async products => {
           if (cancelled) return;
           setRows(products);
@@ -49,7 +62,7 @@ export default function Products() {
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(id); };
-  }, [query, revision]);
+  }, [query, ownerFilter, revision]);
 
   useEffect(()=>{
     if(!historyProduct)return;
@@ -71,7 +84,12 @@ export default function Products() {
 
   async function addProduct() {
     setBusy(true); setError(null);
-    try { await createProduct(newProduct); setNewProduct({ asin: '', model_no: '', maker: '', product_no: '' }); setRevision(n => n + 1); }
+    try {
+      await createProduct(newProduct);
+      setNewProduct({ asin: '', model_no: '', maker: '', product_no: '' });
+      if (ownerFilter && ownerFilter !== me.id) showOwner(me.id);
+      setRevision(n => n + 1);
+    }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -109,6 +127,17 @@ export default function Products() {
     finally { setBusy(false); }
   }
 
+  function showOwner(id: string) {
+    setLoading(true);
+    setRows([]);
+    setSelected(new Set());
+    setError(null);
+    setMessage('');
+    setOwnerFilter(id);
+  }
+
+  const ownerNames = new Map(owners.map(owner => [owner.id, staffDisplayName(owner)]));
+  const ownerOption = (owner: ProductCatalogOwner) => <option key={owner.id} value={owner.id}>{ownerNames.get(owner.id)}</option>;
   const selectedRows = rows.filter(row => selected.has(row.id));
   function askDelete() {
     if (!selectedRows.length || loading || busy || deleting) return;
@@ -146,6 +175,12 @@ export default function Products() {
       <div className="dashboard-workspace with-expense product-workspace registration-workspace"><section className="card dashboard-content product-list">
       <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
+      <label className="product-owner-filter"><span>管理者</span>
+        <select value={ownerFilter} disabled={busy || deleting || confirmation.pending} onChange={event => showOwner(event.target.value)}>
+          <option value="">全員</option>
+          {owners.map(ownerOption)}
+        </select>
+      </label>
       <div className="toolbar product-search-toolbar">
         <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} disabled={deleting || confirmation.pending} onChange={event => { setSelected(new Set()); setQuery(event.target.value); }} />
         <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
@@ -156,6 +191,7 @@ export default function Products() {
 
 
       {error && <div className="error">{error}</div>}
+      {ownerError && <div className="error" role="alert">{ownerError}</div>}
       {message && <p role="status">{message}</p>}
 
       <div className="scroll">
@@ -163,7 +199,7 @@ export default function Products() {
           <thead>
             <tr>
               <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th>
-              <th>ジャンル</th><th>回転</th><th>Amazon販売金額（直近3件平均）</th>
+              {!ownerFilter && <th>管理者</th>}<th>ジャンル</th><th>回転</th><th>Amazon販売金額（直近3件平均）</th>
               <th className="num">販売想定金額</th><th className="num">振込想定金額</th>
               <th className="num">仕入れ目標金額</th><th>実績</th><th>サイズ</th><th aria-label="選択" />
             </tr>
@@ -175,6 +211,7 @@ export default function Products() {
                 <td><span className="reference-value">{cell(p, 'asin', p.asin)}<a className="inline-reference-link" href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}><span className="external-link-arrow" aria-hidden="true" /></a></span></td>
                 <td>{cell(p, 'model_no', p.model_no ?? '—')}</td>
                 <td>{cell(p, 'maker', p.maker ?? '—')}</td>
+                {!ownerFilter && <td>{ownerNames.get(p.owner_staff_id ?? '') ?? '—'}</td>}
                 <td>{cell(p, 'genre', p.genre ?? '—')}</td>
                 <td>{cell(p, 'turnover', p.turnover ?? '—')}</td>
                 <td>{(() => {

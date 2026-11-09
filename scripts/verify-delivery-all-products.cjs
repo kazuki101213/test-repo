@@ -3,7 +3,7 @@ const jsx=(type,props)=>({type,props}),nodes=n=>!n||typeof n!=='object'?[]:Array
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 function hooks(){let cursor=0,values=[];return{reset(){cursor=0;},react:{useState(v){const i=cursor++;if(!values[i])values[i]={value:typeof v==='function'?v():v};return[values[i].value,next=>values[i].value=typeof next==='function'?next(values[i].value):next];},useRef(v){return values[cursor++]??={current:v};},useEffect(){},useMemo:f=>f(),useCallback:f=>f,lazy:f=>f,Suspense:()=>{}}};}
 const staff={id:'own',code:'DD',role:'deliverer',name:'DD'},own={id:'one',sku:'100-EEDD-date',status:'検品中',deliverer_id:'own',title:'own',is_accessory:false},other={...own,id:'two',sku:'101-EEHH-date',deliverer_id:'other',deliverer_name:'HH',title:'other'};
-const shared={STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','出品中','取引中','販売済','返品処理','動作不良'],canViewDeliveryAssignee:s=>s.role==='admin',staffDisplayName:v=>v,matchesInventoryFilters:()=>true,jpDate:v=>v,productModelText:t=>t.title};
+const shared={STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','出品中','取引中','販売済','返品処理','動作不良'],canViewDeliveryAssignee:s=>s.role==='admin',deliveryStaffOptions:rows=>rows,staffDisplayName:v=>v,matchesInventoryFilters:()=>true,jpDate:v=>v,productModelText:t=>t.title};
 const presentation={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/inventoryPresentation.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,presentation);Object.assign(shared,presentation.exports);const notices={exports:{},URL};vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/noticeUrl.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,notices);Object.assign(shared,notices.exports);
 const TaskCard=()=>{},rt=hooks();let scope,filters,extraRows=[];
 const channelLabels={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/salesChannels.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,channelLabels);Object.assign(shared,channelLabels.exports);
@@ -27,6 +27,14 @@ for(const [label,statuses] of [['作業中',['受取前','検品中','商品登�
   assert.ok(displayed.every(status=>shared.STATUSES.includes(status)));
 }
 const detailedFilter=()=>nodes(tree).find(n=>typeof n.type==='function'&&n.props.value&&n.props.onChange);
+button(tree,'全商品').props.onClick();tree=render();
+assert.equal(scope,'delivery-all');
+assert.equal(detailedFilter().props.assignee,undefined);
+detailedFilter().props.purchaser.onChange(['AA','EE']);tree=render();
+assert.deepEqual(Array.from(filters.purchaserIds),['AA','EE']);
+button(tree,'全て解除').props.onClick();tree=render();
+assert.equal(filters.purchaserIds.length,0);
+button(tree,'全商品').props.onClick();tree=render();
 const searchGroup=nodes(tree).find(n=>n.props['aria-label']==='在庫検索');
 const filterControls=nodes(searchGroup).find(n=>n.props.className==='delivery-inventory-filter-controls');
 assert.equal(filterControls.props.children[0],detailedFilter());
