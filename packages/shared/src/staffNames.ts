@@ -12,9 +12,11 @@ const labelsByName = new Map([
 ]);
 export const DELIVERY_STAFF_CODES = ['AA', 'DD', 'EE', 'HH', 'II', 'KK', 'LL', 'MM'] as const;
 /** One ordered list for delivery assignee selectors in both apps. */
-export function deliveryStaffOptions<T extends { name: string; code?: string; is_active?: boolean }>(rows: T[]): T[] {
+export function deliveryStaffOptions<T extends { name: string; code?: string; is_active?: boolean; role?: Staff['role'] }>(rows: T[]): T[] {
   const codeOf = (row: T) => row.code || DELIVERY_STAFF_CODES.find(code => STAFF_DISPLAY_NAMES[code] === staffDisplayName(row.name));
-  return DELIVERY_STAFF_CODES.flatMap(code => rows.filter(row => row.is_active !== false && codeOf(row) === code));
+  const active = rows.filter(row => row.is_active !== false);
+  const roster = DELIVERY_STAFF_CODES.flatMap(code => active.filter(row => codeOf(row) === code));
+  return [...roster, ...active.filter(row => row.role === 'admin' && !roster.includes(row))];
 }
 /** Format labels without changing identity fields or saved business names. */
 export function staffDisplayName(value: string | Pick<Staff, 'name'> & Partial<Pick<Staff, 'code' | 'display_name'>> | null | undefined): string {

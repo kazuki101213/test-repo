@@ -18,6 +18,14 @@ async function verify(staff,search,expectedAutoRead){
  for(const code of ['AA','XX','']){
   for(const role of ['admin','purchaser','deliverer'])assert.equal(names.exports.canViewDeliveryAssignee({code,role}),role==='admin');
  }
+ const firstAdmin={id:'first',code:'AA',name:'長部一輝',role:'admin',is_active:true};
+ const deliverer={id:'delivery',code:'DD',name:'既存の納品担当者',role:'deliverer',is_active:true};
+ const secondAdmin={id:'second',code:'XX',name:'追加の管理者',role:'admin',is_active:true,display_name:'XX 追加の管理者'};
+ const other={id:'other',code:'YY',name:'名簿にない納品担当者',role:'deliverer',is_active:true};
+ const inactive={id:'inactive',code:'ZZ',name:'無効な管理者',role:'admin',is_active:false};
+ const options=names.exports.deliveryStaffOptions([secondAdmin,inactive,deliverer,other,firstAdmin]);
+ assert.deepEqual(Array.from(options,row=>row.id),['first','delivery','second']);
+ assert.equal(names.exports.staffDisplayName(secondAdmin),'XX 追加の管理者');
  await verify({id:'admin',code:'XX',name:'別の管理者',role:'admin'},'?itemId=item&openMessages=1',1);
  await verify({id:'worker',code:'AA',name:'長部一輝',role:'purchaser'},'?itemId=item&openMessages=1',0);
  await verify({id:'worker',code:'AA',name:'長部一輝',role:'deliverer'},'?itemId=item&openMessages=1',0);
