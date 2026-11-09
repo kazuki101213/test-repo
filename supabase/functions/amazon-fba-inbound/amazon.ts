@@ -36,13 +36,19 @@ export async function amazonClient(account:Account) {
  }
  async function pages(path:string, field:string, query:Record<string,string>={}) {
   const result:any[]=[];let token='';
-  for(let page=0;page<12;page++){
+  const visited=new Set<string>(),started=performance.now();
+  for(let page=0;page<100&&performance.now()-started<60_000;page++){
    const response=await call(path,{pageSize:'50',...query,...(token?{paginationToken:token}:{})});
    if(!Array.isArray(response[field])) throw new WorkflowError(502,'Amazonから一覧を確認できません。');
-   result.push(...response[field]);token=response.pagination?.nextToken;
-   if(!token)return result;
+   result.push(...response[field]);
+   const next=response.pagination?.nextToken;
+   if(next===undefined||next===null||next==='')return result;
+   if(typeof next!=='string'||visited.has(next))throw new WorkflowError(502,'Amazonから一覧の続きページを確認できません。処理結果を再確認してください。');
+   visited.add(next);token=next;
+   // Continue below Amazon's default two requests per second for paged inbound reads.
+   await new Promise(resolve=>setTimeout(resolve,500));
   }
-  throw new WorkflowError(502,'Amazonの一覧をすべて取得できません。');
+  throw new WorkflowError(502,'Amazonの一覧取得が上限に達しました。時間をおいて処理結果を再確認してください。');
  }
  return {call,pages,sellerId};
 }

@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
 import {amount,fbaCarrierGroups,fbaCarrierName,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
-import {needsWindow,validateBoxes,type Transport} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
+import {canResizeBoxes,needsWindow,validateBoxes,type Transport} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
@@ -25,7 +25,9 @@ function shippingApprovalKey(work:InboundPlan['work'],options:Transport[]){
 export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdate:(p:InboundPlan)=>void}){
  const items=plan.fba_inbound_items;
  const work=plan.work;
- const [boxes,setBoxes]=useState<Box[]>(()=>work.boxes??[blank(items.map(i=>i.item_id))]);
+ const resizePending=plan.pending?.action==='resizeBoxes';
+ const [boxes,setBoxes]=useState<Box[]>(()=> (resizePending?plan.pending?.boxes:undefined)??work.boxes??[blank(items.map(i=>i.item_id))]);
+ const [resizing,setResizing]=useState(resizePending);
  const [dirty,setDirty]=useState(!work.boxes),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [option,setOption]=useState(''),[date,setDate]=useState(()=>work.shipDate||tokyoDate(3)),[selected,setSelected]=useState<Record<string,string>>({});
  const [tracking,setTracking]=useState<Record<string,string>>({}),[windowIds,setWindowIds]=useState<Record<string,string>>({});
@@ -38,6 +40,8 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
  const automaticAttempt=useRef('');
  useEffect(()=>()=>{if(pdf)URL.revokeObjectURL(pdf.url);},[pdf]);
  const editable=['draft','created','packing-options','packing-confirmed'].includes(plan.stage);
+ const canResize=canResizeBoxes(plan.stage)&&!!work.boxes?.length;
+ const editingSize=resizing&&canResize;
  const canSendBoxes=plan.stage==='packing-confirmed';
  const blocked=busy||!!plan.pending;
  const requestBody={id:plan.id,revision:plan.revision};
@@ -60,6 +64,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
   const run=()=>{timer=setTimeout(async()=>{
    try{const {plan:next,prepReview}=await inboundRequest<PlanResult>('poll',{id:plan.id});
     if(active){
+     if(resizePending)finishResize(next);
      onUpdate(next);setPrep(prepReview??null);setError('');
      if(next.work.notice)setShippingApproval(null);
      if(next.pending?.op===op)run();
@@ -70,6 +75,14 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
   return()=>{active=false;clearTimeout(timer);};
  },[plan.id,plan.pending?.op,failedPoll]);
 
+ function finishResize(next:InboundPlan){
+  if(next.pending||next.stage!=='packed'||next.work.notice||!next.work.boxes)return;
+  setBoxes(next.work.boxes);setDirty(false);setResizing(false);
+  setOption('');setSelected({});setShippingApproval(null);
+ }
+ function stopResize(){
+  setBoxes(work.boxes??[]);setResizing(false);setError('');
+ }
  async function apply(action:string,fields:Record<string,unknown>={}){
   setBusy(true);setError('');
   try {
@@ -80,6 +93,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
     request={id:saved.id,revision:saved.revision};
    }
    const {plan:next,prepReview}=await inboundRequest<PlanResult>(action,{...request,...fields});
+   if((action==='recover'&&resizePending)||action==='resizeBoxes')finishResize(next);
    onUpdate(next);setPrep(prepReview??null);if(action==='boxes'){setBoxes(next.work.boxes??boxes);setDirty(false);}
    if(action==='confirmTransport')setShippingApproval(null);
   }catch(cause){
@@ -108,7 +122,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
  const today=tokyoDate();
  const parsedDate=new Date(date+'T00:00:00Z');
  const validDate=/^\d{4}-\d{2}-\d{2}$/.test(date)&&date>=today&&Number.isFinite(+parsedDate)&&parsedDate.toISOString().slice(0,10)===date;
- const canQuote=plan.stage==='placement-options'||plan.stage==='transport-options';
+ const canQuote=!editingSize&&(plan.stage==='placement-options'||plan.stage==='transport-options');
  const quoteInProgress=plan.pending?.action==='transport';
  const showCarriers=plan.stage==='transport-options'&&!quoteInProgress&&!!placement&&placement.id===work.placement?.id&&date===work.shipDate&&validDate;
  const quotePlacementId=canQuote&&!showCarriers&&validDate?placement?.id:undefined;
@@ -131,7 +145,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
  const problem=error||work.notice;
  useEffect(()=>{
   if(shippingApproval&&plan.stage==='placement-confirmed'&&!autoConfirmTransport)setShippingApproval(null);
-  if(blocked||problem)return;
+  if(blocked||problem||editingSize)return;
   let action:string;
   let fields:Record<string,unknown>={};
   if(autoPackingOptions)action='packing';
@@ -150,7 +164,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
    return()=>clearTimeout(timer);
   }
   run();
- },[autoPackingOptions,autoPackingId,autoSendBoxes,autoPlacements,quotePlacementId,date,missingWindowId,shippingApproval,autoConfirmTransport,blocked,problem,plan.stage,plan.revision]);
+ },[autoPackingOptions,autoPackingId,autoSendBoxes,autoPlacements,quotePlacementId,date,missingWindowId,shippingApproval,autoConfirmTransport,blocked,problem,editingSize,plan.stage,plan.revision]);
  const ready=plan.stage==='ready';
  const labelDestinations=ready?work.placement?.shipmentIds??[]:[];
  const labelDestination=labelDestinations.includes(labelShipmentId)?labelShipmentId:labelDestinations[0];
@@ -166,8 +180,19 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
     <h4>納品商品</h4>
     {boxes.map((box,index)=><div className="fba-carton" key={index}>
      <div className="fba-work-actions"><strong>箱 {index+1}</strong>{editable&&boxes.length>1&&<button className="btn" type="button" disabled={blocked} onClick={()=>editBoxes(boxes.filter((_,j)=>index!==j))}>箱を削除</button>}</div>
-     <div className="fba-carton-fields">{(['length','width','height','weight'] as const).map((field,i)=><label key={field}>{['長さ (cm)','幅 (cm)','高さ (cm)','重量 (kg)'][i]}<input type="number" min="0.01" step="0.01" inputMode="decimal" disabled={!editable||blocked} value={box[field]||''} style={{width:`calc(${String(box[field]||'').length}ch + 32px)`}} onChange={event=>changeBox(index,{[field]:Number(event.target.value)})}/></label>)}</div>
+     <div className="fba-carton-fields">{(['length','width','height','weight'] as const).map((field,i)=><label key={field}>{['長さ (cm)','幅 (cm)','高さ (cm)','重量 (kg)'][i]}<input type="number" min="0.01" step="0.01" inputMode="decimal" disabled={!(editable||editingSize)||blocked} value={box[field]||''} style={{width:`calc(${String(box[field]||'').length}ch + 32px)`}} onChange={event=>{
+      const patch={[field]:Number(event.target.value)};
+      if(editingSize)setBoxes(current=>current.map((row,i)=>i===index?{...row,...patch}:row));
+      else changeBox(index,patch);
+     }}/></label>)}</div>
     </div>)}
+    {canResize&&<div className="fba-work-actions">
+     {editingSize?<>
+      {act('箱サイズを変更して再見積もり','resizeBoxes',{dimensions:boxes.map(({length,width,height,weight})=>({length,width,height,weight}))},
+       !boxes.every(box=>[box.length,box.width,box.height,box.weight].every(value=>Number.isFinite(value)&&value>0)),'primary')}
+      <button className="btn" type="button" disabled={blocked} onClick={stopResize}>変更をやめる</button>
+     </>:<button className="btn" type="button" disabled={blocked} onClick={()=>{setResizing(true);setError('');}}>箱サイズを変更</button>}
+    </div>}
     {editable&&<div className="fba-work-actions"><button type="button" className="btn" disabled={blocked||boxes.length>=items.length} onClick={()=>editBoxes([...boxes,blank()])}>追加</button></div>}
     <ul className="fba-work-items">{items.map(item=>{
      const boxIndex=boxes.findIndex(box=>box.items.includes(item.item_id));
@@ -234,7 +259,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
       {(!packing.length||problem)&&act('梱包方法を再取得','packing')}
      </div>
     </>)}
-   {autoPlacements&&(error||work.notice?act('再取得','placements'):<p role="status">納品先の候補を取得しています…</p>)}
+   {autoPlacements&&!editingSize&&(error||work.notice?act('再取得','placements'):<p role="status">納品先の候補を取得しています…</p>)}
    {canQuote&&<>
     <div className="fba-work-actions fba-transport-actions">
     <label className="fba-work-field">納品先の候補<select aria-label="納品先の候補" value={placement?.id??''} disabled={blocked||!placements.length} onChange={e=>{setOption(e.target.value);setSelected({});}}>
