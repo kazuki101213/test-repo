@@ -85,7 +85,7 @@ Deno.serve(async req => {
     if (profileError) throw profileError;
     const { data: staff, error: staffError } = await admin.from('staff').select('id,role,is_active').eq('id', profile?.staff_id || '').maybeSingle();
     if (staffError) throw staffError;
-    if (!staff?.is_active || !(app === 'admin' ? ['admin','purchaser'] : ['admin','deliverer']).includes(staff.role)) return respond(403, { error: 'Active app staff required' }, origin);
+    if (!staff?.is_active || !(app === 'admin' ? ['admin','purchaser'] : ['admin','purchaser','deliverer']).includes(staff.role)) return respond(403, { error: 'Active app staff required' }, origin);
     if (payload.action === 'setup') {
       if (staff.role !== 'admin') return respond(403, { error: 'Admin required' }, origin);
       const keys = await generateVapidKeys({ extractable: true });

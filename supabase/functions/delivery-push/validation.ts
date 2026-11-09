@@ -16,7 +16,7 @@ export function validSubscription(value: unknown): value is { endpoint: string; 
 
 export const appBaseUrls: Record<'admin' | 'delivery', readonly string[]> = {
   admin: ['https://bussan-admin.vercel.app/', 'https://test-repo-delivery.vercel.app/', 'https://kazuki101213.github.io/test-repo/admin/', 'http://localhost:5173/'],
-  delivery: ['https://test-repo-delivery.vercel.app/', 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/'],
+  delivery: ['https://test-repo-delivery.vercel.app/', 'https://bussan-delivery.vercel.app/', 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/'],
 };
 
 export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string }) {

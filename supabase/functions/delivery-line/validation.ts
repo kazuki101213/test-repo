@@ -1,4 +1,5 @@
 export const deliveryOrigin = 'https://test-repo-delivery.vercel.app';
+export const deliveryOrigins = new Set([deliveryOrigin, 'https://bussan-delivery.vercel.app']);
 export function friendUrl(value: string | undefined): string | null {
   try {
     const url = new URL(value || '');
