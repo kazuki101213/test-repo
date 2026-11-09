@@ -328,17 +328,17 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
   </div>
   {ready&&<section className="fba-work-box">
    <h4>発送・受領確認</h4>
-   <div className="fba-work-actions">
-    {act('Amazonの状況を確認','refresh',{},false,'primary')}
-    <a className="btn" href={sellerCentralShipments} target="_blank" rel="noopener noreferrer">セラーセントラルの納品一覧</a>
+   <div className="fba-work-actions fba-shipment-actions">
+    {act('配送状況確認','refresh',{},false,'primary')}
+    <a className="btn" href={sellerCentralShipments} target="_blank" rel="noopener noreferrer">納品一覧</a>
    </div>
-   {!work.shipments?.some(s=>s.confirmationId)&&<p>Amazonの状況を確認すると、納品番号と輸送箱が表示されます。</p>}
+   {!work.shipments?.some(s=>s.confirmationId)&&<p>「配送状況確認」を押すと、納品番号と輸送箱が表示されます。</p>}
    {work.shipments?.map((s,i)=>{
     const option=finalOptions.find(t=>t.shipmentId===s.id);
     const self=option?.solution==='USE_YOUR_OWN_CARRIER';
     return <div className="fba-carton" key={s.id}>
      <strong>{s.warehouse||`納品先 ${i+1}`} {s.confirmationId||''}</strong>
-     {option&&<p>配送業者 {fbaCarrierName(option)} ／ {self?'配送会社と直接精算':option.quote?`Amazonの配送料見積もり ${amount([option.quote])}`:'見積もりなし'}</p>}
+     {option&&<p>{fbaCarrierName(option)}/{self?'配送会社と直接精算':option.quote?amount([option.quote]):'見積もりなし'}</p>}
      <p>{shipmentStatus[s.status]??s.status}{s.trackingSaved&&!['SHIPPED','IN_TRANSIT','DELIVERED','CHECKED_IN','RECEIVING','CLOSED'].includes(s.status)?' ／ 追跡番号送信済み':''}
       {s.received?` ／ 受領 ${Object.values(s.received).reduce((a,b)=>a+b,0)}点`:''}</p>
      {s.boxes?.map((b,j)=><div className="fba-work-actions" key={b.id}><span>箱 {j+1}（{b.skus.map(serial).join('、')}）</span>
