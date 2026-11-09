@@ -81,6 +81,26 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
   await realApi.exports.createItem(saved.payload,'spare');assert.match(requests.at(-1).p_item.sku,/^1894aa-/);
  }
  console.log('Main form preserved; atomic spare save retains 1894aa; exact eight ordered assignee options passed');
+ // Selecting a reserve before switching to an accessory must still carry its purchase identity.
+ hooks.splice(0);cursor=0;pending=[];selectedDraft=null;dirty=true;saved=undefined;
+ const toshibaSpare={...spare,owner_staff_id:'MM',purchased_at:'2026-10-13',cost_amount:1815,marketplace_item_id:'f1234567890'};
+ currentSpares=[toshibaSpare];
+ await settle();
+ field('納品担当者').props.onChange({target:{value:'MM'}});await settle();
+ all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
+ field('作業ライン').props.onChange({target:{value:'付属品'}});await settle();
+ field('通番号').props.onChange({target:{value:'2440'}});await settle();
+ assert.equal(field('購入日').props.value,toshibaSpare.purchased_at);
+ assert.equal(field('仕入先').props.value,'ヤフオク');
+ assert.equal(field('商品ID').props.value,toshibaSpare.marketplace_item_id);
+ assert.equal(field('商品ID').props.readOnly,true);
+ assert.equal(field('仕入担当者').props.value,'AA');
+ currentSpares=[{...toshibaSpare,tracking_no:'refreshed-track'}];
+ await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+ assert.equal(saved,undefined);assert.equal(field('追跡番号').props.value,'refreshed-track');
+ await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+ assert.equal(saved.id,'spare');assert.equal(saved.payload.lot_seq,2440);assert.equal(saved.payload.marketplace_item_id,toshibaSpare.marketplace_item_id);
+ assert.equal(saved.payload.cost_amount,1815);assert.equal(saved.payload.deliverer_id,'MM');assert.equal(saved.payload.purchaser_id,'AA');
  // The requested location is the inventory registration form footer.
  for(const imported of [false,true]){
   hooks.splice(0);cursor=0;pending=[];dirty=true;currentSpares=[];saved=undefined;
