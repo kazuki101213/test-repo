@@ -22,6 +22,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  let boxResponse:'reject'|'lost'|'accept'='reject',remoteBox=box;
  const resizedBox={...editedBox,width:35,height:25};
  const requests:{path:string;method:string;body:any}[]=[];
+ let expectedLabelIds='box',expectedPackageCount='1';
  globalThis.fetch=async(input,init)=>{
   const url=new URL(input instanceof Request?input.url:String(input));
   const method=init?.method??'GET',path=url.pathname;
@@ -106,8 +107,8 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   if(path.endsWith('/deliveryWindowOptions')&&method==='GET')return json({deliveryWindowOptions:[{deliveryWindowOptionId:'window',startDate:'2030-01-03T00:00:00Z',endDate:'2030-01-05T00:00:00Z',validUntil:'2030-01-01T00:00:00Z'}]});
   if(path.endsWith('/'+shipment+'/boxes'))return json({boxes:[{boxId:'box',items:[{msku:sku}]}]});
   if(path.endsWith('/FBA123/labels')){
-   equal(url.searchParams.get('NumberOfPackages'),'1');
-   assert([null,'box'].includes(url.searchParams.get('PackageLabelsToPrint')));
+   equal(url.searchParams.get('NumberOfPackages'),expectedPackageCount);
+   equal(url.searchParams.get('PackageLabelsToPrint'),expectedLabelIds);
    return json({payload:{DownloadURL:'https://labels.s3.amazonaws.com/test.pdf'}});
   }
   if(path.endsWith('/trackingDetails'))equal(body.trackingDetails.spdTrackingDetail.spdTrackingItems,[{boxId:'box',trackingId:'ABCD12345'}]);
@@ -215,7 +216,15 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   equal(plan.revision,revisionBeforePrint);assert(!plan.work.shipments?.[0].boxes);
   await send('refresh');
   equal(published,0);equal(plan.work.shipments?.[0].status,'WORKING');
-  const pdf=await send('label',{shipment,box:'box'});equal(await pdf.text(),'%PDF-test');
+  const printedShipment=plan.work.shipments![0];
+  const savedBoxes=printedShipment.boxes!;
+  printedShipment.boxes=[...savedBoxes,{id:'box-2',skus:[sku]}];
+  expectedPackageCount='2';expectedLabelIds='box,box-2';
+  equal(await (await send('label',{shipment})).text(),'%PDF-test');
+  expectedLabelIds='box-2';
+  equal(await (await send('label',{shipment,box:'box-2'})).text(),'%PDF-test');
+  await send('label',{shipment,box:'not-in-shipment'},422);
+  printedShipment.boxes=savedBoxes;
   await send('tracking',{shipment,tracking:{box:'ABCD12345'}},422);
   await step('tracking','ready',{shipment,confirmed:true,tracking:{box:'ABCD12345'}});
   received=1;await send('refresh');equal(published,0);
