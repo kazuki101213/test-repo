@@ -17,6 +17,8 @@ import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const canAssignPurchase = (staff: Staff) => staff.is_active && (staff.role === 'admin' || staff.role === 'purchaser');
+const spareMarketplace = (spare: SpareAccessory): Marketplace =>
+  spare.marketplace && MARKETPLACES.includes(spare.marketplace as Marketplace) ? spare.marketplace as Marketplace : 'その他';
 const workStreamLabels: Record<WorkStream, string> = { 'テレビ': 'モニター・テレビ', 'ブルーレイ': 'ブルーレイレコーダー', '付属品': '付属品', 'その他': '小物' };
 const handoffTemplates = [
   '着払いです。',
@@ -67,6 +69,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const [purchaserId, setPurchaserId] = useState(me.id);
   const [delivererId, setDelivererId] = useState('');
   const [workStream, setWorkStream] = useState<WorkStream | ''>('ブルーレイ');
+  const usesSpareSource = workStream === '付属品' && !!selectedSpare;
   const [lotSeq, setLotSeq] = useState<string>('');
   const [purchasedAt, setPurchasedAt] = useState(today());
   const [trackingNo, setTrackingNo] = useState('');
@@ -176,24 +179,26 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setPlannedPrice(product.list_price ?? '');
     setPlannedPayout(product.payout_estimate ?? '');
   }, [product]);
-  function selectSpare(id: string) {
-    setSpareId(id);
-    const selectedSpare = availableSpares.find(row => row.id === id);
-    if (!selectedSpare || workStream !== '付属品' || isAmazonReturn || isWorkingAmazonReturn) return;
+  function fillSparePurchase(spare: SpareAccessory) {
     setProductId('');
     setProductSearch('');
-    setTitle(selectedSpare.title);
+    setTitle(spare.title);
     setAsin('');
     setPlannedPrice('');
     setPlannedPayout('');
-    if (selectedSpare.purchased_at) setPurchasedAt(selectedSpare.purchased_at);
-    setCost(selectedSpare.cost_amount);
-    setTrackingNo(selectedSpare.tracking_no ?? '');
-    setMarketplaceItemId(selectedSpare.marketplace_item_id ?? '');
+    if (spare.purchased_at) setPurchasedAt(spare.purchased_at);
+    setCost(spare.cost_amount);
+    setTrackingNo(spare.tracking_no ?? '');
+    setMarketplaceItemId(spare.marketplace_item_id ?? '');
     setUrlOverride(null);
-    setMarketplace(selectedSpare.marketplace && MARKETPLACES.includes(selectedSpare.marketplace as Marketplace)
-      ? selectedSpare.marketplace as Marketplace : 'その他');
-    const spareOwner = staff.find(row => row.id === selectedSpare.owner_staff_id && canAssignPurchase(row));
+    setMarketplace(spareMarketplace(spare));
+  }
+  function selectSpare(id: string) {
+    setSpareId(id);
+    const spare = availableSpares.find(row => row.id === id);
+    if (!spare || workStream !== '付属品') return;
+    fillSparePurchase(spare);
+    const spareOwner = staff.find(row => row.id === spare.owner_staff_id && canAssignPurchase(row));
     if (spareOwner) setPurchaserId(spareOwner.id);
   }
   useEffect(() => {
@@ -297,6 +302,25 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         assignedReturnSku = parts.join('-');
       }
 
+      let spareSource: SpareAccessory | undefined;
+      if (spareId) {
+        const latest = await fetchSpareAccessories();
+        setSpares(latest);
+        const spare = latest.find(row => row.id === spareId && !row.used_for_item_id);
+        if (!spare) {
+          setSpareId(''); throw new Error(unavailableSpareMessage);
+        }
+        if (workStream === '付属品') {
+          if (title !== spare.title || cost !== spare.cost_amount || marketplace !== spareMarketplace(spare) ||
+              (spare.purchased_at && purchasedAt !== spare.purchased_at) ||
+              marketplaceItemId !== (spare.marketplace_item_id ?? '') || trackingNo !== (spare.tracking_no ?? '')) {
+            fillSparePurchase(spare);
+            throw new Error('選択した予備の仕入れ情報を反映しました。内容を確認してから「在庫登録」を押してください。');
+          }
+          spareSource = spare;
+        }
+      }
+
       const payload: ItemInsert = {
         ...(!isAmazonReturn && !isWorkingAmazonReturn && workStream === '付属品' && /[a-z]/.test(accessorySerial) ? {
           sku: buildSku({ lotSeq: accessorySerial, purchaserCode: purchaser.code,
@@ -309,10 +333,10 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         deliverer_id: delivererId || null,
         work_stream: workStream || null,
         purchased_at: purchasedAt,
-        title: isWorkingAmazonReturn ? returnProduct?.model_no || '型番未登録' : title.trim(),
+        title: spareSource?.title ?? (isWorkingAmazonReturn ? returnProduct?.model_no || '型番未登録' : title.trim()),
         cost_amount: Number(cost),
         marketplace,
-        marketplace_item_id: generatedReference?.itemId ?? (marketplaceItemId.trim() || null),
+        marketplace_item_id: spareSource ? spareSource.marketplace_item_id : generatedReference?.itemId ?? (marketplaceItemId.trim() || null),
         marketplace_url: marketplaceUrl.trim() || null,
         tracking_no: trackingNo.trim() || null,
         card_id: cardId || null,
@@ -326,13 +350,6 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         ...(draft ? { source_purchase_draft_id: draft.id } : {}),
       };
 
-      if (spareId) {
-        const latest = await fetchSpareAccessories();
-        setSpares(latest);
-        if (!latest.some(row => row.id === spareId && !row.used_for_item_id)) {
-          setSpareId(''); throw new Error(unavailableSpareMessage);
-        }
-      }
       const created = await createItem(payload, spareId || undefined);
       if (spareId) {
         setSpares(current => current.filter(row => row.id !== spareId));
@@ -371,13 +388,13 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
           <div className="grid cols2">
             <div className="grid inventory-registration-fields">
               <label className="field"><span>購入日</span>
-                <DateInput className="registration-date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} required />
+                <DateInput className="registration-date" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} disabled={usesSpareSource && !!selectedSpare?.purchased_at} required />
               </label>
               <label className="field"><span>仕入金額（円）</span>
-                <input type="number" min={0} value={cost} onChange={(e) => setCost(e.target.value === '' ? '' : Number(e.target.value))} required />
+                <input type="number" min={0} value={cost} readOnly={usesSpareSource} onChange={(e) => setCost(e.target.value === '' ? '' : Number(e.target.value))} required />
               </label>
               <label className="field"><span>仕入先</span>
-                <ColoredSelect value={marketplace} onChange={(e) => { setMarketplace(e.target.value as Marketplace); setUrlOverride(null); }}>
+                <ColoredSelect value={marketplace} disabled={usesSpareSource} onChange={(e) => { setMarketplace(e.target.value as Marketplace); setUrlOverride(null); }}>
                   {MARKETPLACES.map((m) => <option key={m} value={m}>{m}</option>)}
                 </ColoredSelect>
               </label>
@@ -388,28 +405,28 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 </select>
               </label>
               <label className="field"><span>{isWorkingAmazonReturn ? 'ENA' : '商品ID'}</span>
-                <input type="text" value={marketplaceItemId} onChange={(e) => changeItemId(e.target.value)} />
+                <input type="text" value={marketplaceItemId} readOnly={usesSpareSource} onChange={(e) => changeItemId(e.target.value)} />
               </label>
               <label className="field"><span>{isWorkingAmazonReturn ? 'FNSKU' : '追跡番号'}</span>
-                <input type="text" value={trackingNo} onChange={(e) => setTrackingNo(e.target.value)} />
+                <input type="text" value={trackingNo} readOnly={usesSpareSource} onChange={(e) => setTrackingNo(e.target.value)} />
               </label>
               <label className="field registration-wide inventory-purchase-url"><span>仕入先URL</span>
-                <input type="url" value={marketplaceUrl} onChange={(e) => changePurchaseUrl(e.target.value)} />
+                <input type="url" value={marketplaceUrl} readOnly={usesSpareSource} onChange={(e) => changePurchaseUrl(e.target.value)} />
               </label>
               {!isWorkingAmazonReturn && <label className="field inventory-product-search"><span>商品リスト検索</span>
-                <input type="search" value={productSearch} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
+                <input type="search" value={productSearch} disabled={usesSpareSource} onChange={e => { setProductSearch(e.target.value); setProductId(''); }} placeholder="ASINまたは型番" />
               </label>}
             </div>
             {!isWorkingAmazonReturn && marketplaceItemId.trim() && !generatedReference && !marketplaceUrl && <p className="sub" role="status">商品IDの形式を確認するか、仕入先URLを直接貼り付けてください。ラクマは商品URL末尾の32文字のIDを使います。</p>}
           <div>
-            {!isWorkingAmazonReturn && matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
+            {!usesSpareSource && !isWorkingAmazonReturn && matchingProducts.length > 0 && <div className="product-search-results" role="listbox" aria-label="一致した商品">
               {matchingProducts.slice(0, 20).map(p => <button type="button" role="option" aria-selected={productId === p.id} key={p.id} onClick={() => { setProductId(p.id); setProductSearch(`${p.model_no ?? ''} / ${p.asin ?? ''}`); }}>
                 {p.model_no ?? '型番なし'} / {p.asin ?? 'ASINなし'} / 目標 {p.target_cost ? yen(p.target_cost) : '—'}
               </button>)}
             </div>}
             <div className="grid inventory-registration-fields" style={{ marginTop: 8 }}>
               <label className="field"><span>型番</span>
-                <input type="text" value={isWorkingAmazonReturn ? returnProduct?.model_no || '' : title} readOnly={isWorkingAmazonReturn} placeholder={isWorkingAmazonReturn ? 'ASINから型番を参照' : undefined} onChange={(e) => setTitle(e.target.value)} required={!isWorkingAmazonReturn} />
+                <input type="text" value={isWorkingAmazonReturn ? returnProduct?.model_no || '' : title} readOnly={usesSpareSource || isWorkingAmazonReturn} placeholder={isWorkingAmazonReturn ? 'ASINから型番を参照' : undefined} onChange={(e) => setTitle(e.target.value)} required={!isWorkingAmazonReturn} />
               </label>
               <label className="field"><span>ASIN</span>
                 <input type="text" value={asin} onChange={(e) => setAsin(e.target.value)} />
@@ -452,7 +469,11 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 </select>
               </label>
               <label className="field"><span>作業ライン</span>
-                <select value={workStream} onChange={(e) => setWorkStream(e.target.value as WorkStream)}>
+                <select value={workStream} onChange={(e) => {
+                  const next = e.target.value as WorkStream | '';
+                  if (next === '付属品' && workStream !== next && selectedSpare) fillSparePurchase(selectedSpare);
+                  setWorkStream(next);
+                }}>
                   <option value="">—</option>
                   {WORK_STREAMS.map((w) => <option key={w} value={w}>{workStreamLabels[w]}</option>)}
                 </select>
