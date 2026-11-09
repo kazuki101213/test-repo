@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
 import {amount,fbaCarrierGroups,fbaCarrierName,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
+import {validateBoxes} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
@@ -25,6 +26,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const [labelShipmentId,setLabelShipmentId]=useState('');
  const [labelError,setLabelError]=useState('');
  const [prep,setPrep]=useState<PrepReview|null>(null);
+ const [failedPoll,setFailedPoll]=useState('');
  const automaticAttempt=useRef('');
  useEffect(()=>()=>{if(pdf)URL.revokeObjectURL(pdf.url);},[pdf]);
  const editable=['draft','created','packing-options','packing-confirmed'].includes(plan.stage);
@@ -38,19 +40,23 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
  const autoPackingOptions=plan.stage==='created';
  const autoPackingId=plan.stage==='packing-options'&&singlePacking?.fees.every(fee=>fee.amount===0)?singlePacking.id:undefined;
  const autoPlacements=plan.stage==='packed';
- const automaticAction=autoPackingOptions?'packing':autoPackingId?'choosePacking':autoPlacements?'placements':null;
+ let autoSendBoxes=false;
+ if(canSendBoxes&&!dirty&&work.groups&&work.boxes){
+  try{validateBoxes(work.boxes,items,work.groups);autoSendBoxes=true;}catch{/* The box assignments need review before sending. */}
+ }
 
  useEffect(()=>{
-  if(!plan.pending?.op)return;
+  const op=plan.pending?.op;
+  if(!op||op===failedPoll)return;
   let active=true;let timer:ReturnType<typeof setTimeout>;
   const run=()=>{timer=setTimeout(async()=>{
    try{const {plan:next,prepReview}=await inboundRequest<PlanResult>('poll',{id:plan.id});
-    if(active){onUpdate(next);setPrep(prepReview??null);setError('');if(next.pending?.op===plan.pending?.op)run();}
-   }catch(cause){if(active)setError(String((cause as Error).message));}
+    if(active){onUpdate(next);setPrep(prepReview??null);setError('');if(next.pending?.op===op)run();}
+   }catch(cause){if(active){setFailedPoll(op);setError(String((cause as Error).message));}}
   },2500);};
   run();
   return()=>{active=false;clearTimeout(timer);};
- },[plan.id,plan.pending?.op]);
+ },[plan.id,plan.pending?.op,failedPoll]);
 
  async function apply(action:string,fields:Record<string,unknown>={}){
   setBusy(true);setError('');
@@ -68,13 +74,6 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    try {onUpdate((await inboundRequest<{plan:InboundPlan}>('get',{id:plan.id})).plan);}catch{/* Keep the current plan open. */}
   }finally{setBusy(false);}
  }
- useEffect(()=>{
-  if(!automaticAction||blocked||error||work.notice)return;
-  const attempt=`${plan.revision}:${automaticAction}:${autoPackingId??''}`;
-  if(automaticAttempt.current===attempt)return;
-  automaticAttempt.current=attempt;
-  void apply(automaticAction,autoPackingId?{option:autoPackingId,automatic:true}:{});
- },[automaticAction,autoPackingId,blocked,error,work.notice,plan.revision]);
  async function label(shipment:string,box?:string){
   setBusy(true);setLabelError('');setPdf(null);
   try{const response=await inboundRequest<Blob>('label',{...requestBody,shipment,box});
@@ -93,8 +92,12 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   ??placements.find(p=>p.id===work.placement?.id)
   ??(placements.length===1?placements[0]:undefined);
  const today=tokyoDate();
- const validDate=/^\d{4}-\d{2}-\d{2}$/.test(date)&&date>=today;
- const showCarriers=plan.stage==='transport-options'&&placement?.id===work.placement?.id&&date===work.shipDate&&validDate;
+ const parsedDate=new Date(date+'T00:00:00Z');
+ const validDate=/^\d{4}-\d{2}-\d{2}$/.test(date)&&date>=today&&Number.isFinite(+parsedDate)&&parsedDate.toISOString().slice(0,10)===date;
+ const canQuote=plan.stage==='placement-options'||plan.stage==='transport-options';
+ const quoteInProgress=plan.pending?.action==='transport';
+ const showCarriers=plan.stage==='transport-options'&&!quoteInProgress&&!!placement&&placement.id===work.placement?.id&&date===work.shipDate&&validDate;
+ const quotePlacementId=canQuote&&!showCarriers&&validDate?placement?.id:undefined;
  const carrierRows=showCarriers?(placement?.shipmentIds??[]).map(id=>{
   const options=(work.transport??[]).filter(t=>t.shipmentId===id&&(!t.expiration||Date.parse(t.expiration)>Date.now())
    &&(t.solution!=='AMAZON_PARTNERED_CARRIER'||t.quote)
@@ -103,7 +106,31 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
   return {id,options,choice};
  }):[];
  const chosen=carrierRows.flatMap(row=>row.choice?[row.choice]:[]);
+ const missingCarriers=carrierRows.some(row=>!row.options.length);
  const finalOptions=work.selections??[];
+ const missingWindowId=plan.stage==='placement-confirmed'?finalOptions.find(t=>needWindow(t)&&!work.selectedWindows?.[t.shipmentId]&&
+  !work.windows?.[t.shipmentId])?.shipmentId:undefined;
+ const problem=error||work.notice;
+ useEffect(()=>{
+  if(blocked||problem)return;
+  let action:string;
+  let fields:Record<string,unknown>={};
+  if(autoPackingOptions)action='packing';
+  else if(autoPackingId){action='choosePacking';fields={option:autoPackingId,automatic:true};}
+  else if(autoSendBoxes)action='boxes';
+  else if(autoPlacements)action='placements';
+  else if(quotePlacementId){action='transport';fields={option:quotePlacementId,shipDate:date};}
+  else if(missingWindowId){action='windows';fields={shipment:missingWindowId};}
+  else return;
+  const attempt=`${plan.revision}:${action}:${JSON.stringify(fields)}`;
+  if(automaticAttempt.current===attempt)return;
+  const run=()=>{automaticAttempt.current=attempt;void apply(action,fields);};
+  if(action==='transport'){
+   const timer=setTimeout(run,500);
+   return()=>clearTimeout(timer);
+  }
+  run();
+ },[autoPackingOptions,autoPackingId,autoSendBoxes,autoPlacements,quotePlacementId,date,missingWindowId,blocked,problem,plan.revision]);
  const ready=plan.stage==='ready';
  const labelDestinations=ready?work.placement?.shipmentIds??[]:[];
  const labelDestination=labelDestinations.includes(labelShipmentId)?labelShipmentId:labelDestinations[0];
@@ -143,7 +170,7 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
      </label>
      <select id={'box-'+item.item_id} disabled={blocked} value={boxes.findIndex(b=>b.items.includes(item.item_id))} onChange={e=>assign(item.item_id,Number(e.target.value))}><option value="-1">未割当</option>{boxes.map((_,i)=><option key={i} value={i}>箱 {i+1}</option>)}</select>
     </li>)}</ul>
-    {canSendBoxes&&act('送信','boxes',{boxes},false,'primary')}
+    {canSendBoxes&&(autoSendBoxes&&!problem?<p role="status">箱情報をAmazonに送信しています…</p>:act('送信','boxes',{boxes},false,'primary'))}
    </>}
   </section>
    </div>
@@ -174,19 +201,20 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
      {!packing.length&&<p>選択できる梱包方法がありません。</p>}
      <div className="fba-work-actions">
       {!autoPackingId&&packing.length>0&&<button className="btn primary" type="button" disabled={blocked||!packingChoice} onClick={()=>{if(packingChoice&&window.confirm('表示の梱包方法と料金で確定しますか？'))void apply('choosePacking',{option:packingChoice.id,confirmed:true});}}>梱包方法を確定</button>}
-      {act('梱包方法を再取得','packing')}
+      {(!packing.length||problem)&&act('梱包方法を再取得','packing')}
      </div>
     </>)}
    {autoPlacements&&(error||work.notice?act('再取得','placements'):<p role="status">納品先の候補を取得しています…</p>)}
-   {['placement-options','transport-options'].includes(plan.stage)&&<>
+   {canQuote&&<>
     <div className="fba-work-actions fba-transport-actions">
     <label className="fba-work-field">納品先の候補<select aria-label="納品先の候補" value={placement?.id??''} disabled={blocked||!placements.length} onChange={e=>{setOption(e.target.value);setSelected({});}}>
      {placements.length!==1&&<option value="" disabled>選択してください</option>}
      {placements.map((p,i)=><option key={p.id} value={p.id}>候補 {i+1}：{p.shipmentIds.length}か所 ／ {amount(p.fees)}</option>)}</select></label>
     <label className="fba-work-field">出荷日<DateInput aria-label="出荷日" value={date} min={today} onChange={e=>{setDate(e.target.value);setSelected({});}} disabled={blocked}/></label>
     <label className="fba-work-field">配送モード<select aria-label="配送モード" value="SPD" disabled><option value="SPD">個口配送（SPD）</option></select></label>
-    {act('取得','transport',{option:placement?.id,shipDate:date},!placement||!validDate,'primary')}
-    {act('再取得','placements')}</div>
+    {!plan.pending&&placement&&validDate&&(problem||missingCarriers)&&act('配送方法を再取得','transport',{option:placement.id,shipDate:date},false,'primary')}
+    {!plan.pending&&(!placements.length||problem||missingCarriers)&&act('納品先を再取得','placements')}</div>
+    {quotePlacementId&&!problem&&<p role="status">配送料の見積もりを取得しています…</p>}
     {showCarriers&&carrierRows.length>0&&<>
     <p className="muted">Amazonの配送料見積もり（{items.length}点、{work.boxes?.length??boxes.length}箱、出荷日 {work.shipDate}）</p>
     <p className="muted">同じ納品をセラーセントラルで照合する場合は、配送確定後に納品番号を確認してください。確定前に切り替えると、Amazonが配送候補を作り直します。</p>
@@ -206,15 +234,18 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
       void apply('confirmPlacement',{options:chosen.map(t=>t.id),confirmed:true});}}>納品先を確定</button></>}
    </>}
    {plan.stage==='placement-confirmed'&&<>
-    {finalOptions.filter(needWindow).map((t,i)=><div className="fba-carton" key={t.shipmentId}>
+    {finalOptions.filter(needWindow).map((t,i)=>{
+     const windows=work.windows?.[t.shipmentId]?.filter(w=>!w.expiration||Date.parse(w.expiration)>Date.now());
+     return <div className="fba-carton" key={t.shipmentId}>
      <strong>{work.shipments?.find(s=>s.id===t.shipmentId)?.warehouse||`納品先 ${i+1}`}：{fbaCarrierName(t)}</strong>
      {work.selectedWindows?.[t.shipmentId]?<p>到着期間を確定済み</p>:<div className="fba-work-actions">
-     {act('到着期間を取得','windows',{shipment:t.shipmentId})}
-     {!!work.windows?.[t.shipmentId]?.length&&<><label>到着期間 <select disabled={blocked} value={windowIds[t.shipmentId]??''} onChange={e=>setWindowIds({...windowIds,[t.shipmentId]:e.target.value})}><option value="">選択してください</option>
-      {(work.windows?.[t.shipmentId]??[]).map(w=><option key={w.id} value={w.id}>{shortDate(w.start)}〜{shortDate(w.end)}</option>)}</select></label>
-      {act('到着期間を確定','chooseWindow',{shipment:t.shipmentId,option:windowIds[t.shipmentId]},!windowIds[t.shipmentId])}</>}
+     {(windows?.length===0||problem)&&act('到着期間を再取得','windows',{shipment:t.shipmentId})}
+     {!windows&&!problem&&<span role="status">到着期間の候補を取得しています…</span>}
+     {!!windows?.length&&<><label>到着期間 <select disabled={blocked} value={windowIds[t.shipmentId]??''} onChange={e=>setWindowIds({...windowIds,[t.shipmentId]:e.target.value})}><option value="">選択してください</option>
+      {windows.map(w=><option key={w.id} value={w.id}>{shortDate(w.start)}〜{shortDate(w.end)}</option>)}</select></label>
+      {act('到着期間を確定','chooseWindow',{shipment:t.shipmentId,option:windowIds[t.shipmentId]},!windows.some(w=>w.id===windowIds[t.shipmentId]))}</>}
      </div>}
-    </div>)}
+    </div>;})}
     <button className="btn primary" type="button" disabled={blocked||finalOptions.some(t=>needWindow(t)&&!work.selectedWindows?.[t.shipmentId])} onClick={()=>{
      if(window.confirm(`表示の配送方法で確定しますか？\n${finalOptions.map(t=>`${fbaCarrierName(t)}：${t.quote?amount([t.quote]):'配送会社と直接精算'}`).join('\n')}`))void apply('confirmTransport',{confirmed:true});}}>配送を確定</button>
    </>}
@@ -256,7 +287,8 @@ export default function FbaInboundPlan({plan,onUpdate,onClose}:{plan:InboundPlan
    })}
   </section>}
   {plan.pending&&<div className="fba-work-actions" role="status"><span>{plan.pending.op?'Amazonの結果を確認中…':'Amazonの受付番号を確認できていません。'}</span>
-   <button type="button" className="btn" disabled={busy} onClick={()=>void apply(plan.pending?.op?'poll':'recover')}>処理結果を確認</button></div>}
+   {!plan.pending.op&&<button type="button" className="btn" disabled={busy} onClick={()=>void apply('recover')}>処理結果を確認</button>}
+   {!!plan.pending.op&&plan.pending.op===failedPoll&&<button type="button" className="btn" disabled={busy} onClick={()=>{setFailedPoll('');setError('');}}>処理結果を再確認</button>}</div>}
   {plan.stage!=='draft'&&(error||work.notice)&&<p className="error" role="alert">{error||work.notice}</p>}
  </section>;
 }
