@@ -10,7 +10,7 @@ const needWindow=(s:{solution:string;preconditions:string[]})=>s.solution==='USE
 const blank=(items:string[]=[]):Box=>({length:0,width:0,height:0,weight:0,items});
 const serial=(sku:string)=>sku.split('-')[0]||sku;
 const shortDate=(s:string)=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'}).format(new Date(s));
-const sellerCentralShipments='https://sellercentral.amazon.co.jp/fba/shipments';
+const sellerCentralShipments='https://sellercentral.amazon.co.jp/gp/ssof/shipping-queue.html';
 type PrepReview={owners:Record<string,{prepOwner:string;labelOwner:string}>;requirements:Record<string,string[]>};
 type PlanResult={plan:InboundPlan;prepReview?:PrepReview};
 
