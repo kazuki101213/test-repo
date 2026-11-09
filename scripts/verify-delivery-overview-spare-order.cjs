@@ -16,8 +16,9 @@ const react={useState(initial){const n=cursor++;if(!hooks[n])hooks[n]={value:typ
 const jsx=(type,props)=>({type,props});
 const tasks=[{id:'II-item',sku:'100a-AAII-20260901-0',lot_seq:100,title:'model',status:'受取前',marketplace:'Amazon返品',sales_channel:'FBA',deliverer_id:'II',deliverer_name:'II 久保田 真由',malfunction_reported:true,malfunction_resolved_at:null,malfunction_comment:'故障',is_accessory:false,shipped_on:null},{id:'LL-item',sku:'101-AALL-20260901-0',lot_seq:101,title:'other',status:'受取前',marketplace:'動作品Amazon返品',sales_channel:'自己発送',deliverer_id:'LL',malfunction_reported:true,malfunction_resolved_at:'now',shipped_on:null}];
 tasks.push({...tasks[0],id:'II-accessory',sku:'100a-AAII-20260901-1',is_accessory:true,malfunction_reported:false,tracking_no:'ACCESSORY-TRACK'});
+const buyerRoster=[{id:'ishijima',code:'OO',name:'石嶋俊紀',display_name:'OO 石嶋 俊紀'},{id:'other',code:'II',name:'久保田真由'},{id:'ishikawa',code:'EE',name:'石川秀樹'},{id:'osabe',code:'AA',name:'長部一輝'}];
 const notices=[{item_id:'II-item',lot_seq:100,photo_at:'today',reply_at:'today'}];
-const api={fetchTask:async id=>tasks.find(t=>t.id===id),fetchMyTasks:async()=>tasks,fetchDeliveryItemNotices:async()=>notices,fetchInventoryStaff:async()=>[{id:'II',name:'久保田真由'},{id:'LL',name:'土井花菜'}],markDeliveryItemNoticesRead:async n=>acknowledged.push(n.item_id)};
+const api={fetchTask:async id=>tasks.find(t=>t.id===id),fetchMyTasks:async()=>tasks,fetchDeliveryItemNotices:async()=>notices,fetchInventoryStaff:async()=>[...buyerRoster,{id:'II',name:'久保田真由'},{id:'LL',name:'土井花菜'}],markDeliveryItemNoticesRead:async n=>acknowledged.push(n.item_id)};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);
 const presentation={exports:{}};vm.runInNewContext(compile('packages/shared/src/inventoryPresentation.ts'),presentation);
 let lastPageFilters;
@@ -33,6 +34,7 @@ async function settle(){for(let n=0;n<12;n++){if(dirty){cursor=0;dirty=false;tre
  assert.equal(input().props.placeholder,'検索');assert.equal(selector().props.value,'serial');
  assert.deepEqual(all(selector()).filter(n=>n.type==='option').map(n=>text(n)),['納品担当者','通番号','SKU','型番','付属品名','ASIN','商品ID','追跡番号']);
  const stateFilter=()=>all(tree).find(n=>n.type==='state-filter');assert(stateFilter());
+ assert.deepEqual(Array.from(stateFilter().props.purchaser.options,p=>p.id),['osabe','ishikawa','ishijima']);
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.deepEqual(all(tree).filter(n=>n.props?.task).map(n=>n.props.task.id),['II-item']);assert(input());
  stateFilter().props.onChange({marketplace:['Amazon返品','動作品Amazon返品'],sales_channel:['FBA','自己発送']});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,2);
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送']});await settle();assert.equal(all(tree).filter(n=>n.props?.task).length,0);

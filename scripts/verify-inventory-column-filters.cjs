@@ -1,8 +1,9 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const buyerNames={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNames.ts'),buyerNames);
 const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
 const notice={exports:{},URL};vm.runInNewContext(compile('packages/shared/src/noticeUrl.ts'),notice);
-const shared={...notice.exports,HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
+const shared={...notice.exports,HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],productModelText:i=>i.model_no||i.title||'未登録',staffDisplayName:s=>s||'',deliveryStaffOptions:s=>s,inventoryPurchaserOptions:buyerNames.exports.inventoryPurchaserOptions,STATUSES:['受取前','販売済'],CONDITIONS:[],MARKETPLACES:['Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA','自己発送'],jpDate:s=>s||'—',yen:n=>String(n??'—')};
 const stateConstants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),stateConstants);const stateSearch={exports:{},require:()=>stateConstants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),stateSearch);Object.assign(shared,stateSearch.exports);const channels={exports:{}};vm.runInNewContext(compile('packages/shared/src/salesChannels.ts'),channels);Object.assign(shared,channels.exports);
 const filters={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventoryFilters.ts'),filters);
 const search={exports:{},require:name=>name==='@bussan/shared'?shared:inventory.exports};vm.runInNewContext(compile('apps/admin/src/inventorySearch.ts'),search);
@@ -35,8 +36,9 @@ let cursor=0,dirty=true,pending=[],tree,lastRequest;const hooks=[];
 const react={useState(v){const i=cursor++;if(!hooks[i])hooks[i]={value:typeof v==='function'?v():v};return[hooks[i].value,n=>{hooks[i].value=typeof n==='function'?n(hooks[i].value):n;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useMemo(fn,deps){const i=cursor++,h=hooks[i];if(!h||deps.some((d,j)=>d!==h.deps[j]))hooks[i]={value:fn(),deps};return hooks[i].value;},useCallback(fn,deps){return this.useMemo(()=>fn,deps);},useEffect(fn,deps){const i=cursor++,h=hooks[i];if(!h||deps.some((d,j)=>d!==h.deps[j])){h?.cleanup?.();const next=hooks[i]={deps};pending.push(()=>{next.cleanup=fn();});}}};
 // Hook methods are imported as standalone functions.
 react.useCallback=(fn,deps)=>react.useMemo(()=>fn,deps);
+const buyerRoster=[{id:'ishijima',code:'OO',name:'石嶋俊紀',display_name:'OO 石嶋 俊紀'},{id:'other',code:'II',name:'久保田真由'},{id:'ishikawa',code:'EE',name:'石川秀樹'},{id:'osabe',code:'AA',name:'長部一輝'}];
 let initialRead=true, finishInitial;
-const jsx=(type,props)=>type==='approved-overview'?overviewModule.exports.default(props):({type,props});const api={fetchItems:async (q,signal,progress)=>{lastRequest=q;if(initialRead){initialRead=false;progress?.({items:rows,count:2});return new Promise(resolve=>{finishInitial=()=>resolve({items:rows,count:2})});}return{items:rows,count:2};},fetchStaff:async()=>[],fetchPurchaseDrafts:async()=>[]};
+const jsx=(type,props)=>type==='approved-overview'?overviewModule.exports.default(props):({type,props});const api={fetchItems:async (q,signal,progress)=>{lastRequest=q;if(initialRead){initialRead=false;progress?.({items:rows,count:2});return new Promise(resolve=>{finishInitial=()=>resolve({items:rows,count:2})});}return{items:rows,count:2};},fetchStaff:async()=>buyerRoster,fetchPurchaseDrafts:async()=>[]};
 const draftsModule={exports:{},require:()=>react,Date};vm.runInNewContext(compile('apps/admin/src/hooks/usePurchaseDrafts.ts'),draftsModule);
 const presentation={exports:{}};vm.runInNewContext(compile('packages/shared/src/inventoryPresentation.ts'),presentation);Object.assign(shared,presentation.exports);
 const overviewModule={exports:{},require:name=>name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?shared:name==='../inventoryFilters'?filters.exports:{default:'component'}};vm.runInNewContext(compile('apps/admin/src/components/InventoryOverview.tsx'),overviewModule);
@@ -66,6 +68,8 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert(!all(tree).some(n=>n.type==='details'&&n.props.className==='inventory-filter-dropdown'));
  for(const field of search.exports.inventorySearchFields){selector().props.onChange({target:{value:field.value}});await settle();assert.equal(lastRequest.queryField,field.value);assert.equal(all(tree).find(n=>n.props?.['aria-label']==='在庫を検索').props.placeholder,'検索');}
  const stateFilter=()=>all(tree).find(n=>n.type==='state-filter');
+ assert.deepEqual(Array.from(stateFilter().props.purchaser.options,p=>p.id),['osabe','ishikawa','ishijima']);
+ stateFilter().props.purchaser.onChange(['ishijima']);await settle();assert.deepEqual(Array.from(lastRequest.purchaserIds),['ishijima']);
  assert(stateFilter());assert(!all(tree).some(n=>['仕入先フィルター','販売先フィルター','販売状態フィルター'].includes(n.props?.['aria-label'])));
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['FBA'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],4);
  stateFilter().props.onChange({marketplace:['Amazon返品'],sales_channel:['自己発送'],status:['受取前']});await settle();assert.equal(all(tree).find(n=>n.props?.role==='table'&&n.props.className==='approved-inventory').props['aria-rowcount'],1);

@@ -1,7 +1,7 @@
 import ReturnTasks from '../components/ReturnTasks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DeliveryInventoryRow, DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
-import { canViewDeliveryAssignee, deliveryStaffOptions, inventorySiteStyle, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
+import { canViewDeliveryAssignee, deliveryStaffOptions, inventoryPurchaserOptions, inventorySiteStyle, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
 import { fetchInventoryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice, type InventoryStaff } from '../api';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import {fetchTask} from '../api';
@@ -182,7 +182,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
           : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
         <div className="delivery-inventory-filter-controls">
           <InventoryStateFilter value={inventoryFilters} purchaser={{
-            value: purchaserIds, options: filterStaff.map(person => ({ id: person.id, name: staffDisplayName(person) })),
+            value: purchaserIds, options: inventoryPurchaserOptions(filterStaff),
             onChange: ids => { setPurchaserIds(ids); setExpandedId(null); },
           }} assignee={canViewDeliveryAssignee(staff) ? {
             value: assigneeFilterIds, options: deliverers.map(person => ({ id: person.id, name: staffDisplayName(person) })),

@@ -11,6 +11,14 @@ const labelsByName = new Map([
   ['株式会社吉光', STAFF_DISPLAY_NAMES.MM],
 ]);
 export const DELIVERY_STAFF_CODES = ['AA', 'DD', 'EE', 'HH', 'II', 'KK', 'LL', 'MM'] as const;
+const INVENTORY_PURCHASER_CODES = ['AA', 'EE', 'OO'] as const;
+/** The same purchaser choices in the management and delivery inventory filters. */
+export function inventoryPurchaserOptions(rows: readonly (Pick<Staff, 'id' | 'code' | 'name' | 'display_name'> & Partial<Pick<Staff, 'is_active'>>)[]) {
+  return INVENTORY_PURCHASER_CODES.flatMap(code => {
+    const person = rows.find(row => row.code === code && row.is_active !== false);
+    return person ? [{ id: person.id, name: staffDisplayName(person) }] : [];
+  });
+}
 /** One ordered list for delivery assignee selectors in both apps. */
 export function deliveryStaffOptions<T extends { name: string; code?: string; is_active?: boolean; role?: Staff['role'] }>(rows: T[]): T[] {
   const codeOf = (row: T) => row.code || DELIVERY_STAFF_CODES.find(code => STAFF_DISPLAY_NAMES[code] === staffDisplayName(row.name));
