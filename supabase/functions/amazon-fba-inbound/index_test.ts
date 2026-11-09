@@ -19,7 +19,8 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  let packingFees:unknown=[],extraPackingChoice=false,packingAccepted=false;
  const box={length:40,width:30,height:20,weight:4,items:[itemId]};
  const editedBox={...box,length:42.5,weight:5.25};
- let boxResponse:'reject'|'lost'='reject',remoteBox=box;
+ let boxResponse:'reject'|'lost'|'accept'='reject',remoteBox=box;
+ const resizedBox={...editedBox,width:35,height:25};
  const requests:{path:string;method:string;body:any}[]=[];
  globalThis.fetch=async(input,init)=>{
   const url=new URL(input instanceof Request?input.url:String(input));
@@ -74,10 +75,12 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   if(path.endsWith('/packingOptions/packing/confirmation')){packingAccepted=true;throw new Error('confirmation response lost');}
   if(path.endsWith('/packingGroups/group/items'))return json({items:[{msku:sku,asin,quantity:1}]});
   if(path.endsWith('/packingInformation')){
-   equal(plan.work.boxes,[editedBox]);equal(plan.pending?.action,'boxes');
+   equal(plan.work.boxes,[editedBox]);
+   const expected=plan.pending?.action==='resizeBoxes'?resizedBox:editedBox;
    equal(body.packageGroupings,[{packingGroupId:'group',boxes:[{contentInformationSource:'BOX_CONTENT_PROVIDED',
-    dimensions:{length:42.5,width:30,height:20,unitOfMeasurement:'CM'},weight:{value:5.25,unit:'KG'},quantity:1,items:[{msku:sku,quantity:1,prepOwner:labelRequired?'SELLER':'NONE',labelOwner:'SELLER'}]}]}]);
+    dimensions:{length:expected.length,width:expected.width,height:expected.height,unitOfMeasurement:'CM'},weight:{value:expected.weight,unit:'KG'},quantity:1,items:[{msku:sku,quantity:1,prepOwner:labelRequired?'SELLER':'NONE',labelOwner:'SELLER'}]}]}]);
    if(boxResponse==='reject')return json({errors:[{code:'InvalidInput',message:'Rejected box'}]},400);
+   if(boxResponse==='accept')return json({operationId:'box-op'},202);
    throw new Error('Box response lost');
   }
   if(path.endsWith('/wf-test/boxes'))return json({boxes:[{quantity:1,dimensions:{length:remoteBox.length,width:remoteBox.width,height:remoteBox.height,unitOfMeasurement:'CM'},
@@ -187,9 +190,23 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   remoteBox=editedBox;await send('recover');equal(plan.stage,'packed');equal(plan.pending,null);equal(writes(),writesBeforeBoxes+2);
   await step('placements','placement-options');await step('transport','transport-options',{option:'placement',shipDate:'2030-01-01'});
   equal(plan.work.transport?.map(t=>[t.id,t.carrierCode]),[['transport','YAMATO']]);
+  const originalQuote=plan.work.transport;
+  const dimensions=[{length:resizedBox.length,width:resizedBox.width,height:resizedBox.height,weight:resizedBox.weight,items:['cannot-change-contents']}];
+  await send('resizeBoxes',{dimensions:[]},422);
+  boxResponse='reject';await send('resizeBoxes',{dimensions},502);
+  equal(plan.stage,'transport-options');equal(plan.work.transport,originalQuote);equal(plan.work.boxes,[editedBox]);
+  boxResponse='accept';await send('resizeBoxes',{dimensions});
+  equal(plan.work.boxes,[editedBox]);equal(plan.pending?.boxes,[resizedBox]);
+  await send('confirmPlacement',{options:['transport'],confirmed:true},409);
+  await send('poll');equal(plan.stage,'packed');equal(plan.pending,null);equal(plan.work.boxes,[resizedBox]);
+  equal(plan.work.placements,undefined);equal(plan.work.placement,undefined);equal(plan.work.transport,undefined);
+  equal(plan.work.shipDate,'2030-01-01');
+  await send('confirmPlacement',{options:['transport'],confirmed:true},409);
+  await step('placements','placement-options');
   await step('transport','transport-options',{option:'placement',shipDate:'2030-01-02'});
   await send('confirmPlacement',{options:['transport']},422);
   await step('confirmPlacement','placement-confirmed',{options:['transport'],confirmed:true});
+  await send('resizeBoxes',{dimensions},409);
   await send('confirmTransport',{confirmed:true},422);
   await step('windows','placement-confirmed',{shipment});await step('chooseWindow','placement-confirmed',{shipment,option:'window'});
   await step('confirmTransport','ready',{confirmed:true});

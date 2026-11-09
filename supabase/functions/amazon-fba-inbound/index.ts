@@ -1,7 +1,7 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.45.4';
 import {AmazonAccountError} from '../_shared/amazonAccounts.ts';
 import {AmazonError,amazonClient,amazonPdfUrl,amazonProblem,charge,charges,enc,inbound,marketplace,planPath,type Amazon} from './amazon.ts';
-import {canPublish,expired,invalid,needsWindow,senders,transportSelection,unknownPrecondition,uuid,validateBoxes,WorkflowError,
+import {canPublish,canResizeBoxes,expired,invalid,needsWindow,senders,transportSelection,unknownPrecondition,uuid,validateBoxes,WorkflowError,
  type Box,type Item,type Owner,type Pending,type Plan,type Shipment,type Stage,type Work} from './workflow.ts';
 
 const headers={
@@ -23,7 +23,7 @@ const listPacking=(api:Amazon,path:string)=>api.pages(path+'/packingOptions','pa
 const availablePacking=async(api:Amazon,path:string)=>(await listPacking(api,path))
  .filter(row=>row.status==='OFFERED'&&(!row.expiration||Date.parse(row.expiration)>Date.now()));
 const localDate=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-const stageAfter:Record<string,Stage>={create:'created',packing:'packing-options',choosePacking:'packing-confirmed',boxes:'packed',
+const stageAfter:Record<string,Stage>={create:'created',packing:'packing-options',choosePacking:'packing-confirmed',boxes:'packed',resizeBoxes:'packed',
  placements:'placement-options',transport:'transport-options',confirmPlacement:'placement-confirmed',confirmTransport:'ready'};
 
 function dateWindow(value:unknown) {
@@ -149,6 +149,12 @@ async function checkPublished(api:Amazon,plan:Plan,shipments:Shipment[]) {
   }
  }
  return ids;
+}
+function packingResult(work:Work,pending:Pending):Work {
+ if(pending.action!=='resizeBoxes')return {...work,notice:undefined};
+ if(!pending.boxes)throw new WorkflowError(409,'変更した箱情報を確認できません。');
+ return {...work,boxes:pending.boxes,placements:undefined,placement:undefined,transport:undefined,
+  selections:undefined,windows:undefined,selectedWindows:undefined,shipments:undefined,notice:undefined};
 }
 function eligiblePhase(plan:Plan,...stages:Stage[]){
  if(!stages.includes(plan.stage)) throw new WorkflowError(409,'納品の進行状況が変わりました。画面を更新してください。');
@@ -318,7 +324,7 @@ export async function handler(req:Request):Promise<Response>{
     if(matches.length!==1)return invalid('Amazonの納品履歴で同じSKUの納品を確認できません。時間をおいて再確認してください。');
     await patch({pending:null,stage:'created',amazon_id:matches[0].inboundPlanId});return result();
    }
-   const work={...plan.work,notice:undefined};
+   const work=packingResult(plan.work,pending);
    if(pending.action==='setupPrep'){
     return finishPrep(pending);
    }else if(['packing','placements','transport','windows'].includes(pending.action)){
@@ -333,7 +339,7 @@ export async function handler(req:Request):Promise<Response>{
     if(pending.action==='cancel'&&remote.status==='VOIDED'){await cancel();return result();}
     if(pending.action==='cancel'||!remote.placementOptions?.some((choice:any)=>choice.status==='ACCEPTED'&&choice.placementOptionId===pending.remote))
      return invalid('Amazonで確定結果を確認できません。時間をおいて再確認してください。');
-   }else if(pending.action==='boxes'){
+   }else if(pending.action==='boxes'||pending.action==='resizeBoxes'){
     const remote=await api.pages(path+'/boxes','boxes');
     const skuById=new Map(items.map(item=>[item.item_id,item.sku]));
     const boxKey=(length:number,width:number,height:number,weight:number,skus:string[])=>
@@ -385,7 +391,7 @@ export async function handler(req:Request):Promise<Response>{
     const problems:({severity?:string}|null)[]=Array.isArray(operation.operationProblems)?operation.operationProblems:[];
     return finishPrep(pending,problems.map(amazonProblem).filter(Boolean).slice(0,4).join('／'),problems.some(x=>x?.severity==='ERROR'));
    }
-   const work={...plan.work,notice:undefined};
+   const work=packingResult(plan.work,pending);
    if(pending.action==='packing')work.packing=(await availablePacking(api,path)).map(x=>({id:x.packingOptionId,groups:x.packingGroups,fees:charges(x.fees),expiration:x.expiration}));
    if(pending.action==='placements')work.placements=(await api.pages(path+'/placementOptions','placementOptions',optionPageSize)).filter(x=>x.status==='OFFERED').map(x=>({id:x.placementOptionId,shipmentIds:x.shipmentIds,fees:charges(x.fees),expiration:x.expiration}));
    if(pending.action==='transport'){
@@ -396,7 +402,7 @@ export async function handler(req:Request):Promise<Response>{
     work.shipments=await getShipments(api,plan,false);
    }
    if(pending.action==='windows'){
-    const rows=await api.pages(shipmentPath(plan,pending.shipmentId!)+'/deliveryWindowOptions','deliveryWindowOptions');
+    const rows=await api.pages(shipmentPath(plan,pending.shipmentId!)+'/deliveryWindowOptions','deliveryWindowOptions',{pageSize:'100'});
     work.windows={...work.windows,[pending.shipmentId!]:rows.filter(x=>!expired(x.validUntil)).map(x=>({id:x.deliveryWindowOptionId,start:x.startDate,end:x.endDate,expiration:x.validUntil}))};
    }
    if(pending.action==='chooseWindow')work.selectedWindows={...work.selectedWindows,[pending.shipmentId!]:pending.windowId!};
@@ -450,6 +456,14 @@ export async function handler(req:Request):Promise<Response>{
    if(!path||!plan.work.groups)return invalid('Amazonの梱包グループを確認できません。');
    const boxes=validateBoxes(input.boxes===undefined?plan.work.boxes:input.boxes,items,plan.work.groups);
    await start({...plan.work,boxes},path+'/packingInformation','POST',groupedBoxes(boxes,plan));
+  }else if(action==='resizeBoxes'){
+   if(!canResizeBoxes(plan.stage))throw new WorkflowError(409,'納品先の確定前に箱サイズを変更してください。');
+   const saved=plan.work.boxes;
+   const dimensions=input.dimensions;
+   if(!path||!plan.work.groups||!saved?.length||!Array.isArray(dimensions)||dimensions.length!==saved.length)
+    return invalid('登録済みの箱ごとに寸法と重量を入力してください。');
+   const boxes=validateBoxes(saved.map((box,index)=>({...dimensions[index],items:box.items})),items,plan.work.groups);
+   await start(plan.work,path+'/packingInformation','POST',groupedBoxes(boxes,plan),{boxes});
   }else if(action==='placements'){
    eligiblePhase(plan,'packed','placement-options','transport-options');
    await start({...plan.work,placement:undefined,transport:undefined,shipments:undefined,windows:undefined,selectedWindows:undefined},path+'/placementOptions','POST',{});
