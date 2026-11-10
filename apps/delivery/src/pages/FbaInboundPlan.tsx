@@ -31,14 +31,12 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
  const [dirty,setDirty]=useState(!work.boxes),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [option,setOption]=useState(''),[date,setDate]=useState(()=>work.shipDate||tokyoDate(3)),[selected,setSelected]=useState<Record<string,string>>({});
  const [tracking,setTracking]=useState<Record<string,string>>({}),[windowIds,setWindowIds]=useState<Record<string,string>>({});
- const [pdf,setPdf]=useState<{id:string;url:string}|null>(null);
  const [labelShipmentId,setLabelShipmentId]=useState('');
  const [labelError,setLabelError]=useState('');
  const [prep,setPrep]=useState<PrepReview|null>(null);
  const [failedPoll,setFailedPoll]=useState('');
  const [shippingApproval,setShippingApproval]=useState<string|null>(null);
  const automaticAttempt=useRef('');
- useEffect(()=>()=>{if(pdf)URL.revokeObjectURL(pdf.url);},[pdf]);
  const editable=['draft','created','packing-options','packing-confirmed'].includes(plan.stage);
  const canResize=canResizeBoxes(plan.stage)&&!!work.boxes?.length;
  const editingSize=resizing&&canResize;
@@ -114,10 +112,27 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
    try {onUpdate((await inboundRequest<{plan:InboundPlan}>('get',{id:plan.id})).plan);}catch{/* Keep the current plan open. */}
   }finally{setBusy(false);}
  }
- async function label(shipment:string,box?:string){
-  setBusy(true);setLabelError('');setPdf(null);
-  try{const response=await inboundRequest<Blob>('label',{...requestBody,shipment,box});
-   setPdf({id:box??shipment,url:URL.createObjectURL(new Blob([response],{type:"application/pdf"}))});}catch(cause){setLabelError((cause as Error).message);}finally{setBusy(false);}
+ async function label(shipment:string){
+  // Open the tab during the click so browsers keep the user's activation.
+  const pdfTab=window.open('', '_blank');
+  setBusy(true);setLabelError('');
+  try {
+   if(pdfTab){
+    pdfTab.opener=null;
+    pdfTab.document.title='配送ラベル';
+    pdfTab.document.body.style.fontFamily=window.getComputedStyle(document.body).fontFamily;
+    pdfTab.document.body.textContent='配送ラベルを読み込んでいます…';
+   }
+   const response=await inboundRequest<Blob>('label',{...requestBody,shipment});
+   if(pdfTab?.closed)return;
+   const url=URL.createObjectURL(new Blob([response],{type:'application/pdf'}));
+   window.setTimeout(()=>URL.revokeObjectURL(url),60_000);
+   if(pdfTab)pdfTab.location.replace(url);
+   else window.location.assign(url);
+  }catch(cause){
+   pdfTab?.close();
+   setLabelError((cause as Error).message);
+  }finally{setBusy(false);}
  }
  function editBoxes(next:Box[]){setBoxes(next);setDirty(true);}
  function changeBox(index:number,patch:Partial<Box>){editBoxes(boxes.map((b,j)=>index===j?{...b,...patch}:b));}
@@ -240,7 +255,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
       return <p key={id}>{serial(items.find(i=>i.item_id===id)?.sku??'')}：{owner.prepOwner==='NONE'||labelOnly?'梱包不要':`出品者が梱包（Amazon指定：${requirements.join('、')}）`} ／ {owner.labelOwner==='NONE'?'ラベル不要':'出品者がラベル貼付'}</p>;
      })}
     </div>}
-   {labelDestinations.length>1&&<label className="fba-work-field fba-label-destination">納品先<select aria-label="納品先" value={labelDestination} disabled={blocked} onChange={event=>{setLabelShipmentId(event.target.value);setPdf(null);setLabelError('');}}>
+   {labelDestinations.length>1&&<label className="fba-work-field fba-label-destination">納品先<select aria-label="納品先" value={labelDestination} disabled={blocked} onChange={event=>{setLabelShipmentId(event.target.value);setLabelError('');}}>
     {labelDestinations.map((id,index)=><option value={id} key={id}>{work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${index+1}`}</option>)}
    </select></label>}
    {plan.stage==='draft'&&<div className="fba-work-actions"><button type="button" className="btn primary" disabled={blocked} onClick={()=>{
@@ -252,7 +267,6 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
     items={items.filter(i=>!i.published_at&&(work.owners?.[i.item_id]?.labelOwner??'SELLER')==='SELLER').map(i=>({
     id:i.item_id,sku:i.sku,sales_channel:i.sales_channel,
    }))}/>
-   {pdf&&<div className="fba-work-actions"><a className="btn" href={pdf.url} target="_blank" rel="noopener noreferrer">配送ラベルPDFを開いて印刷</a></div>}
    {labelError&&<p className="error" role="alert">{labelError}</p>}
    {plan.stage==='draft'&&<>
     {plan.pending?.createAfterPrep&&<p role="status">Amazonに梱包不要を登録しています。反映後に納品プランを作成します。</p>}
@@ -343,8 +357,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
       {s.received?` ／ 受領 ${Object.values(s.received).reduce((a,b)=>a+b,0)}点`:''}</p>
      {s.boxes?.map((b,j)=><div className="fba-work-actions" key={b.id}><span>箱 {j+1}（{b.skus.map(serial).join('、')}）</span>
       {self&&<label>追跡番号 <input inputMode="text" maxLength={60} disabled={blocked||['CANCELLED','CLOSED','DELETED','ABANDONED'].includes(s.status)} value={tracking[b.id]??b.tracking??''} onChange={e=>setTracking({...tracking,[b.id]:e.target.value})}/></label>}
-      {!self&&b.tracking&&<span>追跡番号 {b.tracking}</span>}
-      <button className="btn" type="button" disabled={blocked} onClick={()=>void label(s.id,b.id)}>この箱のラベル</button></div>)}
+      {!self&&b.tracking&&<span>追跡番号 {b.tracking}</span>}</div>)}
      {self&&!!s.boxes?.length&&!['CANCELLED','CLOSED','DELETED','ABANDONED'].includes(s.status)&&<button type="button" className="btn" disabled={blocked||!s.boxes.every(b=>tracking[b.id]??b.tracking)} onClick={()=>{
       if(window.confirm('配送会社に引き渡しましたか？　追跡番号をAmazonに送信します。'))void apply('tracking',{shipment:s.id,confirmed:true,tracking:Object.fromEntries(s.boxes!.map(b=>[b.id,tracking[b.id]??b.tracking]))});}}>追跡番号をAmazonに送信</button>}
     </div>;
