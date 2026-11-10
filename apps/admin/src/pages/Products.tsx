@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { staffDisplayName, yen } from '@bussan/shared';
 import type { Product, Staff } from '@bussan/shared';
-import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory } from '../api';
+import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchFurimaWatchStock, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
+import { furimaWatchCsvRows } from '../furimaWatchCsv';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from '../productEstimates';
 import ColoredLabel from '../components/ColoredLabel';
 import { useTaskConfirmation } from '../components/TaskConfirmation';
@@ -41,6 +42,8 @@ export default function Products({ me }: { me: Staff }) {
   const [deleting, setDeleting] = useState(false);
   const deleteLock = useRef(false);
   const [message, setMessage] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -134,6 +137,23 @@ export default function Products({ me }: { me: Staff }) {
     finally { setBusy(false); }
   }
 
+  async function exportFurimaWatchCsv() {
+    setExporting(true);
+    setExportError('');
+    setMessage('');
+    try {
+      const csvRows = furimaWatchCsvRows(rows, await fetchFurimaWatchStock());
+      if (!csvRows.length) throw new Error('型番と仕入れ目標金額が設定された商品がありません。');
+      downloadCsv('furimawatch.csv', csvRows, { bom: false });
+      const skipped = rows.length - csvRows.length;
+      if (skipped) setMessage(`型番または仕入れ目標金額が未設定の商品${skipped}件を除いて出力しました。`);
+    } catch (cause) {
+      setExportError('フリマウォッチCSVを出力できませんでした。' + (cause instanceof Error ? cause.message : String(cause)));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function showOwner(id: string) {
     setLoading(true);
     setRows([]);
@@ -189,12 +209,13 @@ export default function Products({ me }: { me: Staff }) {
           {owners.map(ownerOption)}
         </select>
         <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} disabled={deleting || confirmation.pending} onChange={event => { setSelected(new Set()); setQuery(event.target.value); }} />
-        <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
+        <button type="button" className="btn" title="フリマウォッチ用CSV" disabled={loading || exporting || deleting || !rows.length} onClick={() => void exportFurimaWatchCsv()}>{exporting ? '出力中…' : 'CSV'}</button>
         <button type="button" className="btn" disabled={loading || busy || deleting || confirmation.pending || !selectedRows.length} onClick={askDelete}>削除</button>
         <span className="sub product-result-count">{rows.length} 件</span>
       </div>
 
       {error && <div className="error">{error}</div>}
+      {exportError && <div className="error" role="alert">{exportError}</div>}
       {ownerError && <div className="error" role="alert">{ownerError}</div>}
       {message && <p role="status">{message}</p>}
 

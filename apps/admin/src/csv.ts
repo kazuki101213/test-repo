@@ -1,5 +1,5 @@
 /** Excel で開いても文字化けしないように BOM 付き UTF-8 で書き出す */
-export function downloadCsv(filename: string, rows: Record<string, unknown>[]): void {
+export function downloadCsv(filename: string, rows: Record<string, unknown>[], { bom = true } = {}): void {
   if (rows.length === 0) return;
 
   const headers = Object.keys(rows[0]!);
@@ -14,7 +14,7 @@ export function downloadCsv(filename: string, rows: Record<string, unknown>[]): 
     ...rows.map((r) => headers.map((h) => escape(r[h])).join(',')),
   ].join('\r\n');
 
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob([(bom ? '\uFEFF' : '') + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
