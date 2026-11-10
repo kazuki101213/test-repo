@@ -114,6 +114,8 @@ export interface PurchaseDraft {
 
 /** app.v_items の 1 行 */
 export interface ItemView {
+  purchase_account_label?: string | null;
+  sales_account_label?: string | null;
   id: string;
   sku: string;
   lot_seq: number;
@@ -162,6 +164,8 @@ export interface ItemView {
 
 /** app.v_delivery_tasks の 1 行 */
 export interface DeliveryTask {
+  purchase_account_label?: string | null;
+  sales_account_label?: string | null;
   inventory_group_serial?: string;
   photo_review_approved?: boolean;
   return_request_completed_at?: string | null;

@@ -42,7 +42,7 @@ export function inventorySiteStyle(value:string|null|undefined):InventoryLabelSt
   if(site==='ヤフオク')return tone('#f4e9b6','#756018');
   if(site==='メルカリ')return tone('#f4d8df','#8c4358');
   if(site==='ラクマ')return tone('#e6dcf4','#6f4c90');
-  if(['ヤフフリ','PayPayフリマ'].includes(site))return tone('#f8dfcf','#925a34');
+  if(['ヤフフリ','PayPayフリマ','Yahoo!フリマ'].includes(site))return tone('#f8dfcf','#925a34');
   return tone('#eeeeee','#5b5b5b');
 }
 export function inventorySerial(item:{sku?:string|null;lot_seq?:number}):string {return item.sku?.match(/^(\d+[a-z]*)(?:[-_]|$)/i)?.[1]?.toLowerCase()??String(item.lot_seq??'');}
