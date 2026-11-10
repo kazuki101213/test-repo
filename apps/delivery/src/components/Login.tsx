@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { signIn } from '@bussan/shared';
+import { resetApplicationChoiceForLogin, signIn } from '@bussan/shared';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -13,7 +13,9 @@ export default function Login() {
     setError(null);
     setVerificationSent(false);
     try {
-      if (await signIn(email) === 'signed-in') window.location.reload();
+      const result = await signIn(email);
+      resetApplicationChoiceForLogin();
+      if (result === 'signed-in') window.location.reload();
       else setVerificationSent(true);
     } catch (cause) {
       setError(cause instanceof Error && cause.message.startsWith('ログイン用のメール')

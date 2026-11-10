@@ -12,6 +12,16 @@ export function initialApplication(search: string, hash: string, stored: string 
   if (params.has('itemId') || (params.has('invoiceId') && params.has('invoiceMonth')) || hash === '#bid-calculator') return 'delivery';
   return stored === 'management' ? 'management' : 'delivery';
 }
+export function opensManagementByDefault(staff: Pick<Staff, 'code' | 'role'>, search: string, hash: string, stored: string | null) {
+  return staff.code === 'AA' && staff.role === 'admin' && stored !== 'delivery' && stored !== 'management'
+    && initialApplication(search, hash, 'management') === 'management';
+}
+export function resetApplicationChoiceForLogin() {
+  try {
+    // A manual switch applies to the current login, not the next sign-in.
+    if (window.sessionStorage.getItem(applicationModeKey) === 'delivery') window.sessionStorage.removeItem(applicationModeKey);
+  } catch { /* The default route also works without a saved application choice. */ }
+}
 export function switchApplication(mode: ApplicationMode) {
   if (document.documentElement.dataset.appHost === 'unified') {
     window.sessionStorage.setItem(applicationModeKey, mode);
