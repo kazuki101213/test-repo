@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import DateInput from '../components/DateInput';
 import FbaLabelControls from './FbaLabelControls';
-import {amount,fbaCarrierGroups,fbaCarrierName,InboundRequestError,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan} from './fbaInboundApi';
+import {amount,fbaCarrierGroups,fbaCarrierName,InboundRequestError,inboundRequest,preferredFbaCarrier,tokyoDate,type Box,type InboundPlan,type Shipment} from './fbaInboundApi';
 import {canResizeBoxes,needsWindow,validateBoxes,type Transport} from '../../../../supabase/functions/amazon-fba-inbound/workflow';
 
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
@@ -10,9 +10,17 @@ const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発
 const defaultBox=(items:string[]=[]):Box=>({length:50,width:30,height:30,weight:8,items});
 const serial=(sku:string)=>sku.split('-')[0]||sku;
 const shortDate=(s:string)=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'}).format(new Date(s));
+const createPlanLabel='Amazon納品プラン';
 const sellerCentralShipments='https://sellercentral.amazon.co.jp/gp/ssof/shipping-queue.html';
 type PrepReview={owners:Record<string,{prepOwner:string;labelOwner:string}>;requirements:Record<string,string[]>};
 type PlanResult={plan:InboundPlan;prepReview?:PrepReview};
+
+function confirmedBoxName(plan:InboundPlan,remoteBox:NonNullable<Shipment['boxes']>[number]) {
+ const itemIds=new Set(plan.fba_inbound_items.filter(item=>remoteBox.skus.includes(item.sku)).map(item=>item.item_id));
+ if(!itemIds.size||itemIds.size!==remoteBox.skus.length)return 'Amazon箱ID '+remoteBox.id;
+ const index=(plan.work.boxes??[]).findIndex(box=>box.items.length===itemIds.size&&box.items.every(id=>itemIds.has(id)));
+ return index===-1?'Amazon箱ID '+remoteBox.id:'箱 '+(index+1);
+}
 
 function shippingApprovalKey(work:InboundPlan['work'],options:Transport[]){
  const charges=work.placement?.fees?.map(fee=>[fee.code,fee.amount]);
@@ -170,10 +178,17 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
  const missingWindowId=plan.stage==='placement-confirmed'?finalOptions.find(t=>needsWindow(t)&&!work.selectedWindows?.[t.shipmentId]&&
   !work.windows?.[t.shipmentId])?.shipmentId:undefined;
  const problem=error||work.notice;
- const invalidSkus=problem?.match(/MSKUs are not valid:\s*\[([^\]]+)\]/i)?.[1]?.split(',').map(sku=>sku.trim());
- const invalidItems=invalidSkus?items.filter(item=>invalidSkus.includes(item.sku)):[];
- const draftProblem=invalidItems.length
-  ? plan.account+'で納品に使える商品登録を確認できません：'+invalidItems.map(item=>serial(item.sku)).join('、')+'。写真が未承認の場合は管理アプリで承認し、在庫の「出品」からAmazonへ商品登録してください。反映後に同じ納品で「Amazonに納品プランを作成」を押してください。'
+ const itemNumbersFor=(pattern:RegExp)=>{
+  const skus=problem?.match(pattern)?.[1]?.split(',').map(sku=>sku.trim())??[];
+  return items.filter(item=>skus.includes(item.sku)).map(item=>serial(item.sku)).join('、');
+ };
+ const invalidItems=itemNumbersFor(/MSKUs are not valid:\s*\[([^\]]+)\]/i);
+ const unavailableItems=itemNumbersFor(/MSKUs are not available for inbound\b[^／]*?\bMSKUs:\s*\[([^\]]+)\]/i);
+ const retryDraft='反映後に同じ下書きで「'+createPlanLabel+'」を押してください。';
+ const draftProblem=unavailableItems
+  ? plan.account+'でAmazonがまだ納品を受け付けていません（'+unavailableItems+'）。出品した直後は反映をお待ちください。セラーセントラルの「Amazonへ納品」で同じSKUを選べるようになったら、同じ下書きで「'+createPlanLabel+'」を押してください。'
+  : invalidItems
+  ? plan.account+'で納品に使える商品登録を確認できません：'+invalidItems+'。写真が未承認の場合は管理アプリで承認し、在庫の「出品」からAmazonへ商品登録してください。'+retryDraft
   : problem;
  useEffect(()=>{
   if(shippingApproval&&plan.stage==='placement-confirmed'&&!autoConfirmTransport)setShippingApproval(null);
@@ -261,11 +276,15 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
      })}
     </div>}
    {labelDestinations.length>1&&<label className="fba-work-field fba-label-destination">納品先<select aria-label="納品先" value={labelDestination} disabled={blocked} onChange={event=>{setLabelShipmentId(event.target.value);setLabelError('');}}>
-    {labelDestinations.map((id,index)=><option value={id} key={id}>{work.shipments?.find(s=>s.id===id)?.warehouse||`納品先 ${index+1}`}</option>)}
+    {labelDestinations.map((id,index)=>{
+     const shipment=work.shipments?.find(s=>s.id===id);
+     const destination=shipment?.warehouse||'納品先 '+(index+1);
+     return <option value={id} key={id}>{destination}{shipment?.confirmationId?' ／ '+shipment.confirmationId:''}</option>;
+    })}
    </select></label>}
    {plan.stage==='draft'&&<div className="fba-work-actions"><button type="button" className="btn primary" disabled={blocked} onClick={()=>{
      if(prep||window.confirm(`${plan.account}に「${plan.name}」を作成しますか？`))void apply('create',{autoPrep:true,acceptPrep:!!prep});
-    }}>{prep?'指定条件で納品プランを作成':'Amazonに納品プランを作成'}</button></div>}
+    }}>{prep?'指定条件で納品プランを作成':createPlanLabel}</button></div>}
    <FbaLabelControls productOnly
     afterLabels={canCancel&&<button className="btn fba-work-cancel" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品取消</button>}
     shippingLabel={<button type="button" className="btn primary" disabled={blocked||!labelDestination} onClick={()=>{if(labelDestination)void label(labelDestination);}}>配送ラベル</button>}
@@ -351,7 +370,8 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
     {act('配送状況確認','refresh',{},false,'primary')}
     <a className="btn" href={sellerCentralShipments} target="_blank" rel="noopener noreferrer">納品一覧</a>
    </div>
-   {!work.shipments?.some(s=>s.confirmationId)&&<p>「配送状況確認」を押すと、納品番号と輸送箱が表示されます。</p>}
+   {labelDestinations.length>1&&<p>納品先ごとに配送ラベルを発行し、表示された輸送箱に貼って発送してください。</p>}
+   {labelDestinations.some(id=>!work.shipments?.find(s=>s.id===id)?.boxes?.length)&&<p>「配送状況確認」を押すと、納品番号と輸送箱が表示されます。</p>}
    {work.shipments?.map((s,i)=>{
     const option=finalOptions.find(t=>t.shipmentId===s.id);
     const self=option?.solution==='USE_YOUR_OWN_CARRIER';
@@ -360,7 +380,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
      {option&&<p>{fbaCarrierName(option)}/{self?'配送会社と直接精算':option.quote?amount([option.quote]):'見積もりなし'}</p>}
      <p>{shipmentStatus[s.status]??s.status}{s.trackingSaved&&!['SHIPPED','IN_TRANSIT','DELIVERED','CHECKED_IN','RECEIVING','CLOSED'].includes(s.status)?' ／ 追跡番号送信済み':''}
       {s.received?` ／ 受領 ${Object.values(s.received).reduce((a,b)=>a+b,0)}点`:''}</p>
-     {s.boxes?.map((b,j)=><div className="fba-work-actions" key={b.id}><span>箱 {j+1}（{b.skus.map(serial).join('、')}）</span>
+     {s.boxes?.map(b=><div className="fba-work-actions" key={b.id}><span>{confirmedBoxName(plan,b)}（{b.skus.map(serial).join('、')}）</span>
       {self&&<label>追跡番号 <input inputMode="text" maxLength={60} disabled={blocked||['CANCELLED','CLOSED','DELETED','ABANDONED'].includes(s.status)} value={tracking[b.id]??b.tracking??''} onChange={e=>setTracking({...tracking,[b.id]:e.target.value})}/></label>}
       {!self&&b.tracking&&<span>追跡番号 {b.tracking}</span>}</div>)}
      {self&&!!s.boxes?.length&&!['CANCELLED','CLOSED','DELETED','ABANDONED'].includes(s.status)&&<button type="button" className="btn" disabled={blocked||!s.boxes.every(b=>tracking[b.id]??b.tracking)} onClick={()=>{
