@@ -22,6 +22,9 @@ returns jsonb language sql stable security definer set search_path=pg_catalog,ap
       case when coalesce(parent.status,i.status) in ('受取前','検品中','商品登録前') and coalesce(parent.sold_on,i.sold_on) is null
         then app.default_marketplace_seller_account(coalesce(parent.sales_channel,i.sales_channel)) end)
       when 'mercari-1' then 'メルカリ1' when 'mercari-2' then 'メルカリ2'
+      when 'auctions-1' then 'ヤフオク1' when 'auctions-2' then 'ヤフオク2' end,
+    'flea_listing_account_label',case other_listing.account_id
+      when 'mercari-1' then 'メルカリ1' when 'mercari-2' then 'メルカリ2'
       when 'auctions-1' then 'ヤフオク1' when 'auctions-2' then 'ヤフオク2' end)
   from app.items i
   join app.staff viewer on viewer.id=app.current_staff_id() and viewer.is_active
@@ -39,6 +42,10 @@ returns jsonb language sql stable security definer set search_path=pg_catalog,ap
       and (l.active or (coalesce(parent.status,i.status)='販売済' and l.verified_sale is not null))
     order by l.active desc,l.observed_at desc nulls last,l.id limit 1
   ) listing on true
+  left join app.seller_listings other_listing on other_listing.item_id=coalesce(parent.id,i.id)
+    and other_listing.active and other_listing.observed_status in ('出品中','取引中')
+    and other_listing.channel is distinct from coalesce(parent.sales_channel,i.sales_channel)
+    and coalesce(parent.sold_on,i.sold_on) is null
   left join lateral (
     select o.account_id from app.seller_operations o
     where listing.account_id is null and coalesce(parent.status,i.status)='販売済'

@@ -219,6 +219,7 @@ export interface DeliveryTask {
 export interface InventoryMarketplaceLabels {
   purchase_account_label?: string | null;
   sales_account_label?: string | null;
+  flea_listing_account_label?: string | null;
 }
 
 /** Delivery inventory page RPC augments the task view with account labels and the previous use note. */
