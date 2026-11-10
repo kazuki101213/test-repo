@@ -50,7 +50,7 @@ cross join lateral (select case
   when i.status = '商品登録前' then '登録前'
   when i.status = '出品中' and location.self_fulfilled and i.shipped_on is null then '手元出品'
   when i.status = '出品中' and f.received then 'FBA出品'
-  when i.status = '取引中' and (i.shipped_on is not null or location.left_for_fba) then '発送済み'
+  when i.status = '取引中' and i.shipped_on is not null then '発送済み'
   when i.status = '取引中' and location.self_fulfilled then '発送前'
   when i.status = '動作不良' and i.shipped_on is null and not location.left_for_fba
     and (i.inspected_at is not null or i.cleaned_at is not null or i.malfunction_reported_at is not null) then '手元不良'
