@@ -29,7 +29,7 @@ for (const scenario of ['anonymous', 'other-worker', 'changed-channel', 'wrong-s
         if (url.pathname === '/auth/v1/user') return json({id: 'fake-user'});
         if (url.pathname.endsWith('/rpc/current_staff_id')) return json(worker);
         if (url.pathname.endsWith('/rpc/is_admin')) return json(false);
-        if (url.pathname.endsWith('/items')) return json([{
+        if (url.pathname.endsWith('/v_items')) return json([{
           sku, asin, title: 'beyerdynamic ヘッドホン', model_no: 'DT 770 PRO', condition: '非常に良い', sales_channel: 'FBA2', status: '商品登録前',
           is_accessory: true, deliverer_id: scenario === 'other-worker' ? 'different-worker' : worker,
         }]);
