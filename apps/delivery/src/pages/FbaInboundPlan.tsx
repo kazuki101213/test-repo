@@ -7,7 +7,7 @@ import {canResizeBoxes,needsWindow,validateBoxes,type Transport} from '../../../
 const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発送前',READY_TO_SHIP:'発送前',SHIPPED:'発送済み',
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
  DELETED:'削除済み',ABANDONED:'中止'};
-const blank=(items:string[]=[]):Box=>({length:0,width:0,height:0,weight:0,items});
+const defaultBox=(items:string[]=[]):Box=>({length:50,width:30,height:30,weight:8,items});
 const serial=(sku:string)=>sku.split('-')[0]||sku;
 const shortDate=(s:string)=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'}).format(new Date(s));
 const sellerCentralShipments='https://sellercentral.amazon.co.jp/gp/ssof/shipping-queue.html';
@@ -26,7 +26,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
  const items=plan.fba_inbound_items;
  const work=plan.work;
  const resizePending=plan.pending?.action==='resizeBoxes';
- const [boxes,setBoxes]=useState<Box[]>(()=> (resizePending?plan.pending?.boxes:undefined)??work.boxes??[blank(items.map(i=>i.item_id))]);
+ const [boxes,setBoxes]=useState<Box[]>(()=> (resizePending?plan.pending?.boxes:undefined)??work.boxes??[defaultBox(items.map(i=>i.item_id))]);
  const [resizing,setResizing]=useState(resizePending);
  const [dirty,setDirty]=useState(!work.boxes),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [option,setOption]=useState(''),[date,setDate]=useState(()=>work.shipDate||tokyoDate(3)),[selected,setSelected]=useState<Record<string,string>>({});
@@ -170,6 +170,11 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
  const missingWindowId=plan.stage==='placement-confirmed'?finalOptions.find(t=>needsWindow(t)&&!work.selectedWindows?.[t.shipmentId]&&
   !work.windows?.[t.shipmentId])?.shipmentId:undefined;
  const problem=error||work.notice;
+ const invalidSkus=problem?.match(/MSKUs are not valid:\s*\[([^\]]+)\]/i)?.[1]?.split(',').map(sku=>sku.trim());
+ const invalidItems=invalidSkus?items.filter(item=>invalidSkus.includes(item.sku)):[];
+ const draftProblem=invalidItems.length
+  ? plan.account+'で納品に使える商品登録を確認できません：'+invalidItems.map(item=>serial(item.sku)).join('、')+'。写真が未承認の場合は管理アプリで承認し、在庫の「出品」からAmazonへ商品登録してください。反映後に同じ納品で「Amazonに納品プランを作成」を押してください。'
+  : problem;
  useEffect(()=>{
   if(shippingApproval&&plan.stage==='placement-confirmed'&&!autoConfirmTransport)setShippingApproval(null);
   if(blocked||problem||editingSize)return;
@@ -220,7 +225,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
       <button className="btn" type="button" disabled={blocked} onClick={stopResize}>閉じる</button>
      </>:<button className="btn" type="button" disabled={blocked} onClick={()=>{setResizing(true);setError('');}}>変更</button>}
     </div>}
-    {editable&&<div className="fba-work-actions"><button type="button" className="btn" disabled={blocked||boxes.length>=items.length} onClick={()=>editBoxes([...boxes,blank()])}>追加</button></div>}
+    {editable&&<div className="fba-work-actions"><button type="button" className="btn" disabled={blocked||boxes.length>=items.length} onClick={()=>editBoxes([...boxes,defaultBox()])}>追加</button></div>}
     <ul className="fba-work-items">{items.map(item=>{
      const boxIndex=boxes.findIndex(box=>box.items.includes(item.item_id));
      return <li key={item.item_id}>
@@ -270,7 +275,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
    {labelError&&<p className="error" role="alert">{labelError}</p>}
    {plan.stage==='draft'&&<>
     {plan.pending?.createAfterPrep&&<p role="status">Amazonに梱包不要を登録しています。反映後に納品プランを作成します。</p>}
-    {(error||work.notice)&&<p className="error" role="alert">{error||work.notice}</p>}
+    {draftProblem&&<p className="error" role="alert">{draftProblem}</p>}
    </>}
    {autoPackingOptions&&(error||work.notice?act('梱包方法を再取得','packing'):<p role="status">梱包方法を取得しています…</p>)}
    {plan.stage==='packing-options'&&(autoPackingId&&!error&&!work.notice
