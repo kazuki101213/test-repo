@@ -127,6 +127,7 @@ export const workloadMetrics = [
   { key: 'on_hand', label: '手元にある在庫', bucket: null },
   { key: 'awaiting_receipt', label: '受取前', bucket: '受取前' },
   { key: 'inspecting', label: '検品中', bucket: '検品中' },
+  { key: 'amazon_returns', label: 'Amazon返品', bucket: 'Amazon返品' },
   { key: 'awaiting_registration', label: '商品登録前', bucket: '登録前' },
   { key: 'listed_on_hand', label: '出品中・手元', bucket: '手元出品' },
   { key: 'listed_in_fba', label: '出品中・FBA倉庫', bucket: 'FBA出品' },

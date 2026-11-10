@@ -13,7 +13,7 @@ import MalfunctionTasks from '../components/MalfunctionTasks';
 import SpareShippingTasks from '../components/SpareShippingTasks';
 import PushSettings from '../components/PushSettings';
 
-const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
+const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス', '石川秀樹']);
 
 function Kpi({ label, value, tone, detail, count, className }: { label: string; value: string; tone?: 'pos' | 'neg'; detail?: string; count?: number; className?: string }) {
   return (

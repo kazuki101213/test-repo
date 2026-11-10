@@ -62,15 +62,19 @@ do $$ declare summary record; bad integer; begin
  if summary.listed_in_fba <> 1 or summary.listed_on_hand <> 4 then
    raise exception 'Incorrect FBA or local listings: %',summary;
  end if;
+ if summary.amazon_returns <> (select count(*) from workload_cases where status='Amazon返送依頼' and not is_accessory) then
+   raise exception 'Incorrect Amazon return count: %',summary;
+ end if;
  select count(*) into bad from app.v_deliverer_stock_workload_items i join workload_cases c using(id)
  where (c.status='検品中' and i.on_hand)
+   or (c.status='Amazon返送依頼' and (i.bucket is distinct from 'Amazon返品' or i.on_hand))
    or (c.status='商品登録前' and c.channel='FBA' and c.shipped_on is null and not i.on_hand)
    or (c.status='出品中' and c.channel='FBA' and c.shipped_on is not null and i.bucket is not null);
  if bad <> 0 then raise exception 'Incorrect receipt or split shipment classification'; end if;
  select * into strict summary from app.v_deliverer_stock_workload where deliverer_id='99665000-0000-0000-0000-000000000002';
  if to_jsonb(summary) - 'deliverer_id' - 'deliverer_name' <> jsonb_build_object(
    'on_hand',0,'awaiting_receipt',0,'inspecting',0,'awaiting_registration',0,'listed_on_hand',0,
-   'listed_in_fba',0,'trading_unshipped',0,'trading_shipped',0,'defective_on_hand',0
+   'listed_in_fba',0,'trading_unshipped',0,'trading_shipped',0,'defective_on_hand',0,'amazon_returns',0
  ) then raise exception 'Historical assignee should have a row with all zero counts'; end if;
  if exists (select 1 from app.v_deliverer_stock_workload where deliverer_id='99665000-0000-0000-0000-000000000003')
  then raise exception 'Purchaser who has never handled deliveries should not appear'; end if;

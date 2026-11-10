@@ -16,6 +16,8 @@ const source = Array.from({ length: 1001 }, (_, i) => ({
 source.push({ id: 'other-assignee', deliverer_id: 'EE', bucket: '手元出品', on_hand: true });
 source.push({ id: 'fba', deliverer_id: 'II', bucket: 'FBA出品', on_hand: false });
 source.push({ id: 'registration', deliverer_id: 'II', bucket: '登録前', on_hand: true });
+source.push({ id: 'amazon-return', deliverer_id: 'II', bucket: 'Amazon返品', on_hand: false });
+source.push({ id: 'other-amazon-return', deliverer_id: 'EE', bucket: 'Amazon返品', on_hand: false });
 const ranges = [];
 const shared = {
   getSupabase: () => ({
@@ -49,12 +51,14 @@ vm.runInNewContext(compile('apps/admin/src/api.ts'), api);
   const { fetchWorkloadDetail, workloadMetrics } = api.exports;
   const metric = key => workloadMetrics.find(entry => entry.key === key);
   assert.deepEqual(Array.from(workloadMetrics, entry => entry.label), [
-    '手元にある在庫', '受取前', '検品中', '商品登録前', '出品中・手元', '出品中・FBA倉庫',
+    '手元にある在庫', '受取前', '検品中', 'Amazon返品', '商品登録前', '出品中・手元', '出品中・FBA倉庫',
     '取引中・発送前', '取引中・発送済み', '動作不良・手元',
   ]);
   assert.equal((await fetchWorkloadDetail('II', metric('listed_on_hand'))).length, 1001);
   assert(ranges.length > 1);
   assert.equal((await fetchWorkloadDetail('II', metric('on_hand'))).length, 1002);
   assert.equal((await fetchWorkloadDetail('II', metric('listed_in_fba')))[0].id, 'fba');
+  const amazonReturns = await fetchWorkloadDetail('II', metric('amazon_returns'));
+  assert.deepEqual(Array.from(amazonReturns, item => item.id), ['amazon-return']);
   console.log('Workload detail preserves the selected person and metric through pagination.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
