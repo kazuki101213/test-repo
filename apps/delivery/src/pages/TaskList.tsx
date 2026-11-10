@@ -219,7 +219,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
         <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key} onClick={() => selectState(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
       </div>
       <div className={'export-actions delivery-inventory-actions'+(shownRows.length ? ' delivery-inventory-actions-with-header' : '')}>
-        <span>{shownRows.length} / {inventory.total}商品</span>
+        <span>{inventory.error&&!inventory.hasPage?'件数未取得':`${shownRows.length} / ${inventory.total}商品`}</span>
         {fbaActions}
       </div>
       </div>
@@ -228,9 +228,10 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
         {allProducts?'「全商品」は閲覧用です。「作業中」に切り替えると、対象商品を選択できます。':'FBA納品は「商品登録前」のFBA商品を選択できます。'}
       </p>}
       {replyTaskError && <div className="error">{replyTaskError}</div>}
-      {(error||inventory.error) && <div className="error">{error||inventory.error}</div>}
+      {error && <div className="error" role="alert">{error}</div>}
+      {inventory.error && <div className="error" role="alert">{inventory.error} <button type="button" className="btn" onClick={()=>void inventory.refresh()}>再読み込み</button></div>}
       {loading && <div className="empty">読み込み中…</div>}
-      {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
+      {!loading && !inventory.error && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
       {shownRows.length>0&&<div className="approved-delivery-head"><div className="delivery-head-main" aria-hidden="true"><div>販売状況 / 写真・通番号<br/>型番・ASIN / SKU<br/>追跡番号 / 商品ID</div><div>仕入担当者<br/>納品担当者<br/>仕入先<br/>販売先</div><div>コンディション<br/>仕入日<br/>作業完了日<br/>仕入担当者からのコメント</div></div><div className="delivery-head-bundled" aria-hidden="true"><div>付属品<br/>通番号・品名 / 商品ID<br/>追跡番号 / 仕入日・利用記録<br/>仕入担当者からのコメント</div><div>仕入担当者<br/>納品担当者<br/>仕入先<br/>販売先</div></div><div className="delivery-head-action"><span aria-hidden="true">操作</span>{fbaActions}</div></div>}
       {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} onOpen={() => toggleExpanded(t.id)} selection={onSelectionChange?{ids:selectedIds,onChange:onSelectionChange}:undefined} />)}

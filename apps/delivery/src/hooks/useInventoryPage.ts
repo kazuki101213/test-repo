@@ -20,7 +20,12 @@ export function useInventoryPage<T extends {id:string}>(scope:InventoryScope,own
     if(all&&snapshot.total>10000)throw new Error('対象が多いため、検索条件を絞り込んでください。');
     page={rows:mergeInventoryPage(page?.rows??[],snapshot),fingerprints:snapshot.unchanged?(page?.fingerprints??{}):{...snapshot.fingerprints,...(snapshot.revision?{__revision:snapshot.revision}:{})},total:snapshot.total,limit,checkedAt:Date.now()};
     rememberInventoryPage(key,page);lastCheck=Date.now();setState({key,page,loading:false,error:null});
-   }catch(cause){if(active)setState(current=>({...current,key,loading:false,error:cause instanceof Error?cause.message:typeof cause==='object'&&cause&&'message' in cause?String(cause.message):String(cause)}));}
+   }catch(cause){
+    if(!active)return;
+    const message=typeof cause==='object'&&cause&&'message' in cause?String(cause.message):String(cause);
+    const timedOut=typeof cause==='object'&&cause&&'code' in cause&&cause.code==='57014'||message.includes('statement timeout');
+    setState(current=>({...current,key,loading:false,error:timedOut?'在庫の読み込みに時間がかかっています。':message}));
+   }
    finally{busy=false;}
   };
   refreshRef.current=()=>refresh(true);
@@ -39,7 +44,7 @@ export function useInventoryPage<T extends {id:string}>(scope:InventoryScope,own
   const next={...current,rows:current.rows.map(item=>item.id===row.id?{...item,...row}:item),fingerprints};
   rememberInventoryPage(key,next);setState(s=>s.key===key?({...s,page:next}):s);void refreshRef.current();
  },[key]);
- return {rows:page?.rows??[],total:page?.total??0,more:!all&&(page?.total??0)>limit,loading:state.key!==key||state.loading,error:state.key===key?state.error:null,
+ return {rows:page?.rows??[],total:page?.total??0,hasPage:!!page,more:!all&&(page?.total??0)>limit,loading:state.key!==key||state.loading,error:state.key===key?state.error:null,
  refresh:()=>refreshRef.current(),loadMore:()=>setWindow({key,limit:limit+50}),updateRow};
 }
 const windowGlobal=()=>globalThis.window;

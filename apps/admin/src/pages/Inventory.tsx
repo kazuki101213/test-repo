@@ -115,6 +115,7 @@ export default function Inventory({ me }: { me: Staff }) {
   </button>;
   const countLabel = loading
     ? (items.length ? `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品を表示・残りを読み込み中…` : '読み込み中…')
+    : inventory.error && !inventory.hasPage ? '件数未取得'
     : `${(activeColumnCount ? productCount(viewItems) : count).toLocaleString()}商品`;
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}${fullEditFor ? ' with-full-edit' : ''}`}>
