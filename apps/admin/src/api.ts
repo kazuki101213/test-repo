@@ -8,7 +8,7 @@ import { financialProductSerial, normalizeSkuReturnSuffix, productCount, product
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
-  DelivererWorkload, ItemInsert, ItemView, LedgerRow,
+  DelivererWorkload, InventoryMarketplaceLabels, ItemInsert, ItemView, LedgerRow,
   MonthlySummary, Product, PurchaseDraft, SpareAccessory, Staff, StockSummary,
 } from '@bussan/shared';
 
@@ -248,7 +248,7 @@ export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale
   return { items: itemRows, expenses: expenseRows };
 }
 
-export type InventoryItem = ItemView & {
+export type InventoryItem = ItemView & InventoryMarketplaceLabels & {
   inventory_parent_serial?:string|null;
   inventory_parent_status?:string|null;
   inventory_parent_purchased_at?:string|null;

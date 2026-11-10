@@ -85,7 +85,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
  const badge=(text:string)=><span className="inventory-label inventory-accessory-label">{text}</span>;
  const independent=(item:DeliveryTask)=>!item.is_accessory||isSeparateAccessory(item);
  const selectItem=(item:DeliveryTask)=>selection&&independent(item)?<label className="delivery-fba-select" title="FBA・商品登録前の商品を選択"><input type="checkbox" className="delivery-fba-checkbox" aria-label={`${inventorySerial(item)}をFBA納品に選択`} checked={selection.ids.includes(item.id)} disabled={!canSelectFbaItem(item,staff,readOnly)} onChange={event=>selection.onChange(event.target.checked?Array.from(new Set([...selection.ids,item.id])):selection.ids.filter(id=>id!==item.id))}/><span className="delivery-fba-checkmark" aria-hidden="true" /></label>:null;
- const people=(item:DeliveryTask)=><div className="delivery-people">{[
+ const people=(item:DeliveryInventoryRow)=><div className="delivery-people">{[
   ['仕入担当者',staffDisplayName(item.purchaser_name)||'—',true],
   ['納品担当者',staffDisplayName(item.deliverer_name||(item.deliverer_id===staff.id?staffDisplayName(staff):''))||'未設定',true],['仕入先',item.purchase_account_label||item.marketplace,false],['販売先',item.sales_account_label||salesChannelLabel(item.sales_channel)||'—',false],
  ].map(([label,value,person])=><div key={String(label)}><small>{label}</small><span className="inventory-label" style={person?inventoryStaffStyle(String(value)):inventorySiteStyle(String(value))}>{value}</span></div>)}</div>;
