@@ -55,7 +55,7 @@ export async function handler(req: Request): Promise<Response> {
     const input = await req.json().catch(() => null);
     if (!uuid(input?.itemId)) throw new LabelError(400, '商品指定が不正です。');
     const [itemResult, staffResult, adminResult] = await Promise.all([
-      sb.from('items').select('sku,asin,title,model_no,condition,sales_channel,deliverer_id,status,is_accessory').eq('id', input.itemId).maybeSingle(),
+      sb.from('v_items').select('sku,asin,title,model_no,condition,sales_channel,deliverer_id,status,is_accessory').eq('id', input.itemId).maybeSingle(),
       sb.rpc('current_staff_id'),
       sb.rpc('is_admin'),
     ]);
