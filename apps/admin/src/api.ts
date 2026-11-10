@@ -4,7 +4,7 @@ import { workloadPeriod } from './workloadPeriod';
 import { getSupabase, usageRecordText, HELD_STATUSES } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
-import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
+import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
@@ -732,6 +732,27 @@ export async function fetchProducts(query?: string, ownerStaffId?: string): Prom
     if (error) throw error;
     return (data ?? []) as Product[];
   });
+}
+
+export async function fetchFurimaWatchStock(): Promise<Map<string, number>> {
+  const rows = await readAllRows<Pick<ItemView, 'id' | 'asin' | 'sku' | 'lot_seq'>>(async (from, to) => {
+    const { data, error } = await getSupabase().from('items')
+      .select('id,asin,sku,lot_seq').eq('is_accessory', false)
+      .is('sold_on', null).not('asin', 'is', null)
+      .in('status', ['受取前', '検品中', '商品登録前', '動作不良', '出品中', '取引中'])
+      .or('status.neq.取引中,shipped_on.is.null').order('id').range(from, to);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+  const stock = new Map<string, Set<string>>();
+  for (const item of rows) {
+    const asin = item.asin?.trim().toUpperCase();
+    if (!asin) continue;
+    const serials = stock.get(asin) ?? new Set<string>();
+    serials.add(financialProductSerial(item.sku, item.lot_seq) || item.id);
+    stock.set(asin, serials);
+  }
+  return new Map([...stock].map(([asin, serials]) => [asin, serials.size]));
 }
 
 export type ProductSaleHistory = {
