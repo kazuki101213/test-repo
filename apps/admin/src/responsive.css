@@ -279,8 +279,8 @@
  .layout .spare-search.spare-toolbar { grid-template-columns:max-content 108px minmax(0,1fr); gap:6px; }
  .layout .spare-search.spare-toolbar > select:first-of-type { font-size:14px; padding-inline:3px; }
  .layout .spare-search.spare-toolbar > .btn { font-size:14px; padding-inline:8px; }
- .layout .toolbar.expense-search-toolbar { display:grid !important; grid-template-columns:max-content minmax(0,1fr) max-content; }
- .layout .toolbar.expense-search-toolbar > input[type=search] { width:100% !important; }
+ .layout .expense-list .toolbar.expense-search-toolbar { display:grid !important; grid-template-columns:max-content minmax(0,1fr) max-content; }
+ .layout .expense-list .toolbar.expense-search-toolbar > input[type=search] { width:100% !important; }
  .layout .toolbar.product-search-toolbar { grid-template-columns:max-content minmax(0,1fr) max-content; gap:6px; }
  .layout .toolbar.product-search-toolbar > .btn { font-size:14px; padding-inline:8px; }
 }
