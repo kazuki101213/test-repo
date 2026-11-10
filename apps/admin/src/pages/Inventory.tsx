@@ -80,6 +80,7 @@ export default function Inventory({ me }: { me: Staff }) {
   const [editFor, setEditFor] = useState<{ item: InventoryItem; field: InventoryField } | null>(null);
   const [fullEditFor, setFullEditFor] = useState<InventoryItem | null>(null);
   const [expandedComment, setExpandedComment] = useState<{ sku: string; label: string; text: string } | null>(null);
+  const [openPhotosFor, setOpenPhotosFor] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(80);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
@@ -187,6 +188,7 @@ export default function Inventory({ me }: { me: Staff }) {
       {!loading && !inventory.error && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
       {items.length > 0 && <InventoryOverview items={viewItems.slice(0,visibleCount)} canPrice={me.role==='admin'} heading={filterHeading}
+        openPhotosFor={openPhotosFor} onTogglePhotos={id=>setOpenPhotosFor(open=>open===id?null:id)}
         onEdit={(item,field)=>setEditFor({item,field})}
         onFullEdit={item=>{setPurchaseOpen(false);setFullEditFor(item);}}
         onComment={item=>setExpandedComment({sku:item.sku,label:'納品担当者からのコメント',text:item.latest_comment??''})} />}
