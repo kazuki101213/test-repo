@@ -279,8 +279,13 @@ td.detail-description { white-space: normal; min-width: 200px; max-width: 400px;
 input[type='month'] { padding: 4px 5px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
 .dashboard-charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
 .dashboard-charts > * { min-width: 0; }
-.workload-card { overflow-x: auto; }
-.workload-card td { border-bottom: 0; }
+.workload-card { min-width: 0; }
+.workload-table table { min-width: 800px; }
+.workload-table :is(th, td) { padding-inline: 8px; }
+.workload-table tr > :first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; }
+.workload-table tbody th { font-weight: normal; }
+.workload-table tfoot { font-weight: bold; }
+.workload-table .workload-emphasis { font-weight: bold; }
 .kpi-detail { color: var(--muted); font-size: 12px; margin-top: 6px; }
 .kpi-detail summary { cursor: pointer; }
 @media (max-width: 700px) { .dashboard-charts { grid-template-columns: minmax(0, 1fr); } }
