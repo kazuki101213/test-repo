@@ -1,13 +1,13 @@
 import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
-import { getSupabase, usageRecordText } from '@bussan/shared';
+import { getSupabase, STATUSES, usageRecordText } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
-  InventoryMarketplaceLabels, ItemInsert, ItemView, LedgerRow,
+  InventoryMarketplaceLabels, ItemInsert, ItemStatus, ItemView, LedgerRow,
   MonthlySummary, Product, PurchaseDraft, SpareAccessory, Staff, StockSummary,
 } from '@bussan/shared';
 
@@ -466,6 +466,11 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
     throw new Error('Amazon返金金額と返金合計は整数で入力してください。それ以外の金額は0円以上で入力してください。');
   }
   if (!!fields.sold_on !== (fields.sold_price !== null)) throw new Error('販売日と販売金額は両方入力してください。');
+  if (fields.status !== item.status) {
+    if (!STATUSES.includes(fields.status)) throw new Error('販売状態を選択してください。');
+    if (fields.status === '販売済' && !fields.sold_on) throw new Error('販売日と販売金額を入力してください。');
+    if (fields.status !== '販売済' && fields.sold_on) throw new Error('販売済から変更するには、販売日と販売金額を空欄にしてください。');
+  }
   if (fields.is_accessory && !item.is_accessory) {
     const { data: possibleParents, error: parentError } = await getSupabase().from('items')
       .select('id,sku,lot_seq').eq('lot_seq', item.lot_seq).eq('is_accessory', false);
@@ -477,9 +482,12 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
   const { asin, ...otherFields } = fields;
   const asinChange = asin !== item.asin ? { asin: normalizeInventoryAsin(asin, item.product_id) } : {};
   const { data, error } = await getSupabase().from('items').update({ ...otherFields, ...asinChange, title })
-    .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
+    .eq('id', item.id).eq('updated_at', item.updated_at).select('status').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
+  if (fields.status !== item.status && data.status !== fields.status) {
+    throw new Error(`販売状態は「${data.status}」のままです。在庫を読み直して、販売日・追跡番号などの記録を確認してください。`);
+  }
 }
 
 export type ExpenseField = 'incurred_on' | 'category' | 'name' | 'amount';
@@ -552,9 +560,41 @@ export async function updateProductNumber(item: InventoryItem, productNo: number
 
 export type InventoryField = keyof InventoryEdit | 'product_no' | 'model_no' | 'sku' | 'lot_seq';
 
+export async function updateInventoryStatus(
+  item: InventoryItem,
+  status: ItemStatus,
+  sale?: { date: string; price: string; payout: string },
+): Promise<void> {
+  if (!STATUSES.includes(status)) throw new Error('販売状態を選択してください。');
+  if (status === item.status) return;
+  if (status !== '販売済' && item.sold_on) {
+    throw new Error('販売日が登録されています。商品情報編集で販売日と販売金額を確認し、販売状態と一緒に変更してください。');
+  }
+  const fields: Partial<Pick<InventoryEdit, 'status' | 'sold_on' | 'sold_price' | 'payout_amount'>> = { status };
+  if (status === '販売済') {
+    const price = Number(sale?.price);
+    const payout = sale?.payout.trim() ? Number(sale.payout) : null;
+    if (!sale || !/^\d{4}-\d{2}-\d{2}$/.test(sale.date) || !sale.price.trim() || !Number.isSafeInteger(price) || price < 0) {
+      throw new Error('販売日と販売金額を入力してください。');
+    }
+    if (payout !== null && (!Number.isSafeInteger(payout) || payout < 0)) {
+      throw new Error('振込金額は0円以上の整数を入力してください。');
+    }
+    Object.assign(fields, { sold_on: sale.date, sold_price: price, payout_amount: payout });
+  }
+  const { data, error } = await getSupabase().from('items').update(fields)
+    .eq('id', item.id).eq('updated_at', item.updated_at).select('status').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
+  if (data.status !== status) {
+    throw new Error(`現在の商品情報では「${status}」に変更できません。商品情報編集で販売日・追跡番号などの記録を確認してください。`);
+  }
+}
+
 /** A cell edit writes only the selected column so another cell cannot be overwritten. */
 export async function updateInventoryField(item: InventoryItem, field: InventoryField, value: string): Promise<void> {
   const text = value.trim();
+  if (field === 'status') return updateInventoryStatus(item, text as ItemStatus);
   if (field === 'sku' || field === 'lot_seq') {
     const { error } = await getSupabase().rpc('update_item_identity', {
       p_item_id: item.id,
