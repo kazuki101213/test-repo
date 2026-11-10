@@ -4,7 +4,7 @@ import {labelPaper, labelPosition, labelSlots, type LabelCalibration} from './fb
 export interface FbaProductLabel {
   id: string;
   fnsku: string;
-  condition: string;
+  model: string;
   sku: string;
   image: string;
 }
@@ -49,7 +49,7 @@ export function FbaProductLabelSheet({labels, calibration, firstPosition = 1, al
               <img src={label.image} alt="" onError={onPhotoError}/>
               <div className="fba-label-identity">
                 <strong>{label.fnsku}</strong>
-                <span>{label.condition}</span>
+                <span>{label.model || '—'}</span>
                 <span className="fba-label-sku">SKU {label.sku}</span>
               </div>
             </div>
