@@ -6,7 +6,7 @@ try { stored = window.sessionStorage.getItem(applicationModeKey); } catch { /* U
 const mode = initialApplication(location.search, location.hash, stored);
 // Keep imports in separate branches: Vite must preload each entry's own CSS.
 async function startApplication() {
-  if (mode === 'management') await import('../../admin/src/main');
+  if (mode === 'management') await import('@bussan/admin/entry');
   else await import('./deliveryEntry');
 }
 void startApplication().catch(() => {
