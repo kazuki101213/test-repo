@@ -16,11 +16,12 @@ async function fetchLabel(item: LabelItem): Promise<FbaProductLabel> {
     const detail = error.context instanceof Response ? await error.context.json().catch(() => null) : null;
     throw new Error(detail?.error || 'Amazonの商品ラベル情報を取得できませんでした。');
   }
-  if (!/^X[A-Z0-9]{9}$/.test(data?.fnsku ?? '') || typeof data?.condition !== 'string') {
+  if (!/^X[A-Z0-9]{9}$/.test(data?.fnsku ?? '')) {
     throw new Error('商品ラベル情報を確認できません。');
   }
   if (typeof data.image !== 'string' || !data.image) throw new Error('Amazonの商品写真を取得できません。もう一度「商品ラベル」を押してください。');
-  return {id: item.id, fnsku: data.fnsku, condition: data.condition, sku, image: data.image};
+  const model = typeof data.modelNo === 'string' ? data.modelNo.trim() : '';
+  return {id: item.id, fnsku: data.fnsku, model, sku, image: data.image};
 }
 
 export default function FbaLabelControls({items,productOnly=false,beforeLabels,shippingLabel,afterLabels}: {items: LabelItem[];productOnly?:boolean;beforeLabels?:ReactNode;shippingLabel?:ReactNode;afterLabels?:ReactNode}) {

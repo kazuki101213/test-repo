@@ -55,7 +55,7 @@ export async function handler(req: Request): Promise<Response> {
     const input = await req.json().catch(() => null);
     if (!uuid(input?.itemId)) throw new LabelError(400, '商品指定が不正です。');
     const [itemResult, staffResult, adminResult] = await Promise.all([
-      sb.from('items').select('sku,asin,title,condition,sales_channel,deliverer_id,status,is_accessory').eq('id', input.itemId).maybeSingle(),
+      sb.from('items').select('sku,asin,title,model_no,condition,sales_channel,deliverer_id,status,is_accessory').eq('id', input.itemId).maybeSingle(),
       sb.rpc('current_staff_id'),
       sb.rpc('is_admin'),
     ]);
@@ -106,7 +106,7 @@ export async function handler(req: Request): Promise<Response> {
         if (product?.asin === item.asin && Array.isArray(product.images)) image = catalogPhoto(product.images);
       }
     }
-    return reply(200, {fnsku, title: title || item.title, condition: item.condition, image});
+    return reply(200, {fnsku, title: title || item.title, modelNo: item.model_no, condition: item.condition, image});
   } catch (error) {
     return error instanceof LabelError || error instanceof AmazonAccountError ? reply(error.status, {error: error.message})
       : reply(502, {error: '商品ラベル情報を取得できません。時間をおいて再試行してください。'});

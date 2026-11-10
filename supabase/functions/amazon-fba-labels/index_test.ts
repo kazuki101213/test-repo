@@ -30,7 +30,7 @@ for (const scenario of ['anonymous', 'other-worker', 'changed-channel', 'wrong-s
         if (url.pathname.endsWith('/rpc/current_staff_id')) return json(worker);
         if (url.pathname.endsWith('/rpc/is_admin')) return json(false);
         if (url.pathname.endsWith('/items')) return json([{
-          sku, asin, title: 'DT 770 PRO', condition: '非常に良い', sales_channel: 'FBA2', status: '商品登録前',
+          sku, asin, title: 'beyerdynamic ヘッドホン', model_no: 'DT 770 PRO', condition: '非常に良い', sales_channel: 'FBA2', status: '商品登録前',
           is_accessory: true, deliverer_id: scenario === 'other-worker' ? 'different-worker' : worker,
         }]);
         if (url.pathname.endsWith('/staff')) return json([{is_active: true}]);
@@ -62,6 +62,7 @@ for (const scenario of ['anonymous', 'other-worker', 'changed-channel', 'wrong-s
       const body = await response.json();
       if (response.ok) {
         assert(body.fnsku === 'X001234567' && body.condition === '非常に良い', 'Incorrect label');
+        assert(body.modelNo === 'DT 770 PRO', 'Inventory model number missing');
         assert(body.image === (scenario === 'with-photo' ? image : null), 'Incorrect image');
       }
       if (['anonymous','other-worker','changed-channel'].includes(scenario)) assert(!calls.some(url => url.includes('amazon.com')), 'Amazon contacted before access checks');
