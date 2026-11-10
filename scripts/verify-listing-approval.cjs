@@ -88,7 +88,7 @@ for(const description of [null,'商品名（ヤフオク）\n保存済み名\n\n
 
 // Missing catalog models must not turn a known return product name into the display placeholder.
 const namedReturn={...base,title:"RODE VideoMic GO",model_no:null,marketplace:"動作品Amazon返品",sku:"2219b-AAII-20261001-448",lot_seq:2219};
-assert.equal(model.productModelText(namedReturn),"未登録");
+assert.equal(model.productModelText(namedReturn),"RODE VideoMic GO");
 assert.equal(listingDraft(namedReturn,"").title,"【2219b】RODE VideoMic GO");
 assert.equal(listingDraft({...namedReturn,description:"商品名（メルカリ）\n手入力名\n\n説明文\n手入力本文"},"").title,"手入力名");
 for(const title of ["X001234567","未登録","型番未登録","—"])assert.equal(model.productListingName({...namedReturn,title}),"");

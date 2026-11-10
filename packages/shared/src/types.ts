@@ -216,8 +216,14 @@ export interface DeliveryTask {
   malfunction_resolved_at: string | null;
 }
 
-/** Delivery inventory page RPC augments the task view with the previous use note. */
-export type DeliveryInventoryRow = DeliveryTask & { accessory_usage_note?: string | null };
+export interface InventoryMarketplaceLabels {
+  purchase_account_label?: string | null;
+  sales_account_label?: string | null;
+  flea_listing_account_label?: string | null;
+}
+
+/** Delivery inventory page RPC augments the task view with account labels and the previous use note. */
+export type DeliveryInventoryRow = DeliveryTask & InventoryMarketplaceLabels & { accessory_usage_note?: string | null };
 
 export interface DeliveryReturnRequestTask {
   id: string;

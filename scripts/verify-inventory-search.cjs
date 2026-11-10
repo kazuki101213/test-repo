@@ -6,7 +6,8 @@ const base={id:'target',sku:'2198b-AAII-20260927-100',lot_seq:2198,title:'legacy
 const target={...base,marketplace_item_id:'ENA998'},collision={...base,id:'collision',sku:'100-AAII-20261007-1',lot_seq:100,title:'2198b',model_no:'ENA998',asin:'BDZ-FBW1000',tracking_no:'B07WZK3RJR',marketplace_item_id:'ヤマト12345'};
 const checks=[['serial',' 2198B '],['sku',base.sku.toLowerCase()],['model','bdz-fbw1000'],['asin','b07wzk3rjr'],['marketplace_item_id','ena998'],['tracking_no','ヤマト12345']];
 for(const [field,value] of checks){assert(search.matchesInventorySearch(target,field,value));assert(!search.matchesInventorySearch(collision,field,value),'A different field must not match '+field);}
-assert(!search.matchesInventorySearch({...target,model_no:null,title:'X000FNSKU'},'model','X000FNSKU'));
+assert(search.matchesInventorySearch({...target,model_no:null,title:'iBasso Nunchaku'},'model','Nunchaku'));
+assert(!search.matchesInventorySearch({...target,model_no:null,title:'X001EMTLVR'},'model','X001EMTLVR'));
 assert(search.matchesInventorySearch({...target,is_accessory:true,title:'リモコン'},'model','リモコン'));
 assert(search.matchesInventorySearch({...target,is_accessory:true,title:'純正リモコン'},'accessory_name','リモコン'));
 assert(!search.matchesInventorySearch({...target,title:'純正リモコン'},'accessory_name','リモコン'));
