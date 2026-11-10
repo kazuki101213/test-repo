@@ -94,5 +94,6 @@
  .fba-carton-fields { grid-template-columns:repeat(4,minmax(0,4.5rem)); gap:4px; }
  .fba-carton-fields label { grid-template-columns:minmax(0,1fr); font-size:12px; white-space:nowrap; }
  .app .fba-carton-fields input { min-width:0; max-width:100%; padding-inline:4px; font-size:16px; }
+ .app .fba-mode-carriers select { font-size:14px; padding-inline:4px; }
  .app .fba-operation-box .fba-label-actions > .btn { font-size:12px; }
 }
