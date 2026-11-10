@@ -18673,7 +18673,7 @@ create function app.inventory_marketplace_accounts(p_item_id uuid)
 returns jsonb language sql stable security definer set search_path=pg_catalog,app as $$
   select jsonb_build_object('purchase_account_label',purchase.account_label,'sales_account_label',
     case coalesce(listing.account_id,history.account_id,
-      case when coalesce(parent.status,i.status) in ('受取前','検品中','商品登録前','作業中') and coalesce(parent.sold_on,i.sold_on) is null
+      case when coalesce(parent.status,i.status) in ('受取前','検品中','商品登録前') and coalesce(parent.sold_on,i.sold_on) is null
         then app.default_marketplace_seller_account(coalesce(parent.sales_channel,i.sales_channel)) end)
       when 'mercari-1' then 'メルカリ1' when 'mercari-2' then 'メルカリ2'
       when 'auctions-1' then 'ヤフオク1' when 'auctions-2' then 'ヤフオク2' end)
