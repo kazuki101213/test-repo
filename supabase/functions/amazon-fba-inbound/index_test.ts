@@ -30,6 +30,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   if(url.hostname==='database.invalid'){
    if(path==='/auth/v1/user')return json({id:'user'});
    if(path.endsWith('/current_staff_id'))return json(staff);
+   if(path.endsWith('/verify_amazon_cron_token'))return json(body.p_token==='valid-cron-token');
    if(path.endsWith('/staff'))return json({id:staff,is_active:true,role:'deliverer'});
    if(path.endsWith('/items'))return json([{id:itemId,sku,asin,condition:'非常に良い',sales_channel:'FBA2',status:inventoryChanged?'販売済':'商品登録前',deliverer_id:'own'}]);
    if(path.endsWith('/fba_inbound_plans')){
@@ -122,6 +123,12 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  async function send(action:string,fields:Record<string,unknown>={},status=200){
   const res=await handler(new Request('https://function.invalid',{method:'POST',headers:{authorization:'Bearer fixture'},
    body:JSON.stringify({action,id,revision:plan.revision,...fields})}));
+  if(res.status!==status)throw new Error(action+' returned '+res.status+' '+await res.text());
+  return res;
+ }
+ async function scheduled(action:string,status=200,token='valid-cron-token',revision=plan.revision){
+  const res=await handler(new Request('https://function.invalid',{method:'POST',headers:{'x-amazon-cron-token':token},
+   body:JSON.stringify({action,id,revision})}));
   if(res.status!==status)throw new Error(action+' returned '+res.status+' '+await res.text());
   return res;
  }
@@ -234,10 +241,18 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   plan.work.selections=savedSelections;
   await send('tracking',{shipment,tracking:{box:'ABCD12345'}},422);
   await step('tracking','ready',{shipment,confirmed:true,tracking:{box:'ABCD12345'}});
-  received=1;await send('refresh');equal(published,0);
-  available=1;await send('refresh');equal(published,0);
-  buyable=true;await send('refresh');equal(published,1);
-  await send('refresh');equal(published,1);
+  const callsBeforeScheduled=remoteCalls;
+  await scheduled('refresh',401,'bad-token');
+  await scheduled('create',400);
+  await scheduled('refresh',409,'valid-cron-token',plan.revision-1);
+  equal(remoteCalls,callsBeforeScheduled);
+  plan.fba_inbound_items.push(extra);
+  received=1;await scheduled('refresh');equal(published,0);equal(plan.received_at,null);
+  plan.fba_inbound_items.pop();
+  available=1;await scheduled('refresh');equal(published,0);
+  const receivedAt=plan.received_at;assert(receivedAt,'Confirmed receipt hides the plan even when the listing is not buyable');
+  buyable=true;const result=await scheduled('refresh');equal(await result.json(),{refreshed:true});equal(published,1);
+  await send('refresh');equal(published,1);equal(plan.received_at,receivedAt);
  }finally{
   globalThis.fetch=original;for(const key of Object.keys(env))Deno.env.delete(key);
  }

@@ -36,7 +36,7 @@ export function conditionForTarget(target: DescriptionTarget, condition: ItemCon
 }
 
 const recorderAccessories = [
-  '本体', '純正リモコン', 'B-CASカード', 'mini B-CASカード', '電源ケーブル', 'ACASチップ内蔵',
+  '本体', '純正リモコン', 'B-CASカード', 'mini B-CASカード', 'ACASチップ内蔵', '電源ケーブル',
   '取扱説明書', '代替リモコン', '○○製リモコン', 'B-CASカード×2枚',
   '同軸(アンテナ)ケーブル', '同軸(アンテナ)ケーブル×2本', 'HDMIケーブル',
 ];

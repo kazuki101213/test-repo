@@ -28,22 +28,31 @@ export default function FbaDelivery({staff,itemIds,createSelectedDrafts,onSelect
  const [plans,setPlans]=useState<InboundPlan[]>([]),[openId,setOpenId]=useState(''),[historyError,setHistoryError]=useState(''),[creating,setCreating]=useState(false);
  const [historyReload,setHistoryReload]=useState(0),[historyLoading,setHistoryLoading]=useState(true);
  const [draftError,setDraftError]=useState(''),[draftAttempt,setDraftAttempt]=useState(0);
+ const [receivedNotice,setReceivedNotice]=useState(false);
  const attempted=useRef(-1);
  const listedPlans=useRef<InboundPlan[]>([]);
  useEffect(()=>{
   let active=true;
   setHistoryLoading(true);
   void Promise.resolve().then(()=>inboundRequest<{plans:InboundPlan[]}>('list')).then(result=>{
-   if(active){listedPlans.current=result.plans;setPlans(result.plans);setHistoryError('');}
+   if(active){
+    listedPlans.current=result.plans;setPlans(result.plans);setHistoryError('');
+    setOpenId(current=>result.plans.some(plan=>plan.id===current)?current:'');
+   }
   }).catch(cause=>{if(active){listedPlans.current=[];setHistoryError(deliveryErrorMessage(cause));}})
     .finally(()=>{if(active)setHistoryLoading(false);});
   return()=>{active=false;};
  },[staff.id,historyReload]);
  const open=plans.find(p=>p.id===openId);
  function updatePlan(next:InboundPlan){
-  setPlans(current=>next.stage==='cancelled'?current.filter(p=>p.id!==next.id):current.some(p=>p.id===next.id)?
+  if(next.stage==='cancelled'||next.received_at){
+   setPlans(current=>current.filter(plan=>plan.id!==next.id));
+   setOpenId(current=>current===next.id?'':current);
+   if(next.received_at)setReceivedNotice(true);
+   return;
+  }
+  setPlans(current=>current.some(p=>p.id===next.id)?
    current.map(p=>p.id===next.id&&p.revision<=next.revision?next:p):[next,...current]);
-  if(next.stage==='cancelled')setOpenId('');
  }
  const selectionKey=JSON.stringify(itemIds);
  const waitingToCreate=createSelectedDrafts&&historyLoading;
@@ -94,12 +103,13 @@ export default function FbaDelivery({staff,itemIds,createSelectedDrafts,onSelect
  return <section className="fba-delivery" aria-labelledby="fba-delivery-heading">
   <h2 id="fba-delivery-heading">FBA納品</h2>
   <div className="fba-history">
-   <label><span>納品履歴</span> <select value={openId} disabled={creating} onChange={e=>setOpenId(e.target.value)}>
+   <label><span>納品履歴</span> <select value={openId} disabled={creating} onChange={e=>{setOpenId(e.target.value);setReceivedNotice(false);}}>
     <option value="">納品を選択</option>
     {plans.map(p=><option key={p.id} value={p.id}>{p.account}/{p.name}/{p.fba_inbound_items.length}点</option>)}
    </select></label>
    <button type="button" className="btn" disabled={creating||loading} onClick={()=>setHistoryReload(value=>value+1)}>履歴更新</button>
   </div>
+  {receivedNotice&&<p role="status">すべての商品の受領を確認しました。</p>}
   {historyError&&<p className="error" role="alert">{historyError}</p>}
   {open&&<FbaInboundPlan key={open.id} plan={open} onUpdate={updatePlan}/>}
   {loading&&<p role="status">選択商品を確認中…</p>}
@@ -109,7 +119,7 @@ export default function FbaDelivery({staff,itemIds,createSelectedDrafts,onSelect
    <p className="error" role="alert">{draftError}</p>
    <button type="button" className="btn" disabled={loading||creating||historyLoading||!itemIds.length} onClick={()=>setDraftAttempt(value=>value+1)}>再試行</button>
   </div>}
-  {!loading&&!itemIds.length&&!open&&<p className="empty">在庫で納品する商品にチェックを入れてください。</p>}
+  {!loading&&!itemIds.length&&!open&&!receivedNotice&&<p className="empty">在庫で納品する商品にチェックを入れてください。</p>}
   {!creating&&groupSelection(rows).map(({account,assignee,items})=>
    <section key={account+assignee} className="card fba-selection-group" aria-label={`${account}の納品商品`}>
     <div className="fba-selection-group-heading"><h3><span className="inventory-label" style={inventorySiteStyle(account)}>{account}</span></h3><span>{items.length}商品・{items.length}点</span></div>
