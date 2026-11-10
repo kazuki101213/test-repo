@@ -115,7 +115,6 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
               {workloadMetrics.map(metric => <td className="num" key={metric.key}>{visibleWorkload.reduce((sum, row) => sum + row[metric.key], 0)}</td>)}
             </tr></tfoot>}
           </table></div>
-          <p className="sub">追跡番号だけの検品中は、手元にある在庫に含めません。FBA倉庫は、Amazonの受領記録がある商品を数えます。</p>
         </div>
       </div>
 
