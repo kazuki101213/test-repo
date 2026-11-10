@@ -112,7 +112,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
    try {onUpdate((await inboundRequest<{plan:InboundPlan}>('get',{id:plan.id})).plan);}catch{/* Keep the current plan open. */}
   }finally{setBusy(false);}
  }
- async function label(shipment:string,box?:string){
+ async function label(shipment:string){
   // Open the tab during the click so browsers keep the user's activation.
   const pdfTab=window.open('', '_blank');
   setBusy(true);setLabelError('');
@@ -123,7 +123,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
     pdfTab.document.body.style.fontFamily=window.getComputedStyle(document.body).fontFamily;
     pdfTab.document.body.textContent='配送ラベルを読み込んでいます…';
    }
-   const response=await inboundRequest<Blob>('label',{...requestBody,shipment,box});
+   const response=await inboundRequest<Blob>('label',{...requestBody,shipment});
    if(pdfTab?.closed)return;
    const url=URL.createObjectURL(new Blob([response],{type:'application/pdf'}));
    window.setTimeout(()=>URL.revokeObjectURL(url),60_000);
@@ -357,8 +357,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
       {s.received?` ／ 受領 ${Object.values(s.received).reduce((a,b)=>a+b,0)}点`:''}</p>
      {s.boxes?.map((b,j)=><div className="fba-work-actions" key={b.id}><span>箱 {j+1}（{b.skus.map(serial).join('、')}）</span>
       {self&&<label>追跡番号 <input inputMode="text" maxLength={60} disabled={blocked||['CANCELLED','CLOSED','DELETED','ABANDONED'].includes(s.status)} value={tracking[b.id]??b.tracking??''} onChange={e=>setTracking({...tracking,[b.id]:e.target.value})}/></label>}
-      {!self&&b.tracking&&<span>追跡番号 {b.tracking}</span>}
-      <button className="btn" type="button" disabled={blocked} onClick={()=>void label(s.id,b.id)}>この箱のラベル</button></div>)}
+      {!self&&b.tracking&&<span>追跡番号 {b.tracking}</span>}</div>)}
      {self&&!!s.boxes?.length&&!['CANCELLED','CLOSED','DELETED','ABANDONED'].includes(s.status)&&<button type="button" className="btn" disabled={blocked||!s.boxes.every(b=>tracking[b.id]??b.tracking)} onClick={()=>{
       if(window.confirm('配送会社に引き渡しましたか？　追跡番号をAmazonに送信します。'))void apply('tracking',{shipment:s.id,confirmed:true,tracking:Object.fromEntries(s.boxes!.map(b=>[b.id,tracking[b.id]??b.tracking]))});}}>追跡番号をAmazonに送信</button>}
     </div>;
