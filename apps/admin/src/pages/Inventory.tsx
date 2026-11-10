@@ -8,9 +8,9 @@ import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, yen, matchesInventoryFilters } from '@bussan/shared';
-import type { PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
+import type { ItemStatus, PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
-import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem } from '../api';
+import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem, updateInventoryStatus } from '../api';
 import type { InventoryField } from '../api';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
@@ -200,7 +200,7 @@ export default function Inventory({ me }: { me: Staff }) {
       }} />}
 
 
-      {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} />}
+      {editFor && <InventoryFieldDialog key={`${editFor.item.id}:${editFor.field}`} item={editFor.item} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={() => { setEditFor(null); void load(); }} onFullEdit={() => { setPurchaseOpen(false); setFullEditFor(editFor.item); setEditFor(null); }} />}
       {expandedComment && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="コメント全文"><div className="card inventory-comment-panel"><h3>{expandedComment.sku} {expandedComment.label}</h3><p>{expandedComment.text}</p><button className="btn" onClick={() => setExpandedComment(null)}>閉じる</button></div></div>}
     </div>
   );
@@ -342,7 +342,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
         return <label className={`field${field === 'memo' ? ' inventory-full-edit-memo' : ''}`} key={field}><span>{fieldLabels[field]}</span>
-          {options ? <ColoredSelect value={field==='sales_channel'?salesChannelLabel(String(current)):String(current)} onChange={event => set(field, event.target.value)}><option value="">未設定</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
+          {options ? <ColoredSelect value={field==='sales_channel'?salesChannelLabel(String(current)):String(current)} onChange={event => set(field, event.target.value)}>{field !== 'status' && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
             : dateFields.has(field)
               ? <DateInput value={String(current)} onChange={event => set(field, event.target.value)} />
@@ -361,7 +361,7 @@ const fieldLabels: Record<InventoryField, string> = {
   is_accessory: '登録区分',
   title: '商品名', asin: 'ASIN', tracking_no: '追跡番号', purchased_at: '仕入日',
   cost_amount: '仕入金額', planned_price: '販売予定金額', planned_payout: '振込予定金額',
-  packed_on: '作業完了日', shipped_on: '出荷日', status: '作業状態', memo: '仕入担当者からのコメント',
+  packed_on: '作業完了日', shipped_on: '出荷日', status: '販売状態', memo: '仕入担当者からのコメント',
   purchaser_id: '仕入担当者', deliverer_id: '納品担当者', marketplace: '仕入先',
   condition: '商品状態', sales_channel: '販売先', sold_on: '販売日',
   sold_price: '販売金額', payout_amount: '振込金額', amazon_refund_amount: 'Amazon返金金額',
@@ -369,11 +369,17 @@ const fieldLabels: Record<InventoryField, string> = {
   lot_seq: '通番号', sku: 'SKU', marketplace_item_id: '商品ID', refund_amount: '返金合計', inventory_refund_amount: '在庫の払い戻し',
 };
 
-function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void }) {
+function InventoryFieldDialog({ item, field, staff, onClose, onSaved, onFullEdit }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void; onFullEdit: () => void }) {
   const initial = field==='sales_channel'?salesChannelLabel(item.sales_channel):item[field]??'';
   const [value, setValue] = useState(String(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [sale, setSale] = useState({ date: '', price: '', payout: '' });
+  const saving = useRef(false);
+  const recordingSale = field === 'status' && value === '販売済' && item.status !== '販売済';
+  const changingRecordedSale = field === 'status' && value !== initial && value !== '販売済' && !!item.sold_on;
+  const canSave = !busy && !changingRecordedSale && (field !== 'status' || value !== initial)
+    && (!recordingSale || (!!sale.date && !!sale.price));
   const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
   const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'inventory_refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
   const options = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
@@ -384,23 +390,41 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved }: { item: 
     : field === 'purchaser_id' ? staff.filter(s => s.role !== 'deliverer').map(s => ({ value: s.id, label: staffDisplayName(s) }))
     : field === 'deliverer_id' ? deliveryStaffOptions(staff).map(s => ({ value: s.id, label: staffDisplayName(s) })) : null;
   async function save() {
+    if (!canSave || saving.current) return;
+    saving.current = true;
     setBusy(true); setError('');
-    try { await updateInventoryField(item, field, value); onSaved(); }
+    try {
+      if (field === 'status') await updateInventoryStatus(item, value as ItemStatus, sale);
+      else await updateInventoryField(item, field, value);
+      onSaved();
+    }
     catch (cause) { setError(inventoryError(cause)); setBusy(false); }
+    finally { saving.current = false; }
   }
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label={`${fieldLabels[field]}を編集`}>
     <div className="card inventory-comment-panel">
       <h3>{fieldLabels[field]}を編集</h3><p className="sku">{item.lot_seq} / {item.sku}</p>
       <label className="field"><span>{fieldLabels[field]}</span>
-        {options ? <ColoredSelect value={value} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
+        {options ? <ColoredSelect value={value} autoFocus={field === 'status'} disabled={busy} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
           : field === 'memo' ? <textarea value={value} onChange={e => setValue(e.target.value)} />
             : dateFields.has(field)
               ? <DateInput autoFocus value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />
               : <input autoFocus type={numberFields.has(field) ? 'number' : 'text'} min={field === 'lot_seq' || field === 'product_no' ? '1' : numberFields.has(field) && field !== 'amazon_refund_amount' ? '0' : undefined} step={numberFields.has(field) ? '1' : undefined} value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />}
       </label>
+      {recordingSale && <>
+        <label className="field"><span>販売日</span><DateInput value={sale.date} disabled={busy} onChange={e => setSale({ ...sale, date: e.target.value })} /></label>
+        <label className="field"><span>販売金額</span><input type="number" min={0} step={1} value={sale.price} disabled={busy} onChange={e => setSale({ ...sale, price: e.target.value })} /></label>
+        <label className="field"><span>振込金額（任意）</span><input type="number" min={0} step={1} value={sale.payout} disabled={busy} onChange={e => setSale({ ...sale, payout: e.target.value })} /></label>
+      </>}
+      {changingRecordedSale && <p className="muted">販売日と販売金額が登録されています。商品情報編集で販売記録と販売状態を一緒に変更してください。</p>}
       {field === 'is_accessory' && value === 'true' && !item.is_accessory && <p className="muted">付属品に変更すると、販売金額と振込金額は自動で空欄になります。</p>}
       {error && <div className="error" role="alert">{error}</div>}
-      <div className="toolbar inventory-edit-actions"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
+      <div className="toolbar inventory-edit-actions">
+        {changingRecordedSale
+          ? <button className="btn primary" onClick={onFullEdit}>商品情報編集</button>
+          : <button className="btn primary" disabled={!canSave} onClick={() => void save()}>保存</button>}
+        <button className="btn" disabled={busy} onClick={onClose}>閉じる</button>
+      </div>
     </div>
   </div>;
 }

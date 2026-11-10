@@ -9,6 +9,8 @@
 .approved-record .reference-value { display:inline-flex; flex-wrap:nowrap; align-items:baseline; gap:3px; }
 .approved-heading-line { display:flex; flex-wrap:wrap; gap:4px; }
 .approved-record .inventory-cell-edit:hover { text-decoration:underline; }
+.approved-record .approved-status-edit { border:0; cursor:pointer; }
+.approved-record .approved-status-edit:hover { text-decoration:underline; }
 .approved-record .approved-identity { display:flex; gap:10px; align-items:center; padding-block:8px; }
 .approved-record .approved-photo { grid-template:minmax(0,1fr) / minmax(0,1fr); width:112px; height:112px; flex:0 0 112px; margin:0; padding:0; background:var(--surface-2); border:0; border-radius:4px; overflow:hidden; font-size:11px; color:var(--muted); }
 .approved-record .approved-photo img { width:100%; height:100%; object-fit:contain; }
