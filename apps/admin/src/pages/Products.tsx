@@ -144,7 +144,7 @@ export default function Products({ me }: { me: Staff }) {
     try {
       const csvRows = furimaWatchCsvRows(rows, await fetchFurimaWatchStock());
       if (!csvRows.length) throw new Error('型番と仕入れ目標金額が設定された商品がありません。');
-      downloadCsv('furimawatch.csv', csvRows, { bom: false });
+      downloadCsv('furimawatch.csv', csvRows);
       const skipped = rows.length - csvRows.length;
       if (skipped) setMessage(`型番または仕入れ目標金額が未設定の商品${skipped}件を除いて出力しました。`);
     } catch (cause) {
