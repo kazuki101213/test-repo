@@ -19,6 +19,29 @@ select id,996650+n,(996650+n)::text||case when is_accessory then 'c' else '' end
 update app.items i set status=c.status,shipped_on=c.shipped_on from workload_cases c where i.id=c.id;
 do $$begin if exists(select 1 from app.items i join workload_cases c using(id) where i.status<>c.status) then raise exception 'Fixture status changed by workflow validation';end if;end $$;
 
+-- One SKU received, one still in another shipment, and a legacy FBA listing with no receipt.
+with chosen as (
+ select i.id, i.sku, i.title, i.sales_channel
+ from app.items i join workload_cases c using(id)
+ where not c.is_accessory and c.channel = 'FBA' and c.shipped_on is null
+ and c.status in ('出品中','商品登録前')
+), plan as (
+ insert into app.fba_inbound_plans(account,staff_id,name,created_by,stage,work)
+ select 'FBA1','99665000-0000-0000-0000-000000000001','workload split plan',
+  '11111111-1111-1111-1111-111111111111','ready',
+  jsonb_build_object('shipments',jsonb_build_array(
+    jsonb_build_object('confirmationId','ready-shipment','status','RECEIVING',
+      'received',jsonb_build_object(listed.sku,1)),
+    jsonb_build_object('confirmationId','open-shipment','status','WORKING',
+      'boxes',jsonb_build_array(jsonb_build_object('skus',jsonb_build_array(registration.sku))))
+  ))
+ from chosen listed join workload_cases l on l.id=listed.id and l.status='出品中'
+ cross join chosen registration join workload_cases r on r.id=registration.id and r.status='商品登録前'
+ returning id
+)
+insert into app.fba_inbound_items(plan_id,item_id,sku,asin,title,condition,sales_channel)
+select plan.id,chosen.id,chosen.sku,'B000000001',chosen.title,'良い',chosen.sales_channel from plan cross join chosen;
+
 grant select on workload_cases to authenticated;
 set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
@@ -28,6 +51,23 @@ do $$ declare actual record;begin
  if actual."保有在庫"<>(select count(*) from workload_cases where expected_held) then raise exception 'Held count mismatch: %',actual."保有在庫";end if;
  if actual."作業在庫"<>(select count(*) from workload_cases where expected_working) then raise exception 'Working count mismatch: %',actual."作業在庫";end if;
 end $$;
+do $$ declare summary record; bad integer; begin
+ select * into strict summary from app.v_deliverer_stock_workload where deliverer_id='99665000-0000-0000-0000-000000000001';
+ if summary.listed_in_fba <> 1 or summary.listed_on_hand <> 3 then
+   raise exception 'Incorrect FBA or local listings: %',summary;
+ end if;
+ select count(*) into bad from app.v_deliverer_stock_workload_items i join workload_cases c using(id)
+ where (c.status='検品中' and i.on_hand)
+   or (c.status='商品登録前' and c.channel='FBA' and c.shipped_on is null and not i.on_hand)
+   or (c.status='出品中' and c.channel='FBA' and c.shipped_on is not null and i.bucket is not null);
+ if bad <> 0 then raise exception 'Incorrect receipt or split shipment classification'; end if;
+end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
-do $$begin if exists(select 1 from app.v_deliverer_workload) then raise exception 'Deliverer can read management workload';end if;end $$;
+do $$begin
+ if exists(select 1 from app.v_deliverer_workload)
+   or exists(select 1 from app.v_deliverer_stock_workload)
+   or exists(select 1 from app.v_deliverer_stock_workload_items)
+   or exists(select 1 from workload_private.fba_stock_evidence)
+ then raise exception 'Deliverer can read management workload'; end if;
+end $$;
 rollback;

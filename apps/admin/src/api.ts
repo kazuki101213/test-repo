@@ -1,14 +1,13 @@
 import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
-import { workloadPeriod } from './workloadPeriod';
-import { getSupabase, usageRecordText, HELD_STATUSES } from '@bussan/shared';
+import { getSupabase, usageRecordText } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
-  DelivererWorkload, InventoryMarketplaceLabels, ItemInsert, ItemView, LedgerRow,
+  InventoryMarketplaceLabels, ItemInsert, ItemView, LedgerRow,
   MonthlySummary, Product, PurchaseDraft, SpareAccessory, Staff, StockSummary,
 } from '@bussan/shared';
 
@@ -124,8 +123,22 @@ export async function fetchMonthly(): Promise<MonthlySummary[]> {
   return (data ?? []) as MonthlySummary[];
 }
 
+export const workloadMetrics = [
+  { key: 'on_hand', label: '手元にある在庫', bucket: null },
+  { key: 'awaiting_receipt', label: '受取前', bucket: '受取前' },
+  { key: 'inspecting', label: '検品中', bucket: '検品中' },
+  { key: 'awaiting_registration', label: '商品登録前', bucket: '登録前' },
+  { key: 'listed_on_hand', label: '出品中・手元', bucket: '手元出品' },
+  { key: 'listed_in_fba', label: '出品中・FBA倉庫', bucket: 'FBA出品' },
+  { key: 'trading_unshipped', label: '取引中・発送前', bucket: '発送前' },
+  { key: 'trading_shipped', label: '取引中・発送済み', bucket: '発送済み' },
+  { key: 'defective_on_hand', label: '動作不良・手元', bucket: '手元不良' },
+] as const;
+export type WorkloadMetric = typeof workloadMetrics[number];
+export type DelivererWorkload = { deliverer_id: string; deliverer_name: string } & Record<WorkloadMetric['key'], number>;
+
 export async function fetchWorkload(): Promise<DelivererWorkload[]> {
-  const { data, error } = await getSupabase().from('v_deliverer_workload').select('*');
+  const { data, error } = await getSupabase().from('v_deliverer_stock_workload').select('*').order('deliverer_name');
   if (error) throw error;
   return (data ?? []) as DelivererWorkload[];
 }
@@ -140,22 +153,15 @@ export interface ItemFilter {
   purchasedTo?: string;
 }
 
-export type WorkloadMetric = '作業在庫' | '保有在庫' | '平均作業日数';
-const WORKING_STATUSES = ['検品中', 'Amazon返送依頼', '商品登録前'] as const;
-const SELF_SHIPPING_CHANNELS = '自己発送,自己発送1,自己発送2,メルカリ,ヤフオク';
-const workloadHeldFilter = () => 'status.in.(' + HELD_STATUSES.join(',') + '),and(sales_channel.in.(' + SELF_SHIPPING_CHANNELS + '),or(status.eq.出品中,and(status.eq.取引中,shipped_on.is.null)))';
-export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'packed_on' | 'shipped_on'>;
+export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'model_no' | 'status' | 'marketplace' | 'sales_channel' | 'purchased_at' | 'packed_on' | 'shipped_on'>;
 
 export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric): Promise<WorkloadItem[]> {
-  const { today, averageStart } = workloadPeriod();
   return readAllRows<WorkloadItem>(async (from, to) => {
-    let query = getSupabase().from('items')
-      .select('id,lot_seq,sku,title,status,marketplace,purchased_at,packed_on,shipped_on')
-      .eq('deliverer_id', delivererId).eq('is_accessory', false);
-    if (metric === '作業在庫') query = query.in('status', WORKING_STATUSES);
-    else if (metric === '保有在庫') query = query.or(workloadHeldFilter());
-    else query = query.gte('packed_on', averageStart).lte('packed_on', today).not('purchased_at', 'is', null);
-    const { data, error } = await query.order('lot_seq', { ascending: false }).order('id').range(from, to);
+    const query = getSupabase().from('v_deliverer_stock_workload_items')
+      .select('id,lot_seq,sku,title,model_no,status,marketplace,sales_channel,purchased_at,packed_on,shipped_on')
+      .eq('deliverer_id', delivererId);
+    const filtered = metric.bucket === null ? query.eq('on_hand', true) : query.eq('bucket', metric.bucket);
+    const { data, error } = await filtered.order('lot_seq', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as WorkloadItem[];
   });
