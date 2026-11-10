@@ -282,10 +282,10 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
      return <option value={id} key={id}>{destination}{shipment?.confirmationId?' ／ '+shipment.confirmationId:''}</option>;
     })}
    </select></label>}
-   {plan.stage==='draft'&&<div className="fba-work-actions"><button type="button" className="btn primary" disabled={blocked} onClick={()=>{
-     if(prep||window.confirm(`${plan.account}に「${plan.name}」を作成しますか？`))void apply('create',{autoPrep:true,acceptPrep:!!prep});
-    }}>{prep?'指定条件で納品プランを作成':createPlanLabel}</button></div>}
    <FbaLabelControls productOnly
+    beforeLabels={plan.stage==='draft'&&<button type="button" className="btn primary" disabled={blocked} onClick={()=>{
+     if(prep||window.confirm(`${plan.account}に「${plan.name}」を作成しますか？`))void apply('create',{autoPrep:true,acceptPrep:!!prep});
+    }}>{prep?'指定条件で納品プランを作成':createPlanLabel}</button>}
     afterLabels={canCancel&&<button className="btn fba-work-cancel" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品取消</button>}
     shippingLabel={<button type="button" className="btn primary" disabled={blocked||!labelDestination} onClick={()=>{if(labelDestination)void label(labelDestination);}}>配送ラベル</button>}
     items={items.filter(i=>!i.published_at&&(work.owners?.[i.item_id]?.labelOwner??'SELLER')==='SELLER').map(i=>({

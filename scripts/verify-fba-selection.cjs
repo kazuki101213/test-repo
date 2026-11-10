@@ -11,7 +11,7 @@ for(const status of ['検品中','出品中','取引中','販売済'])assert(!he
 assert(!helper.canSelectFbaItem(base,staff,true));assert(!helper.canSelectFbaItem({...base,deliverer_id:'other'},staff));assert(helper.canSelectFbaItem({...base,deliverer_id:'other'},{...staff,role:'admin'}));
 const bundled={...base,id:'bundled',is_accessory:true,sku:'9001a-AAII-date-10'},separate={...base,id:'separate',is_accessory:true,sku:'9001c-AAII-date-10'};
 assert(!helper.canSelectFbaItem(bundled,staff));assert(helper.canSelectFbaItem(separate,staff));assert.equal(helper.fbaSelectionAccount({...base,sales_channel:'FBA'}),'FBA1');assert.equal(helper.fbaSelectionAccount(base),'FBA2');
-function harness(){let slots=[],cursor=0,effects=[],dirty=true,tree;const react={useState(initial){const n=cursor++;slots[n]??={value:typeof initial==='function'?initial():initial};return[slots[n].value,next=>{slots[n].value=typeof next==='function'?next(slots[n].value):next;dirty=true}];},useEffect(fn,deps){const n=cursor++;if(!slots[n]||deps.some((v,i)=>v!==slots[n].deps[i])){slots[n]?.cleanup?.();const slot=slots[n]={deps};effects.push(()=>{slot.cleanup=fn();});}},useRef:value=>slots[cursor++]??={current:value},lazy:f=>f,Suspense:'Suspense'};return{react,async settle(render){for(let i=0;i<40;i++){if(dirty){dirty=false;cursor=0;tree=render();effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}return tree;},renderOnce(render){cursor=0;return render();}};}
+function harness(){let slots=[],cursor=0,effects=[],dirty=true,tree;const react={useState(initial){const n=cursor++;slots[n]??={value:typeof initial==='function'?initial():initial};return[slots[n].value,next=>{slots[n].value=typeof next==='function'?next(slots[n].value):next;dirty=true}];},useEffect(fn,deps){const n=cursor++;if(!slots[n]||deps.some((v,i)=>v!==slots[n].deps[i])){slots[n]?.cleanup?.();const slot=slots[n]={deps};effects.push(()=>{slot.cleanup=fn();});}},useRef:value=>slots[cursor++]??={current:value},lazy:f=>f,Suspense:'Suspense'};return{react,async settle(render){dirty=true;for(let i=0;i<40;i++){if(dirty){dirty=false;cursor=0;tree=render();effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}return tree;},renderOnce(render){cursor=0;return render();}};}
 const shipping=load('apps/delivery/src/pages/fbaInboundApi.ts',{'@bussan/shared':{}});
 assert.equal(shipping.tokyoDate(3,new Date('2026-12-31T14:59:00Z')),'2027-01-03');
 assert.equal(shipping.tokyoDate(3,new Date('2026-12-31T15:00:00Z')),'2027-01-04');
@@ -34,13 +34,21 @@ const props={task:base,amazonImageUrl:null,members:[base,bundled,separate],origi
 let tree=cardHarness.renderOnce(()=>card(props)),checks=nodes(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox');assert.equal(checks.length,2,'Bundled accessory belongs to its body; only separate sale gets another checkbox');assert(checks.every(n=>!n.props.disabled));checks[0].props.onChange({target:{checked:true}});assert.deepEqual(selected,['main']);assert.equal(base.status,'商品登録前');
 tree=cardHarness.renderOnce(()=>card({...props,readOnly:true}));assert(nodes(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox').every(n=>n.props.disabled),'Catalog does not grant selection permissions');
 (async()=>{
- const h=harness(),read=[],rows={main:base,one:{...base,id:'one',lot_seq:9002,sku:'9002-AAII-date-100',sales_channel:'FBA1'},other:{...base,id:'other',deliverer_id:'other'},self:{...base,id:'self',sales_channel:'自己発送2'}};
- const Page=load('apps/delivery/src/pages/FbaDelivery.tsx',{'react':h.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper,'../errors':{deliveryErrorMessage:String},'../api':{fetchTask:async(id,all)=>{read.push({id,all});return rows[id]}},'./fbaInboundApi':{inboundRequest:async()=>({plans:[]})}}).default;
- const itemIds=['main','one','other','self'];let removed;
- const onSelectionChange=ids=>{removed=Array.from(ids)};
- const render=()=>Page({staff,itemIds,createSelectedDrafts:false,onSelectionChange});
- tree=await h.settle(render);assert(read.every(r=>r.all===false));assert.equal(nodes(tree).filter(n=>n.type==='article').length,2,'Fresh permissions and FBA state exclude inappropriate selections');assert.equal(nodes(tree).filter(n=>n.props?.role==='alert').length,1);assert.equal(nodes(tree).filter(n=>String(n.props?.['aria-label']).endsWith('の納品商品')).length,2,'Accounts stay separate');assert(!text(tree).includes('undefined'));assert(text(tree).includes('納品履歴'));
- nodes(tree).find(n=>n.type==='button'&&String(n.props['aria-label'])==='9001を選択から外す').props.onClick();assert.deepEqual(removed,['one','other','self']);assert.equal(base.status,'商品登録前');
+ const h=harness(),read=[],requests=[],rows={main:base,one:{...base,id:'one',lot_seq:9002,sku:'9002-AAII-date-100',sales_channel:'FBA1'},other:{...base,id:'other',deliverer_id:'other'},self:{...base,id:'self',sales_channel:'自己発送2'}};
+ const Page=load('apps/delivery/src/pages/FbaDelivery.tsx',{'react':h.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':shared,'../fbaSelection':helper,'../errors':{deliveryErrorMessage:String},'../api':{fetchTask:async(id,all)=>{read.push({id,all});return rows[id]}},'./fbaInboundApi':{inboundRequest:async action=>{requests.push(action);return {plans:[]};}}}).default;
+ const itemIds=['main','one','other','self'];
+ const onSelectionChange=()=>assert.fail('History and invalid selections must preserve the inventory checkmarks');
+ tree=await h.settle(()=>Page({staff,itemIds,createSelectedDrafts:false,onSelectionChange}));
+ assert.deepEqual(requests,['list']);
+ assert.deepEqual(read,[],'Opening history does not load inventory selections');
+ assert.equal(nodes(tree).filter(n=>n.type==='article'||n.props?.role==='alert').length,0);
+ assert(text(tree).includes('納品履歴'));
+
+ tree=await h.settle(()=>Page({staff,itemIds,createSelectedDrafts:true,onSelectionChange}));
+ assert.deepEqual(read,itemIds.map(id=>({id,all:false})));
+ assert.deepEqual(requests,['list'],'Invalid selections must be rejected before creating a plan');
+ assert.equal(nodes(tree).filter(n=>n.props?.role==='alert').length,1);
+ assert.equal(nodes(tree).filter(n=>n.type==='article').length,0);
 
  const batch=harness(),submitted=[],history=[];
  let pendingIds=['main','one'],failSecond=true;
@@ -60,12 +68,14 @@ tree=cardHarness.renderOnce(()=>card({...props,readOnly:true}));assert(nodes(tre
  assert.deepEqual(submitted,[['one'],['main']]);
  assert.deepEqual(pendingIds,['main']);
  assert.equal(nodes(tree).find(n=>n.type==='Plan').props.plan.id,'plan-one');
+ assert.equal(nodes(tree).filter(n=>n.type==='article').length,0,'A pending selection must not display below the saved plan');
  nodes(tree).find(n=>n.type==='button'&&text(n)==='再試行').props.onClick();
  tree=await batch.settle(renderBatch);
  assert.deepEqual(submitted,[['one'],['main'],['main']]);
  assert.deepEqual(pendingIds,[]);
  assert.equal(nodes(tree).find(n=>n.type==='Plan').props.plan.id,'plan-main');
  assert(!text(tree).includes('このグループの納品を作成'));
+ assert.equal(nodes(tree).filter(n=>n.type==='article').length,0);
  const a=harness(),session={user:{id:'fixture-user'},staff};
  const App=load('apps/delivery/src/App.tsx',{'react':a.react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...shared,loadSession:async()=>session,canOpenManagement:()=>false},'./pages/TaskList':{default:'Inventory'},'./hooks/useCompactBidViewport':{useCompactBidViewport:()=>false}},{URLSearchParams,window:{location:{hash:'',pathname:'/',search:''},addEventListener(){},removeEventListener(){}},history:{pushState(){},replaceState(){}}}).default;
  let appTree=await a.settle(()=>App()),inventory=nodes(appTree).find(n=>n.type==='Inventory');assert(inventory);inventory.props.onSelectionChange(['main']);appTree=await a.settle(()=>App());inventory=nodes(appTree).find(n=>n.type==='Inventory');assert.deepEqual(Array.from(inventory.props.selectedIds),['main']);inventory.props.onFbaDelivery();appTree=await a.settle(()=>App());const destination=nodes(appTree).find(n=>n.props?.itemIds);assert(destination);assert.equal(destination.props.createSelectedDrafts,true);assert.deepEqual(Array.from(destination.props.itemIds),['main']);
