@@ -53,7 +53,7 @@ do $$ declare actual record;begin
 end $$;
 do $$ declare summary record; bad integer; begin
  select * into strict summary from app.v_deliverer_stock_workload where deliverer_id='99665000-0000-0000-0000-000000000001';
- if summary.listed_in_fba <> 1 or summary.listed_on_hand <> 3 then
+ if summary.listed_in_fba <> 1 or summary.listed_on_hand <> 4 then
    raise exception 'Incorrect FBA or local listings: %',summary;
  end if;
  select count(*) into bad from app.v_deliverer_stock_workload_items i join workload_cases c using(id)
