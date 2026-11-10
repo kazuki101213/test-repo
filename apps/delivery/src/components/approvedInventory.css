@@ -56,6 +56,9 @@
  }
  .approved-delivery-head,.approved-delivery-body { grid-template-columns:var(--delivery-main-column) var(--delivery-bundled-column) var(--delivery-action-column); }
  .approved-delivery-head { display:grid; gap:16px; padding:9px 12px; background:var(--surface-2); border-block:1px solid var(--border); color:var(--muted); font-size:12px; line-height:20px; align-items:center; }
+ .delivery-inventory-actions-with-header > .delivery-fba-actions { display:none; }
+ .delivery-head-action { display:flex; justify-content:space-between; align-items:center; gap:var(--control-gap); align-self:stretch; }
+ .delivery-head-action > .delivery-fba-actions { justify-content:flex-end; align-self:flex-end; margin-left:auto; }
  .delivery-head-main { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr); gap:12px; }
  .delivery-head-bundled { display:grid; grid-template-columns:minmax(130px,1fr) minmax(100px,.7fr); gap:12px; }
  .approved-delivery-body { display:grid; gap:8px 16px; min-height:112px; padding:0 12px; align-items:center; }
