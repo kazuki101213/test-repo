@@ -49,6 +49,9 @@ importers:
 
   apps/delivery:
     dependencies:
+      '@bussan/admin':
+        specifier: workspace:*
+        version: link:../admin
       '@bussan/shared':
         specifier: workspace:*
         version: link:../../packages/shared
