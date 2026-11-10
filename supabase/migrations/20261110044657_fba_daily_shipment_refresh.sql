@@ -11,7 +11,8 @@ where plan.stage = 'ready'
     where item.plan_id = plan.id
       and not exists (
         select 1
-        from jsonb_array_elements(coalesce(plan.work->'shipments', '[]'::jsonb)) shipment
+        from jsonb_array_elements(case when jsonb_typeof(plan.work->'shipments') = 'array'
+          then plan.work->'shipments' else '[]'::jsonb end) shipment
         where nullif(shipment->>'confirmationId', '') is not null
           and shipment->>'status' in ('DELIVERED', 'CHECKED_IN', 'RECEIVING', 'CLOSED')
           and case when jsonb_typeof(shipment->'received'->item.sku) = 'number'
