@@ -1,4 +1,4 @@
-import { canOpenManagement, switchApplication, staffDisplayName } from '@bussan/shared';
+import { applicationModeKey, canOpenManagement, opensManagementByDefault, switchApplication, staffDisplayName } from '@bussan/shared';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { loadSession, signOut } from '@bussan/shared';
 import type { Session } from '@bussan/shared';
@@ -88,7 +88,14 @@ export default function App() {
 
   async function refresh() {
     try {
-      setSession(await loadSession());
+      const current = await loadSession();
+      let selectedApplication: string | null = null;
+      try { selectedApplication = window.sessionStorage.getItem(applicationModeKey); } catch { /* No explicit switch was saved. */ }
+      if (current && opensManagementByDefault(current.staff, window.location.search, window.location.hash, selectedApplication)) {
+        switchApplication('management');
+        return;
+      }
+      setSession(current);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

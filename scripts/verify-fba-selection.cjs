@@ -2,7 +2,7 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),asser
 const jsx=(type,props)=>({type,props}),nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
 const text=n=>n==null?'':typeof n!=='object'?String(n):Array.isArray(n)?n.map(text).join(''):text(n.props?.children);
 function load(file,imports={},globals={}){const c={exports:{},...globals,require:id=>imports[id]??{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);return c.exports;}
-const shared={...load('packages/shared/src/inventoryPresentation.ts'),...load('packages/shared/src/salesChannels.ts'),canViewDeliveryAssignee:s=>s.role==='admin',staffDisplayName:v=>v||'',productModelText:t=>t.title,jpDate:v=>v,...load('packages/shared/src/noticeUrl.ts',{}, {URL})};
+const shared={...load('packages/shared/src/inventoryPresentation.ts'),...load('packages/shared/src/salesChannels.ts'),canViewDeliveryAssignee:s=>s.role==='admin',staffDisplayName:v=>v||'',productModelText:t=>t.title,jpDate:v=>v,...load('packages/shared/src/noticeUrl.ts',{}, {URL}),...load('packages/shared/src/applicationSwitch.ts',{}, {URLSearchParams})};
 const helper=load('apps/delivery/src/fbaSelection.ts',{'@bussan/shared':shared});
 const staff={id:'own',name:'担当者',role:'deliverer'},base={id:'main',lot_seq:9001,sku:'9001-AAII-date-100',title:'本体',status:'商品登録前',sales_channel:'FBA2',deliverer_id:'own',is_accessory:false};
 for(const channel of ['FBA','FBA1','FBA2'])assert(helper.canSelectFbaItem({...base,sales_channel:channel},staff));
