@@ -201,7 +201,6 @@ export default function Products({ me }: { me: Staff }) {
     <>
       {confirmation.confirmation}
       <div className="dashboard-workspace with-expense product-workspace registration-workspace"><section className="card dashboard-content product-list">
-      <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
       <div className="toolbar product-search-toolbar">
         <select aria-label="商品リストの表示対象" value={ownerFilter} disabled={busy || deleting || confirmation.pending} onChange={event => showOwner(event.target.value)}>
