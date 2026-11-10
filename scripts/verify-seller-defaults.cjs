@@ -60,6 +60,12 @@ console.log('Yahoo manufacturer category defaults and pre-submit parent guard pa
 // Camera condenser microphone names must map to an actual Mercari leaf, not a free-text alias.
 for(const title of ["RODE VideoMic GO","RODE VideoMic GO II","RØDE VideoMicro","ＲＯＤＥ ＶｉｄｅｏＭｉｃ ＧＯ"]){const draft=sellerExports.sellerDefaults({title,sales_channel:"メルカリ"});assert.equal(draft.listingCategory,"コンデンサーマイク");assert.equal(sellerExports.sellerListingCategoryError(draft,"メルカリ"),"");}
 assert.equal(sellerExports.sellerDefaults({title:"RODE VideoMic GO",sales_channel:"ヤフオク"}).listingCategory,"");
+for(const account of ['メルカリ1','メルカリ2']) {
+ const draft=sellerExports.sellerDefaults({title:'Garmin inReach mini',sales_channel:'メルカリ',sales_account_label:account});
+ assert.equal(draft.listingCategory,'ハンディGPS');
+ assert.equal(sellerExports.sellerListingCategoryError(draft,'メルカリ'),'');
+}
+assert.equal(sellerExports.sellerDefaults({title:'inReach Mini 2',sales_channel:'メルカリ',is_accessory:true}).listingCategory,'');
 for(const listingCategory of [undefined,"","  "])assert.match(sellerExports.sellerListingCategoryError({category:"小物",listingCategory},"メルカリ"),/出品カテゴリを入力/);
 assert.equal(sellerExports.sellerDefaults({title:"RODE microphone",sales_channel:"メルカリ"}).listingCategory,"");
 console.log("VideoMic Mercari condenser category and visible missing-category reason passed");
