@@ -4,7 +4,7 @@ set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 do $$
 declare kind text; seq integer:=997600; body uuid; remote uuid; remote_sku text; reply uuid;
- buyer uuid; holder uuid; existing_count bigint;
+ buyer uuid; holder uuid; existing_count bigint; recipient uuid; earlier_spare uuid; attached_spare uuid;
 begin
  select id into buyer from app.staff where code='AA';
  select id into holder from app.staff where code='MM';
@@ -46,5 +46,41 @@ begin
    if kind like '%作動しない%' and not exists(select 1 from app.spare_accessories where usage_note=seq::text and title like '%作動しないとの報告あり%') then raise exception 'Remote fault lost';end if;
   if not exists(select 1 from app.items where id=body and cost_amount=8250 and sales_channel='ヤフオク' and workflow_previous_sales_channel='メルカリ') then raise exception 'Body information changed';end if;
  end loop;
+
+ -- An earlier transfer must not block the current remote, even if it was reused from another spare.
+ seq:=seq+1;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,status)
+ values(seq,buyer,holder,current_date,'earlier spare recipient',1000,'メルカリ','メルカリ','検品中') returning id into recipient;
+ seq:=seq+1;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,status,malfunction_reported)
+ values(seq,buyer,holder,current_date,'remote replacement fixture',1000,'メルカリ','メルカリ','動作不良',true) returning id into body;
+ insert into app.spare_accessories(title,usage_note,owner_staff_id)
+ values('リモコン',seq::text,holder) returning id into earlier_spare;
+ perform app.allocate_spare_accessory(earlier_spare,recipient);
+
+ -- With only the historical transfer, preparation must not create another bundled remote.
+ perform app.prepare_yahoo_auction_item(body);
+ if (select count(*) from app.spare_accessories where usage_note=seq::text)<>1 then
+  raise exception 'Historical transfer created a duplicate remote';
+ end if;
+ update app.items set sales_channel='メルカリ',status='動作不良' where id=body;
+
+ insert into app.items(lot_seq,parent_item_id,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,status)
+ values(seq,body,true,buyer,holder,current_date,'リモコン',770,'メルカリ','メルカリ','動作不良') returning id,sku into remote,remote_sku;
+ insert into app.spare_accessories(title,usage_note,owner_staff_id)
+ values('リモコン','997699',holder) returning id into attached_spare;
+ perform app.allocate_spare_accessory(attached_spare,remote);
+ reply:=gen_random_uuid();
+ perform app.send_malfunction_reply(reply,body,'fixture only','SHARP◯ヤフオク','{}');
+ perform app.send_malfunction_reply(reply,body,'fixture only','SHARP◯ヤフオク','{}');
+ if exists(select 1 from app.items where id=remote)
+   or (select count(*) from app.spare_accessories where usage_note=seq::text and used_for_item_id is null)<>1
+   or not exists(select 1 from app.spare_accessories where usage_note=seq::text and source_sku=remote_sku and used_for_item_id is null) then
+  raise exception 'Current remote was not moved exactly once';
+ end if;
+ if not exists(select 1 from app.spare_accessories where id=earlier_spare and used_for_item_id=recipient)
+   or not exists(select 1 from app.spare_accessories where id=attached_spare and used_for_item_id=body) then
+  raise exception 'Earlier remote allocation was lost or became available again';
+ end if;
 end $$;
 rollback;
