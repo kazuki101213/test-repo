@@ -10,7 +10,7 @@ const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発
 const defaultBox=(items:string[]=[]):Box=>({length:50,width:30,height:30,weight:8,items});
 const serial=(sku:string)=>sku.split('-')[0]||sku;
 const shortDate=(s:string)=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'}).format(new Date(s));
-const createPlanLabel='Amazon納品プラン';
+const createPlanLabel='FBA納品プラン';
 const sellerCentralShipments='https://sellercentral.amazon.co.jp/gp/ssof/shipping-queue.html';
 type PrepReview={owners:Record<string,{prepOwner:string;labelOwner:string}>;requirements:Record<string,string[]>};
 type PlanResult={plan:InboundPlan;prepReview?:PrepReview};
@@ -298,7 +298,7 @@ export default function FbaInboundPlan({plan,onUpdate}:{plan:InboundPlan;onUpdat
      if(prep||window.confirm(`${plan.account}に「${plan.name}」を作成しますか？`))void apply('create',{autoPrep:true,acceptPrep:!!prep});
     }}>{prep?'指定条件で納品プランを作成':createPlanLabel}</button>
      : canQuote&&carrierRows.length>0&&<button className="btn primary" type="button" disabled={blocked||chosen.length!==carrierRows.length} onClick={confirmPlacement}>
-      {confirmTogether?'納品先と配送を確定':'納品先を確定'}
+      {confirmTogether?'FBA納品完了':'納品先を確定'}
      </button>}
     afterLabels={canCancel&&<button className="btn fba-work-cancel" type="button" disabled={busy} onClick={()=>{if(window.confirm('この納品を取り消しますか？'))void apply('cancel');}}>納品取消</button>}
     shippingLabel={<button type="button" className="btn primary" disabled={blocked||!labelDestination} onClick={()=>{if(labelDestination)void label(labelDestination);}}>配送ラベル</button>}
