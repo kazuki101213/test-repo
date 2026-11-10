@@ -181,9 +181,9 @@ export default function Inventory({ me }: { me: Staff }) {
       </details>
       {me.role === 'admin' && <AmazonOrderHistory />}
 
-      {inventory.error&&<div className="error">{inventory.error}</div>}
+      {inventory.error&&<div className="error" role="alert">{inventory.error} <button className="btn" type="button" onClick={()=>void inventory.refresh()}>再読み込み</button></div>}
       {loading && items.length === 0 && <div className="empty">読み込み中…</div>}
-      {!loading && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
+      {!loading && !inventory.error && items.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
       {items.length > 0 && <InventoryOverview items={viewItems.slice(0,visibleCount)} canPrice={me.role==='admin'} heading={filterHeading}
         onEdit={(item,field)=>setEditFor({item,field})}
