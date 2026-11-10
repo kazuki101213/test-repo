@@ -2,6 +2,12 @@
 -- Disposable CI fixtures only. No production transactions or external actions.
 begin;
 insert into app.staff(id,code,name,role) values('99665000-0000-0000-0000-000000000001','QW','workload metric fixture','deliverer');
+insert into app.staff(id,code,name,role) values
+ ('99665000-0000-0000-0000-000000000002','QX','workload historical assignee','purchaser'),
+ ('99665000-0000-0000-0000-000000000003','QZ','workload never assigned','purchaser');
+insert into app.items(lot_seq,sku,purchaser_id,deliverer_id,title,cost_amount,marketplace,sales_channel,sold_on)
+values(996649,'996649-AAQX-20261019-100',(select id from app.staff where code='AA'),
+ '99665000-0000-0000-0000-000000000002','workload historical item',100,'ヤフオク','メルカリ',current_date);
 create temporary table workload_cases(id uuid default gen_random_uuid(),n serial,status app.item_status,channel app.sales_channel,shipped_on date,is_accessory boolean,expected_held boolean,expected_working boolean);
 insert into workload_cases(status,channel,shipped_on,is_accessory,expected_held,expected_working)
 select status::app.item_status,channel::app.sales_channel,shipped_on,is_accessory,not is_accessory,not is_accessory and status in ('検品中','Amazon返送依頼','商品登録前')
@@ -61,6 +67,13 @@ do $$ declare summary record; bad integer; begin
    or (c.status='商品登録前' and c.channel='FBA' and c.shipped_on is null and not i.on_hand)
    or (c.status='出品中' and c.channel='FBA' and c.shipped_on is not null and i.bucket is not null);
  if bad <> 0 then raise exception 'Incorrect receipt or split shipment classification'; end if;
+ select * into strict summary from app.v_deliverer_stock_workload where deliverer_id='99665000-0000-0000-0000-000000000002';
+ if to_jsonb(summary) - 'deliverer_id' - 'deliverer_name' <> jsonb_build_object(
+   'on_hand',0,'awaiting_receipt',0,'inspecting',0,'awaiting_registration',0,'listed_on_hand',0,
+   'listed_in_fba',0,'trading_unshipped',0,'trading_shipped',0,'defective_on_hand',0
+ ) then raise exception 'Historical assignee should have a row with all zero counts'; end if;
+ if exists (select 1 from app.v_deliverer_stock_workload where deliverer_id='99665000-0000-0000-0000-000000000003')
+ then raise exception 'Purchaser who has never handled deliveries should not appear'; end if;
 end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$begin
