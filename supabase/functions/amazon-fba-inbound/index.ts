@@ -9,7 +9,7 @@ const headers={
  'Access-Control-Allow-Methods':'POST, OPTIONS','Cache-Control':'no-store','Content-Type':'application/json',
 };
 const reply=(status:number,data:unknown)=>new Response(JSON.stringify(data),{status,headers});
-const select='id,account,staff_id,name,stage,revision,amazon_id,pending,work,created_at,fba_inbound_items(item_id,sku,asin,title,condition,sales_channel,published_at)';
+const select='id,account,staff_id,name,stage,revision,amazon_id,pending,work,created_at,received_at,fba_inbound_items(item_id,sku,asin,title,condition,sales_channel,published_at)';
 const planSelect=(plan:Plan)=>({...plan,sender:senders[plan.account]});
 const lookup=(item:Item)=>({msku:item.sku,quantity:1});
 const shipmentPath=(plan:Plan,id:string)=>planPath(plan.amazon_id!)+'/shipments/'+enc(id);
@@ -111,8 +111,7 @@ async function getShipments(api:Amazon,plan:Plan,withBoxes:boolean,ids=plan.work
  }
  return result;
 }
-async function checkPublished(api:Amazon,plan:Plan,shipments:Shipment[]) {
- const ids:string[]=[];
+async function readReceipts(api:Amazon,plan:Plan,shipments:Shipment[]) {
  const itemBySku=new Map(plan.fba_inbound_items.map(i=>[i.sku,i]));
  for(const shipment of shipments){
   if(!shipment.confirmationId||!canCheckReceived.includes(shipment.status))continue;
@@ -129,7 +128,12 @@ async function checkPublished(api:Amazon,plan:Plan,shipments:Shipment[]) {
   }
   shipment.received=received;
  }
- const candidates=plan.fba_inbound_items.filter(item=>!item.published_at&&shipments.some(s=>(s.received?.[item.sku]??0)>0));
+}
+const wasReceived=(item:Item,shipments:Shipment[])=>shipments.some(shipment=>!!shipment.confirmationId&&canCheckReceived.includes(shipment.status)&&(shipment.received?.[item.sku]??0)>=1);
+
+async function checkPublished(api:Amazon,plan:Plan,shipments:Shipment[]) {
+ const ids:string[]=[];
+ const candidates=plan.fba_inbound_items.filter(item=>!item.published_at&&wasReceived(item,shipments));
  for(let offset=0;offset<candidates.length;offset+=20){
   const chunk=candidates.slice(offset,offset+20);
   const inventory=await api.call('/fba/inventory/v1/summaries',{granularityType:'Marketplace',granularityId:marketplace,
@@ -194,35 +198,47 @@ export async function handler(req:Request):Promise<Response>{
    if(!Array.isArray(probe.inboundPlans))throw new WorkflowError(502,'納品APIの応答を確認できません。');
    return reply(200,{connected:true,account:input.account});
   }
-  const authorization=req.headers.get('authorization')??'';
-  const token=/^Bearer\s+(\S+)$/i.exec(authorization)?.[1];
-  if(!token)throw new WorkflowError(401,'ログインが必要です。');
-  const client=createClient(url,Deno.env.get('SUPABASE_ANON_KEY')!,{...options,global:{headers:{Authorization:authorization}}});
-  const user=await client.auth.getUser(token);
-  if(user.error||!user.data.user)throw new WorkflowError(401,'再ログインしてください。');
-  const staffId=await client.rpc('current_staff_id');
-  if(staffId.error||!staffId.data)throw new WorkflowError(403,'利用権限を確認できません。');
-  const staff=await db.from('staff').select('id,is_active,role').eq('id',staffId.data).maybeSingle();
-  if(staff.error||!staff.data?.is_active)throw new WorkflowError(403,'利用権限を確認できません。');
-  const admin=staff.data.role==='admin';
+  const cronToken=req.headers.get('x-amazon-cron-token');
+  const scheduled=cronToken!==null;
+  let userId:string|undefined;
+  let staffId:string|undefined;
+  let admin=false;
+  if(scheduled){
+   const {data,error}=await db.rpc('verify_amazon_cron_token',{p_token:cronToken});
+   if(error||data!==true)throw new WorkflowError(401,'定期処理の認証が必要です。');
+  }else{
+   const authorization=req.headers.get('authorization')??'';
+   const token=/^Bearer\s+(\S+)$/i.exec(authorization)?.[1];
+   if(!token)throw new WorkflowError(401,'ログインが必要です。');
+   const client=createClient(url,Deno.env.get('SUPABASE_ANON_KEY')!,{...options,global:{headers:{Authorization:authorization}}});
+   const user=await client.auth.getUser(token);
+   if(user.error||!user.data.user)throw new WorkflowError(401,'再ログインしてください。');
+   userId=user.data.user.id;
+   const identity=await client.rpc('current_staff_id');
+   if(identity.error||!identity.data)throw new WorkflowError(403,'利用権限を確認できません。');
+   staffId=identity.data;
+   const staff=await db.from('staff').select('id,is_active,role').eq('id',staffId).maybeSingle();
+   if(staff.error||!staff.data?.is_active)throw new WorkflowError(403,'利用権限を確認できません。');
+   admin=staff.data.role==='admin';
+  }
   const input=await req.json().catch(()=>null);
-  if(!input||typeof input.action!=='string')return reply(400,{error:'操作を確認できません。'});
+  if(!input||typeof input.action!=='string'||(scheduled&&input.action!=='refresh'))return reply(400,{error:'操作を確認できません。'});
   const action=input.action as string;
   const read=async(id:string):Promise<Plan>=>{
    const response=await db.from('fba_inbound_plans').select(select).eq('id',id).maybeSingle();
-   if(response.error||!response.data||(!admin&&response.data.staff_id!==staffId.data))throw new WorkflowError(404,'納品を確認できません。');
+   if(response.error||!response.data||(!scheduled&&!admin&&response.data.staff_id!==staffId))throw new WorkflowError(404,'納品を確認できません。');
    return response.data as Plan;
   };
   if(action==='list'){
-   let query=db.from('fba_inbound_plans').select(select).neq('stage','cancelled').order('created_at',{ascending:false}).limit(60);
-   if(!admin)query=query.eq('staff_id',staffId.data);
+   let query=db.from('fba_inbound_plans').select(select).neq('stage','cancelled').is('received_at',null).order('created_at',{ascending:false}).limit(60);
+   if(!admin)query=query.eq('staff_id',staffId);
    const response=await query;
    if(response.error)throw new WorkflowError(502,'納品履歴を取得できません。');
    return reply(200,{plans:(response.data as Plan[]).map(planSelect)});
   }
   if(action==='new'){
    if(!Array.isArray(input.items)||input.items.length<1||input.items.length>100||!input.items.every(uuid)) return invalid('在庫から納品商品を選んでください。');
-   const response=await db.rpc('create_fba_inbound_draft',{p_user:user.data.user.id,p_items:input.items});
+   const response=await db.rpc('create_fba_inbound_draft',{p_user:userId,p_items:input.items});
    if(response.error)throw new WorkflowError(response.error.code==='23505'?409:422,response.error.code?.match(/^(23505|22023|42501)$/)?response.error.message:'納品の下書きを保存できません。');
    return reply(200,{plan:planSelect(await read(response.data))});
   }
@@ -231,7 +247,7 @@ export async function handler(req:Request):Promise<Response>{
   const result=()=>reply(200,{plan:planSelect(plan)});
   if(action==='get')return result();
   if(!['poll','label'].includes(action)&&plan.revision!==input.revision)throw new WorkflowError(409,'納品の進行状況が変わりました。画面を更新してください。');
-  const patch=async(data:Partial<Pick<Plan,'stage'|'work'|'pending'|'amazon_id'>>)=>{
+  const patch=async(data:Partial<Pick<Plan,'stage'|'work'|'pending'|'amazon_id'|'received_at'>>)=>{
    const response=await db.from('fba_inbound_plans').update({...data,revision:plan.revision+1,updated_at:new Date().toISOString()})
     .eq('id',plan.id).eq('revision',plan.revision).select(select).maybeSingle();
    if(response.error||!response.data)throw new WorkflowError(409,'別の画面で納品が更新されました。画面を更新してください。');
@@ -251,6 +267,7 @@ export async function handler(req:Request):Promise<Response>{
   if(action==='cancel'&&plan.stage==='draft'&&!plan.pending){await cancel();return result();}
   if(action==='poll'&&!plan.pending)return result();
   if(plan.pending&&!['poll','recover'].includes(action))throw new WorkflowError(409,'Amazonの処理結果を先に確認してください。');
+  if(scheduled)eligiblePhase(plan,'ready');
   const api=await amazonClient(plan.account);
   const path=plan.amazon_id?planPath(plan.amazon_id):'';
   const items=plan.fba_inbound_items;
@@ -506,12 +523,15 @@ export async function handler(req:Request):Promise<Response>{
    eligiblePhase(plan,'ready');
    const shipments=await getShipments(api,plan,true);
    await patch({work:{...plan.work,shipments,notice:undefined}});
+   await readReceipts(api,plan,shipments);
+   const receivedAt=plan.received_at??(items.length>0&&items.every(item=>wasReceived(item,shipments))?new Date().toISOString():null);
+   await patch({work:{...plan.work,shipments},received_at:receivedAt});
    const ids=await checkPublished(api,plan,shipments);
    if(ids.length){
     const published=await db.rpc('publish_fba_inbound_items',{p_plan:plan.id,p_items:ids});
     if(published.error)throw new WorkflowError(502,'Amazonで購入可能ですが、在庫の更新ができませんでした。もう一度確認してください。');
    }
-   await patch({work:{...plan.work,shipments}});plan=await read(plan.id);
+   plan=await read(plan.id);
   }else if(action==='label'){
    eligiblePhase(plan,'ready');
    if(!plan.work.placement?.shipmentIds.includes(input.shipment))return invalid('納品先を確認してください。');
@@ -549,6 +569,7 @@ export async function handler(req:Request):Promise<Response>{
    if(!path||plan.stage==='ready'||plan.stage==='cancelled'||plan.work.shipments?.some(s=>shipped.includes(s.status)))return invalid('確定済みの配送の取消はセラーセントラルで行ってください。');
    await start(plan.work,path+'/cancellation','PUT');
   }else return reply(400,{error:'操作を確認できません。'});
+  if(scheduled)return reply(200,{refreshed:true});
   return result();
  }catch(error){
   return error instanceof WorkflowError||error instanceof AmazonAccountError?reply(error.status,{error:error.message})
