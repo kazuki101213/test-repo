@@ -35,16 +35,28 @@ do $$begin
  if (select count(*) from app.inventory_workflow_events where id='99785100-0000-4000-8000-000000000001')<>1 then raise exception 'Duplicate workflow event';end if;
  if has_function_privilege('anon','app.complete_verified_amazon_listing(uuid,text)','execute') or has_function_privilege('authenticated','app.complete_verified_amazon_listing(uuid,text)','execute') then raise exception 'Finalizer permission widened';end if;
 end $$;
--- A verified FBA product is still awaiting its separate inbound procedure.
+-- The FBA listing date reaches inventory at acceptance, before inbound or photo verification.
 update app.items set sales_channel='FBA2' where lot_seq=997852;
-update app.amazon_listing_submissions set sales_channel='FBA2' where request_id='99785200-0000-4000-8000-000000000001';
+update app.amazon_listing_submissions set sales_channel='FBA2',state='submitting',verified_at=null
+ where request_id='99785200-0000-4000-8000-000000000001';
+do $$begin
+ if exists(select 1 from app.items where lot_seq=997852 and packed_on is not null) then raise exception 'Unaccepted FBA submission wrote a work date';end if;
+end $$;
 select set_config('test.amazon_expected_sku',(select sku from app.items where lot_seq=997852),true);
 set local role service_role;
+update app.amazon_listing_submissions set state='accepted' where request_id='99785200-0000-4000-8000-000000000001';
+reset role;
+do $$begin
+ if not exists(select 1 from app.items where lot_seq=997852 and packed_on=current_date-1 and status='商品登録前' and product_registered_at is null and shipped_on is null) then raise exception 'Accepted FBA date did not reach inventory independently of inbound';end if;
+end $$;
+update app.items set packed_on=current_date-2 where lot_seq=997852;
+set local role service_role;
+update app.amazon_listing_submissions set state='verified',verified_at=now() where request_id='99785200-0000-4000-8000-000000000001';
 select app.complete_verified_amazon_listing('99785200-0000-4000-8000-000000000001',current_setting('test.amazon_expected_sku'));
 select app.complete_verified_amazon_listing('99785200-0000-4000-8000-000000000001',current_setting('test.amazon_expected_sku'));
 reset role;
 do $$begin
- if not exists(select 1 from app.items where lot_seq=997852 and status='商品登録前' and product_registered_at is null and packed_on is null) then raise exception 'FBA registration completed inbound work';end if;
+ if not exists(select 1 from app.items where lot_seq=997852 and status='商品登録前' and product_registered_at is null and shipped_on is null and packed_on=current_date-2) then raise exception 'FBA verification changed the existing work date or inbound state';end if;
  if exists(select 1 from app.inventory_workflow_events where item_id=(select id from app.items where lot_seq=997852)) then raise exception 'FBA registration wrote a completion event';end if;
 end $$;
 rollback;
