@@ -19212,7 +19212,7 @@ where (select auth.uid()) is not null and (select app.is_admin())
 notify pgrst, 'reload schema';
 
 
--- ▼▼▼ 20261111042500_yahoo_receipt_contact_readiness.sql ▼▼▼
+-- ▼▼▼ 20261111042802_yahoo_receipt_contact_readiness.sql ▼▼▼
 
 -- Buyer receipt contact can follow an explicit no-return/Yahoo-sale disposition.
 create function app.receipt_contact_disposition_ready(p_item app.items)
@@ -19429,7 +19429,7 @@ notify pgrst,'reload schema';
 
 
 
--- ▼▼▼ 20261111043500_retire_cleaning_completion.sql ▼▼▼
+-- ▼▼▼ 20261111044301_retire_cleaning_completion.sql ▼▼▼
 
 -- Keep historical cleaning timestamps while stopping new writes and removing all workflow checks.
 
