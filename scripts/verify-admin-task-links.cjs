@@ -43,11 +43,11 @@ function inventoryLink(nodes,label,item){
   assert.equal(nodes.filter(n=>n.props?.className==='admin-task-card admin-simple-task admin-photo-task').length,mode==='photos'?1:0);
   assert.equal(nodes.filter(n=>n.props?.className==='task-action-details listing-task-details').length,mode==='listing'?1:0);
  }
- const childNames=['PhotoReviewTasks','PackingPhotoTasks','MalfunctionTasks','ReceiptEvaluationTasks','ShippingReminderTasks','SpareShippingTasks'];
+ const childNames=['PhotoReviewTasks','PackingPhotoTasks','MalfunctionTasks','ShippingReminderTasks','SpareShippingTasks'];
  const childStubs=Object.fromEntries(childNames.map(name=>['./'+name,{default:Object.defineProperty(()=>null,'name',{value:name})}]));
  const dashboard=await render('apps/admin/src/components/InvoiceTasks.tsx',{invoice_tasks:[{id:'invoice',name:'担当者',month:'2026-10',updated:'2026-10-28',invoice:{total:100,delivery_invoice_approvals:null}}]},[],{},[],childStubs);
  const taskOrder=dashboard.flatMap(n=>n.type==='strong'&&n.props.children==='請求書'?['invoice']:typeof n.type==='function'&&childNames.includes(n.type.name)?[n.type.name==='PhotoReviewTasks'?n.props.mode:n.type.name==='ShippingReminderTasks'&&n.props.kind==='inspection'?'inspection':n.type.name]:[]);
- assert.deepEqual(taskOrder,['invoice','photos','PackingPhotoTasks','MalfunctionTasks','ReceiptEvaluationTasks','inspection','listing','ShippingReminderTasks','SpareShippingTasks'],'All nine task categories follow the requested order');
+ assert.deepEqual(taskOrder,['invoice','photos','PackingPhotoTasks','MalfunctionTasks','inspection','listing','ShippingReminderTasks','SpareShippingTasks'],'All eight task categories follow the requested order');
  const shippingNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_shipping_tasks:['メルカリ','ヤフオク','自己発送'].map((sales_channel,n)=>({id:'shipping'+n,item_id:'stock'+n,sku:(2500+n)+'-SHIPPING',lot_seq:2500+n,sales_channel,marketplace_item_id:'product'+n}))});
  inventoryLink(shippingNodes,'発送する商品の在庫を開く','stock0');
  for(const channel of ['メルカリ','ヤフオク','自己発送'])assert(shippingNodes.some(n=>n.type==='strong'&&text(n)===channel+'発送(24時間経過)'));
@@ -56,6 +56,9 @@ function inventoryLink(nodes,label,item){
  inventoryLink(inspectionNodes,'動作確認する商品の在庫を開く','inspect1');
  assert(inspectionNodes.some(n=>n.type==='strong'&&text(n)==='動作確認(2日経過)'));
  assert.equal(inspectionNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,1);
+ const accessoryNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_inspection_tasks:[{id:'accessory',item_id:'accessory',action_item_id:'body',sku:'2500-ACCESSORY',lot_seq:2500}]},[],{kind:'inspection'});
+ inventoryLink(accessoryNodes,'動作確認する商品の在庫を開く','accessory');
+ assert.equal(new URL(accessoryNodes.find(n=>n.type==='a'&&n.props.children==='確認').props.href).searchParams.get('itemId'),'body');
  const itemId='22222222-2222-4222-8222-222222222222';
  const actionNodes=await render('apps/admin/src/components/MalfunctionTasks.tsx',{malfunctions:['動作不良','Amazon補填申請中'].map((status,n)=>({id:'report'+n,status,sku:(2400+n)+'b-REPORT',lot_seq:2400+n,title:'報告商品',asin:null,marketplace_item_id:'report-product-'+n,people:[],malfunction_reported_at:'2026-10-18T01:00:00Z',malfunction_comment:'報告内容'})),actions:[{id:'different-comment-id',item_id:itemId,task_kind:'SONY◯ヤフオク',sku:'auction',created_at:'2026-10-18'},{id:'supplier-task',item_id:'supplier-item',task_kind:'仕入先確認',lot_seq:2395,marketplace_item_id:'mSUPPLIER',sku:'2395b-SUPPLIER',created_at:'2026-10-18'}]});
  assert(!actionNodes.some(n=>n.props?.id==='admin-action-different-comment-id'),'Obsolete Yahoo sale card is hidden');
