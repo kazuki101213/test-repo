@@ -1,6 +1,6 @@
 import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
-import { getSupabase, STATUSES, usageRecordText } from '@bussan/shared';
+import { getSupabase, STATUSES, usageRecordText, purchaseSourceFields, salesDestinationFields } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
@@ -22,7 +22,7 @@ export async function fetchStaff(): Promise<Staff[]> {
 
 export type SpareAccessoryInput = Pick<SpareAccessory,
   'source_sku' | 'owner_staff_id' | 'owner_name' | 'purchased_at' | 'title' | 'manufacturer' | 'model_no' | 'asin' | 'cost_amount' |
-  'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note'
+  'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note' | 'purchase_account_id'
 >;
 export type SpareAccessoryField = keyof Pick<SpareAccessory,
   'source_sku' | 'owner_name' | 'purchased_at' | 'title' | 'manufacturer' | 'model_no' | 'asin' | 'cost_amount' |
@@ -55,7 +55,7 @@ export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemV
 export type AmazonReturnSource = Pick<ItemInsert,
   'purchaser_id' | 'deliverer_id' | 'work_stream' | 'purchased_at' | 'title' | 'cost_amount' |
   'product_id' | 'asin' | 'condition' | 'planned_price' | 'planned_payout' | 'sales_channel' | 'marketplace_item_id' | 'marketplace_url'
-> & { original_sku: string; sku: string; model_no: string | null };
+> & { original_sku: string; sku: string; model_no: string | null; sales_account_label?: string | null };
 
 export async function findInventoryForAmazonReturn(serial: string | number): Promise<AmazonReturnSource | null> {
   const key = String(serial).trim().toLowerCase();
@@ -84,6 +84,7 @@ export async function findInventoryForAmazonReturn(serial: string | number): Pro
   })) + 1;
   return {
     ...source,
+    ...(await fetchInventoryMarketplaceLabels(source.id)),
     marketplace_item_id: reference?.marketplace_item_id ?? null,
     marketplace_url: purchaseItemUrl(reference?.marketplace ?? null, reference?.marketplace_item_id ?? null, reference?.marketplace_url ?? null),
     original_sku: source.sku,
@@ -92,7 +93,10 @@ export async function findInventoryForAmazonReturn(serial: string | number): Pro
 }
 
 export async function updateSpareAccessory(id: string, field: SpareAccessoryField, value: string | number | null): Promise<void> {
-  const { data, error } = await getSupabase().from('spare_accessories').update({ [field]: field === 'usage_note' ? usageRecordText(value == null ? null : String(value)) : value }).eq('id', id).select('id').maybeSingle();
+  const patch = field === 'marketplace'
+    ? value ? purchaseSourceFields(String(value)) : { marketplace: null, purchase_account_id: null }
+    : { [field]: field === 'usage_note' ? usageRecordText(value == null ? null : String(value)) : value };
+  const { data, error } = await getSupabase().from('spare_accessories').update(patch).eq('id', id).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('予備付属品が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
@@ -368,10 +372,19 @@ function inventoryResult(items: InventoryItem[], filter: ItemFilter): { items: I
   };
 }
 
-export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
-  const { data, error } = await getSupabase().from('v_inventory_display').select('*').eq('id', id).single();
+async function fetchInventoryMarketplaceLabels(id: string): Promise<InventoryMarketplaceLabels> {
+  const { data, error } = await getSupabase().rpc('inventory_marketplace_accounts', { p_item_id: id });
   if (error) throw error;
-  return data as InventoryItem;
+  return data ?? {};
+}
+
+export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
+  const [{ data, error }, accounts] = await Promise.all([
+    getSupabase().from('v_inventory_display').select('*').eq('id', id).single(),
+    fetchInventoryMarketplaceLabels(id),
+  ]);
+  if (error) throw error;
+  return { ...data, ...accounts } as InventoryItem;
 }
 
 export async function fetchInventoryPaymentCard(id: string): Promise<string | null> {
@@ -452,7 +465,7 @@ function normalizeInventoryAsin(value: string | null, productId: string | null):
   return asin;
 }
 
-export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit & { card_id?: string | null }): Promise<void> {
+export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit & Pick<ItemInsert, 'sales_account_id' | 'purchase_account_id'> & { card_id?: string | null }): Promise<void> {
   const title = fields.title.trim();
   if (!title || title.length > 500) throw new Error('商品名を入力してください。');
   if (!Number.isSafeInteger(fields.cost_amount) || fields.cost_amount < 0 ||
@@ -641,7 +654,8 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
   if (field === 'cost_amount' && !text) throw new Error('仕入金額を入力してください。');
   const requiredText = new Set<InventoryField>(['title', 'status', 'marketplace']);
   const next = field === 'asin' ? normalizeInventoryAsin(text, item.product_id) : numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
-  const { data, error } = await getSupabase().from('items').update({ [field]: next }).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
+  const patch = field === 'sales_channel' ? salesDestinationFields(text) : field === 'marketplace' ? purchaseSourceFields(text) : { [field]: next };
+  const { data, error } = await getSupabase().from('items').update(patch).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
 }

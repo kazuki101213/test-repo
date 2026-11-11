@@ -83,6 +83,8 @@ export interface ItemInsert {
   planned_price?: number | null;
   planned_payout?: number | null;
   sales_channel?: SalesChannel | null;
+  sales_account_id?: string | null;
+  purchase_account_id?: string | null;
   seller_name?: string | null;
   seller_address?: string | null;
   seller_occupation?: string | null;

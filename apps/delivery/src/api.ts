@@ -443,7 +443,7 @@ export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'statu
  announceReturnTaskChange();
 }
 export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}
-export interface SellerContext {photo_review_approved?:boolean;revision:string;assignee?:string|null;shipping_defaults?:Partial<Pick<import('@bussan/shared').SellerDraft,'shippingMethod'|'size'|'weightKg'|'dropoff'|'category'>>|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
+export interface SellerContext {photo_review_approved?:boolean;revision:string;listing_account_id?:string|null;assignee?:string|null;shipping_defaults?:Partial<Pick<import('@bussan/shared').SellerDraft,'shippingMethod'|'size'|'weightKg'|'dropoff'|'category'>>|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
 export async function fetchSellerContext(itemId:string):Promise<SellerContext>{
  const {data,error}=await getSupabase().rpc('seller_operation_context',{p_item_id:itemId});if(error)throw error;return data as SellerContext;
 }

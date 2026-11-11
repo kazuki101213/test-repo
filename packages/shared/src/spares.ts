@@ -1,4 +1,5 @@
 import { readResourceSnapshot } from './resourceSync';
+import { marketplaceAccountLabel } from './marketplaceAccounts';
 import { getSupabase } from './supabase';
 import { DELIVERY_STAFF_CODES, staffDisplayName } from './staffNames';
 
@@ -38,6 +39,8 @@ export interface SpareAccessory {
   asin: string | null;
   cost_amount: number;
   marketplace: string | null;
+  purchase_account_id?: string | null;
+  purchase_account_label?: string | null;
   marketplace_item_id: string | null;
   tracking_no: string | null;
   usage_note: string | null;
@@ -50,7 +53,7 @@ export async function fetchSpareAccessories(ownerStaffId?: string): Promise<Spar
   const owners = rows.flatMap(row=>row.owner_staff_id?[{id:row.owner_staff_id,code:row._owner_code,name:row.owner_name??''}]:[]);
   // Preserve the previous stable tie order within owner/manufacturer groups.
   rows.sort((a,b)=>(b.source_sheet_row??Infinity)-(a.source_sheet_row??Infinity)||a.id.localeCompare(b.id));
-  return sortSpareAccessories(rows.map(row=>({...row,usage_note:usageRecordText(row.usage_note)})),owners);
+  return sortSpareAccessories(rows.map(row=>({...row,purchase_account_label:row.purchase_account_label || marketplaceAccountLabel(row.purchase_account_id),usage_note:usageRecordText(row.usage_note)})),owners);
 }
 
 export async function deleteSpareAccessory(id: string): Promise<void> {
