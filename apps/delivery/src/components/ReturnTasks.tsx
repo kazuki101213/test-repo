@@ -47,12 +47,12 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   const visible=()=>{if(document.visibilityState==='visible'){setNow(Date.now());void refresh();}};
   const changed=()=>void refresh(true);
   const workflowChanged=(event:Event)=>{
-   const item=(event as CustomEvent<{id:string;status:string;inspected?:boolean;cleaned?:boolean;malfunction_reported?:boolean;product_registered_at?:string|null;listed_on?:string|null;shipped_on?:string|null;sold_on?:string|null}>).detail;
+   const item=(event as CustomEvent<{id:string;status:string;inspected?:boolean;malfunction_reported?:boolean;product_registered_at?:string|null;listed_on?:string|null;shipped_on?:string|null;sold_on?:string|null}>).detail;
    if(!item)return;
    setRows(current=>current.filter(row=>{
     if(row.item_id!==item.id)return true;
     switch(row.kind){
-     case 'inspection':return ['受取前','検品中'].includes(item.status)&&!item.inspected&&!item.cleaned&&!item.malfunction_reported;
+     case 'inspection':return ['受取前','検品中'].includes(item.status)&&!item.inspected&&!item.malfunction_reported;
      case 'listing_due':return pendingWorkStatuses.includes(item.status)&&!item.listed_on&&!item.sold_on;
      case 'photo_approved':return item.status==='商品登録前'&&!item.product_registered_at&&!item.sold_on;
      case 'shipping':return ['取引中','販売済'].includes(item.status)&&!item.shipped_on;

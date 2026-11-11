@@ -93,8 +93,7 @@ begin
     where sibling.marketplace='ヤフオク'
       and not sibling.is_accessory
       and sibling.id<>(p_item).id
-      and (sibling.inspected_at is null or sibling.cleaned_at is null)
-      and not app.receipt_contact_disposition_ready(sibling)
+      and sibling.inspected_at is null
       and (
         case when source_tracking ~ '^[0-9]{8,20}$'
           then source_tracking=regexp_replace(sibling.tracking_no,'[[:space:]－-]','','g')
@@ -135,10 +134,10 @@ begin
   left join app.items p on i.is_accessory and p.id=i.parent_item_id
   cross join lateral (
     select case
-      when i.inspected_at is not null and i.cleaned_at is not null then 'own'
       when p_marketplace='ヤフオク' and app.receipt_contact_disposition_ready(i) then 'disposition'
+      when i.inspected_at is not null then 'own'
       when i.is_accessory and not p.is_accessory
-        and p.inspected_at is not null and p.cleaned_at is not null then 'parent'
+        and p.inspected_at is not null then 'parent'
       when p_marketplace='ヤフオク' and app.receipt_contact_accessory_approved(i,p) then 'accessory_approved'
     end as source
   ) readiness;

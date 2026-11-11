@@ -7,11 +7,16 @@ const damagedSaved={id:'damage',sku:'2403-test',lot_seq:2403,title:'DBR-T1009',m
 const damagedDraft=listingDraft(damagedSaved,'TOSHIBA');assert.equal(damagedDraft.description,'手編集の本文\nはそんがあります。');assert.equal(damagedDraft.title,'保存した商品名');
 assert.equal(description.withReportedDamage(damagedDraft.description,true),damagedDraft.description);
 assert.equal(description.withReportedDamage('手編集の本文',false),'手編集の本文');
+const amazonInput={product:'ブルーレイレコーダー',condition:'非常に良い',accessories:'リモコン',year:'',salesChannel:'FBA'};
+const inspectedAmazon=description.buildDescription({...amazonInput,inspected:true});
+assert.match(inspectedAmazon,/一つ一つ丁寧に検品/);
+assert.doesNotMatch(inspectedAmazon,/清掃|アルコール除菌/);
+assert.doesNotMatch(description.buildDescription({...amazonInput,inspected:false}),/丁寧に検品|十分な検品/);
 function all(n){return !n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(n.props?.children)];}
 const jsx=(type,props)=>({type,props});
 async function check(channel,overrides={}){
  let hooks=[],cursor=0,effects=[],tree,saved,saveCalls=0,saving=false;
- const task={id:'item',sku:'2407b-AAII-test',lot_seq:2407,title:'ブルーレイレコーダー',model_no:'DBR-W508',sales_channel:channel,condition:'非常に良い',accessories:'リモコン',marketplace:'ヤフオク',inspected:true,cleaned:true,description:null,...overrides};
+ const task={id:'item',sku:'2407b-AAII-test',lot_seq:2407,title:'ブルーレイレコーダー',model_no:'DBR-W508',sales_channel:channel,condition:'非常に良い',accessories:'リモコン',marketplace:'ヤフオク',inspected:true,description:null,...overrides};
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};effects.push(fn);}}};
  const Editor=load('apps/delivery/src/components/DescriptionEditor.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':model,'../description':description,'../useListingKeywords':{useListingKeywords:()=>({busy:false,message:'',generate:async()=>{}})},'./ColoredSelect':{default:'select'},'../api':{fetchProductMaker:async()=>{throw Error('Duplicate lookup');},saveDeliveryDescription:async(id,input)=>{saved=input;saveCalls++;}}}).default;
  const embedded={value:listingDraft(task,'東芝',[task.sku]),manufacturer:'東芝',disabled:false,onSaving:v=>{saving=v;},onChange:value=>{embedded.value={...embedded.value,...value};}};

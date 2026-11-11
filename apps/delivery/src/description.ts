@@ -130,9 +130,9 @@ function yahooAuctionDescription(product: string, condition: string, skuText: st
 export function buildDescription(input: {
   product: string; condition: string; accessories: string; year: string; sku?: string; listingSkus?: string[]; itemNumber?: string; modelNo?: string; manufacturer?: string;
   hasPhysicalDamage?: boolean;
-  target?: DescriptionTarget; inspected: boolean; cleaned: boolean; salesChannel: string | null;
+  target?: DescriptionTarget; inspected: boolean; salesChannel: string | null;
 }): string {
-  const { product, condition, accessories, year, target = 'amazon', inspected, cleaned, salesChannel } = input;
+  const { product, condition, accessories, year, target = 'amazon', inspected, salesChannel } = input;
   if (!product || !condition || !sourceTemplates[product]) return '';
   if (target !== 'amazon') {
     const itemNumber = input.itemNumber || '';
@@ -161,10 +161,7 @@ export function buildDescription(input: {
       .replace('傷はございますが、動作には問題ございません。', '傷がございます。')
       .replace('軽微な傷はございますが、動作には問題ございません。', '軽微な傷がございます。');
   }
-  const workText = inspected && cleaned ? '●経験豊富なスタッフにより、一つ一つ丁寧に【 検品・清掃・アルコール除菌 】をしております。'
-    : inspected ? '●一つ一つ丁寧に検品しております。' : cleaned ? '●一つ一つ丁寧に清掃しております。' : '';
-  text = text.replace(/●経験豊富なスタッフ[^。]*。/, workText);
-  if (!inspected) text = text.replace('●十分な検品をして出品しておりますが、', '●');
+  if (!inspected) text = text.replace('●一つ一つ丁寧に検品しております。', '').replace('●十分な検品をして出品しておりますが、', '●');
   if (condition === '新品') text = text.replace(/●あくまで中古品[^。]*。/, '');
   if (!/^FBA(?:[12１２])?$/.test(salesChannel??'')) text = text.replace(/《配送》[^《]*/, '《配送》●配送方法は出品ページをご確認ください。');
   return text.replace(/[　\t]+/g, ' ').replace(/\s*《/g, '\n\n《').replace(/\s*●/g, '\n●').trim();
