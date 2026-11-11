@@ -38,7 +38,7 @@ Deno.serve(async req => {
       const token = req.headers.get('x-delivery-dispatch');
       if (!token || !settings.delivery_push_dispatch_token || token !== settings.delivery_push_dispatch_token) return respond(401, { error: 'Unauthorized' }, origin);
       const server = await sender(settings);
-      const delivery = await admin.rpc('claim_delivery_push');
+      const delivery = await admin.rpc('claim_delivery_push_with_listing_title');
       if (delivery.error) throw delivery.error;
       const management = await admin.rpc('claim_admin_push');
       if (management.error) throw management.error;
