@@ -25,16 +25,24 @@ const flush=async()=>{for(let n=0;n<30;n++)await Promise.resolve();};
  listContext.sortFixture=[{id:'z',kind:'photo_approved',created_at:'2026-10-19'},{id:'a',kind:'photo_approved',created_at:'2026-10-20'},{id:'s',kind:'shipping',created_at:'2026-10-18'}];
  assert.deepEqual(Array.from(vm.runInNewContext('orderedTasks(sortFixture).map(row=>row.id)',listContext)),['z','a','s'],'Category first, then oldest request');
  assert(all(tree).some(n=>n.type==='a'&&n.props.href==='https://jp.mercari.com/item/m123'));assert(all(tree).some(n=>n.type==='a'&&n.props.href==='?itemId=item'));
- const shippingCard=card(tree,'発送お願いします。');assert(shippingCard);assert.equal(action(tree,'発送お願いします。').props.children,'完了');assert(shippingCard.props.className.includes('delivery-shipping-task'));assert(all(shippingCard).some(n=>n.type==='a'&&n.props.href==='https://paypayfleamarket.yahoo.co.jp/item/z694525406'));assert(all(shippingCard).some(n=>n.type==='a'&&[].concat(n.props.children).join('')==='【2390】'));assert(all(shippingCard).some(n=>n.type==='span'&&n.props.children==='2390-AALL-20260929-2500'));
- const reason='エラー表示ではなく、別の表示でお願いします。';assert(card(tree,reason));assert.equal(action(tree,reason).props.children,'完了');assert.equal(action(tree,'出品お願いします。').props.children,'完了');assert.equal(action(tree,'動作不良への返信があります。').props.children,'確認');
+ const shippingCard=card(tree,'発送お願いします。');assert(shippingCard);assert(shippingCard.props.className.includes('delivery-shipping-task'));assert(all(shippingCard).some(n=>n.type==='a'&&n.props.href==='https://paypayfleamarket.yahoo.co.jp/item/z694525406'));assert(all(shippingCard).some(n=>n.type==='a'&&[].concat(n.props.children).join('')==='【2390】'));assert(all(shippingCard).some(n=>n.type==='span'&&n.props.children==='2390-AALL-20260929-2500'));
+ const reason='エラー表示ではなく、別の表示でお願いします。';assert(card(tree,reason));assert.equal(action(tree,'動作不良への返信があります。').props.children,'確認');
+ for(const title of [reason,'出品お願いします。','発送お願いします。']){
+  const link=all(card(tree,title)).find(n=>n.type==='a'&&n.props.className==='btn');
+  assert.equal(link.props.children,'確認');assert.equal(link.props.href,'?itemId=item');
+  assert.equal(action(tree,title),undefined,'Work requests wait for actual work records');
+ }
+ assert.equal(completionCalls.length,0,'Opening task details does not acknowledge completion');
  listeners.focus();listeners.focus();await flush();assert.equal(reads,1,'Focus does not poll repeatedly');
  instant+=7*86400000;tree=list();listRuntime.effects();assert(card(tree,reason));assert(card(tree,'出品お願いします。'));assert(card(tree,'発送お願いします。'),'Uncompleted cards remain beyond three days');assert.equal(timers.size,0,'No expiry timer');
  listeners['delivery-return-tasks-changed']();await flush();assert.equal(reads,2,'Local resubmission immediately refreshes tasks');tree=list();
  listeners['delivery-item-workflow-changed']({detail:{id:'item',status:'出品中',product_registered_at:'2026-10-20',shipped_on:null}});tree=list();assert(!card(tree,'出品お願いします。'),'Listing hides its request without an API roundtrip');assert(!card(tree,'発送お願いします。'),'Cancelled trading hides shipping request');assert(card(tree,reason));assert.equal(reads,2);listeners['delivery-return-tasks-changed']();await flush();tree=list();
- const done=action(tree,reason).props.onClick;done();done();assert.equal(completionCalls.length,1,'Double click is locked');tree=list();assert.equal(action(tree,reason).props.disabled,true);completionRelease();await flush();tree=list();assert(!card(tree,reason));assert.equal(navigations.length,0,'Photo completion does not navigate');
- completionError=true;action(tree,'出品お願いします。').props.onClick();await flush();tree=list();assert(card(tree,'出品お願いします。'),'Failed completion retains card');assert(all(tree).some(n=>n.props?.role==='alert'));
- completionError=false;action(tree,'動作不良への返信があります。').props.onClick();assert.equal(navigations.length,0,'Navigate only after saved acknowledgement');completionRelease();await flush();tree=list();assert(!card(tree,'動作不良への返信があります。'));assert.equal(navigations[0],'?itemId=item&openMessages=1');
- action(tree,'発送お願いします。').props.onClick();action(tree,'発送お願いします。').props.onClick();completionRelease();await flush();tree=list();assert(!card(tree,'発送お願いします。'));assert.equal(navigations.length,1,'Shipping notice completion never navigates or ships');
+ completionError=true;action(tree,'動作不良への返信があります。').props.onClick();await flush();tree=list();assert(card(tree,'動作不良への返信があります。'),'Failed acknowledgement retains reply');assert(all(tree).some(n=>n.props?.role==='alert'));
+ completionError=false;const readReply=action(tree,'動作不良への返信があります。').props.onClick;
+ readReply();readReply();assert.equal(completionCalls.length,2,'Double click is locked');tree=list();assert.equal(action(tree,'動作不良への返信があります。').props.disabled,true);
+ assert.equal(navigations.length,0,'Navigate only after saved acknowledgement');completionRelease();await flush();tree=list();assert(!card(tree,'動作不良への返信があります。'));assert.equal(navigations[0],'?itemId=item&openMessages=1');
+ assert(card(tree,reason));assert(card(tree,'出品お願いします。'));assert(card(tree,'発送お願いします。'),'Opening a request keeps unfinished work visible');
+ listeners['delivery-item-workflow-changed']({detail:{id:'item',status:'取引中',shipped_on:'2026-10-20'}});tree=list();assert(!card(tree,'発送お願いします。'),'Actual shipment dismisses the shipping request');
  const start=new Clock(instant).toISOString();
  const checkHours=3_600_000;
  for(const [kind,warning,overdue] of [['inspection',48,72],['photo_approved',120,168],['listing_due',120,168],['shipping',12,24]]){

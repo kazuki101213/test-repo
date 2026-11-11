@@ -33,6 +33,7 @@ for(const app of ['admin','delivery']){
   async function settle(){for(let i=0;i<12;i++){if(dirty)render();await Promise.resolve();}}
   async function mount(fn,value){hooks.forEach(h=>h?.cleanup?.());hooks=[];component=fn;props=value;dirty=true;await settle();}
   const button=label=>all(tree).find(n=>n.type==='button'&&text(n)===label);
+  const shippingAction=app==='delivery'?'確認':'発送';
   await mount(context.exports.default,{staff:{id:'EE',role:'purchaser'}});
   assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task']);
   await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
@@ -60,17 +61,17 @@ for(const app of ['admin','delivery']){
     await mount(context.exports.default,{staff:{id:'AA',code:'AA',role:'admin'},management:true});
     assert.deepEqual(all(tree).filter(n=>typeof n.type==='function').map(n=>n.props.task.id),['task','other'],'Management hides sent tasks without another completion');
     await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
-    assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button('発送'));assert(!button('完了'));
+    assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert(button(shippingAction));assert(!button('完了'));
     assert(tree.props.className.includes('delivery-return-task'),'Delivery spare shipping must use the same card border as the other notices');
     assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,2,'Delivery details retain the two requested detail lines');
-    assert(tree.props.children.includes(button('発送')),'Shipping button is a direct card grid child, not below the details');
-    button('発送').props.onClick();await settle();
+    assert(tree.props.children.includes(button(shippingAction)),'Shipping button is a direct card grid child, not below the details');
+    button(shippingAction).props.onClick();await settle();
     all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'admin-tracking'}});await settle();
     all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();
     all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
     assert.equal(sent.id,'task');assert.equal(sent.tracking,'admin-tracking');assert.equal(changed,1);changed=0;
-    await mount(context.exports.ShippingRow,{task,staff:{id:'II',code:'II',role:'deliverer'},management:false,onChanged:()=>changed++});assert(!button('発送'));
-    await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:false,onChanged:()=>changed++});assert(button('発送'),'Every administrator can handle shipping requests');
+    await mount(context.exports.ShippingRow,{task,staff:{id:'II',code:'II',role:'deliverer'},management:false,onChanged:()=>changed++});assert(!button(shippingAction));
+    await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:false,onChanged:()=>changed++});assert(button(shippingAction),'Every administrator can handle shipping requests');
     await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',code:'AA',role:'admin'},management:false,onChanged:()=>changed++});
     assert(text(tree).includes('発送済み'));assert(text(tree).includes('追跡番号：12345'));assert(!button('完了'));
   }
@@ -88,7 +89,7 @@ for(const app of ['admin','delivery']){
   assert.equal(all(tree).find(n=>n.type==='a'&&text(n)==='2392').props.href,app==='admin'?'https://test-repo-delivery.vercel.app/?itemId=body':'?itemId=body');
   assert(!all(tree).some(n=>n.type==='svg'),'Text links must not retain external-link icons');
   button('1647').props.onClick();button('1647').props.onClick();await settle();assert.equal(usageReads.length,1);assert.equal(usageReads[0],'1647');assert(opened.endsWith('?itemId=usage-1647'));
-  button('発送').props.onClick();await settle();
+  button(shippingAction).props.onClick();await settle();
   assert(button('送信').props.disabled);
   all(tree).find(n=>n.type==='input'&&n.props.type!=='checkbox').props.onChange({target:{value:'  12345  '}});await settle();
   assert(button('送信').props.disabled);sent=undefined;
@@ -102,25 +103,25 @@ for(const app of ['admin','delivery']){
   failed=false;all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
   assert.equal(sent.id,'task');assert.equal(sent.tracking,'12345');assert.equal(changed,1);
   await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'purchaser'},management:false,onChanged:()=>changed++});
-  button('発送').props.onClick();await settle();
+  button(shippingAction).props.onClick();await settle();
   all(tree).find(n=>n.props?.type==='checkbox').props.onChange({target:{checked:true}});await settle();
-  button('キャンセル').props.onClick();await settle();button('発送').props.onClick();await settle();
+  button('キャンセル').props.onClick();await settle();button(shippingAction).props.onClick();await settle();
   assert.equal(all(tree).find(n=>n.props?.type==='checkbox').props.checked,false);assert(button('送信').props.disabled);
   if(app==='admin'){
     await mount(context.exports.ShippingRow,{task,staff:{id:'EE',role:'admin'},management:true,onChanged:()=>changed++});
     assert(button('完了'),'Management may acknowledge without shipping');
-    assert(text(tree).includes('通番号：2392利用記録：1647 / 1723Panasonic純正m123')); assert(!button('発送')); assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,2);
+    assert(text(tree).includes('通番号：2392利用記録：1647 / 1723Panasonic純正m123')); assert(!button(shippingAction)); assert.equal(all(tree).filter(n=>n.props?.className==='spare-shipping-detail-line').length,2);
     assert.equal(all(tree).find(n=>n.type==='a'&&text(n)==='m123').props.href,'https://jp.mercari.com/item/m123');
   }
   await mount(context.exports.ShippingRow,{task,staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('EE 石川秀樹→MM 株式会社吉光の発送準備中'));assert.equal(!!button('完了'),app==='admin');
   if(app==='admin'){
-    assert(!button('発送'),'Management shows shipping progress without performing shipment');
+    assert(!button(shippingAction),'Management shows shipping progress without performing shipment');
     assert(!all(tree).some(n=>n.type==='form'),'Management never offers a shipping form');
     failed=true;button('完了').props.onClick();await settle();assert.equal(completed,undefined);assert(all(tree).some(n=>n.props?.role==='alert'));
     failed=false;button('完了').props.onClick();button('完了').props.onClick();await settle();assert.equal(completed,'task');assert.equal(changed,2);
     await mount(context.exports.ShippingRow,{task,staff:{id:'other-admin',code:'DD',role:'admin'},management:true,onChanged:()=>changed++});
-    assert(!button('発送'),'The management progress view never performs shipment, including for other administrators');
+    assert(!button(shippingAction),'The management progress view never performs shipment, including for other administrators');
   }
   await mount(context.exports.ShippingRow,{task:{...task,sent_at:'now',tracking_no:'12345'},staff:{id:'AA',code:'AA',role:'admin'},management:true,onChanged:()=>changed++});
   assert(text(tree).includes('発送済み'));assert(text(tree).includes('通番号：2392'));assert(text(tree).includes('追跡番号：12345'));assert(!text(tree).includes('利用記録'));
