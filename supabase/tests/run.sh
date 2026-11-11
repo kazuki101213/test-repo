@@ -152,3 +152,4 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/numbered_marketplace_accounts.sql
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/verified_amazon_listing_submission.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_listing_reconciliation.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_code_shipping_date.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/fba_completion_dispatch_date.sql"
