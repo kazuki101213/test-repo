@@ -21,8 +21,8 @@ export const appBaseUrls: Record<'admin' | 'delivery', readonly string[]> = {
   delivery: [...deliveryHosts, 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/'],
 };
 
-export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string }) {
-  if (row.app_kind === 'delivery') return { body: notificationBody(row.kind, row.lot_seq), itemId: row.item_id, tag: `delivery-${row.item_id}-${row.kind}` };
+export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string; listing_request_title?: string | null }) {
+  if (row.app_kind === 'delivery') return { body: notificationBody(row.kind, row.lot_seq, row.listing_request_title), itemId: row.item_id, tag: `delivery-${row.item_id}-${row.kind}` };
   const docs = ['invoice','receipts'].includes(row.kind);
   const body = row.kind === 'malfunction' ? `【${row.lot_seq}】動作不良の報告が届きました。`
     : row.kind === 'packing_photo' ? `【${row.lot_seq}】梱包が追加されました。`
@@ -33,11 +33,11 @@ export function notificationPayload(row: { app_kind: string; kind: string; lot_s
     tag: docs ? `admin-docs-${row.invoice_staff_id}-${row.billing_month}` : `admin-${row.task_id || row.item_id}-${row.kind}` };
 }
 
-export function notificationBody(kind: string, lot: number): string {
+export function notificationBody(kind: string, lot: number, listingRequestTitle?: string | null): string {
   if (kind === 'shipping') return `【${lot}】発送お願いします。`;
   if (kind === 'photo_return') return `【${lot}】商品写真の修正お願いします。`;
   if (kind === 'malfunction_return') return `【${lot}】動作不良への返信があります。`;
   if (kind === 'reply') return `【${lot}】動作不良への返信があります。`;
-  if (kind === 'photo') return `【${lot}】出品お願いします。`;
+  if (kind === 'photo') return `【${lot}】${listingRequestTitle || '出品お願いします。'}`;
   return `【${lot}】新しい担当商品が追加されました。`;
 }
