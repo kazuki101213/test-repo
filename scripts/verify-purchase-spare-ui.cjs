@@ -17,7 +17,8 @@ const react={
  useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
 };
 const jsx=(type,props)=>({type,props});
-const shared={...names.exports,...skus.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他','Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
+const shared={...require('./marketplace-account-modules.cjs'),...names.exports,...skus.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他','Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
+const channels={exports:{}};vm.runInNewContext(compile('packages/shared/src/salesChannels.ts'),channels);Object.assign(shared,channels.exports);
 let currentSpares=[spare];
 const api={fetchStaff:async()=>staff,fetchCards:async()=>[{id:'amex',name:'アメックスカード'}],nextLotSeq:async()=>5000,fetchProducts:async()=>[],createItem:async(payload,id)=>{saved={payload,id};return{id:'created',sku:'body-sku',accessory_sku:'accessory-sku'};}};
 const context={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../purchaseUrl'?{buildPurchaseUrl:()=>null,parsePurchaseUrl:()=>null}:{default:'select'},setTimeout:fn=>{fn();return 1;},clearTimeout(){},Date,URL,window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};

@@ -20,5 +20,5 @@ export function matchesInventoryFilters(item: {
     status: [item.status],
   };
   return INVENTORY_FILTER_GROUPS.every(({ field }) =>
-    !filters[field]?.length || filters[field]!.some(value => matches[field].includes(value)));
+    !filters[field]?.length || filters[field]!.some(value => matches[field].includes(field === 'sales_channel' ? salesChannelLabel(value) : value)));
 }
