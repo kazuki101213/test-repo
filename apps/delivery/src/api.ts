@@ -131,7 +131,7 @@ export async function recordListingPhotoUpload(itemId: string) {
   if (error) throw new Error(error.message);
 }
 
-export async function setDeliveryProgress(itemId: string, step: 'inspection_cleaning' | 'listing' | 'packed' | 'shipped', done: boolean, date?: string) {
+export async function setDeliveryProgress(itemId: string, step: 'inspection' | 'listing' | 'packed' | 'shipped', done: boolean, date?: string) {
   const { error } = await getSupabase().rpc('set_delivery_progress', {
     p_item_id: itemId, p_step: step, p_done: done, p_on: date ?? null,
   });

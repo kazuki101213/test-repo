@@ -56,7 +56,7 @@ begin
   raise exception 'Matching tracking numbers did not block the second lot';
  end if;
 
- update app.items set inspected_at=now(),cleaned_at=now() where lot_seq=991012;
+ update app.items set inspected_at=now() where lot_seq=991012;
  if (select count(*) from app.v_receipt_evaluation_tasks where lot_seq in (991011,991012))<>2 then
   raise exception 'Ready bundle did not reappear';
  end if;
@@ -65,7 +65,7 @@ begin
   raise exception 'Fully inspected bundle was not eligible';
  end if;
  v_token=(v_reservation->>'token')::uuid;
- update app.items set cleaned_at=null,memo='991011、991012同梱。',tracking_no=null where lot_seq=991012;
+ update app.items set inspected_at=null,memo='991011、991012同梱。',tracking_no=null where lot_seq=991012;
  if app.marketplace_receipt_context('ヤフオク','receipt-bundle-991011')->>'receipt_bundle_waiting' is distinct from 'true' then
   raise exception 'A memo on the sibling did not block a cancelled bundle';
  end if;

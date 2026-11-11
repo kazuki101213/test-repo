@@ -11,7 +11,7 @@ begin
  values(990902,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'accessory receipt test child',10,'ヤフオク','メルカリ','receipt-child-fixture',true,v_parent) returning id into v_child;
  v_probe=app.marketplace_extension_probe('ヤフオク','receipt-child-fixture');
  v_ctx=app.marketplace_receipt_context('ヤフオク','receipt-child-fixture');
- if (v_probe->>'count')::int<>1 or v_probe->'items'->0->>'inspected_at' is not null or v_probe->'items'->0->>'cleaned_at' is not null then raise exception 'Tracking probe or actual accessory records changed';end if;
+ if (v_probe->>'count')::int<>1 or v_probe->'items'->0->>'inspected_at' is not null or (v_probe->'items'->0) ? 'cleaned_at' then raise exception 'Tracking probe or actual accessory records changed';end if;
  if (v_ctx->'items'->0->>'receipt_ready')::boolean is not true or v_ctx->'items'->0->>'receipt_source'<>'parent' then raise exception 'Parent readiness omitted';end if;
  update app.items set parent_item_id=null where id=v_child;
  if (app.marketplace_receipt_context('ヤフオク','receipt-child-fixture')->'items'->0->>'receipt_ready')::boolean is true then raise exception 'Unlinked accessory became eligible';end if;
@@ -19,10 +19,10 @@ begin
  v_result=app.marketplace_extension_receipt('reserve','ヤフオク','receipt-child-fixture','fixture-account');
  if (v_result->>'eligible')::boolean is not true then raise exception 'Parent-ready reservation failed: %',v_result->>'reason';end if;
  v_token=(v_result->>'token')::uuid;
- update app.items set cleaned_at=null where id=v_parent;
- begin perform app.marketplace_extension_receipt('begin','ヤフオク','receipt-child-fixture','fixture-account',v_token);raise exception 'Missing parent cleaning allowed submission';
- exception when raise_exception then if sqlerrm='Missing parent cleaning allowed submission' then raise;end if;end;
- update app.items set cleaned_at=now() where id=v_parent;
+ update app.items set inspected_at=null where id=v_parent;
+ begin perform app.marketplace_extension_receipt('begin','ヤフオク','receipt-child-fixture','fixture-account',v_token);raise exception 'Missing parent inspection allowed submission';
+ exception when raise_exception then if sqlerrm='Missing parent inspection allowed submission' then raise;end if;end;
+ update app.items set inspected_at=now() where id=v_parent;
  perform app.marketplace_extension_receipt('begin','ヤフオク','receipt-child-fixture','fixture-account',v_token);
  perform app.marketplace_extension_receipt('unknown','ヤフオク','receipt-child-fixture','fixture-account',v_token,'fixture unknown; never retry');
  if (app.marketplace_extension_receipt('reserve','ヤフオク','receipt-child-fixture','fixture-account')->>'eligible')::boolean is true then raise exception 'Unknown receipt resent';end if;

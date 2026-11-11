@@ -94,7 +94,7 @@ end $$;
 set local role postgres;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 update app.items set status='出品中' where lot_seq=997610;
-update app.items set cleaned_at=now() where lot_seq=997631;
+update app.items set inspected_at=now() where lot_seq=997631;
 update app.items set malfunction_reported_at=now() where lot_seq=997634;
 update app.items set shipped_on=current_date where lot_seq=997620;
 with plan as (
