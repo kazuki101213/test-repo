@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {readResourceSnapshot,noticeProductUrl} from '@bussan/shared';
 import {completeDeliveryNotice} from '../api';
-type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due';created_at?:string;tracking_recorded_at?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null};
+type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due';created_at?:string;tracking_recorded_at?:string|null;listing_request_title?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null};
 const taskOrder={inspection:0,photo_approved:1,listing_due:1,shipping:2,photo_return:3,reply:4};
 const orderedTasks=(rows:ReturnTask[])=>[...rows].sort((a,b)=>taskOrder[a.kind]-taskOrder[b.kind]||(a.created_at??'').localeCompare(b.created_at??'')||a.id.localeCompare(b.id));
 const hour=3_600_000;
@@ -73,11 +73,14 @@ export default function ReturnTasks({staffId}:{staffId:string}){
  },[rows,now]);
  return <>{error&&<li className="error" role="alert">{error}</li>}{orderedTasks(rows).map(row=>{
   const tone=taskDeadlineTone(row,now);
+  const title=row.kind==='photo_approved'||row.kind==='listing_due'
+    ? row.listing_request_title||taskTitle[row.kind]
+    : row.kind==='photo_return'&&row.reason?.trim()||taskTitle[row.kind];
   if(row.kind==='listing_due'&&!tone)return null;
   const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);
   return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')} data-deadline={tone}>
-  <div className="delivery-return-content"><strong>{row.kind==='photo_return'&&row.reason?.trim()||taskTitle[row.kind]}</strong>
+  <div className="delivery-return-content"><strong>{title}</strong>
    <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
     {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{row.sku}</span></div>
   </div>
