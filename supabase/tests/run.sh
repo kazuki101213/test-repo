@@ -148,5 +148,6 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/expense_bulk_delete.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/nekopos_shipping.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_account_sales_channels.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/numbered_marketplace_accounts.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/verified_amazon_listing_submission.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_listing_reconciliation.sql"

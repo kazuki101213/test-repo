@@ -1,14 +1,14 @@
-import { salesChannelLabel } from '@bussan/shared';
+import { SALES_DESTINATIONS, PURCHASE_SOURCES, accountLabelFor, marketplaceSelectOptions, purchaseSourceFields, salesDestinationFields, salesChannelLabel } from '@bussan/shared';
 import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  CONDITIONS, MARKETPLACES, SALES_CHANNELS, WORK_STREAMS, yen, buildSku,
+  CONDITIONS, MARKETPLACES, WORK_STREAMS, yen, buildSku,
   fetchSpareAccessories,
 } from '@bussan/shared';
 import type {
-  ItemCondition, ItemInsert, Marketplace, Product, SalesChannel, Staff, WorkStream,
+  ItemCondition, ItemInsert, Marketplace, Product, Staff, WorkStream,
   PurchaseDraft, SpareAccessory,
 } from '@bussan/shared';
 import { createItem, createSpareAccessory, registerPurchaseDraftSpare, fetchCards, findInventoryForAmazonReturn, fetchProduct, fetchProducts, fetchStaff, nextLotSeq } from '../api';
@@ -75,7 +75,8 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const [title, setTitle] = useState('');
   const [asin, setAsin] = useState('');
   const [cost, setCost] = useState<number | ''>('');
-  const [marketplace, setMarketplace] = useState<Marketplace>('メルカリ');
+  const [purchaseSource, setPurchaseSource] = useState('メルカリ');
+  const { marketplace, purchase_account_id } = purchaseSourceFields(purchaseSource);
   const [returnSku, setReturnSku] = useState<string | null>(null);
   const [returnLookup, setReturnLookup] = useState('');
   const [marketplaceItemId, setMarketplaceItemId] = useState('');
@@ -87,7 +88,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const isWorkingAmazonReturn = marketplace === '動作品Amazon返品' && workStream !== '付属品';
   const [cardId, setCardId] = useState('');
   const [condition, setCondition] = useState<ItemCondition | ''>('非常に良い');
-  const [salesChannel, setSalesChannel] = useState<SalesChannel>('FBA1');
+  const [salesChannel, setSalesChannel] = useState('FBA1');
   const [plannedPrice, setPlannedPrice] = useState<number | ''>('');
   const [plannedPayout, setPlannedPayout] = useState<number | ''>('');
   const [note, setNote] = useState('');
@@ -129,7 +130,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
 
   useEffect(() => {
     if (!draft) return;
-    setMarketplace(draft.marketplace);
+    setPurchaseSource(accountLabelFor(draft.marketplace, draft.account_label) || draft.marketplace);
     setMarketplaceItemId(draft.marketplace_item_id);
     setUrlOverride(draft.marketplace_url);
     setTitle(draft.model_no || draft.title);
@@ -191,8 +192,8 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setTrackingNo(selectedSpare.tracking_no ?? '');
     setMarketplaceItemId(selectedSpare.marketplace_item_id ?? '');
     setUrlOverride(null);
-    setMarketplace(selectedSpare.marketplace && MARKETPLACES.includes(selectedSpare.marketplace as Marketplace)
-      ? selectedSpare.marketplace as Marketplace : 'その他');
+    setPurchaseSource(accountLabelFor(selectedSpare.marketplace, selectedSpare.purchase_account_label) ||
+      (selectedSpare.marketplace && MARKETPLACES.includes(selectedSpare.marketplace as Marketplace) ? selectedSpare.marketplace : 'その他'));
     const spareOwner = staff.find(row => row.id === selectedSpare.owner_staff_id && canAssignPurchase(row));
     if (spareOwner) setPurchaserId(spareOwner.id);
   }
@@ -226,7 +227,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       setCondition(source.condition ?? '');
       setPlannedPrice(source.planned_price ?? '');
       setPlannedPayout(source.planned_payout ?? '');
-      setSalesChannel(salesChannelLabel(source.sales_channel ?? 'FBA1') as SalesChannel);
+      setSalesChannel(accountLabelFor(source.sales_channel, source.sales_account_label) || salesChannelLabel(source.sales_channel ?? 'FBA1'));
       setMarketplaceItemId(source.marketplace_item_id ?? '');
       setTrackingNo('');
       setCardId('');
@@ -247,7 +248,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
 
   function changeItemId(value: string) {
     const parsed = parsePurchaseUrl(value);
-    if (parsed) setMarketplace(parsed.marketplace as Marketplace);
+    if (parsed) setPurchaseSource(current => purchaseSourceFields(current).marketplace === parsed.marketplace ? current : parsed.marketplace);
     setMarketplaceItemId(parsed?.itemId ?? value);
     setUrlOverride(null);
   }
@@ -255,7 +256,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   function changePurchaseUrl(value: string) {
     const parsed = parsePurchaseUrl(value);
     if (parsed) {
-      setMarketplace(parsed.marketplace as Marketplace);
+      setPurchaseSource(current => purchaseSourceFields(current).marketplace === parsed.marketplace ? current : parsed.marketplace);
       setMarketplaceItemId(parsed.itemId);
       setUrlOverride(null);
     } else setUrlOverride(value);
@@ -312,6 +313,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         title: isWorkingAmazonReturn ? returnProduct?.model_no || '型番未登録' : title.trim(),
         cost_amount: Number(cost),
         marketplace,
+        purchase_account_id,
         marketplace_item_id: generatedReference?.itemId ?? (marketplaceItemId.trim() || null),
         marketplace_url: marketplaceUrl.trim() || null,
         tracking_no: trackingNo.trim() || null,
@@ -321,7 +323,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         condition: condition || null,
         planned_price: plannedPrice === '' ? null : Number(plannedPrice),
         planned_payout: plannedPayout === '' ? null : Number(plannedPayout),
-        sales_channel: salesChannel,
+        ...salesDestinationFields(salesChannel),
         memo: note || null,
         ...(draft ? { source_purchase_draft_id: draft.id } : {}),
       };
@@ -377,8 +379,8 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 <input type="number" min={0} value={cost} onChange={(e) => setCost(e.target.value === '' ? '' : Number(e.target.value))} required />
               </label>
               <label className="field"><span>仕入先</span>
-                <ColoredSelect value={marketplace} onChange={(e) => { setMarketplace(e.target.value as Marketplace); setUrlOverride(null); }}>
-                  {MARKETPLACES.map((m) => <option key={m} value={m}>{m}</option>)}
+                <ColoredSelect value={purchaseSource} onChange={(e) => { setPurchaseSource(e.target.value); setUrlOverride(null); }}>
+                  {marketplaceSelectOptions(PURCHASE_SOURCES, purchaseSource).map((m) => <option key={m} value={m}>{m}</option>)}
                 </ColoredSelect>
               </label>
               <label className="field"><span>支払い方法</span>
@@ -421,8 +423,8 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 </ColoredSelect>
               </label>
               <label className="field"><span>販売先</span>
-                <ColoredSelect value={salesChannel} onChange={(e) => setSalesChannel(e.target.value as SalesChannel)}>
-                  {SALES_CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
+                <ColoredSelect value={salesChannel} onChange={(e) => setSalesChannel(e.target.value)}>
+                  {marketplaceSelectOptions(SALES_DESTINATIONS, salesChannel).map((c) => <option key={c} value={c}>{c}</option>)}
                 </ColoredSelect>
               </label>
               <label className="field"><span>販売予定価格</span>
@@ -507,7 +509,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
           const metadata={model_no:product?.model_no||title.trim()||null,asin:asin.trim().toUpperCase()||null,tracking_no:trackingNo.trim()||null};
           if(draft) return registerPurchaseDraftSpare(draft.id,{...input,...metadata});
           const holder=staff.find(person=>person.id===input.owner_staff_id);
-          await createSpareAccessory({...input,...metadata,owner_name:holder?.name??null,source_sku:null,marketplace,marketplace_item_id:generatedReference?.itemId??(marketplaceItemId.trim()||null),usage_note:null});
+          await createSpareAccessory({...input,...metadata,owner_name:holder?.name??null,source_sku:null,marketplace,purchase_account_id,marketplace_item_id:generatedReference?.itemId??(marketplaceItemId.trim()||null),usage_note:null});
         }}
         onRegistered={()=>{setRegisteringSpare(false);setDone('予備に登録しました。');setTitle('');setAsin('');setProductSearch('');setCost('');setMarketplaceItemId('');setTrackingNo('');setUrlOverride(null);setProductId('');setNote('');onSaved?.();}}
       />}

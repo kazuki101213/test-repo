@@ -1,4 +1,4 @@
-import { salesChannelLabel } from '@bussan/shared';
+import { SALES_DESTINATIONS, PURCHASE_SOURCES, accountLabelFor, marketplaceSelectOptions, purchaseSourceFields, salesDestinationFields, salesChannelLabel } from '@bussan/shared';
 import InventoryOverview from '../components/InventoryOverview';
 import {usePurchaseSync} from '../hooks/usePurchaseSync';
 import { staffDisplayName, deliveryStaffOptions, inventoryPurchaserOptions, inventorySiteStyle } from '@bussan/shared';
@@ -7,7 +7,7 @@ import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CONDITIONS, MARKETPLACES, SALES_CHANNELS, STATUSES, yen, matchesInventoryFilters } from '@bussan/shared';
+import { CONDITIONS, STATUSES, yen, matchesInventoryFilters } from '@bussan/shared';
 import type { ItemStatus, PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem, updateInventoryStatus } from '../api';
@@ -215,6 +215,12 @@ const fullEditFields: (keyof InventoryEdit)[] = [
   'amazon_refund_amount','non_amazon_refund_amount','marketplace_item_id',
 ];
 
+function inventoryAccountValue(item: InventoryItem, field: 'marketplace' | 'sales_channel') {
+  return field === 'marketplace'
+    ? accountLabelFor(item.marketplace, item.purchase_account_label) || item.marketplace
+    : accountLabelFor(item.sales_channel, item.sales_account_label) || salesChannelLabel(item.sales_channel);
+}
+
 function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onClose: () => void; onSaved: () => void }) {
   const [sidebar, setSidebar] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width:1280px)').matches);
   useEffect(() => {
@@ -265,6 +271,10 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
     inventory_refund_amount: item.inventory_refund_amount,
     marketplace_item_id: item.marketplace_item_id,
   }));
+  const [purchaseSource, setPurchaseSource] = useState(() => inventoryAccountValue(item, 'marketplace'));
+  const [salesDestination, setSalesDestination] = useState(() => inventoryAccountValue(item, 'sales_channel'));
+  const purchaseChanged = purchaseSource !== inventoryAccountValue(item, 'marketplace');
+  const salesChanged = salesDestination !== inventoryAccountValue(item, 'sales_channel');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const dateFields = new Set<keyof InventoryEdit>(['purchased_at','packed_on','shipped_on','sold_on']);
@@ -272,14 +282,16 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
   function optionsFor(field: keyof InventoryEdit) {
     if (field === 'is_accessory') return [{ value: 'false', label: '本体' }, { value: 'true', label: '付属品' }];
     if (field === 'status') return STATUSES.map(value => ({ value, label: value }));
-    if (field === 'marketplace') return MARKETPLACES.map(value => ({ value, label: value }));
-    if (field === 'sales_channel') return SALES_CHANNELS.map(value => ({ value, label: value }));
+    if (field === 'marketplace') return marketplaceSelectOptions(PURCHASE_SOURCES, purchaseSource).map(value => ({ value, label: value }));
+    if (field === 'sales_channel') return marketplaceSelectOptions(SALES_DESTINATIONS, salesDestination).map(value => ({ value, label: value }));
     if (field === 'condition') return CONDITIONS.map(value => ({ value, label: value }));
     if (field === 'purchaser_id') return staff.filter(person => person.role !== 'deliverer').map(person => ({ value: person.id, label: staffDisplayName(person) }));
     if (field === 'deliverer_id') return deliveryStaffOptions(staff).map(person => ({ value: person.id, label: staffDisplayName(person) }));
     return null;
   }
   function set(field: keyof InventoryEdit, text: string) {
+    if (field === 'marketplace') return setPurchaseSource(text);
+    if (field === 'sales_channel') return setSalesDestination(text);
     const value = field === 'is_accessory' ? text === 'true' : text === '' ? null : numberFields.has(field) ? Number(text) : text;
     setValues(current => ({ ...current, [field]: value }) as InventoryEdit);
   }
@@ -291,7 +303,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
       const nextUsage=usageSerial.trim().toLowerCase();
       const usageChanged=!!usageContext&&nextUsage!==usageContext.serial;
       if(usageChanged&&(!/^[1-9][0-9]*[a-z]*$/.test(nextUsage)||nextUsage.length>32))throw new Error('利用記録に使用先の通番号を入力してください。');
-      const otherChanged=Object.entries(values).some(([field,value])=>value!==item[field as keyof InventoryEdit])
+      const otherChanged=purchaseChanged||salesChanged||Object.entries(values).some(([field,value])=>value!==item[field as keyof InventoryEdit])
         ||cardId!==saveState.current.cardId||identity.lot_seq!==item.lot_seq||identity.sku!==item.sku
         ||identity.product_no!==item.product_no||identity.model_no!==item.model_no;
       // A usage-only save must not write the old parent's shared fields back
@@ -306,7 +318,11 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         await updateInventoryField(current, 'sku', identity.sku);
         current = await fetchInventoryItem(item.id);
       }
-      await updateInventoryItem(current, { ...values, card_id: cardId || null });
+      await updateInventoryItem(current, {
+        ...values, card_id: cardId || null,
+        ...(purchaseChanged ? purchaseSourceFields(purchaseSource) : {}),
+        ...(salesChanged ? salesDestinationFields(salesDestination) : {}),
+      });
       if (values.asin !== item.asin && (identity.product_no !== item.product_no || identity.model_no !== item.model_no)) {
         current = await fetchInventoryItem(item.id);
       }
@@ -344,7 +360,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
         return <label className={`field${field === 'memo' ? ' inventory-full-edit-memo' : ''}`} key={field}><span>{fieldLabels[field]}</span>
-          {options ? <ColoredSelect value={field==='sales_channel'?salesChannelLabel(String(current)):String(current)} onChange={event => set(field, event.target.value)}>{field !== 'status' && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
+          {options ? <ColoredSelect value={field === 'sales_channel' ? salesDestination : field === 'marketplace' ? purchaseSource : String(current)} onChange={event => set(field, event.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
             : dateFields.has(field)
               ? <DateInput value={String(current)} onChange={event => set(field, event.target.value)} />
@@ -372,7 +388,7 @@ const fieldLabels: Record<InventoryField, string> = {
 };
 
 function InventoryFieldDialog({ item, field, staff, onClose, onSaved, onFullEdit }: { item: InventoryItem; field: InventoryField; staff: Staff[]; onClose: () => void; onSaved: () => void; onFullEdit: () => void }) {
-  const initial = field==='sales_channel'?salesChannelLabel(item.sales_channel):item[field]??'';
+  const initial = field === 'sales_channel' || field === 'marketplace' ? inventoryAccountValue(item, field) : item[field] ?? '';
   const [value, setValue] = useState(String(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -380,14 +396,14 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved, onFullEdit
   const saving = useRef(false);
   const recordingSale = field === 'status' && value === '販売済' && item.status !== '販売済';
   const changingRecordedSale = field === 'status' && value !== initial && value !== '販売済' && !!item.sold_on;
-  const canSave = !busy && !changingRecordedSale && (field !== 'status' || value !== initial)
+  const canSave = !busy && !changingRecordedSale && (!['status', 'marketplace', 'sales_channel'].includes(field) || value !== initial)
     && (!recordingSale || (!!sale.date && !!sale.price));
   const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
   const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'inventory_refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
   const options = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
     : field === 'is_accessory' ? [{ value: 'false', label: '本体' }, { value: 'true', label: '付属品' }]
-    : field === 'marketplace' ? MARKETPLACES.map(v => ({ value: v, label: v }))
-    : field === 'sales_channel' ? SALES_CHANNELS.map(v => ({ value: v, label: v }))
+    : field === 'marketplace' ? marketplaceSelectOptions(PURCHASE_SOURCES, String(initial)).map(v => ({ value: v, label: v }))
+    : field === 'sales_channel' ? marketplaceSelectOptions(SALES_DESTINATIONS, String(initial)).map(v => ({ value: v, label: v }))
     : field === 'condition' ? CONDITIONS.map(v => ({ value: v, label: v }))
     : field === 'purchaser_id' ? staff.filter(s => s.role !== 'deliverer').map(s => ({ value: s.id, label: staffDisplayName(s) }))
     : field === 'deliverer_id' ? deliveryStaffOptions(staff).map(s => ({ value: s.id, label: staffDisplayName(s) })) : null;

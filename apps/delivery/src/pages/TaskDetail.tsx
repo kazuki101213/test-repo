@@ -81,10 +81,10 @@ export default function TaskDetail({
     setMarketplaceVisible(true); setMarketplaceLoading(true); setMarketplaceError('');
     try {
       const current = await fetchSupplierConversation(itemId); setMarketplaceConversation(current);
-      if(current.account_id&&!supplierAccount)setSupplierAccount(current.account_id);
+      if (current.account_id) setSupplierAccount(current.account_id);
       if (current.expired) { setMarketplaceError('作業完了から7日を過ぎたため、取引メッセージは保存期間終了です。'); return; }
 
-      const supplierRequestId=await queueSupplierOperation(itemId,'read',supplierAccount||current.account_id||'',supplierRequest.current);supplierRequest.current=crypto.randomUUID();
+      const supplierRequestId=await queueSupplierOperation(itemId,'read',current.account_id || supplierAccount,supplierRequest.current);supplierRequest.current=crypto.randomUUID();
       const deadline = Date.now() + 120000;
       while (Date.now() < deadline) {
        await new Promise(resolve=>window.setTimeout(resolve,4000));

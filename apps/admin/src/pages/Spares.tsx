@@ -7,7 +7,7 @@ import '../components/ExpenseSelection.css';
 import './SpareSelection.css';
 import {useTaskConfirmation} from '../components/TaskConfirmation';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { MARKETPLACES, deleteSpareAccessories, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
+import { PURCHASE_SOURCES, accountLabelFor, marketplaceAccountLabel, marketplaceSelectOptions, purchaseSourceFields, deleteSpareAccessories, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
 import { createSpareAccessory, findInventoryAccessoriesForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory } from '../api';
 import type { SpareAccessoryField, SpareAccessoryInput, SpareInventoryAccessory } from '../api';
@@ -222,7 +222,7 @@ export default function Spares({ me }: { me: Staff }) {
       <div>メーカー：<EditableSpare row={row} field="manufacturer" onEdit={setEditFor}>{row.manufacturer || '未登録'}</EditableSpare></div>
       <div>購入日：<EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare>　仕入金額：<EditableSpare row={row} field="cost_amount" onEdit={setEditFor}>{yen(row.cost_amount)}</EditableSpare></div>
       <div>SKU：<EditableSpare row={row} field="source_sku" onEdit={setEditFor}>{row.source_sku || '—'}</EditableSpare></div>
-      <div>仕入先：<EditableSpare row={row} field="marketplace" onEdit={setEditFor}><span className="inventory-label" style={inventorySiteStyle(row.marketplace)}>{row.marketplace || '—'}</span></EditableSpare></div>
+      <div>仕入先：<EditableSpare row={row} field="marketplace" onEdit={setEditFor}><span className="inventory-label" style={inventorySiteStyle(row.marketplace)}>{row.purchase_account_label || row.marketplace || '—'}</span></EditableSpare></div>
       <div>商品ID：<span className="reference-value"><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare><SpareLinks row={row} kind="product" /></span></div>
       <div>追跡番号：<EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></div>
       <div>利用記録：<span className="reference-value"><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || '—'}</EditableSpare><SpareLinks row={row} kind="usage" /></span></div>
@@ -236,7 +236,7 @@ export default function Spares({ me }: { me: Staff }) {
       <td><EditableSpare row={row} field="manufacturer" onEdit={setEditFor}>{row.manufacturer || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="cost_amount" onEdit={setEditFor}>{yen(row.cost_amount)}</EditableSpare></td>
-      <td><EditableSpare row={row} field="marketplace" onEdit={setEditFor}><span className="inventory-label" style={inventorySiteStyle(row.marketplace)}>{row.marketplace || '—'}</span></EditableSpare></td>
+      <td><EditableSpare row={row} field="marketplace" onEdit={setEditFor}><span className="inventory-label" style={inventorySiteStyle(row.marketplace)}>{row.purchase_account_label || row.marketplace || '—'}</span></EditableSpare></td>
       <td><span className="reference-value"><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare><SpareLinks row={row} kind="product" /></span></td>
       <td><EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></td>
       <td><span className="reference-value"><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || (row.used_for_item_id ? '商品へ割当済み' : '—')}</EditableSpare><SpareLinks row={row} kind="usage" /></span></td>
@@ -255,7 +255,10 @@ export default function Spares({ me }: { me: Staff }) {
         <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
         <label className="field"><span>ASIN</span><input value={form.asin ?? ''} onChange={event => setForm(current => ({ ...current, asin: event.target.value || null }))} /></label>
         <label className="field"><span>仕入金額</span><input type="number" min={0} step={1} value={form.cost_amount} onChange={event => setForm(current => ({ ...current, cost_amount: Number(event.target.value) }))} /></label>
-        <label className="field"><span>仕入先</span><ColoredSelect value={form.marketplace ?? ''} onChange={event => setForm(current => ({ ...current, marketplace: event.target.value || null }))}><option value="">未設定</option>{MARKETPLACES.map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
+        <label className="field"><span>仕入先</span><ColoredSelect value={marketplaceAccountLabel(form.purchase_account_id) || form.marketplace || ''} onChange={event => {
+          const source = purchaseSourceFields(event.target.value);
+          setForm(current => ({ ...current, ...source, marketplace: source.marketplace || null }));
+        }}><option value="">未設定</option>{marketplaceSelectOptions(PURCHASE_SOURCES, marketplaceAccountLabel(form.purchase_account_id) || form.marketplace || '').map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
         <label className="field"><span>商品ID</span><input value={form.marketplace_item_id ?? ''} onChange={event => setForm(current => ({ ...current, marketplace_item_id: event.target.value || null }))} /></label>
         <label className="field"><span>追跡番号</span><input value={form.tracking_no ?? ''} onChange={event => setForm(current => ({ ...current, tracking_no: event.target.value || null }))} /></label>
         <label className="field registration-wide"><span>SKU</span><input value={form.source_sku ?? ''} onChange={event => setForm(current => ({ ...current, source_sku: event.target.value || null }))} /></label>
@@ -289,7 +292,7 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
     source_sku: 'SKU', owner_name: '保管担当者', purchased_at: '購入日', title: '品名', manufacturer: 'メーカー', model_no: '型番', asin: 'ASIN', cost_amount: '仕入金額',
     marketplace: '仕入先', marketplace_item_id: '商品ID', tracking_no: '追跡番号', usage_note: '利用記録',
   };
-  const initial = row[field] ?? '';
+  const initial = field === 'marketplace' ? accountLabelFor(row.marketplace, row.purchase_account_label) || row.marketplace || '' : row[field] ?? '';
   const [value, setValue] = useState(String(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -308,7 +311,7 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label={`${labels[field]}を編集`}>
     <div className="card inventory-comment-panel"><h3>{labels[field]}を編集</h3>
       <label className="field"><span>{labels[field]}</span>
-        {field === 'marketplace' ? <ColoredSelect autoFocus value={value} onChange={event => setValue(event.target.value)}><option value="">未設定</option>{MARKETPLACES.map(option => <option key={option}>{option}</option>)}</ColoredSelect>
+        {field === 'marketplace' ? <ColoredSelect autoFocus value={value} onChange={event => setValue(event.target.value)}><option value="">未設定</option>{marketplaceSelectOptions(PURCHASE_SOURCES, String(initial)).map(option => <option key={option}>{option}</option>)}</ColoredSelect>
           : date ? <DateInput autoFocus value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />
             : <input autoFocus type={numeric ? 'number' : 'text'} min={numeric ? 0 : undefined} step={numeric ? 1 : undefined} value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />}
       </label>
