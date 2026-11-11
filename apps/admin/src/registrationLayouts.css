@@ -61,6 +61,7 @@
  .layout .product-entry { grid-row:1; }
 }
 @media screen and (max-width:767px) {
+ .layout .product-registration-fields.registration-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
  .layout .toolbar.product-search-toolbar { grid-template-columns:minmax(0,1fr) max-content; }
 }
 
