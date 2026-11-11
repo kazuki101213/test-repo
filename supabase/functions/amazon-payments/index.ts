@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { candidates } from './reconcile.ts';
+import { syncDispatchDates } from './dispatch.ts';
 import { amazonAccountId, amazonAccounts, amazonCredentials, AmazonAccountError } from '../_shared/amazonAccounts.ts';
 
 const marketplace = 'A1VC38T7YXB528';
@@ -77,7 +78,7 @@ export async function handler(req: Request): Promise<Response> {
       if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
       actorId = user.user.id;
     }
-    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose', 'dispatch-dates'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
     if (body.action === 'accounts') return respond(200, { accounts: amazonAccounts() });
     const accountId = amazonAccountId(body.accountId);
     if (body.action === 'identity') {
@@ -112,9 +113,11 @@ export async function handler(req: Request): Promise<Response> {
         return result;
       };
       let nextToken: string | undefined, saved = 0, applied = 0, reviewed = 0, processed = 0;
+      let dispatch: unknown;
       const seen = new Set<string>();
       do {
-        const page = await call('sync', nextToken ? { nextToken } : {});
+        const page = await call('sync', nextToken ? { nextToken } : { dispatch: true });
+        if (!nextToken) dispatch = page.dispatch;
         saved += page.saved;
         nextToken = page.nextToken;
         if (nextToken && seen.has(nextToken)) throw new SafeError(502, 'Amazonのページ情報が重複しました。');
@@ -134,10 +137,11 @@ export async function handler(req: Request): Promise<Response> {
           await new Promise(resolve => setTimeout(resolve, 2100));
         }
       }
-      return respond(200, { saved, processed, applied, reviewed });
+      return respond(200, { saved, processed, applied, reviewed, dispatch });
     }
     if (body.action === 'diagnose' && !scheduled) throw new SafeError(403, '診断は定期更新の認証からのみ実行できます。');
-    const range = body.action === 'diagnose'
+    if (body.action === 'dispatch-dates' && !scheduled) throw new SafeError(403, '出荷日の同期は定期更新の認証からのみ実行できます。');
+    const range = body.action === 'diagnose' || body.action === 'dispatch-dates'
       ? { postedAfter: new Date(Date.now() - 4 * 86400000).toISOString(), postedBefore: new Date(Date.now() - 180000).toISOString() }
       : dateRange(body);
     const credentials = amazonCredentials(accountId, body.action !== 'history');
@@ -167,6 +171,13 @@ export async function handler(req: Request): Promise<Response> {
     }
     const token = await lwa.json();
     if (typeof token.access_token !== 'string' || !token.access_token) throw new SafeError(502, 'Amazon LWAの応答が不正です。');
+    if (body.action === 'dispatch-dates') {
+      try {
+        return respond(200, await syncDispatchDates({ db: sb, accountId, token: token.access_token }));
+      } catch (error) {
+        throw new SafeError(502, error instanceof Error ? error.message : 'Amazon自己発送の出荷日を更新できません。');
+      }
+    }
     if (body.action === 'diagnose') {
       const commonHeaders = { 'x-amz-access-token': token.access_token, 'x-amz-date': new Date().toISOString().replace(/[:-]|\.\d{3}/g, ''), 'user-agent': 'BussanAdmin/1.0 (Language=TypeScript; Platform=Supabase)' };
       const sellerResponse = await fetch('https://sellingpartnerapi-fe.amazon.com/sellers/v1/marketplaceParticipations', { headers: commonHeaders, signal: AbortSignal.timeout(20000) });
@@ -283,6 +294,10 @@ export async function handler(req: Request): Promise<Response> {
       }
       return respond(200, { results });
     }
+    const dispatch = scheduled && body.action === 'sync' && body.dispatch === true && !body.nextToken
+      ? await syncDispatchDates({ db: sb, accountId, token: token.access_token }).catch((error: unknown) => ({
+        error: error instanceof Error ? error.message : 'Amazon自己発送の出荷日を更新できません。',
+      })) : undefined;
     const params = new URLSearchParams({ ...range, marketplaceId: marketplace });
     if (body.nextToken) params.set('nextToken', String(body.nextToken));
     const response = await fetch(`https://sellingpartnerapi-fe.amazon.com/finances/2024-06-19/transactions?${params}`, {
@@ -309,7 +324,7 @@ export async function handler(req: Request): Promise<Response> {
       const { error } = await writer.from('amazon_payment_transactions').upsert(unique, { onConflict: 'account_key,marketplace_id,transaction_id' });
       if (error) throw new SafeError(503, 'Amazonから取得できましたが、履歴の保存に失敗しました。同じ期間で再試行できます。');
     }
-    return respond(200, { saved: unique.length, nextToken: nextToken || undefined, fetchedAt, ...range });
+    return respond(200, { saved: unique.length, nextToken: nextToken || undefined, fetchedAt, ...range, dispatch });
   } catch (e) {
     return respond(e instanceof SafeError || e instanceof AmazonAccountError ? e.status : 502, { error: e instanceof SafeError || e instanceof AmazonAccountError ? e.message : '外部サービスとの通信に失敗しました。時間をおいて再試行してください。' });
   }

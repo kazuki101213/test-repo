@@ -38,6 +38,10 @@ jobs:
       - name: Accessory receipt parent readiness
         run: node --test scripts/extension-tests/accessory-receipt.test.mjs
 
+      - name: Amazon seller-fulfilled dispatch dates
+        run: deno test --no-config --no-lock --node-modules-dir=none supabase/functions/amazon-payments/dispatch_test.ts
+
+
       - name: FBA納品の商品選択と担当権限
         run: node scripts/verify-fba-selection.cjs && deno test --no-config --no-lock --node-modules-dir=none --allow-env supabase/functions/amazon-fba-inbound/index_test.ts
 
