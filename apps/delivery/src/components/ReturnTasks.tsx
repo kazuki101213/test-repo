@@ -29,7 +29,6 @@ export default function ReturnTasks({staffId}:{staffId:string}){
    await completeDeliveryNotice(row.id,row.item_id);
    completed.current.add(row.id);
    setRows(current=>current.filter(entry=>entry.id!==row.id));
-   if(row.kind==='photo_approved')window.dispatchEvent(new Event('delivery-return-tasks-changed'));
    if(row.kind==='reply')window.location.assign('?itemId='+encodeURIComponent(row.item_id)+'&openMessages=1');
   }catch(cause){setError((cause as {message?:string})?.message||'案内を完了できませんでした。');}
   finally{locks.current.delete(row.id);setPending(current=>current.filter(id=>id!==row.id));}
@@ -77,7 +76,7 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   if(row.kind==='listing_due'&&!tone)return null;
   const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);
-  const opensItem=row.kind==='inspection'||row.kind==='listing_due';
+  const opensItem=row.kind==='inspection'||row.kind==='photo_approved'||row.kind==='listing_due';
   return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')} data-deadline={tone}>
   <div className="delivery-return-content"><strong>{row.kind==='photo_return'&&row.reason?.trim()||taskTitle[row.kind]}</strong>
    <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
