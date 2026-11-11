@@ -17,6 +17,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  let received=0,available=0,buyable=false,published=0,remoteCalls=0,failAfterCreate=false,ambiguousPacking=false,staff='own';
  let prepCategory='NONE',inventoryChanged=false,prepRejected=false,labelRequired=false,packingReadRejected=false;
  let packingFees:unknown=[],extraPackingChoice=false,packingAccepted=false;
+ let transportStatus='SUCCESS';
  const box={length:40,width:30,height:20,weight:4,items:[itemId]};
  const editedBox={...box,length:42.5,weight:5.25};
  let boxResponse:'reject'|'lost'|'accept'='reject',remoteBox=box;
@@ -63,7 +64,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
    if(failAfterCreate)throw new Error('response lost');
    return json({operationId:'create-op',inboundPlanId:'wf-test'},202);
   }
-  if(path.includes('/operations/'))return json({operationStatus:'SUCCESS',operationProblems:prepRejected?[{severity:'ERROR',code:'PREP_REJECTED',message:'SKUの梱包を確認してください'}]:[]});
+  if(path.includes('/operations/'))return json({operationStatus:plan.pending?.action==='confirmTransport'?transportStatus:'SUCCESS',operationProblems:prepRejected?[{severity:'ERROR',code:'PREP_REJECTED',message:'SKUの梱包を確認してください'}]:[]});
   if(path.endsWith('/packingOptions')&&method==='GET'){
    equal(url.searchParams.get('pageSize'),'20');
    if(packingReadRejected)return json({errors:[{code:'InvalidInput',message:'Packing options could not be read'}]},400);
@@ -216,17 +217,20 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   await send('confirmPlacement',{options:['transport']},422);
   const beforeCombined=structuredClone(plan);
   plan.work.transport=plan.work.transport?.map(t=>({...t,solution:'AMAZON_PARTNERED_CARRIER',quote:{amount:756,code:'JPY'},preconditions:[]}));
-  const beforeClick=Date.now();
   await step('confirmPlacement','placement-confirmed',{options:['transport'],confirmed:true});
-  const firstClick=plan.work.dispatchRequestedAt;
-  assert(firstClick&&Date.parse(firstClick)>=beforeClick,'Combined completion request time is stored');
+  equal(plan.work.transportConfirmationObservedAt,undefined);
   await send('confirmTransport',{confirmed:true});
-  equal(plan.work.dispatchRequestedAt,firstClick);
-  assert(Date.parse(plan.pending!.at)>=Date.parse(firstClick!),'Second request cannot replace the first click');
-  await send('poll');equal(plan.stage,'ready');equal(plan.work.dispatchRequestedAt,firstClick);
+  equal(plan.work.transportConfirmationObservedAt,undefined);
+  plan.pending!.at='2020-01-01T00:00:00Z';transportStatus='IN_PROGRESS';
+  await send('poll');equal(plan.stage,'placement-confirmed');
+  assert(plan.pending?.transportStillPendingAt,'Later pending check narrows the confirmation date');
+  equal(plan.work.transportConfirmationObservedAt,undefined);
+  transportStatus='SUCCESS';const beforeSuccess=Date.now();
+  await send('poll');equal(plan.stage,'ready');
+  assert(Date.parse(plan.work.transportConfirmationObservedAt??'')>=beforeSuccess,'Success observation is stored');
   plan=beforeCombined;
   await step('confirmPlacement','placement-confirmed',{options:['transport'],confirmed:true});
-  equal(plan.work.dispatchRequestedAt,undefined);
+  equal(plan.work.transportConfirmationObservedAt,undefined);
   await send('resizeBoxes',{dimensions},409);
   await send('confirmTransport',{confirmed:true},422);
   await step('windows','placement-confirmed',{shipment});await step('chooseWindow','placement-confirmed',{shipment,option:'window'});
