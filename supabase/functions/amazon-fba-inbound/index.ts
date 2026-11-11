@@ -22,7 +22,7 @@ const optionPageSize={pageSize:'20'};
 const listPacking=(api:Amazon,path:string)=>api.pages(path+'/packingOptions','packingOptions',optionPageSize);
 const availablePacking=async(api:Amazon,path:string)=>(await listPacking(api,path))
  .filter(row=>row.status==='OFFERED'&&(!row.expiration||Date.parse(row.expiration)>Date.now()));
-const localDate=(value=new Date())=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(value);
+const localDate=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const stageAfter:Record<string,Stage>={create:'created',packing:'packing-options',choosePacking:'packing-confirmed',boxes:'packed',resizeBoxes:'packed',
  placements:'placement-options',transport:'transport-options',confirmPlacement:'placement-confirmed',confirmTransport:'ready'};
 
@@ -167,6 +167,7 @@ function eligiblePhase(plan:Plan,...stages:Stage[]){
 export async function handler(req:Request):Promise<Response>{
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers});
  if(req.method!=='POST')return reply(405,{error:'POSTのみ利用できます。'});
+ const requestedAt=new Date().toISOString();
  try{
   const url=Deno.env.get('SUPABASE_URL')!;
   const options={auth:{persistSession:false,autoRefreshToken:false},db:{schema:'app'}};
@@ -376,7 +377,6 @@ export async function handler(req:Request):Promise<Response>{
      if(shipment.selectedTransportationOptionId!==option.id||!shipment.shipmentConfirmationId)
       return invalid('Amazonで配送の確定を確認できません。時間をおいて再確認してください。');
     }
-    work.transportConfirmationObservedAt=new Date().toISOString();
    }else if(pending.action==='chooseWindow'||pending.action==='tracking'){
     const shipment=await api.call(shipmentPath(plan,pending.shipmentId!));
     if(pending.action==='chooseWindow'){
@@ -394,15 +394,8 @@ export async function handler(req:Request):Promise<Response>{
   if(action==='poll'){
    const pending=plan.pending!;
    if(!pending.op)throw new WorkflowError(409,'Amazonから受付番号を取得できていません。二重登録を防ぐため納品履歴を確認してください。');
-   const checkedAt=new Date();
    const operation=await api.call(inbound+'/operations/'+enc(pending.op));
-   const observedAt=new Date().toISOString();
-   if(operation.operationStatus==='IN_PROGRESS'){
-    // Only persist a new lower bound when the status check crosses a JST day.
-    if(pending.action==='confirmTransport'&&localDate(checkedAt)!==localDate(new Date(pending.transportStillPendingAt??pending.at)))
-     await patch({pending:{...pending,transportStillPendingAt:checkedAt.toISOString()}});
-    return result();
-   }
+   if(operation.operationStatus==='IN_PROGRESS')return result();
    if(operation.operationStatus==='FAILED'){
     const detail=(operation.operationProblems??[]).map(amazonProblem).filter(Boolean).slice(0,4).join('／');
     if(pending.action==='create')await patch({pending:null,amazon_id:null,work:{...plan.work,notice:detail||'Amazonで納品作成に失敗しました。'}});
@@ -417,7 +410,6 @@ export async function handler(req:Request):Promise<Response>{
     return finishPrep(pending,problems.map(amazonProblem).filter(Boolean).slice(0,4).join('／'),problems.some(x=>x?.severity==='ERROR'));
    }
    const work=packingResult(plan.work,pending);
-   if(pending.action==='confirmTransport')work.transportConfirmationObservedAt=observedAt;
    if(pending.action==='packing')work.packing=(await availablePacking(api,path)).map(x=>({id:x.packingOptionId,groups:x.packingGroups,fees:charges(x.fees),expiration:x.expiration}));
    if(pending.action==='placements')work.placements=(await api.pages(path+'/placementOptions','placementOptions',optionPageSize)).filter(x=>x.status==='OFFERED').map(x=>({id:x.placementOptionId,shipmentIds:x.shipmentIds,fees:charges(x.fees),expiration:x.expiration}));
    if(pending.action==='transport'){
@@ -507,7 +499,9 @@ export async function handler(req:Request):Promise<Response>{
    const selections=transportSelection(input.options,plan.work.placement,plan.work.transport??[]);
    if(selections.some(unknownPrecondition))return invalid('選んだ配送方法にはセラーセントラルでの手続きが必要です。');
    if(selections.some(s=>s.solution==='AMAZON_PARTNERED_CARRIER'&&!s.quote))return invalid('Amazonから配送費を確認できません。配送方法を選び直してください。');
-   await start({...plan.work,selections},path+'/placementOptions/'+enc(plan.work.placement.id)+'/confirmation','POST',undefined,{remote:plan.work.placement.id});
+   // The combined completion button starts here, before the automatic transport confirmation.
+   const dispatchRequestedAt=selections.some(needsWindow)?undefined:requestedAt;
+   await start({...plan.work,selections,dispatchRequestedAt},path+'/placementOptions/'+enc(plan.work.placement.id)+'/confirmation','POST',undefined,{remote:plan.work.placement.id});
   }else if(action==='windows'||action==='chooseWindow'){
    eligiblePhase(plan,'placement-confirmed');
    const option=plan.work.selections?.find(s=>s.shipmentId===input.shipment);
@@ -527,7 +521,7 @@ export async function handler(req:Request):Promise<Response>{
     return invalid('有効な配送方法と到着期間を確認してください。');
    const {name,phoneNumber}=senders[plan.account];
    await start(plan.work,path+'/transportationOptions/confirmation','POST',{transportationSelections:selections.map(s=>
-    ({shipmentId:s.shipmentId,transportationOptionId:s.id,contactInformation:{name,phoneNumber}}))});
+    ({shipmentId:s.shipmentId,transportationOptionId:s.id,contactInformation:{name,phoneNumber}}))},{at:requestedAt});
   }else if(action==='refresh'){
    eligiblePhase(plan,'ready');
    const shipments=await getShipments(api,plan,true);

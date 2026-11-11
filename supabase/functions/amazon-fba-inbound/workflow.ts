@@ -11,11 +11,11 @@ export type Shipment = {id:string; confirmationId?:string; warehouse?:string; st
 export type Stage = 'draft'|'created'|'packing-options'|'packing-confirmed'|'packed'|'placement-options'|'transport-options'|'placement-confirmed'|'ready'|'cancelled';
 export type Work = {
  boxes?:Box[]; owners?:Record<string,Owner>; packing?:Packing[]; groups?:Record<string,string>; placements?:Placement[];
- placement?:Placement; transport?:Transport[]; selections?:Transport[]; shipDate?:string; transportConfirmationObservedAt?:string;
+ placement?:Placement; transport?:Transport[]; selections?:Transport[]; shipDate?:string; dispatchRequestedAt?:string;
  windows?:Record<string,Window[]>; selectedWindows?:Record<string,string>; shipments?:Shipment[]; notice?:string;
 };
 export const canResizeBoxes = (stage:Stage) => stage==='packed' || stage==='placement-options' || stage==='transport-options';
-export type Pending = {action:string; at:string; op?:string; boxes?:Box[]; createAfterPrep?:boolean; shipmentId?:string; windowId?:string; tracking?:Record<string,string>; remote?:string; transportStillPendingAt?:string};
+export type Pending = {action:string; at:string; op?:string; boxes?:Box[]; createAfterPrep?:boolean; shipmentId?:string; windowId?:string; tracking?:Record<string,string>; remote?:string};
 export type Plan = {id:string; account:Account; name:string; staff_id:string; stage:Stage; revision:number; amazon_id:string|null; pending:Pending|null; work:Work; created_at:string; received_at?:string|null; fba_inbound_items:Item[]};
 export const senders = {
  FBA1:{name:'長部一輝',postalCode:'224-0057',stateOrProvinceCode:'神奈川県',city:'横浜市都筑区',addressLine1:'川和町1249-1',addressLine2:'メルヴェイユ2番館204',countryCode:'JP',phoneNumber:'08022407916'},
