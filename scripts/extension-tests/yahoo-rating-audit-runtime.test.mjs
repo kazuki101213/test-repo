@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {openSellerSession} from '../../tools/fleamarket-extension/seller-runtime.js';
 
-test('rating audit uses the same buyer preflight validator as submission',async()=>{
+test('rating audit uses the read-only buyer form validator',async()=>{
   let tab={id:78,url:'https://auctions.yahoo.co.jp/my/won',status:'complete'};
   const calls=[];
   const tabs={query:async()=>[tab],get:async()=>tab,update:async(id,value)=>(tab={...tab,...value})};

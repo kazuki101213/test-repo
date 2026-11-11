@@ -288,36 +288,7 @@
       if(Date.now()>=until)return d;await new Promise(resolve=>setTimeout(resolve,350));
     }while(true);
   }
-  function recipeField(root,selector){if(!selector)return null;return one(selector,root);}
-  function receiptPreflight(a,r,expected){
-    if(!r.receiptVerified) throw new Error('評価画面の実地検証が未完了です');
-    const d=detail(a,r);if(d.auth||d.role!=='buyer'||d.state!=='pending'||d.itemId!==expected)throw new Error('評価直前の取引条件が一致しません');
-    const root=one(r.receiptScope);
-    const positive=recipeField(root,r.positive),submit=recipeField(root,r.submit),comment=recipeField(root,r.comment);
-    if(!positive||!submit||controlText(submit)!==r.submitText||!RECEIPT.test(r.submitText))throw new Error('検証済み評価ボタンと一致しません');
-    const statefulButton=positive.tagName==='BUTTON'&&(positive.hasAttribute('aria-pressed')||(positive.getAttribute('role')==='radio'&&positive.hasAttribute('aria-checked')));
-    if(!(positive.type==='radio'||statefulButton)||positive.disabled||submit.disabled)throw new Error('良い評価の選択要素を確認できません');
-    const label=positive.labels?.[0]?.innerText||positive.getAttribute('aria-label')||positive.innerText;
-    if(!/^(良かった|よい|良い|非常に良い)$/.test(norm(label))) throw new Error('良い評価のラベルを確認できません');
-    const confirm=recipeField(root,r.confirm);
-    if(confirm&&(!/^商品を受け取りました$/.test(norm(confirm.labels?.[0]?.innerText||confirm.getAttribute('aria-label')))||confirm.type!=='checkbox'))throw new Error('受け取り確認の要素が一致しません');
-    if(comment&&comment.tagName!=='TEXTAREA')throw new Error('評価コメント欄が一致しません');
-    if(comment?.value) throw new Error('入力済みの評価コメントがあるため停止しました');
-    const fields=[...root.querySelectorAll('input,textarea,select')].filter(e=>visible(e)&&!e.disabled&&e.required);
-    if(fields.some(e=>e!==positive&&e!==comment&&e!==confirm&&!e.checkValidity()))throw new Error('未知の必須入力があるため停止しました');
-    return {positive,submit,comment,confirm};
-  }
   function setValue(e,value){const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
-  async function submitReceipt(a,r,expected){
-    const {positive,submit,comment,confirm}=receiptPreflight(a,r,expected);
-    if(!positive.checked)positive.click();if(confirm&&!confirm.checked)confirm.click();
-    if(comment?.required)setValue(comment,'ありがとうございました。');
-    identity(a);if(getId(a.site,location.href)&&getId(a.site,location.href)!==expected)throw new Error('送信前に取引が変わりました');
-    const selected=positive.type==='radio'?positive.checked:positive.getAttribute('aria-pressed')==='true'||positive.getAttribute('aria-checked')==='true';
-    if(!selected)throw new Error('良い評価が選択されていません');
-    if(!visible(submit)||submit.disabled)throw new Error('評価送信ボタンが利用できません');
-    submit.click();return {clicked:true};
-  }
   function selectorFor(e){
     if(e.id&&document.querySelectorAll('#'+CSS.escape(e.id)).length===1)return '#'+CSS.escape(e.id);
     for(const attr of ['data-testid','aria-label'])if(e.getAttribute(attr)){const s=`${e.tagName.toLowerCase()}[${attr}="${CSS.escape(e.getAttribute(attr))}"]`;if(document.querySelectorAll(s).length===1)return s;}
@@ -396,9 +367,9 @@
       if(m.type==='fm:purchaseMore')return purchaseMore(m.account,m.recipe||{},m.seenIds||[]);if(m.type==='fm:purchaseDetail')return purchaseDetail(m.account,m.recipe||{},m.itemId);if(m.type==='fm:detail')return readDetail(m.account,m.recipe||{});
       if(m.type==='fm:messageDetail')return conversation(m.account,m.recipe||{});
       if(m.type==='fm:sendMessage')return sendMarketplaceMessage(m.account,m.recipe||{},m.itemId,m.body);
-      if(m.type==='fm:preflight'){receiptPreflight(m.account,m.recipe,m.itemId);return {ok:true};}
-      if(m.type==='fm:submit')return submitReceipt(m.account,m.recipe,m.itemId);
-      if(m.type==='fm:success'){const problem=authProblem();if(problem)return {auth:problem};identity(m.account);const root=one(m.recipe.scope||'main');const d=detail(m.account,m.recipe);return {success:d.itemId===m.itemId&&norm(root.innerText).includes(m.recipe.successText)};}
+
+
+
       throw new Error('未知の操作です');
     })().then(value=>respond({ok:true,value}),error=>respond({ok:false,error:error.message}));return true;
   });

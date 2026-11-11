@@ -26,7 +26,31 @@ begin
  perform app.marketplace_extension_receipt('begin','ヤフオク','receipt-child-fixture','fixture-account',v_token);
  perform app.marketplace_extension_receipt('unknown','ヤフオク','receipt-child-fixture','fixture-account',v_token,'fixture unknown; never retry');
  if (app.marketplace_extension_receipt('reserve','ヤフオク','receipt-child-fixture','fixture-account')->>'eligible')::boolean is true then raise exception 'Unknown receipt resent';end if;
+ begin
+  perform app.marketplace_extension_receipt('review_unpublished','ヤフオク','receipt-child-fixture','fixture-account');
+  raise exception 'Buyer rating review still accepts requests';
+ exception when raise_exception then if sqlerrm<>'操作が不正です' then raise;end if;end;
  if exists(select 1 from app.items where id=v_child and (inspected_at is not null or cleaned_at is not null)) then raise exception 'Accessory history was falsified';end if;
+ update app.items set title='付属リモコン' where id=v_child;
+ update app.items set inspected_at=null,status='動作不良',malfunction_reported_at=now(),
+   malfunction_comment='テレビの視聴は可能。HDDが空でも録画できないエラーが出ます。' where id=v_parent;
+ v_ctx:=app.marketplace_receipt_context('ヤフオク','receipt-child-fixture');
+ if v_ctx->'items'->0->>'receipt_report_scope' is distinct from 'body' or
+    (v_ctx->'items'->0->>'receipt_ready')::boolean is distinct from true then
+   raise exception 'Main-unit fault prevented contact for a distinct remote';
+ end if;
+ update app.items set malfunction_comment='HDDの録画ができません。リモコンも反応しません。' where id=v_parent;
+ v_ctx:=app.marketplace_receipt_context('ヤフオク','receipt-child-fixture');
+ if v_ctx->'items'->0->>'receipt_report_scope' is distinct from 'both' or
+    (v_ctx->'items'->0->>'receipt_ready')::boolean is distinct from false then
+   raise exception 'The combined report contained a remote fault but contact was allowed';
+ end if;
+ update app.items set malfunction_comment='リモコンで録画ボタンを押しても録画できません。' where id=v_parent;
+ v_ctx:=app.marketplace_receipt_context('ヤフオク','receipt-child-fixture');
+ if v_ctx->'items'->0->>'receipt_report_scope' is distinct from 'unclear' or
+    (v_ctx->'items'->0->>'receipt_ready')::boolean is distinct from false then
+   raise exception 'An unclear remote mention was accepted';
+ end if;
 end $test$;
 set local role anon;
 do $test$begin
