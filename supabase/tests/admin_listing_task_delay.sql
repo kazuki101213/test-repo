@@ -6,11 +6,12 @@ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_
 set local role postgres;
 insert into app.photo_reviews(item_id,drive_folder_id,exported_photo_count,submitted_at,approved_at,approved_by)
  select id,'fixture_folder',1,now()-interval '8 days',now()-case when sales_channel='FBA' then interval '120 hours' else interval '24 hours' end+case when lot_seq<=998434 then interval '1 second' else interval '0 seconds' end,purchaser_id from app.items where lot_seq between 998431 and 998438;
+update app.item_tracking_recordings t set recorded_at=now()-interval '7 days'+case when i.lot_seq<=998434 then interval '1 second' else interval '0 seconds' end from app.items i where i.id=t.item_id and i.lot_seq between 998431 and 998438;
 set local role authenticated;
 do $$declare payload jsonb;begin
  payload:=app.read_resource_snapshot('listing_tasks');
  if (select count(*) from jsonb_array_elements(payload->'rows') r where (r->>'lot_seq')::int between 998431 and 998438)<>4 then raise exception 'Listing reminder delay boundary failed';end if;
- if exists(select 1 from jsonb_array_elements(payload->'rows') r where (r->>'lot_seq')::int between 998431 and 998434) then raise exception 'Reminder appeared before 24/120 hours';end if;
+ if exists(select 1 from jsonb_array_elements(payload->'rows') r where (r->>'lot_seq')::int between 998431 and 998434) then raise exception 'Reminder appeared before seven days from tracking';end if;
  if (select count(distinct r->>'sales_channel') from jsonb_array_elements(payload->'rows') r where (r->>'lot_seq')::int between 998435 and 998438)<>4 then raise exception 'Four channels not covered';end if;
 end $$;
 update app.items set status='出品中' where lot_seq=998435;

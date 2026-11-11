@@ -28,7 +28,7 @@ function inventoryLink(nodes,label,item){
  inventoryLink(listingNodes,'出品する商品の在庫を開く',listingId);
  const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
  const details=listingNodes.filter(n=>n.props?.className==='task-action-details listing-task-details');
- assert.deepEqual(JSON.parse(JSON.stringify(details.map(n=>n.props.children.filter(v=>typeof v==='object').map(text)))),[['ヤフオク出品','【2395】','【m1245892718】','2395-EE'],['メルカリ出品','【1856b】','【m987654321】','1856b-EE']]);
+ assert.deepEqual(JSON.parse(JSON.stringify(details.map(n=>n.props.children.filter(v=>typeof v==='object').map(text)))),[['ヤフオク出品(5日経過)','【2395】','【m1245892718】','2395-EE'],['メルカリ出品(5日経過)','【1856b】','【m987654321】','1856b-EE']]);
  const mercariLink=details[1].props.children.find(n=>n?.type==='a');assert.equal(new URL(mercariLink.props.href).searchParams.get('itemId'),'mercari-item');
  const many=Array.from({length:201},(_,n)=>({id:'task'+n,lot_seq:n,sku:'SKU'+n,sales_channel:'ヤフオク'}));
  const manyNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{listing_tasks:many},many.map(t=>({id:t.id,marketplace_item_id:'ID'+t.id})));
@@ -46,12 +46,16 @@ function inventoryLink(nodes,label,item){
  const childNames=['PhotoReviewTasks','PackingPhotoTasks','MalfunctionTasks','ReceiptEvaluationTasks','ShippingReminderTasks','SpareShippingTasks'];
  const childStubs=Object.fromEntries(childNames.map(name=>['./'+name,{default:Object.defineProperty(()=>null,'name',{value:name})}]));
  const dashboard=await render('apps/admin/src/components/InvoiceTasks.tsx',{invoice_tasks:[{id:'invoice',name:'担当者',month:'2026-10',updated:'2026-10-28',invoice:{total:100,delivery_invoice_approvals:null}}]},[],{},[],childStubs);
- const taskOrder=dashboard.flatMap(n=>n.type==='strong'&&n.props.children==='請求書'?['invoice']:typeof n.type==='function'&&childNames.includes(n.type.name)?[n.type.name==='PhotoReviewTasks'?n.props.mode:n.type.name]:[]);
- assert.deepEqual(taskOrder,['invoice','photos','PackingPhotoTasks','MalfunctionTasks','ReceiptEvaluationTasks','listing','ShippingReminderTasks','SpareShippingTasks'],'All eight task categories follow the requested order');
+ const taskOrder=dashboard.flatMap(n=>n.type==='strong'&&n.props.children==='請求書'?['invoice']:typeof n.type==='function'&&childNames.includes(n.type.name)?[n.type.name==='PhotoReviewTasks'?n.props.mode:n.type.name==='ShippingReminderTasks'&&n.props.kind==='inspection'?'inspection':n.type.name]:[]);
+ assert.deepEqual(taskOrder,['invoice','photos','PackingPhotoTasks','MalfunctionTasks','ReceiptEvaluationTasks','inspection','listing','ShippingReminderTasks','SpareShippingTasks'],'All nine task categories follow the requested order');
  const shippingNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_shipping_tasks:['メルカリ','ヤフオク','自己発送'].map((sales_channel,n)=>({id:'shipping'+n,item_id:'stock'+n,sku:(2500+n)+'-SHIPPING',lot_seq:2500+n,sales_channel,marketplace_item_id:'product'+n}))});
  inventoryLink(shippingNodes,'発送する商品の在庫を開く','stock0');
- for(const channel of ['メルカリ','ヤフオク','自己発送'])assert(shippingNodes.some(n=>n.type==='strong'&&text(n)===channel+'発送'));
+ for(const channel of ['メルカリ','ヤフオク','自己発送'])assert(shippingNodes.some(n=>n.type==='strong'&&text(n)===channel+'発送(24時間経過)'));
  assert.equal(shippingNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,3,'Shipping reminders open the existing shipping flow');
+ const inspectionNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_inspection_tasks:[{id:'inspect1',item_id:'inspect1',sku:'2500-INSPECTION',lot_seq:2500,sales_channel:'FBA2',marketplace_item_id:'product1'}]},[],{kind:'inspection'});
+ inventoryLink(inspectionNodes,'動作確認する商品の在庫を開く','inspect1');
+ assert(inspectionNodes.some(n=>n.type==='strong'&&text(n)==='動作確認(2日経過)'));
+ assert.equal(inspectionNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,1);
  const itemId='22222222-2222-4222-8222-222222222222';
  const actionNodes=await render('apps/admin/src/components/MalfunctionTasks.tsx',{malfunctions:['動作不良','Amazon補填申請中'].map((status,n)=>({id:'report'+n,status,sku:(2400+n)+'b-REPORT',lot_seq:2400+n,title:'報告商品',asin:null,marketplace_item_id:'report-product-'+n,people:[],malfunction_reported_at:'2026-10-18T01:00:00Z',malfunction_comment:'報告内容'})),actions:[{id:'different-comment-id',item_id:itemId,task_kind:'SONY◯ヤフオク',sku:'auction',created_at:'2026-10-18'},{id:'supplier-task',item_id:'supplier-item',task_kind:'仕入先確認',lot_seq:2395,marketplace_item_id:'mSUPPLIER',sku:'2395b-SUPPLIER',created_at:'2026-10-18'}]});
  assert(!actionNodes.some(n=>n.props?.id==='admin-action-different-comment-id'),'Obsolete Yahoo sale card is hidden');

@@ -1,5 +1,4 @@
 import ReturnReasonDialog from './ReturnReasonDialog';
-import { useTaskConfirmation } from './TaskConfirmation';
 import { purchaseItemUrl } from '../purchaseUrl';
 import { productSerial } from '../inventory';
 import { useEffect, useRef, useState } from 'react';
@@ -28,7 +27,6 @@ async function listingProductIds(tasks: ListingTask[]): Promise<ListingTask[]> {
 }
 
 export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=0}:{mode?:'all'|'photos'|'listing';onReviewed?:()=>void;refreshRevision?:number}={}) {
-  const { ask, pending, confirmation } = useTaskConfirmation();
   const notice = adminTaskNotice();
   const noticeHandled = useRef(false);
   const [noticeMessage, setNoticeMessage] = useState('');
@@ -139,32 +137,17 @@ export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=
     setRejecting(false);setSelected(null);setRevision(value=>value+1);onReviewed?.();
   }
 
-  async function completeListing(task: ListingTask) {
-    if (busy) return;
-    setBusy(true); setError('');
-    try {
-      const { error: updateError } = await getSupabase().from('items')
-        .update({ status: '出品中' })
-        .eq('id', task.id).eq('status','商品登録前').is('sold_on',null);
-      if (updateError) throw updateError;
-      setListingTasks(current => current.filter(row => row.id !== task.id));
-      setRevision(value => value + 1);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-    finally { setBusy(false); }
-  }
-
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
       {listingTasks.map(task => { const sourceUrl=purchaseItemUrl(task.marketplace??null,task.marketplace_item_id??null,task.marketplace_url??null); return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task">
-        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> {sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a>:<span>【{task.marketplace_item_id || '商品ID未登録'}】</span>}<small>{task.sku}</small></div>
-        <button type="button" className="btn" disabled={busy || pending} onClick={() => ask(task.sales_channel+'出品：完了', () => completeListing(task))}>完了</button>
+        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品(5日経過)</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> {sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a>:<span>【{task.marketplace_item_id || '商品ID未登録'}】</span>}<small>{task.sku}</small></div>
+        <a className="btn" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer">確認</a>
       </li>;})}
       {reviews.map(review => { const item=items[review.item_id]; const sourceUrl=purchaseItemUrl(item?.marketplace??null,item?.marketplace_item_id??null,item?.marketplace_url??null); return <li key={review.item_id} className="admin-task-card admin-simple-task admin-photo-task">
         <div className="task-action-details"><strong>写真確認{item?.sales_channel&&<span style={{fontWeight:400}}>（{item.sales_channel}販売用）</span>}</strong><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(review.item_id)} target="_blank" rel="noopener noreferrer">【{item?productSerial(item.sku,item.lot_seq):'通番号確認中'}】</a>{sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{item?.marketplace_item_id||'商品ID未登録'}】</a>:<span>【{item?.marketplace_item_id||'商品ID未登録'}】</span>}<small>{item?.sku||'SKU確認中'}</small></div>
         <span className="admin-photo-count">写真 {review.exported_photo_count}枚</span><button type="button" className="btn" onClick={() => setSelected(review)}>確認</button>
       </li>;})}
     {rejecting&&selected&&<ReturnReasonDialog label="写真確認：NG（差し戻し）" onSubmit={reject} onCancel={()=>setRejecting(false)}/> }
-    {confirmation}
     {error && <li className="error" role="alert">写真確認タスクを読み込めませんでした：{error}<button className="btn" onClick={() => setRevision(value => value + 1)}>再読み込み</button></li>}
     {selected && createPortal(<div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="写真確認">
       <div className="card inventory-comment-panel photo-review-panel">
