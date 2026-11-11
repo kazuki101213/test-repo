@@ -13,14 +13,17 @@ on conflict(staff_id) do update set unit_price=1000,enabled=true;
 create temporary table work_probe as select id,lot_seq from app.items where lot_seq between 998301 and 998308 and not is_accessory;
 grant select on work_probe to authenticated;
 update app.items set asin='B000TEST01',planned_price=1000,condition='非常に良い' where lot_seq in (998301,998302) and not is_accessory;
+do $$begin
+ if exists(select 1 from app.items where lot_seq between 998301 and 998308 and packed_on is not null) then raise exception 'Inspection/reports registered a work date';end if;
+end $$;
 insert into app.amazon_listing_submissions(request_id,item_id,requested_by,sku,asin,sales_channel,account_id,seller_id,price,item_condition,description,work_completed_on,state,verified_at,note)
-select gen_random_uuid(),i.id,(select user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.code='AA'),i.sku,i.asin,i.sales_channel,case when i.sales_channel::text in ('FBA2','自己発送2') then 'amazon-2' else 'amazon-1' end,case when i.sales_channel::text in ('FBA2','自己発送2') then 'A3E7BXJWH9TP11' else 'A1WI3OGPE43N2T' end,i.planned_price,i.condition::text,coalesce(i.description,''),current_date,'verified',clock_timestamp(),'test-first' from app.items i where lot_seq in (998301,998302) and not is_accessory;
+select gen_random_uuid(),i.id,(select user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.code='AA'),i.sku,i.asin,i.sales_channel,case when i.sales_channel::text in ('FBA2','自己発送2') then 'amazon-2' else 'amazon-1' end,case when i.sales_channel::text in ('FBA2','自己発送2') then 'A3E7BXJWH9TP11' else 'A1WI3OGPE43N2T' end,i.planned_price,i.condition::text,coalesce(i.description,''),current_date-2,'verified',clock_timestamp(),'test-first' from app.items i where lot_seq in (998301,998302) and not is_accessory;
 insert into app.amazon_listing_submissions(request_id,item_id,requested_by,sku,asin,sales_channel,account_id,seller_id,price,item_condition,description,work_completed_on,state,verified_at,note)
 select gen_random_uuid(),i.id,(select user_id from app.profiles p join app.staff s on s.id=p.staff_id where s.code='AA'),i.sku,i.asin,i.sales_channel,case when i.sales_channel::text in ('FBA2','自己発送2') then 'amazon-2' else 'amazon-1' end,case when i.sales_channel::text in ('FBA2','自己発送2') then 'A3E7BXJWH9TP11' else 'A1WI3OGPE43N2T' end,i.planned_price,i.condition::text,coalesce(i.description,''),current_date,'verified',clock_timestamp(),'test-second' from app.items i where lot_seq in (998301,998302) and not is_accessory;
 set local role authenticated;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare i uuid;r uuid;d date:=current_date-2;begin
- if exists(select 1 from app.items where lot_seq between 998301 and 998308 and packed_on is not null) then raise exception 'Inspection/reports registered a work date';end if;
+ if not exists(select 1 from app.items where lot_seq=998301 and not is_accessory and status='商品登録前' and packed_on=d and shipped_on is null) then raise exception 'FBA receipt did not record work before listing completion';end if;
  for i in select id from work_probe where lot_seq in (998301,998302) loop
   r:=(select request_id from app.amazon_listing_submissions where item_id=i and note='test-first');perform app.perform_dated_inventory_action(i,'listing_complete','商品登録前',d,r);
   perform app.perform_dated_inventory_action(i,'listing_complete','商品登録前',d,r);
