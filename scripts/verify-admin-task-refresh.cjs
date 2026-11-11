@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
-async function check(file,resource){
+async function check(file,resource,props={}){
  let hooks=[],cursor=0,pending=[],dirty=true,tree,now=100000,reads=0,fail=false,hold,blocked=false,rows=[{id:'task',item_id:'item',sku:'123-AA',lot_seq:123,sales_channel:'メルカリ'}];
  const events={},docEvents={},timers=new Map();let timerId=0;
  const document={visibilityState:'visible',addEventListener:(n,f)=>docEvents[n]=f,removeEventListener:n=>delete docEvents[n]};
@@ -8,7 +8,7 @@ async function check(file,resource){
  const shared={readResourceSnapshot:async name=>{if(name!==resource)return[];reads++;if(blocked)await new Promise(r=>hold=r);if(fail)throw Error('offline');return rows;},getSupabase:()=>({from:()=>({select(){return this;},in:async()=>({data:[],error:null})})})};
  const jsx=(type,props)=>({type,props}),context={exports:{},require:n=>n==='react'?react:n==='react/jsx-runtime'?{jsx,jsxs:jsx}:n==='react-dom'?{createPortal:n=>n}:n==='@bussan/shared'?shared:n==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){},pending:false})}:n==='../taskNotice'?{adminTaskNotice:()=>null}:n==='../inventory'?{productSerial:()=>123}:n==='../purchaseUrl'?{purchaseItemUrl:()=>null}:n==='../appUrls'?{deliveryAppUrl:'https://example.test/'}:{},window,document,Date:{now:()=>now},Map,Set};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,context);
- async function settle(){for(let n=0;n<35;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default();pending.splice(0).forEach(f=>f());}await Promise.resolve();}}
+ async function settle(){for(let n=0;n<35;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default(props);pending.splice(0).forEach(f=>f());}await Promise.resolve();}}
  await settle();assert.equal(reads,1);assert(JSON.stringify(tree).includes('123-AA'));
  events.focus();docEvents.visibilitychange();await settle();assert.equal(reads,1,'Focus bursts do not reread');
  now+=30001;rows=[];events.focus();await settle();assert.equal(reads,2);assert(!JSON.stringify(tree).includes('123-AA'),'Completed task disappears without reload');
@@ -18,4 +18,4 @@ async function check(file,resource){
  now+=300001;blocked=true;[...timers.values()][0]();await settle();const before=reads;now+=30001;events.focus();await settle();assert.equal(reads,before,'In-flight read is shared');
  hooks.forEach(h=>h.cleanup?.());assert.equal(timers.size,0);assert.equal(Object.keys(events).length,0);assert.equal(Object.keys(docEvents).length,0);hold();await settle();
 }
-(async()=>{await check('apps/admin/src/components/ShippingReminderTasks.tsx','admin_shipping_tasks');await check('apps/admin/src/components/PhotoReviewTasks.tsx','listing_tasks');console.log('PASS task auto refresh: remote completion, 5-minute diff poll, focus cooldown, hidden tabs, errors, duplicate requests and cleanup');})().catch(e=>{console.error(e);process.exitCode=1;});
+(async()=>{await check('apps/admin/src/components/ShippingReminderTasks.tsx','admin_shipping_tasks');await check('apps/admin/src/components/PhotoReviewTasks.tsx','listing_tasks');await check('apps/admin/src/components/ShippingReminderTasks.tsx','admin_inspection_tasks',{kind:'inspection'});console.log('PASS task auto refresh: remote completion, 5-minute diff poll, focus cooldown, hidden tabs, errors, duplicate requests and cleanup');})().catch(e=>{console.error(e);process.exitCode=1;});
