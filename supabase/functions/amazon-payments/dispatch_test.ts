@@ -36,14 +36,17 @@ Deno.test('Planned, Amazon-fulfilled, unrelated, duplicate and cancelled package
 });
 
 function database(allowWrite = true) {
-  const writes: { date: string; filters: Record<string, unknown> }[] = [];
+  const writes: Record<string, unknown>[] = [];
   const rows = [{
     id: 'inventory-01', sku, asin, sales_channel: '自己発送2', status: '取引中',
     purchased_at: '2026-11-01', sold_on: null, updated_at: '2026-11-11T12:30:00Z',
   }];
-  const db = { from() {
+  const db = { rpc: async (name: string, values: Record<string, unknown>) => {
+    equal(name, 'apply_amazon_self_dispatch');
+    writes.push(values);
+    return { data: allowWrite, error: null };
+  }, from() {
     const filters: Record<string, unknown> = {};
-    let date: string | null = null;
     const query = {
       select: () => query,
       in: (name: string, values: string[]) => { filters[name] = values; return query; },
@@ -52,12 +55,6 @@ function database(allowWrite = true) {
       range: async () => {
         equal(filters.sales_channel, ['自己発送2']);
         return { data: rows, error: null };
-      },
-      update: (value: { shipped_on: string }) => { date = value.shipped_on; return query; },
-      eq: (name: string, value: unknown) => { filters[name] = value; return query; },
-      maybeSingle: async () => {
-        if (date) writes.push({ date, filters });
-        return { data: allowWrite ? { id: rows[0].id } : null, error: null };
       },
     };
     return query;
@@ -78,10 +75,9 @@ Deno.test('Isolates the Amazon account, reads packages only, and protects a conc
       },
     });
     equal(result, { checked: 1, updated: allowWrite ? [{ sku, shippedAt, shippedOn: '2026-11-12' }] : [] });
-    equal(writes, [{ date: '2026-11-12', filters: {
-      id: 'inventory-01', sku, asin, sales_channel: '自己発送2', status: '取引中',
-      updated_at: '2026-11-11T12:30:00Z', shipped_on: null,
-    } }]);
+    equal(writes, [{ p_item: 'inventory-01', p_account: 'amazon-2', p_sku: sku, p_asin: asin,
+      p_status: '取引中', p_updated_at: '2026-11-11T12:30:00Z', p_shipped_on: '2026-11-12',
+    }]);
   }
 });
 Deno.test('Checks all pages and skips an SKU linked to two orders', async () => {
