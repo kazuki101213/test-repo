@@ -1,6 +1,5 @@
 import { spareSearchFields, matchesSpareSearch, type SpareSearchField } from '@bussan/shared';
-import { staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
-import ColoredLabel from '../components/ColoredLabel';
+import { staffDisplayName, deliveryStaffOptions, inventorySiteStyle } from '@bussan/shared';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import SpareLinks from '../components/SpareLinks';
@@ -223,7 +222,7 @@ export default function Spares({ me }: { me: Staff }) {
       <div>メーカー：<EditableSpare row={row} field="manufacturer" onEdit={setEditFor}>{row.manufacturer || '未登録'}</EditableSpare></div>
       <div>購入日：<EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare>　仕入金額：<EditableSpare row={row} field="cost_amount" onEdit={setEditFor}>{yen(row.cost_amount)}</EditableSpare></div>
       <div>SKU：<EditableSpare row={row} field="source_sku" onEdit={setEditFor}>{row.source_sku || '—'}</EditableSpare></div>
-      <div>仕入先：<EditableSpare row={row} field="marketplace" onEdit={setEditFor}><ColoredLabel value={row.marketplace || '—'} /></EditableSpare></div>
+      <div>仕入先：<EditableSpare row={row} field="marketplace" onEdit={setEditFor}><span className="inventory-label" style={inventorySiteStyle(row.marketplace)}>{row.marketplace || '—'}</span></EditableSpare></div>
       <div>商品ID：<span className="reference-value"><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare><SpareLinks row={row} kind="product" /></span></div>
       <div>追跡番号：<EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></div>
       <div>利用記録：<span className="reference-value"><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || '—'}</EditableSpare><SpareLinks row={row} kind="usage" /></span></div>
@@ -237,7 +236,7 @@ export default function Spares({ me }: { me: Staff }) {
       <td><EditableSpare row={row} field="manufacturer" onEdit={setEditFor}>{row.manufacturer || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="purchased_at" onEdit={setEditFor}>{row.purchased_at || '—'}</EditableSpare></td>
       <td><EditableSpare row={row} field="cost_amount" onEdit={setEditFor}>{yen(row.cost_amount)}</EditableSpare></td>
-      <td><EditableSpare row={row} field="marketplace" onEdit={setEditFor}><ColoredLabel value={row.marketplace || '—'} /></EditableSpare></td>
+      <td><EditableSpare row={row} field="marketplace" onEdit={setEditFor}><span className="inventory-label" style={inventorySiteStyle(row.marketplace)}>{row.marketplace || '—'}</span></EditableSpare></td>
       <td><span className="reference-value"><EditableSpare row={row} field="marketplace_item_id" onEdit={setEditFor}>{row.marketplace_item_id || '—'}</EditableSpare><SpareLinks row={row} kind="product" /></span></td>
       <td><EditableSpare row={row} field="tracking_no" onEdit={setEditFor}>{row.tracking_no || '—'}</EditableSpare></td>
       <td><span className="reference-value"><EditableSpare row={row} field="usage_note" onEdit={setEditFor}>{row.usage_note || (row.used_for_item_id ? '商品へ割当済み' : '—')}</EditableSpare><SpareLinks row={row} kind="usage" /></span></td>
