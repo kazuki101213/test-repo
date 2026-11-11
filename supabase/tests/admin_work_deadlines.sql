@@ -24,7 +24,7 @@ from app.items where lot_seq=997616;
 
 update app.items set status='取引中',seller_trade_key='fixture-'||lot_seq where lot_seq between 997620 and 997624;
 insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade_key)
-select i.id,i.sales_channel::text,
+select i.id,i.sales_channel,
   case i.lot_seq when 997620 then 'mercari-1' when 997621 then 'mercari-2' when 997622 then 'auctions-1' else 'auctions-2' end,
   (case when i.sales_channel='メルカリ' then 'm' else 'u' end)||i.lot_seq,
   (case when i.sales_channel='メルカリ' then 'https://jp.mercari.com/item/m' else 'https://auctions.yahoo.co.jp/jp/auction/u' end)||i.lot_seq,

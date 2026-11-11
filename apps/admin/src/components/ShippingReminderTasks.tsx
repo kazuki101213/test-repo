@@ -19,7 +19,7 @@ export default function ShippingReminderTasks({kind='shipping'}:{kind?:'shipping
   window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
   return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);};
  },[kind]);
- return <>{error&&<li className="error" role="alert">{error}</li>}{rows.map(row=>{const inventory=deliveryAppUrl+'?itemId='+encodeURIComponent(row.item_id);const product=purchaseItemUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);return <li key={row.id} className="admin-task-card admin-simple-task admin-shipping-reminder">
+ return <>{error&&<li className="error" role="alert">{error}</li>}{rows.map(row=>{const inventory=deliveryAppUrl+'?itemId='+encodeURIComponent(row.item_id);const product=purchaseItemUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);return <li key={row.id} className="admin-task-card admin-simple-task admin-shipping-reminder admin-task-overdue">
   <div className="task-action-details listing-task-details"><strong>{kind==='inspection'?'動作確認(2日経過)':row.sales_channel+'発送(24時間経過)'}</strong><a href={inventory} target="_blank" rel="noopener noreferrer" aria-label={kind==='inspection'?'動作確認する商品の在庫を開く':'発送する商品の在庫を開く'}>【{productSerial(row.sku,row.lot_seq)}】</a>{product?<a href={product} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<small>{row.sku}</small></div>
   <a className="btn" href={inventory} target="_blank" rel="noopener noreferrer">確認</a>
  </li>;})}</>;

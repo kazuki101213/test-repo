@@ -139,7 +139,7 @@ export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=
 
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
-      {listingTasks.map(task => { const sourceUrl=purchaseItemUrl(task.marketplace??null,task.marketplace_item_id??null,task.marketplace_url??null); return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task">
+      {listingTasks.map(task => { const sourceUrl=purchaseItemUrl(task.marketplace??null,task.marketplace_item_id??null,task.marketplace_url??null); return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task admin-task-overdue">
         <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品(5日経過)</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> {sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a>:<span>【{task.marketplace_item_id || '商品ID未登録'}】</span>}<small>{task.sku}</small></div>
         <a className="btn" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer">確認</a>
       </li>;})}
