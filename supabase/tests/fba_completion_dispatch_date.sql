@@ -25,15 +25,18 @@ set local role service_role;
 update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','at',(current_date-1)::text||'T15:01:00Z')
 where amazon_id in ('wf-dispatch-1','wf-dispatch-2');
 update app.fba_inbound_plans set pending=null where amazon_id='wf-dispatch-1';
+reset role;
 do $$begin
  if (select shipped_on from app.items where lot_seq=998671) is not null then
    raise exception 'Failed FBA confirmation set a date';
  end if;
 end$$;
 
+set local role service_role;
 update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','at',(current_date-1)::text||'T15:01:00Z')
 where amazon_id='wf-dispatch-1';
 update app.fba_inbound_plans set stage='ready',pending=null where amazon_id in ('wf-dispatch-1','wf-dispatch-2','wf-dispatch-3');
+reset role;
 
 do $$begin
  if (select shipped_on from app.items where lot_seq=998671) is distinct from current_date-1 then

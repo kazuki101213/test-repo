@@ -20582,7 +20582,7 @@ execute function app.record_marketplace_code_shipping_date();
 
 -- A completed FBA workflow and its inventory dispatch date commit together.
 create function app.record_fba_completion_dispatch_date()
-returns trigger language plpgsql
+returns trigger language plpgsql security definer
 set search_path = ''
 as $$
 declare
