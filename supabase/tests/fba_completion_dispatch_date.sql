@@ -22,9 +22,9 @@ update app.items set shipped_on=current_date-4 where lot_seq=998672;
 update app.items set sales_channel='自己発送2' where lot_seq=998673;
 
 set local role service_role;
-update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','at',(current_date-1)::text||'T15:01:00Z')
+update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','op','confirm-op','at',(current_date-1)::text||'T15:01:00Z')
 where amazon_id='wf-dispatch-1';
-update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','at',(current_date-2)::text||'T15:01:00Z')
+update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','op','confirm-op','at',(current_date-2)::text||'T15:01:00Z')
 where amazon_id in ('wf-dispatch-2','wf-dispatch-3','wf-dispatch-4');
 update app.fba_inbound_plans set pending=pending||jsonb_build_object('transportStillPendingAt',(current_date-1)::text||'T15:05:00Z')
 where amazon_id='wf-dispatch-2';
@@ -37,12 +37,16 @@ do $$begin
 end$$;
 
 set local role service_role;
-update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','at',(current_date-1)::text||'T15:01:00Z')
+update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','op','confirm-op','at',(current_date-1)::text||'T15:01:00Z')
 where amazon_id='wf-dispatch-1';
 update app.fba_inbound_plans set stage='ready',pending=null,
  work=work||jsonb_build_object('transportConfirmationObservedAt',(current_date-1)::text||'T15:10:00Z')
 where amazon_id in ('wf-dispatch-1','wf-dispatch-2','wf-dispatch-3');
-update app.fba_inbound_plans set stage='ready',pending=null where amazon_id='wf-dispatch-4';
+update app.fba_inbound_plans set pending=pending-'op'||jsonb_build_object('at',(current_date-1)::text||'T15:01:00Z')
+where amazon_id='wf-dispatch-4';
+update app.fba_inbound_plans set stage='ready',pending=null,
+ work=work||jsonb_build_object('transportConfirmationObservedAt',(current_date-1)::text||'T15:10:00Z')
+where amazon_id='wf-dispatch-4';
 reset role;
 
 do $$begin
@@ -53,7 +57,7 @@ do $$begin
    raise exception 'Existing dispatch date was overwritten';
  end if;
  if exists(select 1 from app.items where lot_seq in (998673,998674,998676,998678) and shipped_on is not null) then
-   raise exception 'A changed, released, ambiguous, or unobserved item was dated';
+   raise exception 'A changed, released, ambiguous, or unlinked item was dated';
  end if;
  if (select shipped_on from app.items where lot_seq=998675) is distinct from current_date then
    raise exception 'A known pending check did not narrow the confirmation date to JST day';

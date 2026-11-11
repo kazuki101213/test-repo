@@ -10,7 +10,7 @@ declare
   confirmed_on date;
 begin
   if old.stage <> 'placement-confirmed' or old.pending->>'action' is distinct from 'confirmTransport'
-    or new.pending is not null or new.amazon_id is null then
+    or nullif(old.pending->>'op', '') is null or new.pending is not null or new.amazon_id is null then
     return new;
   end if;
 
