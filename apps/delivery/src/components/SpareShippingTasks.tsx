@@ -52,7 +52,7 @@ function ShippingRow({task,staff,management,onChanged}:{
         ? `${owner}→${recipient}の${task.sent_at ? '発送済み' : '発送準備中'}`
         : `${recipient}へ発送お願いします。`}</span>
     </div>
-    {canShip && !editing && <button type="button" className="btn spare-shipping-open" onClick={()=>{setSerialMarked(false);setEditing(true);}}>発送</button>}
+    {canShip && !editing && <button type="button" className="btn spare-shipping-open" onClick={()=>{setSerialMarked(false);setEditing(true);}}>確認</button>}
     <div className="spare-shipping-details">
       <div className="spare-shipping-detail-line"><span>通番号：<a href={'?itemId='+encodeURIComponent(task.item_id)}>{task.lot_seq}</a></span>{!task.sent_at&&<span>利用記録：{usageLinks}</span>}</div>
       {overview && task.sent_at ? <>

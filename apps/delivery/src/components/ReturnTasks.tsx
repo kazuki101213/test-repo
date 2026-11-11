@@ -76,12 +76,11 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   if(row.kind==='listing_due'&&!tone)return null;
   const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);
-  const opensItem=row.kind==='inspection'||row.kind==='photo_approved'||row.kind==='listing_due';
   return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')} data-deadline={tone}>
   <div className="delivery-return-content"><strong>{row.kind==='photo_return'&&row.reason?.trim()||taskTitle[row.kind]}</strong>
    <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
     {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{row.sku}</span></div>
   </div>
-  {opensItem?<a className="btn" href={inventoryUrl}>確認</a>:<button type="button" className="btn" disabled={pending.includes(row.id)} onClick={()=>void complete(row)}>{pending.includes(row.id)?'更新中…':row.kind==='reply'?'確認':'完了'}</button>}
+  {row.kind==='reply'?<button type="button" className="btn" disabled={pending.includes(row.id)} onClick={()=>void complete(row)}>{pending.includes(row.id)?'更新中…':'確認'}</button>:<a className="btn" href={inventoryUrl}>確認</a>}
  </li>;})}</>;
 }
