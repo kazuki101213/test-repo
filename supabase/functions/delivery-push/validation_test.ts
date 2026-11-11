@@ -24,8 +24,12 @@ Deno.test('admin notifications retain their task target and app scope', () => {
   assertEquals(notificationPayload({...row,kind:'photo_review'}).body,'【2198】写真確認のタスクが追加されました。');
   const invoice={...row,kind:'invoice',invoice_staff_id:'staff',billing_month:'2026-10-01',owner_name:'担当者'};
   assertEquals(notificationPayload(invoice).tag,notificationPayload({...invoice,kind:'receipts'}).tag);
-  assertEquals(notificationPayload({...row,app_kind:'delivery',kind:'reply'}).body,'【2198】メッセージが届きました');
-  assert(!appBaseUrls.admin.includes(appBaseUrls.delivery[0]));
+  assertEquals(notificationPayload({...row,app_kind:'delivery',kind:'reply'}).body,'【2198】動作不良への返信があります。');
+  for (const url of ['https://test-repo-delivery.vercel.app/', 'https://bussan-delivery.vercel.app/']) {
+    assert(appBaseUrls.admin.includes(url));
+    assert(appBaseUrls.delivery.includes(url));
+  }
+  assert(!appBaseUrls.delivery.includes('https://bussan-admin.vercel.app/'));
 });
 
 Deno.test('VAPID import and real encrypted push request', async () => {
