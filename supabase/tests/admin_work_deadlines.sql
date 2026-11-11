@@ -11,6 +11,8 @@ select n, (select id from app.staff where code='AA'), (select id from app.staff 
 from generate_series(997610,997624) n;
 
 update app.items set inspected_at=now(),status='商品登録前' where lot_seq between 997610 and 997616;
+update app.items set inspected_at=now()-interval '4 days' where lot_seq=997613;
+update app.items set status='検品中' where lot_seq=997617;
 update app.item_tracking_recordings t
 set recorded_at=now()-case when i.lot_seq<=997616 then interval '7 days' else interval '3 days' end
   +case when i.lot_seq in (997616,997618) then interval '1 second' else interval '0 seconds' end
@@ -34,6 +36,24 @@ update app.delivery_shipping_tasks t
 set created_at=now()-interval '24 hours'+case when i.lot_seq=997624 then interval '1 second' else interval '0 seconds' end
 from app.items i where i.id=t.item_id and i.lot_seq between 997620 and 997624;
 
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,
+  marketplace,sales_channel,tracking_no,is_accessory,parent_item_id)
+select fixture.sku,fixture.lot_seq, (select id from app.staff where code='AA'),
+  (select id from app.staff where code='DD'),current_date-10,'Accessory deadline fixture',100,
+  'メルカリ','メルカリ','fixture-accessory',true,parent.id
+from (values
+  ('997630a-AADD-20261001-100',997630,997617),
+  ('997631a-AADD-20261001-100',997631,997613),
+  ('997632a-AADD-20261001-100',997632,997612),
+  ('997633a-AADD-20261001-100',997633,997617),
+  ('997634c-AADD-20261001-100',997634,null)
+) fixture(sku,lot_seq,parent_lot)
+left join app.items parent on parent.lot_seq=fixture.parent_lot and not parent.is_accessory;
+update app.items set status='商品登録前' where lot_seq in (997631,997632);
+update app.item_tracking_recordings t set recorded_at=now()-interval '3 days'
+  +case when i.lot_seq=997633 then interval '1 second' else interval '0 seconds' end
+from app.items i where i.id=t.item_id and i.lot_seq between 997630 and 997634;
+
 set local role authenticated;
 do $$declare payload jsonb; begin
   payload := app.read_resource_snapshot('listing_tasks');
@@ -45,6 +65,13 @@ do $$declare payload jsonb; begin
   if (select array_agg((r->>'lot_seq')::int) from jsonb_array_elements(payload->'rows') r
     where (r->>'lot_seq')::int between 997610 and 997619) is distinct from array[997617]
     then raise exception 'Three-day inspection rule, missing tracking, or recorded inspection incorrect'; end if;
+  if (select array_agg((r->>'lot_seq')::int order by (r->>'lot_seq')::int)
+    from jsonb_array_elements(payload->'rows') r where (r->>'lot_seq')::int between 997630 and 997634)
+    is distinct from array[997630,997631,997634]
+    then raise exception 'Accessory deadline or inspection history incorrect'; end if;
+  if not exists(select 1 from jsonb_array_elements(payload->'rows') r
+    where r->>'lot_seq'='997630' and r->>'action_item_id'=(select id::text from app.items where lot_seq=997617))
+    then raise exception 'Accessory confirmation does not open the body'; end if;
   payload := app.read_resource_snapshot('admin_shipping_tasks');
   if (select count(*) from jsonb_array_elements(payload->'rows') r
     where (r->>'lot_seq')::int between 997620 and 997624)<>4
@@ -67,7 +94,8 @@ end $$;
 set local role postgres;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 update app.items set status='出品中' where lot_seq=997610;
-update app.items set inspected_at=now() where lot_seq=997617;
+update app.items set cleaned_at=now() where lot_seq=997631;
+update app.items set malfunction_reported_at=now() where lot_seq=997634;
 update app.items set shipped_on=current_date where lot_seq=997620;
 with plan as (
   insert into app.fba_inbound_plans(account,staff_id,name,created_by,stage)
@@ -80,7 +108,8 @@ from plan cross join app.items i where i.lot_seq=997614;
 
 set local role authenticated;
 do $$begin
-  if exists(select 1 from app.v_admin_work_deadlines where lot_seq in (997610,997614,997617,997620))
+  perform app.perform_inventory_action((select id from app.items where lot_seq=997617),'inspection_complete','検品中');
+  if exists(select 1 from app.v_admin_work_deadlines where lot_seq in (997610,997614,997617,997620,997630,997631,997634))
     then raise exception 'Completed listing, FBA inbound, inspection, or shipping remains visible'; end if;
 end $$;
 rollback;

@@ -56,6 +56,9 @@ function inventoryLink(nodes,label,item){
  inventoryLink(inspectionNodes,'動作確認する商品の在庫を開く','inspect1');
  assert(inspectionNodes.some(n=>n.type==='strong'&&text(n)==='動作確認(2日経過)'));
  assert.equal(inspectionNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,1);
+ const accessoryNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_inspection_tasks:[{id:'accessory',item_id:'accessory',action_item_id:'body',sku:'2500-ACCESSORY',lot_seq:2500}]},[],{kind:'inspection'});
+ inventoryLink(accessoryNodes,'動作確認する商品の在庫を開く','accessory');
+ assert.equal(new URL(accessoryNodes.find(n=>n.type==='a'&&n.props.children==='確認').props.href).searchParams.get('itemId'),'body');
  const itemId='22222222-2222-4222-8222-222222222222';
  const actionNodes=await render('apps/admin/src/components/MalfunctionTasks.tsx',{malfunctions:['動作不良','Amazon補填申請中'].map((status,n)=>({id:'report'+n,status,sku:(2400+n)+'b-REPORT',lot_seq:2400+n,title:'報告商品',asin:null,marketplace_item_id:'report-product-'+n,people:[],malfunction_reported_at:'2026-10-18T01:00:00Z',malfunction_comment:'報告内容'})),actions:[{id:'different-comment-id',item_id:itemId,task_kind:'SONY◯ヤフオク',sku:'auction',created_at:'2026-10-18'},{id:'supplier-task',item_id:'supplier-item',task_kind:'仕入先確認',lot_seq:2395,marketplace_item_id:'mSUPPLIER',sku:'2395b-SUPPLIER',created_at:'2026-10-18'}]});
  assert(!actionNodes.some(n=>n.props?.id==='admin-action-different-comment-id'),'Obsolete Yahoo sale card is hidden');
