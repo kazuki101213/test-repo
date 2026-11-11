@@ -45,7 +45,7 @@ from (values
   ('997630a-AADD-20261001-100',997630,997617),
   ('997631a-AADD-20261001-100',997631,997613),
   ('997632a-AADD-20261001-100',997632,997612),
-  ('997633a-AADD-20261001-100',997633,997617),
+  ('997633aa-AADD-20261001-100',997633,997617),
   ('997634c-AADD-20261001-100',997634,null)
 ) fixture(sku,lot_seq,parent_lot)
 left join app.items parent on parent.lot_seq=fixture.parent_lot and not parent.is_accessory;
