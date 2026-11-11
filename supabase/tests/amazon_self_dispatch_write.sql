@@ -1,7 +1,8 @@
 begin;
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,asin,condition,cost_amount,marketplace,sales_channel,status)
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,asin,condition,cost_amount,marketplace,sales_channel,status,inspected_at,product_registered_at)
 select 998677,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),
- current_date-10,'Amazon dispatch fixture','B000000002','非常に良い',100,'ヤフオク','自己発送2','取引中';
+ current_date-10,'Amazon dispatch fixture','B000000002','非常に良い',100,'ヤフオク','自己発送2','出品中',now(),now();
+update app.items set status='取引中' where lot_seq=998677;
 
 do $$
 declare

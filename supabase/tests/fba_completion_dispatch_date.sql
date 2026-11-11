@@ -1,7 +1,7 @@
 begin;
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,asin,condition,cost_amount,marketplace,sales_channel,status)
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,asin,condition,cost_amount,marketplace,sales_channel,status,inspected_at)
 select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),
- current_date-10,'FBA dispatch fixture','B000000001','非常に良い',100,'ヤフオク','FBA2','商品登録前'
+ current_date-10,'FBA dispatch fixture','B000000001','非常に良い',100,'ヤフオク','FBA2','商品登録前',now()
 from generate_series(998671,998676) n;
 
 insert into app.fba_inbound_plans(account,staff_id,name,created_by,created_at,stage,amazon_id,work)
