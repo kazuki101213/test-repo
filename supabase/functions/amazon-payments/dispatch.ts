@@ -59,7 +59,6 @@ type Inventory = {
   id: string;
   sku: string;
   asin: string;
-  sales_channel: string;
   status: string;
   purchased_at: string;
   sold_on: string | null;
@@ -75,7 +74,7 @@ export async function syncDispatchDates({
   const duplicates = new Set<string>();
   for (let offset = 0; ; offset += 500) {
     const { data, error } = await db.from('items')
-      .select('id,sku,asin,sales_channel,status,purchased_at,sold_on,updated_at')
+      .select('id,sku,asin,status,purchased_at,sold_on,updated_at')
       .in('sales_channel', channels).in('status', statuses).is('shipped_on', null).not('asin', 'is', null)
       .order('id').range(offset, offset + 499);
     if (error || !data) throw Error('出荷日が未登録の在庫を確認できません。');
@@ -133,11 +132,12 @@ export async function syncDispatchDates({
   for (const evidence of candidates.values()) {
     if (ambiguous.has(evidence.sku)) continue;
     const row = inventory.get(evidence.sku)!;
-    const { data, error } = await db.from('items').update({ shipped_on: evidence.shippedOn })
-      .eq('id', row.id).eq('sku', row.sku).eq('asin', row.asin).eq('sales_channel', row.sales_channel)
-      .eq('status', row.status).eq('updated_at', row.updated_at).is('shipped_on', null).select('id').maybeSingle();
+    const { data, error } = await db.rpc('apply_amazon_self_dispatch', {
+      p_item: row.id, p_account: accountId, p_sku: row.sku, p_asin: row.asin,
+      p_status: row.status, p_updated_at: row.updated_at, p_shipped_on: evidence.shippedOn,
+    });
     if (error) throw Error('Amazon自己発送の出荷日を保存できません。再実行できます。');
-    if (data) updated.push({ sku: evidence.sku, shippedAt: evidence.shippedAt, shippedOn: evidence.shippedOn });
+    if (data === true) updated.push({ sku: evidence.sku, shippedAt: evidence.shippedAt, shippedOn: evidence.shippedOn });
   }
   return { checked: inventory.size, updated };
 }

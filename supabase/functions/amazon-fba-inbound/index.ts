@@ -167,6 +167,7 @@ function eligiblePhase(plan:Plan,...stages:Stage[]){
 export async function handler(req:Request):Promise<Response>{
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers});
  if(req.method!=='POST')return reply(405,{error:'POSTのみ利用できます。'});
+ const requestedAt=new Date().toISOString();
  try{
   const url=Deno.env.get('SUPABASE_URL')!;
   const options={auth:{persistSession:false,autoRefreshToken:false},db:{schema:'app'}};
@@ -498,7 +499,9 @@ export async function handler(req:Request):Promise<Response>{
    const selections=transportSelection(input.options,plan.work.placement,plan.work.transport??[]);
    if(selections.some(unknownPrecondition))return invalid('選んだ配送方法にはセラーセントラルでの手続きが必要です。');
    if(selections.some(s=>s.solution==='AMAZON_PARTNERED_CARRIER'&&!s.quote))return invalid('Amazonから配送費を確認できません。配送方法を選び直してください。');
-   await start({...plan.work,selections},path+'/placementOptions/'+enc(plan.work.placement.id)+'/confirmation','POST',undefined,{remote:plan.work.placement.id});
+   // The combined completion button starts here, before the automatic transport confirmation.
+   const dispatchRequestedAt=selections.some(needsWindow)?undefined:requestedAt;
+   await start({...plan.work,selections,dispatchRequestedAt},path+'/placementOptions/'+enc(plan.work.placement.id)+'/confirmation','POST',undefined,{remote:plan.work.placement.id});
   }else if(action==='windows'||action==='chooseWindow'){
    eligiblePhase(plan,'placement-confirmed');
    const option=plan.work.selections?.find(s=>s.shipmentId===input.shipment);
@@ -518,7 +521,7 @@ export async function handler(req:Request):Promise<Response>{
     return invalid('有効な配送方法と到着期間を確認してください。');
    const {name,phoneNumber}=senders[plan.account];
    await start(plan.work,path+'/transportationOptions/confirmation','POST',{transportationSelections:selections.map(s=>
-    ({shipmentId:s.shipmentId,transportationOptionId:s.id,contactInformation:{name,phoneNumber}}))});
+    ({shipmentId:s.shipmentId,transportationOptionId:s.id,contactInformation:{name,phoneNumber}}))},{at:requestedAt});
   }else if(action==='refresh'){
    eligiblePhase(plan,'ready');
    const shipments=await getShipments(api,plan,true);

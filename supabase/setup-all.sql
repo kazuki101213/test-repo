@@ -20578,3 +20578,77 @@ for each row when (old.status is distinct from new.status and new.status = 'succ
 execute function app.record_marketplace_code_shipping_date();
 
 
+-- ▼▼▼ 20261111112107_fba_completion_dispatch_date.sql ▼▼▼
+
+-- A completed FBA workflow and its inventory dispatch date commit together.
+create function app.record_fba_completion_dispatch_date()
+returns trigger language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  requested_at timestamptz;
+begin
+  if old.stage <> 'placement-confirmed' or old.pending->>'action' is distinct from 'confirmTransport'
+    or new.pending is not null or new.amazon_id is null then
+    return new;
+  end if;
+
+  requested_at := coalesce(new.work->>'dispatchRequestedAt', old.pending->>'at')::timestamptz;
+  if requested_at is null or requested_at < new.created_at or requested_at > clock_timestamp() then
+    return new;
+  end if;
+
+  update app.items i set shipped_on = (requested_at at time zone 'Asia/Tokyo')::date
+  from app.fba_inbound_items f
+  where f.plan_id = new.id and f.released_at is null and i.id = f.item_id
+    and i.sku = f.sku and btrim(i.asin::text) = f.asin and i.deliverer_id = new.staff_id
+    and i.shipped_on is null and i.sold_on is null and i.status in ('商品登録前', '出品中')
+    and (i.sales_channel::text = new.account or (new.account = 'FBA1' and i.sales_channel = 'FBA'));
+  return new;
+end;
+$$;
+revoke all on function app.record_fba_completion_dispatch_date() from public, anon, authenticated;
+
+create trigger fba_inbound_record_completion_dispatch_date
+after update of stage on app.fba_inbound_plans
+for each row when (old.stage is distinct from new.stage and new.stage = 'ready')
+execute function app.record_fba_completion_dispatch_date();
+
+
+-- ▼▼▼ 20261111112701_amazon_self_dispatch_write.sql ▼▼▼
+
+-- The service account can apply a verified dispatch date through this
+-- restricted function without gaining direct write access to inventory.
+create function app.apply_amazon_self_dispatch(
+  p_item uuid, p_account text, p_sku text, p_asin text,
+  p_status app.item_status, p_updated_at timestamptz, p_shipped_on date
+)
+returns boolean language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if p_account is null or p_account not in ('amazon-1', 'amazon-2')
+    or p_shipped_on is null or p_shipped_on > (now() at time zone 'Asia/Tokyo')::date
+    or nullif(p_sku, '') is null or coalesce(p_asin, '') !~ '^[A-Z0-9]{10}$' then
+    return false;
+  end if;
+
+  update app.items i set shipped_on = p_shipped_on
+  where i.id = p_item and i.sku = p_sku and i.asin = p_asin
+    and i.updated_at = p_updated_at and i.status = p_status
+    and i.status in ('出品中', '取引中', '販売済')
+    and i.shipped_on is null and i.purchased_at <= p_shipped_on
+    and (
+      (p_account = 'amazon-1' and i.sales_channel in ('自己発送', '自己発送1'))
+      or (p_account = 'amazon-2' and i.sales_channel = '自己発送2')
+    );
+  return found;
+end;
+$$;
+revoke all on function app.apply_amazon_self_dispatch(uuid,text,text,text,app.item_status,timestamptz,date)
+  from public, anon, authenticated;
+grant execute on function app.apply_amazon_self_dispatch(uuid,text,text,text,app.item_status,timestamptz,date)
+  to service_role;
+notify pgrst, 'reload schema';
+
+

@@ -11,7 +11,7 @@ export type Shipment = {id:string; confirmationId?:string; warehouse?:string; st
 export type Stage = 'draft'|'created'|'packing-options'|'packing-confirmed'|'packed'|'placement-options'|'transport-options'|'placement-confirmed'|'ready'|'cancelled';
 export type Work = {
  boxes?:Box[]; owners?:Record<string,Owner>; packing?:Packing[]; groups?:Record<string,string>; placements?:Placement[];
- placement?:Placement; transport?:Transport[]; selections?:Transport[]; shipDate?:string;
+ placement?:Placement; transport?:Transport[]; selections?:Transport[]; shipDate?:string; dispatchRequestedAt?:string;
  windows?:Record<string,Window[]>; selectedWindows?:Record<string,string>; shipments?:Shipment[]; notice?:string;
 };
 export const canResizeBoxes = (stage:Stage) => stage==='packed' || stage==='placement-options' || stage==='transport-options';
