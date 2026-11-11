@@ -58,9 +58,9 @@ test('診断モードでは照合だけ行い、追跡番号登録・評価送�
 test('追跡番号モードでは指定RPCだけで登録する',async()=>{
   reset('tracking');await ui('start',{kind:'tracking'});await new Promise(r=>setTimeout(r,1200));await pulse();const writes=requests.filter(x=>x.name==='reconcile_marketplace_tracking');assert.equal(writes.length,1);assert.equal(writes[0].args.p_marketplace_item_id,'m123456789');assert.equal(data.job.counts.updated,1);assert.equal(submitClicks,0);await ui('stop');
 });
-test('送信途中の再起動では評価を再送せず、確認タスクに記録する',async()=>{
+test('送信途中の再起動では受け取り連絡を再送せず、確認タスクに記録する',async()=>{
   reset('full');const a=data.settings.accounts[0];data.job={kind:'receipt',settings:data.settings,accounts:[a],accountIndex:0,stage:'sending',index:0,counts:{errors:0},pendingReceipt:{itemId:'m123456789',token:'00000000-0000-0000-0000-000000000001'}};
-  await pulse();assert.equal(submitClicks,0);assert.equal(requests.find(x=>x.name==='marketplace_extension_receipt').args.p_action,'unknown');assert.equal(requests.find(x=>x.name==='reconcile_marketplace_tracking').args.p_confirmation_status,'評価結果要確認');assert.equal(data.job.index,1);data.job=null;
+  await pulse();assert.equal(submitClicks,0);assert.equal(requests.find(x=>x.name==='marketplace_extension_receipt').args.p_action,'unknown');assert.equal(requests.find(x=>x.name==='reconcile_marketplace_tracking').args.p_confirmation_status,'受け取り連絡結果要確認');assert.equal(data.job.index,1);data.job=null;
 });
 test('未検証の設定は本番モードにできない',async()=>{
   reset();const s=structuredClone(data.settings);s.mode='tracking';assert.equal((await ui('save',{settings:s})).ok,false);

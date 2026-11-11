@@ -39,8 +39,14 @@ export function trackingNumbers(text) {
 export function eligible(items,tx) {
   if(tx.role!=='buyer'||tx.state!=='pending') return {ok:false,reason:'購入者側の未完了取引ではありません'};
   if(items.length!==1) return {ok:false,reason:items.length?'在庫ID重複':'在庫未一致'};
-  if((!items[0].inspected_at||!items[0].cleaned_at)&&!(items[0].receipt_ready===true&&items[0].receipt_source==='parent'&&typeof items[0].receipt_parent_sku==='string'&&items[0].receipt_parent_sku.length>0)) return {ok:false,reason:'検品・清掃の記録待ち'};
-  return {ok:true,sku:items[0].sku};
+  const item=items[0];
+  const confirmedParent=item.receipt_source==='parent'&&typeof item.receipt_parent_sku==='string'&&item.receipt_parent_sku.length>0;
+  const confirmedDecision=['own','disposition','accessory_approved'].includes(item.receipt_source);
+  const ready=typeof item.receipt_ready==='boolean'
+    ? item.receipt_ready&&(confirmedParent||confirmedDecision)
+    : !!item.inspected_at;
+  if(!ready) return {ok:false,reason:'検品または受け取り連絡の判断待ち'};
+  return {ok:true,sku:item.sku};
 }
 export function jstDay(now=Date.now()) {return new Date(now+9*3600000).toISOString().slice(0,10);}
 export function dueTime(hour,now=Date.now()) {return Date.parse(jstDay(now)+'T'+String(hour).padStart(2,'0')+':00:00+09:00');}
@@ -77,6 +83,8 @@ if(a.identity?.pageUrl){
 export function trackingEnabled(recipe){return recipe?.verified===true||recipe?.trackingEnabled===true;}
 
 export function receiptAccounts(settings){
- if(settings.mode==='diagnostic')return [];
- return (settings.accounts||[]).filter(a=>a.enabled&&((settings.mode==='full'&&settings.recipes?.[a.site]?.receiptVerified===true)||(settings.mode==='tracking'&&a.site==='auctions'&&settings.recipes?.auctions?.receiptEnabled===true&&settings.recipes.auctions.receiptVerified===true&&settings.recipes.auctions.receiptWorkflow==='yahoo-buyer-contact-v1')));
+ const recipe=settings.recipes?.auctions;
+ if(!['tracking','full'].includes(settings.mode)||recipe?.receiptEnabled!==true
+   ||recipe.receiptVerified!==true||recipe.receiptWorkflow!=='yahoo-buyer-contact-v1')return [];
+ return (settings.accounts||[]).filter(a=>a.enabled&&a.site==='auctions');
 }

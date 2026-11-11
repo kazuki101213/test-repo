@@ -15,10 +15,10 @@ test('追跡番号はラベル付きの数字だけ。複数は区別する',()=
   assert.deepEqual(trackingNumbers('電話番号：09012345678'),[]);
   assert.equal(trackingNumbers('追跡番号：123456789012 配送 伝票番号：987654321098 お届け').length,2);
 });
-test('評価には購入者・未完了・在庫1件・検品と清掃の両方が必要',()=>{
-  const item={sku:'test',inspected_at:'2026-10-04',cleaned_at:'2026-10-04'},tx={role:'buyer',state:'pending'};
+test('受け取り連絡には購入者・未完了・在庫1件・検品の記録が必要',()=>{
+  const item={sku:'test',inspected_at:'2026-10-04'},tx={role:'buyer',state:'pending'};
   assert.equal(eligible([item],tx).ok,true);
-  for(const items of [[],[item,item],[{...item,cleaned_at:null}],[{...item,inspected_at:null}]])assert.equal(eligible(items,tx).ok,false);
+  for(const items of [[],[item,item],[{...item,inspected_at:null}],[{...item,receipt_ready:false}]])assert.equal(eligible(items,tx).ok,false);
   assert.equal(eligible([item],{...tx,state:'completed'}).ok,false);
   assert.equal(eligible([item],{...tx,role:'seller'}).ok,false);
 });

@@ -7,4 +7,9 @@ test('multiple matches remain protected even when all parents are ready',()=>ass
 test('nonbuyer, completed trade, and missing inventory cannot qualify',()=>{assert.equal(eligible([parent],{role:'seller',state:'pending'}).ok,false);assert.equal(eligible([parent],{role:'buyer',state:'completed'}).ok,false);assert.equal(eligible([],tx).ok,false)});
 test('receipt scans and prepublication recheck use receipt-only context; tracking probe stays',()=>{const bg=fs.readFileSync(new URL('../../tools/fleamarket-extension/background.js',import.meta.url),'utf8');assert.match(bg,/marketplace_receipt_context.*p_item_id:row[.]itemId/);assert.match(bg,/job[.]kind==='receipt'[?]'marketplace_receipt_context':'marketplace_extension_probe'/);assert.match(bg,/const current=await rpc\('marketplace_receipt_context'/)});
 
-test('Yahoo receipt scan checks completed candidates through exact buyer evaluation evidence',()=>{const bg=fs.readFileSync(new URL('../../tools/fleamarket-extension/background.js',import.meta.url),'utf8');assert.match(bg,/recentCompletedCandidate/);assert.match(bg,/action:'buyerPreflight'/);assert.match(bg,/buyerForm[.]evaluated===true/);});
+test('Yahoo receipt scan skips received trades and sends only receipt contact',()=>{
+ const bg=fs.readFileSync(new URL('../../tools/fleamarket-extension/background.js',import.meta.url),'utf8');
+ assert.match(bg,/native[.]received===true[\s\S]*?受け取り連絡済み/);
+ assert.match(bg,/await yahooReceiptContactFlow\(/);
+ assert.doesNotMatch(bg,/yahooEvaluationFlow|ratingLink|content\(job[.]tabId,'submit'/);
+});
