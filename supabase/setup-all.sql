@@ -21667,12 +21667,14 @@ begin
  end loop;
 
  source:=pg_get_viewdef('workload_private.fba_stock_evidence'::regclass,true);
- patched:=replace(source,'item.item_id, item.sku, plan.account','item.item_id, inventory.sku AS sku, plan.account');
- patched:=replace(patched,'GROUP BY item.item_id, inventory.sku AS sku, plan.account','GROUP BY item.item_id, inventory.sku, plan.account');
+ patched:=replace(source,E'    item.sku,\n',E'    inventory.sku AS sku,\n');
+ patched:=replace(patched,'GROUP BY item.item_id, item.sku, plan.account','GROUP BY item.item_id, inventory.sku, plan.account');
  patched:=replace(patched,'FROM app.fba_inbound_items item','FROM app.fba_inbound_items item
   JOIN app.items inventory ON inventory.id=item.item_id
    AND app.inventory_sku_matches(inventory.id,inventory.sku,item.sku)');
- if source=patched or position('inventory.sku AS sku' in patched)=0 or position('JOIN app.items inventory' in patched)=0 then
+ if source=patched or position('inventory.sku AS sku' in patched)=0
+  or position('JOIN app.items inventory' in patched)=0
+  or position('GROUP BY item.item_id, inventory.sku, plan.account' in patched)=0 then
   raise exception 'FBA stock evidence SKU anchor changed';
  end if;
  execute 'create or replace view workload_private.fba_stock_evidence with (security_barrier=true) as '||patched;
