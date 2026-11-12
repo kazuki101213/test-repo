@@ -36,11 +36,11 @@ test('未検証の評価レシピでは1回もクリックしない',async()=>{
   const p=await fixture('<form><label><input type="radio" name="rating" value="good">良かった</label><button type="button">受取評価をする</button></form>');await p.evaluate(()=>{window.clicks=0;document.querySelector('button').onclick=()=>window.clicks++;});
   assert.equal((await call(p,'submit',{itemId:'m123456789'})).ok,false);assert.equal(await p.evaluate(()=>window.clicks),0);await p.close();
 });
-test('検証済み評価フォームのみ、良い評価・必須コメント・受取確認を送信',async()=>{
+test('旧評価操作では入力と送信が実行されない',async()=>{
   const p=await fixture('<form id="rating"><label><input id="good" type="radio" name="rating" value="good">良かった</label><label><input id="received" type="checkbox">商品を受け取りました</label><textarea id="comment" required></textarea><button id="submit" type="button">受取評価をする</button></form>');
   await p.evaluate(()=>{window.clicks=0;document.querySelector('#submit').onclick=()=>window.clicks++;});
   const recipe={scope:'main',receiptVerified:true,receiptScope:'#rating',positive:'#good',confirm:'#received',comment:'#comment',submit:'#submit',submitText:'受取評価をする',successText:'取引が完了しました'};
-  const r=await call(p,'submit',{itemId:'m123456789',recipe});assert.equal(r.ok,true);assert.equal(await p.locator('#good').isChecked(),true);assert.equal(await p.locator('#received').isChecked(),true);assert.equal(await p.locator('#comment').inputValue(),'ありがとうございました。');assert.equal(await p.evaluate(()=>window.clicks),1);await p.close();
+  const r=await call(p,'submit',{itemId:'m123456789',recipe});assert.equal(r.ok,false);assert.equal(await p.locator('#good').isChecked(),false);assert.equal(await p.locator('#received').isChecked(),false);assert.equal(await p.locator('#comment').inputValue(),'');assert.equal(await p.evaluate(()=>window.clicks),0);await p.close();
 });
 test('評価ボタンの差し替え・別商品ID・未知の必須欄を拒否',async()=>{
   for(const [button,expected,extra] of [['購入する','m123456789',''],['受取評価をする','m999',''],['受取評価をする','m123456789','<input required name="address">']]){

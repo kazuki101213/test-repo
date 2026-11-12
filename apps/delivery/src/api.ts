@@ -1,6 +1,6 @@
 import {sessionRead,stablePhotoUrls,invalidateReadCache,clearPhotoUrlCache,sellerShippingError} from '@bussan/shared';
 import { getSupabase, PHOTO_BUCKET, staffDisplayName, deliveryStaffOptions } from '@bussan/shared';
-import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition, ItemStatus } from '@bussan/shared';
+import type { DeliveryReturnRequestTask, DeliveryTask, ItemComment, ItemCondition, ItemStatus, Staff } from '@bussan/shared';
 
 export async function completeDeliveryWork(itemId:string,date:string):Promise<void>{
  const {error}=await getSupabase().rpc('complete_delivery_work',{p_item_id:itemId,p_on:date});
@@ -131,7 +131,7 @@ export async function recordListingPhotoUpload(itemId: string) {
   if (error) throw new Error(error.message);
 }
 
-export async function setDeliveryProgress(itemId: string, step: 'inspection_cleaning' | 'listing' | 'packed' | 'shipped', done: boolean, date?: string) {
+export async function setDeliveryProgress(itemId: string, step: 'inspection' | 'listing' | 'packed' | 'shipped', done: boolean, date?: string) {
   const { error } = await getSupabase().rpc('set_delivery_progress', {
     p_item_id: itemId, p_step: step, p_done: done, p_on: date ?? null,
   });
@@ -379,18 +379,20 @@ export async function addPhotosToDrive(itemId: string, purpose: 'product'|'packi
   } finally {invalidatePhotoReads();}
 }
 
-export async function fetchDeliveryStaff(): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await getSupabase().from('staff').select('id,code,name').eq('is_active', true);
+export type InventoryStaff = Pick<Staff, 'id' | 'code' | 'name' | 'display_name' | 'role'>;
+
+export async function fetchInventoryStaff(): Promise<InventoryStaff[]> {
+  const { data, error } = await getSupabase().from('staff').select('id,code,name,display_name,role')
+    .eq('is_active', true).order('code');
   if (error) throw error;
-  return deliveryStaffOptions(data ?? []);
+  return data ?? [];
 }
 
-export async function fetchSpareOwners(): Promise<{ id: string; name: string }[]> {
-  const { data, error } = await getSupabase().from('staff').select('id,code,name')
-    .in('role', ['admin', 'purchaser', 'deliverer']).eq('is_active', true).order('name');
-  if (error) throw error;
-  return deliveryStaffOptions(data ?? []);
+export async function fetchDeliveryStaff(): Promise<InventoryStaff[]> {
+  return deliveryStaffOptions(await fetchInventoryStaff());
 }
+
+export const fetchSpareOwners = fetchDeliveryStaff;
 
 export async function setInventoryWorkflow(itemId:string,status:ItemStatus):Promise<void>{
  const {error}=await getSupabase().rpc('set_inventory_workflow',{p_item_id:itemId,p_status:status});
@@ -402,9 +404,24 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  if(error)throw error;
  announceReturnTaskChange();
 }
-export async function performDatedInventoryAction(task:Pick<DeliveryTask,'id'|'status'>,action:'listing_complete'|'supplier_return_complete',date:string,requestId:string):Promise<void>{
- const {error}=await getSupabase().rpc('perform_dated_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_on:date,p_request_id:requestId});
- if(error)throw error;announceReturnTaskChange();
+export interface AmazonListingResult {verified:boolean;state:string;note:string;requestId?:string;workCompletedOn?:string;}
+export async function fetchAmazonListingPending(itemId:string):Promise<{requestId:string;date:string;photoIds:string[]}|null>{
+ const {data,error}=await getSupabase().from('amazon_listing_submissions').select('request_id,work_completed_on,photo_ids').eq('item_id',itemId).in('state',['submitting','accepted','uncertain','verified']).order('created_at',{ascending:false}).limit(1).maybeSingle();
+ if(error)throw error;
+ return data?{requestId:data.request_id,date:data.work_completed_on,photoIds:data.photo_ids??[]}:null;
+}
+export async function submitAmazonListing(itemId:string,date:string,requestId:string,photoIds:string[],expected?:{sku:string;price:number},resume=false):Promise<AmazonListingResult>{
+ const {data,error}=await getSupabase().functions.invoke('amazon-listing-submit',{body:{action:resume?'resume':'submit',itemId,workCompletedOn:date,requestId,photoIds,expectedSku:expected?.sku,expectedPrice:expected?.price}});
+ if(error){const result=error.context instanceof Response?await error.context.json().catch(()=>null):null;throw Object.assign(new Error(result?.error||'Amazonの登録結果を取得できませんでした。'),{status:error.context instanceof Response?error.context.status:undefined});}
+ if(!data||typeof data.verified!=='boolean')throw new Error('Amazonの登録結果が不正です。');return data;
+}
+
+export async function completeSupplierReturn(itemId: string, date: string, trackingNumber: string, requestId: string): Promise<void> {
+ const { error } = await getSupabase().rpc('complete_supplier_return', {
+  p_item_id: itemId, p_work_completed_on: date, p_tracking_no: trackingNumber, p_request_id: requestId,
+ });
+ if(error)throw error;
+ announceReturnTaskChange();
 }
 export async function completeDeliveryCompensation(itemId:string,requestId:string):Promise<void>{
  const {error}=await getSupabase().rpc('complete_delivery_compensation',{p_item_id:itemId,p_request_id:requestId});
@@ -429,7 +446,7 @@ export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'statu
  announceReturnTaskChange();
 }
 export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}
-export interface SellerContext {photo_review_approved?:boolean;revision:string;assignee?:string|null;shipping_defaults?:Partial<Pick<import('@bussan/shared').SellerDraft,'shippingMethod'|'size'|'weightKg'|'dropoff'|'category'>>|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
+export interface SellerContext {photo_review_approved?:boolean;revision:string;listing_account_id?:string|null;assignee?:string|null;shipping_defaults?:Partial<Pick<import('@bussan/shared').SellerDraft,'shippingMethod'|'size'|'weightKg'|'dropoff'|'category'>>|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
 export async function fetchSellerContext(itemId:string):Promise<SellerContext>{
  const {data,error}=await getSupabase().rpc('seller_operation_context',{p_item_id:itemId});if(error)throw error;return data as SellerContext;
 }
@@ -439,6 +456,10 @@ export async function requestListingResultCheck(itemId:string,listingUrl=''):Pro
 export async function queueSellerOperation(itemId:string,kind:string,payload:Record<string,unknown>,requestId:string):Promise<string>{
  if(['shipping_code','register_package'].includes(kind)){const issue=sellerShippingError(payload);if(issue)throw new Error(issue);}
  const {data,error}=await getSupabase().rpc('queue_seller_operation',{p_item_id:itemId,p_kind:kind,p_payload:payload,p_request_id:requestId});if(error)throw error;return data as string;
+}
+export async function retryUncertainShippingCode(itemId:string,payload:Record<string,unknown>,requestId:string):Promise<string>{
+ const issue=sellerShippingError(payload);if(issue)throw new Error(issue);
+ const {data,error}=await getSupabase().rpc('retry_uncertain_shipping_code',{p_item_id:itemId,p_payload:payload,p_request_id:requestId});if(error)throw error;return data as string;
 }
 export async function fetchSupplierConversation(itemId:string):Promise<MarketplaceConversation&{account_id?:string|null}>{
  const {data,error}=await getSupabase().rpc('supplier_conversation',{p_item_id:itemId});if(error)throw error;return data;

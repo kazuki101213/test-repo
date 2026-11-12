@@ -1,10 +1,8 @@
 import ColoredLabel from './ColoredLabel';
+import { productModelText } from '@bussan/shared';
 import { useEffect, useRef, useState } from 'react';
 import { fetchWorkloadDetail, type WorkloadItem, type WorkloadMetric } from '../api';
 import { productSerial } from '../inventory';
-
-const workDays = (row: WorkloadItem) => row.purchased_at && row.packed_on
-  ? Math.round((Date.parse(row.packed_on + 'T00:00:00Z') - Date.parse(row.purchased_at + 'T00:00:00Z')) / 86400000) : null;
 
 export default function WorkloadDetail({ delivererId, name, metric, onClose }: {
   delivererId: string; name: string; metric: WorkloadMetric; onClose: () => void;
@@ -24,20 +22,17 @@ export default function WorkloadDetail({ delivererId, name, metric, onClose }: {
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     return () => { active = false; };
   }, [delivererId, metric]);
-  const days = (rows ?? []).map(workDays).filter((day): day is number => day !== null);
   return <dialog ref={dialog} className="monthly-detail" aria-labelledby="workload-detail-title" onCancel={onClose}>
-    <div className="toolbar"><h2 id="workload-detail-title">{name} · {metric}の詳細</h2><span style={{ flex: 1 }} /><button className="btn" onClick={onClose} autoFocus>閉じる</button></div>
+    <div className="toolbar"><h2 id="workload-detail-title">{name} · {metric.label}の詳細</h2><span style={{ flex: 1 }} /><button className="btn" onClick={onClose} autoFocus>閉じる</button></div>
     {error ? <div className="error" role="alert">{error}</div> : rows === null ? <p>読み込み中…</p> : <>
-      <p>{rows.length}件{metric === '平均作業日数' && ` · 平均 ${days.length ? (days.reduce((sum, day) => sum + day, 0) / days.length).toFixed(1) : '—'}日`}</p>
-      {metric === '作業在庫' && <p className="sub">検品中・Amazon返送依頼・商品登録前の本体が対象です。</p>}
-      {metric === '保有在庫' && <p className="sub">受取前・検品中・Amazon返送依頼・Amazon補填申請中・商品登録前・動作不良の本体と、販売先が自己発送・メルカリ・ヤフオクの出品中、および取引中で発送前の本体が対象です。</p>}
-      {metric === '平均作業日数' && <p className="sub">仕入日から作業完了日までの日数。直近3ヶ月に作業完了した本体が対象です。</p>}
+      <p>{rows.length}点</p>
       {rows.length === 0 ? <p>該当する商品はありません。</p> : <div className="scroll"><table>
-        <thead><tr><th>通番号</th><th>商品・仕入先</th><th>状況</th><th>仕入日</th><th>作業完了日</th><th>出荷日</th><th className="num">作業日数</th></tr></thead>
-        <tbody>{rows.map((row, index) => <tr key={row.id}>
-          <td>{productSerial(rows[index - 1]?.sku,rows[index - 1]?.lot_seq) !== productSerial(row.sku,row.lot_seq) ? productSerial(row.sku,row.lot_seq) : ''}</td>
-          <td className="detail-description">{row.title}<div className="expense-hint"><ColoredLabel value={row.marketplace || '—'} /> · {row.sku}</div></td>
-          <td>{row.status}</td><td>{row.purchased_at || '—'}</td><td>{row.packed_on || '—'}</td><td>{row.shipped_on || '—'}</td><td className="num">{workDays(row) ?? '—'}</td>
+        <thead><tr><th>通番号</th><th>型番・SKU</th><th>販売先</th><th>販売状態</th><th>仕入日</th><th>作業完了日</th><th>出荷日</th></tr></thead>
+        <tbody>{rows.map(row => <tr key={row.id}>
+          <td>{productSerial(row.sku, row.lot_seq)}</td>
+          <td className="detail-description">{productModelText(row)}<div className="expense-hint">{row.sku}</div></td>
+          <td><ColoredLabel value={row.sales_channel || '—'} /></td>
+          <td>{row.status}</td><td>{row.purchased_at || '—'}</td><td>{row.packed_on || '—'}</td><td>{row.shipped_on || '—'}</td>
         </tr>)}</tbody>
       </table></div>}
     </>}

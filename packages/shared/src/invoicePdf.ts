@@ -1,5 +1,5 @@
 import type { InvoiceReceipt } from './receipts';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
 import html2canvas from 'html2canvas';
 /** Screen-only preview transforms must not scale the exported A4 pages. */
 function resetPreview(doc: Document) {
@@ -12,41 +12,24 @@ export async function buildInvoicePdf(elements: HTMLElement[], files: InvoiceRec
   await document.fonts.ready;
   const pdf = await PDFDocument.create();
   for (const element of elements) {
-    if (element.classList.contains('receipt-photo-sheet')) {
-      const page = pdf.addPage([595.28, 841.89]);
-      const cellWidth = (538.58 - 11.34) / 2; const cellHeight = (785.19 - 11.34) / 2;
-      const figures = Array.from(element.querySelectorAll('figure'));
-      for (const [index, figure] of figures.entries()) {
-        const source = figure.querySelector('img'); const caption = figure.querySelector('figcaption');
-        if (!source || !caption) throw new Error('添付写真を読み込めません。');
-        await source.decode();
-        const x = 28.35 + (index % 2) * (cellWidth + 11.34);
-        const top = 841.89 - 28.35 - Math.floor(index / 2) * (cellHeight + 11.34);
-        page.drawRectangle({ x, y: top - cellHeight, width: cellWidth, height: cellHeight, borderWidth: .5, borderColor: rgb(.7, .7, .7) });
-        const titleCanvas = await html2canvas(caption, { scale: 3, backgroundColor: '#fff', logging: false, windowWidth: 1280,
-          onclone: (doc, clone) => { resetPreview(doc); clone.style.width = '85mm'; clone.style.maxWidth = 'none'; clone.style.minHeight = '0'; },
-        });
-        const title = await pdf.embedPng(titleCanvas.toDataURL('image/png'));
-        const titleWidth = cellWidth - 12; const titleHeight = title.height * titleWidth / title.width;
-        page.drawImage(title, { x: x + 6, y: top - 6 - titleHeight, width: titleWidth, height: titleHeight });
-        titleCanvas.width = 0; titleCanvas.height = 0;
-        const canvas = document.createElement('canvas'); canvas.width = source.naturalWidth; canvas.height = source.naturalHeight;
-        const ctx = canvas.getContext('2d'); if (!ctx) throw new Error('写真をPDFに変換できません。');
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(source, 0, 0);
-        const photo = await pdf.embedJpg(canvas.toDataURL('image/jpeg', .94));
-        const availableHeight = cellHeight - titleHeight - 18; const scale = Math.min(titleWidth / photo.width, availableHeight / photo.height);
-        const width = photo.width * scale; const height = photo.height * scale;
-        page.drawImage(photo, { x: x + (cellWidth - width) / 2, y: top - 12 - titleHeight - (availableHeight + height) / 2, width, height });
-        canvas.width = 0; canvas.height = 0;
-      }
-      continue;
-    }
     await Promise.all(Array.from(element.querySelectorAll('img')).map(image => image.decode()));
     const canvas = await html2canvas(element, {
-      scale: 3, backgroundColor: '#fff', useCORS: true, logging: false, windowWidth: 1280,
-      onclone: (doc, clone) => { resetPreview(doc); clone.style.width = '190mm'; clone.style.margin = '0'; clone.style.maxWidth = 'none'; clone.style.minHeight = '270mm'; },
+      scale: 3, backgroundColor: '#fff', useCORS: true, logging: false,
+      onclone: (doc, clone) => {
+        resetPreview(doc);
+        clone.style.margin = '0';
+        // Use the preview's photo slots with an aspect-preserving background during capture.
+        clone.querySelectorAll<HTMLImageElement>('.receipt-photo-sheet figure img').forEach(image => {
+          const photo = doc.createElement('div');
+          photo.style.cssText = 'flex:1; min-height:0; width:100%; background-size:contain; background-repeat:no-repeat; background-position:center';
+          photo.style.backgroundImage = 'url(' + JSON.stringify(image.currentSrc || image.src) + ')';
+          image.replaceWith(photo);
+        });
+      },
     });
-    const image = await pdf.embedPng(canvas.toDataURL('image/png'));
+    const image = element.classList.contains('receipt-photo-sheet')
+      ? await pdf.embedJpg(canvas.toDataURL('image/jpeg', .94))
+      : await pdf.embedPng(canvas.toDataURL('image/png'));
     const page = pdf.addPage([595.28, 841.89]);
     const scale = Math.min(538.58 / image.width, 785.19 / image.height);
     const width = image.width * scale; const height = image.height * scale;
@@ -74,4 +57,18 @@ export async function downloadInvoicePdf(elements: HTMLElement[], files: Invoice
   const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: 'application/pdf' }));
   const link = document.createElement('a'); link.href = url; link.download = name; link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+/** Separate uploaded PDF pages for the review spread; the original stays unchanged. */
+export async function splitInvoicePdfPages(bytes: ArrayBuffer): Promise<Uint8Array[]> {
+  const source = await PDFDocument.load(bytes);
+  if (!source.getPageCount()) throw new Error('PDFにページがありません。');
+  const pages: Uint8Array[] = [];
+  for (const index of source.getPageIndices()) {
+    const page = await PDFDocument.create();
+    const [copy] = await page.copyPages(source, source.getPageIndices().slice(index, index + 1));
+    page.addPage(copy!);
+    pages.push(await page.save());
+  }
+  return pages;
 }

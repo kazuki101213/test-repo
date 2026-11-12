@@ -7,7 +7,7 @@ export type Marketplace =
   | 'オフモール' | '2ndストリート' | 'トレジャーファクトリー' | '楽天' | '店舗'
   | 'Amazon返品' | '動作品Amazon返品' | 'Amazon' | 'Yahoo！ショッピング' | 'その他';
 
-export type SalesChannel = 'FBA' | '自己発送' | 'メルカリ' | 'ヤフオク' | 'ヤフフリ' | 'その他';
+export type SalesChannel = 'FBA' | '自己発送' | 'FBA1' | 'FBA2' | '自己発送1' | '自己発送2' | 'メルカリ' | 'ヤフオク' | 'ヤフフリ' | 'その他';
 
 export type ItemCondition =
   | '新品' | '再生品' | 'ほぼ新品' | '非常に良い' | '良い' | '可' | 'ジャンク';
@@ -20,7 +20,7 @@ export type TurnoverClass = '高' | '中' | '低';
 
 export type ExpenseCategory = '固定費' | '変動費' | '給与' | '外注費' | '諸経費';
 
-export type WorkStep = 'listing' | 'packed' | 'shipped' | 'inspection_cleaning';
+export type WorkStep = 'listing' | 'packed' | 'shipped' | 'inspection';
 
 export interface Staff {
   id: string;
@@ -35,6 +35,7 @@ export interface Staff {
 
 export interface Product {
   id: string;
+  owner_staff_id?: string;
   product_no: number | null;
   asin: string;
   model_no: string | null;
@@ -82,6 +83,8 @@ export interface ItemInsert {
   planned_price?: number | null;
   planned_payout?: number | null;
   sales_channel?: SalesChannel | null;
+  sales_account_id?: string | null;
+  purchase_account_id?: string | null;
   seller_name?: string | null;
   seller_address?: string | null;
   seller_occupation?: string | null;
@@ -161,6 +164,7 @@ export interface ItemView {
 
 /** app.v_delivery_tasks の 1 行 */
 export interface DeliveryTask {
+  return_tracking_no?: string | null;
   inventory_group_serial?: string;
   photo_review_approved?: boolean;
   return_request_completed_at?: string | null;
@@ -191,7 +195,6 @@ export interface DeliveryTask {
   description: string | null;
   description_template: string | null;
   manufacture_year: number | null;
-  cleaned: boolean;
   sales_channel: SalesChannel | null;
   planned_price: number | null;
   deliverer_id: string | null;
@@ -214,6 +217,15 @@ export interface DeliveryTask {
   malfunction_reported_at: string | null;
   malfunction_resolved_at: string | null;
 }
+
+export interface InventoryMarketplaceLabels {
+  purchase_account_label?: string | null;
+  sales_account_label?: string | null;
+  flea_listing_account_label?: string | null;
+}
+
+/** Delivery inventory page RPC augments the task view with account labels and the previous use note. */
+export type DeliveryInventoryRow = DeliveryTask & InventoryMarketplaceLabels & { accessory_usage_note?: string | null };
 
 export interface DeliveryReturnRequestTask {
   id: string;

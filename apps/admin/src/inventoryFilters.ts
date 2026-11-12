@@ -1,3 +1,4 @@
+import {salesChannelLabel} from '@bussan/shared';
 import { productModelText, staffDisplayName } from '@bussan/shared';
 import type { InventoryItem } from './api';
 import { productSerial } from './inventory';
@@ -19,18 +20,18 @@ export const inventoryColumns: Record<string, InventoryColumn> = {
   model: { label: '型番', value: i => i.is_accessory ? i.title : productModelText(i) },
   purchaser: { label: '仕入担当者', value: i => staffDisplayName(i.purchaser_name) },
   deliverer: { label: '納品担当者', value: i => staffDisplayName(i.deliverer_name) },
-  marketplace: { label: '仕入先', value: i => i.marketplace },
+  marketplace: { label: '仕入先', value: i => i.purchase_account_label || i.marketplace },
   item_id: { label: '商品ID', value: i => i.marketplace_item_id },
   tracking: { label: '追跡番号', value: i => i.tracking_no },
   purchased_at: { label: '仕入日', kind: 'date', value: i => i.purchased_at },
   cost: { label: '仕入金額', kind: 'number', value: i => i.cost_amount },
-  sales_channel: { label: '販売先', value: i => i.sales_channel },
+  sales_channel: { label: '販売先', value: i => i.sales_account_label || salesChannelLabel(i.sales_channel) },
   condition: { label: '商品状態', value: i => i.condition },
   packed_on: { label: '作業完了日', kind: 'date', value: i => i.packed_on },
   shipped_on: { label: '出荷日', kind: 'date', value: i => i.shipped_on },
   planned_price: { label: '販売予定金額', kind: 'number', value: i => i.planned_price },
   planned_payout: { label: '振込予定金額', kind: 'number', value: i => i.planned_payout },
-  expected_profit: { label: '見込利益額', kind: 'number', value: i => i.expected_profit },
+  expected_profit: { label: '予定利益額', kind: 'number', value: i => i.expected_profit },
   expected_rate: { label: '予定利益率', kind: 'number', value: i => i.planned_price && i.expected_profit !== null ? Number((i.expected_profit / i.planned_price * 100).toFixed(1)) : null },
   sold_on: { label: '販売日', kind: 'date', value: i => i.product_sale_conflict ? i.sold_on : i.product_sold_on },
   sold_days: { label: '販売日数', kind: 'number', value: saleDays },

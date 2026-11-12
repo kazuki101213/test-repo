@@ -28,9 +28,9 @@ body, button, input, select, textarea, pre, code, kbd, samp {
 /* Native selects cannot draw ::before; place the selected-value line outside. */
 .colored-select { position: relative; width: 100%; font: inherit; }
 .colored-select > select { width: 100%; }
-.colored-select[data-tone] > select { padding-left: 23px; }
+.colored-select[data-tone] > select { padding-left: 13px; }
 .colored-select[data-tone]::before {
-  content: ''; position: absolute; left: 11px; top: 50%;
+  content: ''; position: absolute; left: 5.5px; top: 50%;
   transform: translateY(-50%); width: 3px; height: 1em;
   background: var(--label-dot-color); pointer-events: none;
 }

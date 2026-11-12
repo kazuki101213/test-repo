@@ -35,7 +35,11 @@ export function conditionForTarget(target: DescriptionTarget, condition: ItemCon
   return targetLabel[condition] || '';
 }
 
-const recorderAccessories = ['本体', '取扱説明書', '純正リモコン', '代替リモコン', '○○製リモコン', 'B-CASカード', 'B-CASカード×2枚', 'ACASチップ内蔵', '電源ケーブル', '同軸(アンテナ)ケーブル', '同軸(アンテナ)ケーブル×2本', 'HDMIケーブル'];
+const recorderAccessories = [
+  '本体', '純正リモコン', 'B-CASカード', 'mini B-CASカード', 'ACASチップ内蔵', '電源ケーブル',
+  '取扱説明書', '代替リモコン', '○○製リモコン', 'B-CASカード×2枚',
+  '同軸(アンテナ)ケーブル', '同軸(アンテナ)ケーブル×2本', 'HDMIケーブル',
+];
 export function accessoryOptions(product: string) {
   if (product === 'モニター') return ['モニター', 'スタンド', '電源ケーブル', 'HDMIケーブル', 'DPケーブル'];
   if (product === '小物') return ['本体', '付属品完品', '取扱説明書', '電源ケーブル', 'ACアダプター', 'リモコン'];
@@ -126,9 +130,9 @@ function yahooAuctionDescription(product: string, condition: string, skuText: st
 export function buildDescription(input: {
   product: string; condition: string; accessories: string; year: string; sku?: string; listingSkus?: string[]; itemNumber?: string; modelNo?: string; manufacturer?: string;
   hasPhysicalDamage?: boolean;
-  target?: DescriptionTarget; inspected: boolean; cleaned: boolean; salesChannel: string | null;
+  target?: DescriptionTarget; inspected: boolean; salesChannel: string | null;
 }): string {
-  const { product, condition, accessories, year, target = 'amazon', inspected, cleaned, salesChannel } = input;
+  const { product, condition, accessories, year, target = 'amazon', inspected, salesChannel } = input;
   if (!product || !condition || !sourceTemplates[product]) return '';
   if (target !== 'amazon') {
     const itemNumber = input.itemNumber || '';
@@ -157,11 +161,8 @@ export function buildDescription(input: {
       .replace('傷はございますが、動作には問題ございません。', '傷がございます。')
       .replace('軽微な傷はございますが、動作には問題ございません。', '軽微な傷がございます。');
   }
-  const workText = inspected && cleaned ? '●経験豊富なスタッフにより、一つ一つ丁寧に【 検品・清掃・アルコール除菌 】をしております。'
-    : inspected ? '●一つ一つ丁寧に検品しております。' : cleaned ? '●一つ一つ丁寧に清掃しております。' : '';
-  text = text.replace(/●経験豊富なスタッフ[^。]*。/, workText);
-  if (!inspected) text = text.replace('●十分な検品をして出品しておりますが、', '●');
+  if (!inspected) text = text.replace('●一つ一つ丁寧に検品しております。', '').replace('●十分な検品をして出品しておりますが、', '●');
   if (condition === '新品') text = text.replace(/●あくまで中古品[^。]*。/, '');
-  if (salesChannel !== 'FBA') text = text.replace(/《配送》[^《]*/, '《配送》●配送方法は出品ページをご確認ください。');
+  if (!/^FBA(?:[12１２])?$/.test(salesChannel??'')) text = text.replace(/《配送》[^《]*/, '《配送》●配送方法は出品ページをご確認ください。');
   return text.replace(/[　\t]+/g, ' ').replace(/\s*《/g, '\n\n《').replace(/\s*●/g, '\n●').trim();
 }

@@ -1,8 +1,8 @@
 import ReturnTasks from '../components/ReturnTasks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
-import { canViewDeliveryAssignee, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
-import { fetchDeliveryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice } from '../api';
+import type { DeliveryInventoryRow, DeliveryTask, Staff, InventoryFilters, ItemStatus } from '@bussan/shared';
+import { canViewDeliveryAssignee, deliveryStaffOptions, inventoryPurchaserOptions, inventorySiteStyle, staffDisplayName, matchesInventoryFilters } from '@bussan/shared';
+import { fetchInventoryStaff, fetchDeliveryItemNotices, markDeliveryItemNoticesRead, type DeliveryItemNotice, type InventoryStaff } from '../api';
 import {useInventoryPage} from '../hooks/useInventoryPage';
 import {fetchTask} from '../api';
 import DateInput from '../components/DateInput';
@@ -40,17 +40,18 @@ function hasSerialSuffix(task: DeliveryTask): boolean {
   return /^\d+[a-z]+-/i.test(task.sku);
 }
 
-export default function TaskList({ staff }: { staff: Staff }) {
+export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaDelivery }: { staff: Staff;selectedIds?:string[];onSelectionChange?:(ids:string[])=>void;onFbaDelivery?:()=>void }) {
   const { sectionRef, shippingRef, viewportHeight } = useTaskViewport();
 
-  const [deliverers, setDeliverers] = useState<{ id: string; name: string }[]>([]);
+  const [filterStaff, setFilterStaff] = useState<InventoryStaff[]>([]);
+  const deliverers = deliveryStaffOptions(filterStaff, 'assignee');
   const [allProducts, setAllProducts] = useState(false);
   const [delivererId, setDelivererId] = useState('');
   const [assigneeFilterIds, setAssigneeFilterIds] = useState<string[]>([]);
+  const [purchaserIds, setPurchaserIds] = useState<string[]>([]);
   const [purchasedFrom, setPurchasedFrom] = useState('');
   const [purchasedTo, setPurchasedTo] = useState('');
   const [filter, setFilter] = useState<Filter>(() => canViewDeliveryAssignee(staff) ? 'all' : 'work');
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [query, setQuery] = useState('');
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
   const [queryField, setQueryField] = useState<DeliverySearchField | 'deliverer'>('serial');
@@ -64,7 +65,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
   const overlappingStatuses = groupedStatuses?.filter(status => !inventoryFilters.status?.length || inventoryFilters.status.includes(status));
   const requestStates = overlappingStatuses?.length ? {...inventoryFilters, status: overlappingStatuses} : inventoryFilters;
   const requestStatus = groupedStatuses ? (overlappingStatuses?.length ? 'all' : groupedStatuses[0]) : filter;
-  const inventory=useInventoryPage<DeliveryTask>(allProducts?'delivery-all':'delivery',staff.id,{status:requestStatus,states:requestStates,queryField,query:queryField==='deliverer'?'':query,delivererIds:effectiveDelivererIds,from:purchasedFrom,to:purchasedTo});
+  const inventory=useInventoryPage<DeliveryInventoryRow>(allProducts?'delivery-all':'delivery',staff.id,{status:requestStatus,states:requestStates,queryField,query:queryField==='deliverer'?'':query,purchaserIds,delivererIds:effectiveDelivererIds,from:purchasedFrom,to:purchasedTo});
   const tasks=inventory.rows,loading=inventory.loading;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const detailRevision = 0;
@@ -81,7 +82,7 @@ export default function TaskList({ staff }: { staff: Staff }) {
     let active=true;
     void fetchTask(deepLinkItemId,canViewDeliveryAssignee(staff)).then(item=>{
       if(!active||!item)return;deepLinkHandled.current=true;
-      setFilter('all');setInventoryFilters({});setAssigneeFilterIds([]);setDelivererId('');setQueryField('sku');setQuery(item.sku);setExpandedId(item.id);
+      setFilter('all');setInventoryFilters({});setPurchaserIds([]);setAssigneeFilterIds([]);setDelivererId('');setQueryField('sku');setQuery(item.sku);setExpandedId(item.id);
     }).catch(cause=>{if(active)setError(deliveryErrorMessage(cause));});
     return()=>{active=false;};
   },[deepLinkItemId,staff.id]);
@@ -92,21 +93,23 @@ export default function TaskList({ staff }: { staff: Staff }) {
     return()=>{active=false;window.clearInterval(timer);};
   },[staff.id]);
   useEffect(() => {
-    if (canViewDeliveryAssignee(staff)) void fetchDeliveryStaff().then(setDeliverers).catch(e => setError(deliveryErrorMessage(e)));
-    else setDeliverers([]);
-  }, [staff.id,staff.role,staff.code]);
+    let active = true;
+    void fetchInventoryStaff().then(rows => { if (active) setFilterStaff(rows); })
+      .catch(cause => { if (active) setError(deliveryErrorMessage(cause)); });
+    return () => { active = false; };
+  }, [staff.id]);
 
   const shown = useMemo(() => {
     const q = normalizeSearch(query);
     const originalIds = new Map<string, string>();
     for (const task of tasks) {
-      if (!hasSerialSuffix(task) || task.marketplace === '動作品Amazon返品') continue;
+      if (task.is_accessory || !hasSerialSuffix(task) || task.marketplace === '動作品Amazon返品') continue;
       const original = tasks.find(candidate => !candidate.is_accessory && !hasSerialSuffix(candidate)
         && baseSerialNumber(candidate) === baseSerialNumber(task) && candidate.marketplace_item_id);
       const productId = original?.marketplace_item_id || task.original_marketplace_item_id || task.marketplace_item_id;
       if (productId) originalIds.set(task.id, productId);
     }
-    const groups = new Map<string, [DeliveryTask, ...DeliveryTask[]]>();
+    const groups = new Map<string, [DeliveryInventoryRow, ...DeliveryInventoryRow[]]>();
     for (const task of tasks) {
       if (effectiveDelivererIds.length && !effectiveDelivererIds.includes(task.deliverer_id ?? '')) continue;
       const key = serialNumber(task);
@@ -120,19 +123,30 @@ export default function TaskList({ staff }: { staff: Staff }) {
     })).filter(({ task: t, members }) => {
       if (queryField !== 'deliverer' && q && !members.some(member => matchesDeliverySearch(deliverySearchValue(member, queryField, originalIds), queryField, query))) return false;
       if (!members.some(member => matchesInventoryFilters(member, inventoryFilters))) return false;
-      return filter === 'all' || (groupedStatuses ? groupedStatuses.includes(t.status) : t.status === filter);
+      return filter === 'all' || members.some(member=>groupedStatuses?groupedStatuses.includes(member.status):member.status===filter);
     });
     return { rows, originalIds };
   }, [tasks, filter, groupedStatuses, query, queryField, staff.role, staff.code, effectiveDelivererIds.join(','), inventoryFilters]);
   const shownRows = shown.rows;
   const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
-  const selectableRows = allProducts ? [] : shownRows.filter(({members}) => members.every(canOperate));
-  const allShownSelected = selectableRows.length>0 && selectableRows.every(group=>selected.has(group.task.id));
   function selectState(next: Filter) {
-    setAllProducts(false);setFilter(next);setExpandedId(null);setSelected(new Set());
+    setAllProducts(false);setFilter(next);setExpandedId(null);
+  }
+  function clearFilters() {
+    setQueryField('serial');
+    setQuery('');
+    setPurchasedFrom('');
+    setPurchasedTo('');
+    setFilter('all');
+    setInventoryFilters({});
+    setPurchaserIds([]);
+    setAssigneeFilterIds([]);
+    setDelivererId('');
+    setExpandedId(null);
   }
   function toggleAllProducts() {
-    setAllProducts(current => !current);setPurchasedFrom('');setPurchasedTo('');setFilter('all');setInventoryFilters({});setAssigneeFilterIds([]);setDelivererId('');setQuery('');setQueryField('serial');setExpandedId(null);setSelected(new Set());
+    setAllProducts(current => !current);
+    clearFilters();
   }
   const noticeRef = useRef(notices);
   noticeRef.current = notices;
@@ -154,33 +168,46 @@ export default function TaskList({ staff }: { staff: Staff }) {
   }, []);
   const unreadItemIds = new Set(notices.filter(notice => notice.reply_at || notice.photo_at).map(notice => notice.item_id));
 
+  const fbaActions = onFbaDelivery&&<div className="delivery-fba-actions"><span role="status" aria-live="polite">{selectedIds.length}商品選択</span><button type="button" className="btn" data-direction="forward" disabled={!selectedIds.length} onClick={onFbaDelivery}>FBA納品</button>{selectedIds.length>0&&<button type="button" className="btn ghost" onClick={()=>onSelectionChange?.([])}>選択解除</button>}</div>;
+
   return (
     <>
       <div className="delivery-inventory-workspace">
       <div className="delivery-inventory-sidebar">
       <div className="delivery-inventory-search" role="group" aria-label="在庫検索">
-        <select aria-label="検索項目" data-search-field={queryField} value={queryField} onChange={event => { setQueryField(event.target.value as DeliverySearchField | 'deliverer'); setDelivererId(''); setQuery(''); setExpandedId(null); setSelected(new Set()); }}>
+        <select aria-label="検索項目" data-search-field={queryField} value={queryField} onChange={event => { setQueryField(event.target.value as DeliverySearchField | 'deliverer'); setDelivererId(''); setQuery(''); setExpandedId(null); }}>
           {canViewDeliveryAssignee(staff) && <option value="deliverer">納品担当者</option>}
           {deliverySearchFields.map(field => <option key={field.value} value={field.value}>{field.label}</option>)}
         </select>
         {queryField === 'deliverer' && canViewDeliveryAssignee(staff)
-          ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setAssigneeFilterIds([]); setExpandedId(null); setSelected(new Set()); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
+          ? <select aria-label="納品担当者で検索" value={delivererId} onChange={event => { setDelivererId(event.target.value); setAssigneeFilterIds([]); setExpandedId(null); }}><option value="">全員</option>{deliverers.map(deliverer => <option key={deliverer.id} value={deliverer.id}>{staffDisplayName(deliverer)}</option>)}</select>
           : <input type="search" placeholder="検索" aria-label="在庫を検索" value={query} onChange={event => setQuery(event.target.value)} />}
-        <InventoryStateFilter value={inventoryFilters} assignee={canViewDeliveryAssignee(staff) ? {
-          value: assigneeFilterIds, options: deliverers.map(person => ({ id: person.id, name: staffDisplayName(person) })),
-          onChange: ids => { setAssigneeFilterIds(ids); setDelivererId(''); setExpandedId(null); setSelected(new Set()); },
-        } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); setSelected(new Set()); }} />
+        <div className="delivery-inventory-filter-controls">
+          <InventoryStateFilter value={inventoryFilters} purchaser={{
+            value: purchaserIds, options: inventoryPurchaserOptions(filterStaff),
+            onChange: ids => { setPurchaserIds(ids); setExpandedId(null); },
+          }} assignee={canViewDeliveryAssignee(staff) ? {
+            value: assigneeFilterIds, options: deliverers.map(person => ({ id: person.id, name: staffDisplayName(person) })),
+            onChange: ids => { setAssigneeFilterIds(ids); setDelivererId(''); setExpandedId(null); },
+          } : undefined} onChange={value => { setInventoryFilters(value); setFilter('all'); setExpandedId(null); }} />
+          <div className="delivery-inventory-date-range" role="group" aria-label="仕入日の期間">
+            <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
+            <span aria-hidden="true">〜</span>
+            <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e => setPurchasedTo(e.target.value)} />
+          </div>
+          <button type="button" className="btn" onClick={clearFilters}>全て解除</button>
+        </div>
       </div>
 
       <h3 className="delivery-task-heading" id="delivery-task-heading">やること</h3>
       <section ref={sectionRef} className="card delivery-reply-tasks" aria-labelledby="delivery-task-heading" tabIndex={0} style={{ maxHeight: viewportHeight }}>
-        <ul className="invoice-task-rows" aria-label="差し戻し"><ReturnTasks staffId={staff.id}/></ul>
+        <ul className="invoice-task-rows" aria-label="作業依頼とお知らせ"><ReturnTasks staffId={staff.id}/></ul>
         <ul ref={shippingRef} className="invoice-task-rows" aria-label="発送関連"><SpareShippingTasks staff={staff} /></ul>
       </section>
       </div>
 
       <div className="filters task-filters inventory-workflow-menu" role="group" aria-label="販売状態で絞り込み">
-        {['FBA','自己発送','メルカリ','ヤフオク','Amazon返品'].map((channel,index) => <span key={channel} className="inventory-workflow-lane" data-lane={index}>{channel}</span>)}
+        {['FBA','自己発送','メルカリ','ヤフオク','Amazon返品'].map((channel,index) => <span key={channel} className="inventory-workflow-lane" data-lane={index} style={inventorySiteStyle(channel)}>{channel}</span>)}
         {FILTERS.map((f) => (
           <button
             key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key}
@@ -191,27 +218,23 @@ export default function TaskList({ staff }: { staff: Staff }) {
         ))}
         <div className="inventory-workflow-footer">{FOOTER_FILTERS.map(f => <button key={f.key} type="button" className="btn" data-status={f.key} data-active={!allProducts && filter === f.key} aria-pressed={!allProducts && filter === f.key} onClick={() => selectState(f.key)}>{f.label}</button>)}{['admin','purchaser','deliverer'].includes(staff.role) && <button type="button" className="btn inventory-all-products" data-scope="all" data-active={allProducts} aria-pressed={allProducts} onClick={toggleAllProducts}>全商品</button>}</div>
       </div>
+      <div className={'export-actions delivery-inventory-actions'+(shownRows.length ? ' delivery-inventory-actions-with-header' : '')}>
+        <span>{inventory.error&&!inventory.hasPage?'件数未取得':`${shownRows.length} / ${inventory.total}商品`}</span>
+        {fbaActions}
       </div>
-      <div className="export-actions">
-      <div className="delivery-inventory-date-range" role="group" aria-label="仕入日の期間">
-        <DateInput aria-label="仕入日・開始日" value={purchasedFrom} max={purchasedTo || undefined} onChange={e=>{setPurchasedFrom(e.target.value);setSelected(new Set());}} />
-        <span aria-hidden="true">〜</span>
-        <DateInput aria-label="仕入日・終了日" value={purchasedTo} min={purchasedFrom || undefined} onChange={e=>{setPurchasedTo(e.target.value);setSelected(new Set());}} />
-      </div>
-        <span>{shownRows.length} / {inventory.total}商品</span>
-        <button type="button" className="btn" aria-pressed={allShownSelected} disabled={selectableRows.length===0 && selected.size===0} onClick={()=>setSelected(current=>allShownSelected || selectableRows.length===0 ? new Set() : new Set([...current,...selectableRows.map(group=>group.task.id)]))}>{allShownSelected || (selectableRows.length===0 && selected.size>0) ? '選択解除' : '表示中を選択'}</button>
       </div>
 
+      {onFbaDelivery&&shownRows.length>0&&<p className="delivery-fba-mobile-hint">
+        {allProducts?'「全商品」は閲覧用です。「作業中」に切り替えると、対象商品を選択できます。':'FBA納品は「商品登録前」のFBA商品を選択できます。'}
+      </p>}
       {replyTaskError && <div className="error">{replyTaskError}</div>}
-      {(error||inventory.error) && <div className="error">{error||inventory.error}</div>}
+      {error && <div className="error" role="alert">{error}</div>}
+      {inventory.error && <div className="error" role="alert">{inventory.error} <button type="button" className="btn" onClick={()=>void inventory.refresh()}>再読み込み</button></div>}
       {loading && <div className="empty">読み込み中…</div>}
-      {!loading && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
+      {!loading && !inventory.error && shownRows.length === 0 && <div className="empty">該当する商品はありません。</div>}
 
-      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} selected={selected.has(t.id)} disabled={false} onSelect={() => setSelected(current => {
-        const next = new Set(current);
-        if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
-        return next;
-      })} onOpen={() => toggleExpanded(t.id)} />)}
+      {shownRows.length>0&&<div className="approved-delivery-head"><div className="delivery-head-main" aria-hidden="true"><div>販売状況 / 写真・通番号<br/>型番・ASIN / SKU<br/>追跡番号 / 商品ID</div><div>仕入担当者<br/>納品担当者<br/>仕入先<br/>販売先</div><div>コンディション<br/>仕入日<br/>作業完了日<br/>仕入担当者からのコメント</div></div><div className="delivery-head-bundled" aria-hidden="true"><div>付属品<br/>通番号・品名 / 商品ID<br/>追跡番号 / 仕入日・利用記録<br/>仕入担当者からのコメント</div><div>仕入担当者<br/>納品担当者<br/>仕入先<br/>販売先</div></div><div className="delivery-head-action"><span aria-hidden="true">操作</span>{fbaActions}</div></div>}
+      {shownRows.map(({ task: t, members }) => <TaskCard key={t.id} task={t} readOnly={allProducts || !members.every(canOperate)} showAssignee={allProducts} amazonImageUrl={t.reference_image_url} members={members} originalMarketplaceIds={shown.originalIds} staff={staff} unreadItemIds={unreadItemIds} onDetailOpened={acknowledgeOpened} detailRevision={detailRevision} expandedId={members.some(member => member.id === expandedId) ? expandedId : null} onOpenMember={toggleExpanded} onClose={() => setExpandedId(null)} onTaskChange={updateTask} onOpen={() => toggleExpanded(t.id)} selection={onSelectionChange?{ids:selectedIds,onChange:onSelectionChange}:undefined} />)}
       {inventory.more&&<button type="button" className="btn" disabled={loading} onClick={inventory.loadMore}>さらに表示</button>}
     </>
   );

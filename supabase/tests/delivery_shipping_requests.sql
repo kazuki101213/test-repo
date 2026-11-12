@@ -68,4 +68,17 @@ set local role anon;
 do $$begin
  begin perform 1 from app.delivery_shipping_tasks;raise exception 'Anonymous shipping read allowed';exception when insufficient_privilege then null;end;
 end $$;
+set local role postgres;
+insert into app.delivery_push_subscriptions(staff_id,endpoint,p256dh,auth,base_url,created_at,app_kind)
+ select id,'https://web.push.apple.com/purchaser-fixture','fixture-public','fixture-auth','https://test-repo-delivery.vercel.app/',now()-interval '2 days','delivery' from app.staff where code='EE';
+update app.items set deliverer_id=(select id from app.staff where code='EE') where id=(select id from shipping_probe where lot_seq=998424);
+do $$declare item uuid;begin
+ select id into strict item from shipping_probe where lot_seq=998424;
+ perform app.enqueue_delivery_push(item,'assigned',now(),null);
+ if not exists(select 1 from app.claim_delivery_push() where item_id=item and endpoint='https://web.push.apple.com/purchaser-fixture' and kind='assigned' and eligible)
+   then raise exception 'Purchaser delivery push is missing';end if;
+ if exists(select 1 from app.delivery_push_events e join app.staff s on s.id=e.staff_id
+   where e.item_id in(select id from shipping_probe where lot_seq<>998424) and s.code='EE')
+   then raise exception 'Purchaser was notified about someone else''s assignment';end if;
+end $$;
 rollback;

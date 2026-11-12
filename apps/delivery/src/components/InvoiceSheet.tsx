@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { invoicePageEnds } from '../invoicePagination';
 import type { InvoiceReceipt } from '@bussan/shared';
 import type { InvoiceDetails, InvoiceLine, InvoiceSnapshot } from '../invoices';
@@ -25,22 +26,58 @@ export function groupedInvoiceLines(snapshot: InvoiceSnapshot, extras: InvoiceLi
 const money = (value: number) => yen(Number.isFinite(value) ? value : 0);
 const shortDate = (date: string | null) => date ? date.slice(5).replace('-', '/') : '';
 
+function bankValue(value: string) {
+  return <td><span className="invoice-bank-value"><span className="invoice-bank-text">{value}</span></span></td>;
+}
+
 function Bank({ details: p }: { details: InvoiceDetails }) {
-  return <table className="invoice-bank-table"><colgroup><col style={{ width: '20%' }} /><col style={{ width: '30%' }} /><col style={{ width: '22%' }} /><col style={{ width: '28%' }} /></colgroup><tbody>
+  return <table className="invoice-bank-table"><colgroup><col style={{ width: '12%' }} /><col style={{ width: '37%' }} /><col style={{ width: '14%' }} /><col style={{ width: '37%' }} /></colgroup><tbody>
     <tr><th colSpan={4}>振込先</th></tr>
-    <tr><td>銀行名</td><td>{p.bank}</td><td>銀行コード</td><td>{p.bank_code}</td></tr>
-    <tr><td>支店名</td><td>{p.branch}</td><td>店番</td><td>{p.branch_code}</td></tr>
-    <tr><td>口座種別</td><td>{p.account_type}</td><td>口座番号</td><td>{p.account_number}</td></tr>
-    <tr><td>名前</td><td>{p.holder}</td><td>フリガナ</td><td>{p.holder_kana}</td></tr>
+    <tr><td><span className="invoice-bank-text">銀行名</span></td>{bankValue(p.bank)}<td><span className="invoice-bank-text">銀行コード</span></td>{bankValue(p.bank_code)}</tr>
+    <tr><td><span className="invoice-bank-text">支店名</span></td>{bankValue(p.branch)}<td><span className="invoice-bank-text">店番</span></td>{bankValue(p.branch_code)}</tr>
+    <tr><td><span className="invoice-bank-text">口座種別</span></td>{bankValue(p.account_type)}<td><span className="invoice-bank-text">口座番号</span></td>{bankValue(p.account_number)}</tr>
+    <tr><td><span className="invoice-bank-text">名前</span></td>{bankValue(p.holder)}<td><span className="invoice-bank-text">フリガナ</span></td>{bankValue(p.holder_kana)}</tr>
   </tbody></table>;
 }
 
-export default function InvoiceSheet({ snapshot, month, issued, extras, note, receipts = [] }: {
-  snapshot: InvoiceSnapshot; month: string; issued: string; extras: InvoiceLine[]; note: string; receipts?: InvoiceReceipt[];
+function sizeBankTable(bank: HTMLTableElement) {
+  const columns = Array.from(bank.querySelectorAll('col'));
+  const rows = Array.from(bank.rows).slice(1);
+  const widths = columns.map((_, index) => Math.max(...rows.map(row => {
+    const cell = row.cells[index]!;
+    const text = cell.querySelector<HTMLElement>('.invoice-bank-text')!;
+    const { paddingLeft, paddingRight } = getComputedStyle(cell);
+    return Math.ceil(text.offsetWidth + parseFloat(paddingLeft) + parseFloat(paddingRight)) + 1;
+  })));
+  const [leftLabel, leftValue, rightLabel, rightValue] = widths as [number, number, number, number];
+  const labelWidth = leftLabel + rightLabel;
+  bank.parentElement!.style.setProperty('--invoice-bank-width', `${labelWidth + leftValue + rightValue}px`);
+  const valueSpace = Math.max(0, parseFloat(getComputedStyle(bank).width) - labelWidth);
+  // Keep a short value column at full width when the other column needs compression.
+  const fittedLeft = Math.min(leftValue, Math.max(valueSpace / 2, valueSpace - rightValue));
+  const fittedWidths = [leftLabel, fittedLeft, rightLabel, Math.min(rightValue, valueSpace - fittedLeft)];
+  columns.forEach((column, index) => {
+    column.style.width = `${fittedWidths[index]}px`;
+  });
+  for (const cell of bank.querySelectorAll<HTMLElement>('.invoice-bank-value')) {
+    const text = cell.firstElementChild as HTMLElement;
+    const width = text.offsetWidth;
+    text.style.transform = width > cell.clientWidth ? `scaleX(${cell.clientWidth / width})` : '';
+  }
+}
+
+export default function InvoiceSheet({ snapshot, month, issued, extras, note, receipts = [], renderPage }: {
+  snapshot: InvoiceSnapshot; month: string; issued: string; extras: InvoiceLine[]; note: string; receipts?: InvoiceReceipt[]; renderPage?: (page: ReactNode, index: number) => ReactNode;
 }) {
   const p = snapshot.profile;
-  const lines: PrintLine[] = [...groupedInvoiceLines(snapshot, extras), ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true }))];
+  const lines: PrintLine[] = [
+    ...groupedInvoiceLines(snapshot, []),
+    ...receipts.map(row => ({ date: row.spent_on ?? null, description: (row.description ?? '') + '（税込）', quantity: 1, unit_price: row.amount ?? 0, extra: true, taxIncluded: true })),
+    ...extras.map(line => ({ ...line, description: line.description === 'ヤフオク入札作業日' ? 'ヤフオク入札作業' : line.description, extra: true })),
+  ];
   const subtotal = lines.filter(line => !line.taxIncluded).reduce((sum, l) => sum + (Number.isFinite(l.quantity * l.unit_price) ? l.quantity * l.unit_price : 0), 0);
+  const workFees = snapshot.lines.reduce((sum, line) => sum + (Number.isFinite(line.quantity * line.unit_price) ? line.quantity * line.unit_price : 0), 0);
+  const allowances = subtotal - workFees;
   const reimbursement = receipts.reduce((sum, row) => sum + (row.amount ?? 0), 0);
   const total = subtotal + Math.floor(subtotal * snapshot.tax_percent / 100) + reimbursement;
   const quantities = snapshot.lines.reduce((sum, l) => sum + l.quantity, 0);
@@ -64,6 +101,8 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
       if (!active) return;
       const first = element.querySelector<HTMLElement>('.invoice-sheet');
       if (!first || !first.offsetWidth) return;
+      const bank = element.querySelector<HTMLTableElement>('.invoice-bank-table');
+      if (bank) sizeBankTable(bank);
       const css = getComputedStyle(first);
       const usable = first.offsetWidth * 270 / 190 - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom) - 4;
       const heading = height(first.querySelector('.document-heading'));
@@ -83,7 +122,7 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
   return <div ref={root} className="invoice-document" aria-label={`${month}の請求書プレビュー`}>{pages.map((page, pageIndex) => {
     const last = pageIndex === pages.length - 1;
     const issuedLabel = issued.replaceAll('-', '/') + (pages.length > 1 ? `　${pageIndex + 1} / ${pages.length}` : '');
-    return <article className="invoice-sheet" key={pageIndex}>
+    const pageContent = <article className="invoice-sheet" key={pageIndex}>
       <header className="document-heading"><h1>請求書</h1></header>
       {pageIndex > 0 && <div className="invoice-issued invoice-continuation-issued">{issuedLabel}</div>}
       {pageIndex === 0 && <><div className="invoice-parties"><div><div className="invoice-recipient">{p.recipient}</div><p className="invoice-greeting">下記の通り、ご請求申し上げます。</p></div>
@@ -96,8 +135,9 @@ export default function InvoiceSheet({ snapshot, month, issued, extras, note, re
         </tbody>
         {last && <tfoot><tr><td colSpan={2}>合計</td><td>{quantities}</td><td /><td>{money(total)}</td></tr></tfoot>}
       </table>
-      {last && <div className="invoice-reimbursement"><p>作業費・手当：{money(subtotal)}</p><p>消費税：{money(Math.floor(subtotal * snapshot.tax_percent / 100))}</p><p>立替経費（税込）：{money(reimbursement)}</p></div>}
+      {last && <div className="invoice-reimbursement"><p>作業費：{money(workFees)}</p><p>手当：{money(allowances)}</p><p>消費税：{money(Math.floor(subtotal * snapshot.tax_percent / 100))}</p><p>立替経費（税込）：{money(reimbursement)}</p></div>}
       {last && <div className="invoice-footer"><section><div>備考</div><div className="invoice-note">{note || '\u00a0'}</div></section><Bank details={p} /></div>}
     </article>;
+    return renderPage ? renderPage(pageContent, pageIndex) : pageContent;
   })}</div>;
 }

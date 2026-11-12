@@ -33,7 +33,7 @@ async function applyProductionPlan(){
  if(await rpc('is_admin')!==true)throw new Error('本番切り替え: 管理者連携を確認できません');
  s.mode=PRODUCTION_PLAN.mode;if(PRODUCTION_PLAN.purchaseImportEnabled===true)s.purchaseImportEnabled=true;if(PRODUCTION_PLAN.trackingPolicy==='inventory-first')s.trackingHour=1;if(PRODUCTION_PLAN.trackingPolicy)s.trackingPolicy=PRODUCTION_PLAN.trackingPolicy;s.recipes={...s.recipes,...structuredClone(PRODUCTION_PLAN.recipes)};
  await saveSettings(s);await STORE.set({lastAppliedProductionPlan:PRODUCTION_PLAN.id,operationPolicy:PRODUCTION_PLAN.purchaseImportEnabled?['tracking','receipt','purchases']:['tracking','receipt']});
- await log('info',PRODUCTION_PLAN.cancelled?'旧方式の自動巡回を停止しました':'在庫先行の追跡番号登録を毎日午前1時に設定しました。受け取り評価は停止中です',{sites:Object.keys(PRODUCTION_PLAN.recipes)});
+ await log('info',PRODUCTION_PLAN.cancelled?'旧方式の自動巡回を停止しました':'在庫先行の追跡番号登録を毎日午前1時に設定しました。受け取り連絡は停止中です',{sites:Object.keys(PRODUCTION_PLAN.recipes)});
  await diagnosticReport(true);if(PRODUCTION_PLAN.mode==='tracking'&&PRODUCTION_PLAN.trackingPolicy!=='inventory-first'){await start('tracking',true);void step();}
 }
 async function saveSettings(s){validateSettings(s);const {job}=await STORE.get('job');if(job)throw new Error('巡回中は設定を変更できません。先に停止してください');
@@ -87,32 +87,33 @@ async function navigate(job,account,url){assertSiteUrl(account.site,url);if(job.
   if(job.borrowedTab&&arrived!==url){if(!allowedSiteRedirect(account.site,url,arrived))throw Error('画面確認待ち: 予期しないページへの移動');job.borrowedTab.lastUrl=arrived;await STORE.set({job});}
   return {requestedUrl:url,finalUrl:arrived};
 }
-function taskArgs(account,status,kind,details,itemId=null){const label={tracking:'追跡番号照合',receipt:'受け取り評価',purchases:'仕入れリストの自動取得'}[kind]||kind;return {p_marketplace:SITES[account.site].db[0],p_account_label:account.label,p_marketplace_item_id:itemId,p_site_tracking_no:null,p_confirmation_status:status,p_details:`処理種別=${label}; 拡張機能; ${details}`};}
+function taskArgs(account,status,kind,details,itemId=null){const label={tracking:'追跡番号照合',receipt:'受け取り連絡',purchases:'仕入れリストの自動取得'}[kind]||kind;return {p_marketplace:SITES[account.site].db[0],p_account_label:account.label,p_marketplace_item_id:itemId,p_site_tracking_no:null,p_confirmation_status:status,p_details:`処理種別=${label}; 拡張機能; ${details}`};}
 async function task(account,status,kind,details,itemId=null){const args=taskArgs(account,status,kind,details,itemId);try{await rpc('reconcile_marketplace_tracking',args);}catch(e){const {outbox=[]}=await STORE.get('outbox');const key=account.id+':'+status+':'+(itemId||'');const filtered=outbox.filter(x=>x.key!==key);filtered.push({key,args});await STORE.set({outbox:filtered.slice(-200)});await log('error','ダッシュボードへ未送信: '+e.message,{account:account.label,status,itemId});}}
 async function flushOutbox(){const {outbox=[]}=await STORE.get('outbox');if(!outbox.length)return;try{await rpc('reconcile_marketplace_tracking',outbox[0].args);await STORE.set({outbox:outbox.slice(1)});}catch{}}
 function prepareAccount(a){const copy=structuredClone(a);if(copy.site==='auctions'&&copy.listUrl==='https://auctions.yahoo.co.jp/my/won'&&copy.identity)copy.identity.pageUrl=copy.listUrl;if(copy.site==='flea'&&copy.listUrl==='https://paypayfleamarket.yahoo.co.jp/my/purchase'&&copy.identity)copy.identity.pageUrl=copy.listUrl;return copy;}
 async function diagnosticReport(force=false){if((await getSettings()).openNewTabs===false)return;if(force||(await getSettings()).mode==='diagnostic')await chrome.tabs.create({url:chrome.runtime.getURL('report.html'),active:false}).catch(()=>{});}
 async function capturePage(job,a,stage){if(job.settings.mode!=='diagnostic'&&job.kind!=='purchases')return;try{const d=await content(job.tabId,'diagnostic');const {pages=[]}=await STORE.get('pages');pages.push({at:new Date().toISOString(),account:a.label,stage,...d});await STORE.set({pages:pages.slice(-60)});}catch{}}
-async function start(kind,manual=false){if(sellerBusy)throw Error('販売サイトの確認中です。完了後に操作してください');if(!['tracking','receipt','messages','purchases'].includes(kind))throw new Error('処理種別が不正です');const {job,operationPolicy}=await STORE.get(['job','operationPolicy']);if(operationPolicy&&!operationPolicy.includes(kind))throw new Error('この運用では発送・メッセージ・購入などは実行しません');if(job)throw new Error('別の巡回を実行中です');const s=await getSettings();const accounts=s.accounts.filter(a=>a.enabled).map(prepareAccount);if(!accounts.length)throw new Error('このChromeプロファイルのアカウントを登録してください');
-  if(kind==='purchases'&&s.mode==='diagnostic')throw new Error('診断モードでは仕入れリストへ追加しません');if(kind==='receipt'&&s.mode!=='full')throw new Error('受け取り評価は実画面検証と切り替え後に有効になります');
+async function start(kind,manual=false){if(sellerBusy)throw Error('販売サイトの確認中です。完了後に操作してください');if(!['tracking','messages','purchases'].includes(kind))throw new Error('処理種別が不正です');const {job,operationPolicy}=await STORE.get(['job','operationPolicy']);if(operationPolicy&&!operationPolicy.includes(kind))throw new Error('この運用では発送・メッセージ・購入などは実行しません');if(job)throw new Error('別の巡回を実行中です');const s=await getSettings();const accounts=s.accounts.filter(a=>a.enabled).map(prepareAccount);if(!accounts.length)throw new Error('このChromeプロファイルのアカウントを登録してください');
+  if(kind==='purchases'&&s.mode==='diagnostic')throw new Error('診断モードでは仕入れリストへ追加しません');if(kind==='receipt'&&s.mode!=='full')throw new Error('受け取り連絡は実画面検証と切り替え後に有効になります');
   // 診断モードにはSupabaseの読み取り照合も含むが、登録・評価送信は行わない。
   if(await rpc('is_admin')!==true)throw new Error('管理アプリとの連携を確認してください');
   const outbox=kind==='messages'?await rpc('extension_marketplace_message_queue',{p_marketplaces:[...new Set(accounts.flatMap(a=>SITES[a.site].db))]}):[];
   await STORE.set({job:{id:crypto.randomUUID(),kind,manual,day:jstDay(),accountIndex:0,stage:'list',pageUrl:accounts[0].listUrl,seenPages:[],urls:[],index:0,tabId:null,counts:{checked:0,updated:0,rated:0,imported:0,skipped:0,errors:0},settings:s,accounts,outbox}});
   if(kind==='tracking'){const {job}=await STORE.get('job');if(s.trackingPolicy==='inventory-first'){job.strategy='inventory-first';job.stage='inventory';await STORE.set({job});}await STORE.set({trackingAccess:newAccessMetrics(job)});}if(kind==='purchases'){if(s.mode==='diagnostic')throw new Error('診断モードでは仕入れリストへ追加しません');const {job}=await STORE.get('job');job.strategy='purchase-import';job.stage='purchase-context';await STORE.set({job});}
-  await log('info',kind==='tracking'?'追跡番号の巡回を開始':kind==='messages'?'取引メッセージの同期を開始':kind==='purchases'?'購入履歴の取り込みを開始':'受け取り評価の巡回を開始');return {started:true};}
+  await log('info',kind==='tracking'?'追跡番号の巡回を開始':kind==='messages'?'取引メッセージの同期を開始':kind==='purchases'?'購入履歴の取り込みを開始':'受け取り連絡の巡回を開始');return {started:true};}
 async function finish(job){if(['purchases','tracking'].includes(job.kind)){const a=job.accounts[Math.min(job.accountIndex,job.accounts.length-1)];await rpc('marketplace_purchase_lease',{p_marketplace:SITES[a.site].db[0],p_owner:job.id,p_action:'release'}).catch(()=>{});}if(job.borrowedTab)await restoreSiteTab(chrome.tabs,job.borrowedTab).catch(()=>{});else if(job.tabId)await chrome.tabs.remove(job.tabId).catch(()=>{});delete job.borrowedTab;const {lastRun={},trackingAccess,trackingAccessHistory=[]}=await STORE.get(['lastRun','trackingAccess','trackingAccessHistory']);const access=job.kind==='tracking'&&trackingAccess?.runId===job.id?{...trackingAccess,finishedAt:new Date().toISOString(),completed:true}:null;lastRun[job.kind]={day:job.day,manual:job.manual===true,at:new Date().toISOString(),counts:job.counts,...(access?{access}:{})};await STORE.set({lastRun,job:null,...(access?{trackingAccessHistory:[...trackingAccessHistory,access].slice(-40)}:{})});await log('info','巡回終了',job.counts);await diagnosticReport(true);}
 async function nextAccount(job){if(['purchases','tracking'].includes(job.kind))await rpc('marketplace_purchase_lease',{p_marketplace:SITES[job.accounts[job.accountIndex].site].db[0],p_owner:job.id,p_action:'release'}).catch(()=>{});if(job.borrowedTab)await restoreSiteTab(chrome.tabs,job.borrowedTab).catch(()=>{});else if(job.tabId)await chrome.tabs.remove(job.tabId).catch(()=>{});delete job.borrowedTab;job.tabId=null;job.accountIndex++;job.urls=[];job.index=0;job.seenPages=[];job.stage=job.strategy==='inventory-first'?'inventory':job.strategy==='purchase-import'?'purchase-context':'list';job.pageUrl=job.accounts[job.accountIndex]?.listUrl;if(job.accountIndex>=job.accounts.length){if(job.kind==='messages')for(const entry of job.outbox||[])await rpc('extension_finish_marketplace_message',{p_id:entry.id,p_status:'failed',p_note:'このChromeプロファイルの購入一覧に該当する取引が見つかりません'}).catch(()=>{});return finish(job);}await STORE.set({job});}
 function receiptArgs(a,itemId,action,token=null,details=null){return {p_action:action,p_marketplace:SITES[a.site].db[0],p_item_id:itemId,p_account_label:a.label,p_token:token,p_details:details};}
 async function recoverSend(job,a){
   const p=job.pendingReceipt;
-  if(p){await rpc('marketplace_extension_receipt',receiptArgs(a,p.itemId,'unknown',p.token,'Chrome停止等により送信結果が未確認')).catch(()=>{});await task(a,'評価結果要確認','受け取り評価','送信済みか判定できないため自動再送を停止しています',p.itemId);}
+  if(p){await rpc('marketplace_extension_receipt',receiptArgs(a,p.itemId,'unknown',p.token,'Chrome停止等により送信結果が未確認')).catch(()=>{});await task(a,'受け取り連絡結果要確認','受け取り連絡','送信済みか判定できないため自動再送を停止しています',p.itemId);}
   delete job.pendingReceipt;job.stage='detail';job.index++;job.counts.errors++;await STORE.set({job});
 }
 async function step(){if(sellerBusy)return;if(await launchPending())return;if(busy)return;busy=true;try{
   let {job}=await STORE.get('job');if(!job){await flushOutbox();return;}
   const a=prepareAccount(job.accounts[job.accountIndex]),r=job.settings.recipes[a.site]||{};
   if(job.stage==='sending'){await recoverSend(job,a);return;}
+  if(job.kind==='receipt'){await finish(job);return;}
   try{
     if(job.strategy==='purchase-import'){await purchaseImportStep(job,a,{rpc,navigate,read:content,save:async job=>STORE.set({job}),nextAccount,task,log,lease:async(job,a,action)=>rpc('marketplace_purchase_lease',{p_marketplace:SITES[a.site].db[0],p_owner:job.id,p_action:action}),dbSite:SITES[a.site].db[0],verifyAccount:async(job,a)=>{await navigate(job,a,a.identity.pageUrl||a.listUrl);const x=await content(job.tabId,'identity',{account:a});if(x.auth)throw new Error(x.auth);if(x.confirmed!==true)throw new Error('名前不一致: 登録名を確認できません');}});return;}if(job.strategy==='inventory-first'){if(await rpc('marketplace_purchase_lease',{p_marketplace:SITES[a.site].db[0],p_owner:job.id,p_action:'acquire'})!==true)return;await inventoryFirstStep(job,a,{rpc,navigate,read:content,save:async job=>STORE.set({job}),nextAccount,log,verifyAccount:async(job,a)=>{await navigate(job,a,a.identity.pageUrl||a.listUrl);const x=await content(job.tabId,'identity',{account:a});if(x.auth)throw new Error(x.auth);if(x.confirmed!==true)throw new Error('名前不一致: 登録名を確認できません');},dbSite:SITES[a.site].db[0]});return;}
     if(job.stage==='list'){
@@ -164,23 +165,8 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
     if(tx.role!=='buyer'||tx.state!=='pending'){job.counts.skipped++;if(tx.state!=='completed'&&(tx.role==='unknown'||tx.state==='unknown')){await log('error','購入者・取引状態を判定できません',{account:a.label,itemId:tx.itemId});if(job.settings.mode!=='diagnostic')await task(a,'画面確認待ち',job.kind,'購入者側の未完了取引か判断できません',tx.itemId);}job.index++;await STORE.set({job});return;}
     const match=await rpc('marketplace_extension_probe',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});
     if(job.kind==='tracking'){
-      if(job.settings.mode==='diagnostic'||!trackingEnabled(r)){if(job.settings.mode!=='diagnostic'&&!trackingEnabled(r))await task(a,'画面確認待ち','追跡番号','追跡画面の実地確認が未完了のため登録を保留しています',tx.itemId);await log('info','診断: 更新せず照合',{account:a.label,itemId:tx.itemId,count:match.count,trackingNo:tx.trackingNo,sku:match.items.map(x=>x.sku),inventoryStatus:match.items.map(x=>({sku:x.sku,inspected:!!x.inspected_at,cleaned:!!x.cleaned_at,trackingPresent:!!x.tracking_no})),eligibleForReceipt:eligible(match.items,tx).ok});}
+      if(job.settings.mode==='diagnostic'||!trackingEnabled(r)){if(job.settings.mode!=='diagnostic'&&!trackingEnabled(r))await task(a,'画面確認待ち','追跡番号','追跡画面の実地確認が未完了のため登録を保留しています',tx.itemId);await log('info','診断: 更新せず照合',{account:a.label,itemId:tx.itemId,count:match.count,trackingNo:tx.trackingNo,sku:match.items.map(x=>x.sku),inventoryStatus:match.items.map(x=>({sku:x.sku,inspected:!!x.inspected_at,trackingPresent:!!x.tracking_no})),eligibleForReceipt:eligible(match.items,tx).ok});}
       else{const result=await rpc('reconcile_marketplace_tracking',{p_marketplace:SITES[a.site].db[0],p_account_label:a.label,p_marketplace_item_id:tx.itemId,p_site_tracking_no:tx.trackingAmbiguous?null:tx.trackingNo,p_confirmation_status:null,p_details:'Chrome拡張機能; 購入者側・未完了確認済み'+(tx.trackingAmbiguous?'; サイトに複数の追跡番号があり要確認':'')});if(result.result==='updated')job.counts.updated++;await log('info',result.status||result.result,{account:a.label,itemId:tx.itemId,sku:result.sku});}
-    }else{
-      const check=eligible(match.items,tx);if(!check.ok){job.counts.skipped++;await log('info',check.reason,{account:a.label,itemId:tx.itemId});if(match.count!==1)await task(a,'評価処理保留','受け取り評価',check.reason,tx.itemId);}
-      else{
-        await content(job.tabId,'preflight',{account:a,recipe:r,itemId:tx.itemId});
-        const reserved=await rpc('marketplace_extension_receipt',receiptArgs(a,tx.itemId,'reserve'));if(!reserved.eligible){job.counts.skipped++;await log('info',reserved.reason,{account:a.label,itemId:tx.itemId});}
-        else{
-          job.pendingReceipt={itemId:tx.itemId,token:reserved.token};job.stage='sending';await STORE.set({job});
-          await rpc('marketplace_extension_receipt',receiptArgs(a,tx.itemId,'begin',reserved.token));
-          await content(job.tabId,'submit',{account:a,recipe:r,itemId:tx.itemId});
-          await loaded(job.tabId,a.site);await wait(1200);
-          const result=await content(job.tabId,'success',{account:a,recipe:r,itemId:tx.itemId});
-          if(result.auth||!result.success)throw new Error('評価送信後の完了表示が確認できません');
-          await rpc('marketplace_extension_receipt',receiptArgs(a,tx.itemId,'complete',reserved.token,'サイトの完了表示を確認'));job.counts.rated++;delete job.pendingReceipt;job.stage='detail';await log('info','受け取り評価を完了',{account:a.label,itemId:tx.itemId,sku:check.sku});
-        }
-      }
     }
     job.index++;await STORE.set({job});
   }catch(e){
@@ -211,7 +197,7 @@ async function dueOnce(onlyPurchases=false){if(!await recoverConnection())return
     if(sites.length&& (await rpc('extension_marketplace_message_queue',{p_marketplaces:sites})).length){await start('messages');return;}
   }catch(e){await log('error','メッセージ送信依頼の確認: '+e.message);}
   if(s.mode==='diagnostic')return;
-  for(const [kind,hour] of [...(s.purchaseImportEnabled?[['purchases',s.trackingHour]]:[]),['tracking',s.trackingHour],['receipt',s.receiptHour]]){if(onlyPurchases&&kind!=='purchases')continue;if(kind==='receipt'&&s.mode!=='full')continue;if(scheduleDue(kind,hour,records)){await start(kind);const {scheduledRuns={}}=await STORE.get('scheduledRuns');scheduledRuns[kind]={day:jstDay(),startedAt:new Date().toISOString()};await STORE.set({scheduledRuns});break;}}
+  for(const [kind,hour] of [...(s.purchaseImportEnabled?[['purchases',s.trackingHour]]:[]),['tracking',s.trackingHour]]){if(onlyPurchases&&kind!=='purchases')continue;if(kind==='receipt'&&s.mode!=='full')continue;if(scheduleDue(kind,hour,records)){await start(kind);const {scheduledRuns={}}=await STORE.get('scheduledRuns');scheduledRuns[kind]={day:jstDay(),startedAt:new Date().toISOString()};await STORE.set({scheduledRuns});break;}}
 }
 async function uiMessage(m){
   if(m.type==='saleStatus'){

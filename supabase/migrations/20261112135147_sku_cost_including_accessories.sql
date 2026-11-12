@@ -6,8 +6,8 @@ declare family text; body_cost bigint; accessory_cost bigint;normalized text;per
 begin
  if p_item.sku !~ '^[0-9]+[a-z]*-[A-Z]{2,4}-[0-9]{8}-[0-9]+$' then return p_item.sku;end if;
  if p_item.is_accessory then
-  return regexp_replace(p_item.sku,'-[0-9]+$','-'||(p_item.cost_amount/10)::text);
- end if;
+  normalized:=regexp_replace(p_item.sku,'-[0-9]+$','-'||(p_item.cost_amount/10)::text);
+ else
  family:=app.financial_product_serial(p_item.sku,p_item.lot_seq);
  -- Include NEW and exclude its persisted version, so inserts and cost edits
  -- use the exact same origin ordering as v_financial_families.
@@ -23,13 +23,16 @@ begin
  select coalesce(sum(a.cost_amount),0)::bigint into accessory_cost from app.items a
  where a.is_accessory and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
   and app.financial_product_serial(a.sku,a.lot_seq)=family;
- normalized:=regexp_replace(p_item.sku,'-[0-9]+$','-'||((body_cost+accessory_cost)/10)::text);
+  normalized:=regexp_replace(p_item.sku,'-[0-9]+$','-'||((body_cost+accessory_cost)/10)::text);
+ end if;
  -- Legacy bodies and accessories sometimes share the entire SKU prefix.
  -- A reserved historical/live SKU must never switch to another item ID.
  select i.sku into persisted_sku from app.items i where i.id=p_item.id;
  if persisted_sku is not null and regexp_replace(persisted_sku,'-[0-9]+$','')=regexp_replace(normalized,'-[0-9]+$','')
   and (exists(select 1 from app.items i where i.sku=normalized and i.id<>p_item.id)
-   or exists(select 1 from app.item_sku_aliases a where a.sku=normalized and a.item_id<>p_item.id)) then
+   or exists(select 1 from app.item_sku_aliases a where a.sku=normalized and a.item_id<>p_item.id)
+   or exists(select 1 from app.seller_operations o where o.item_id=p_item.id
+     and o.status in ('queued','running','uncertain'))) then
   return persisted_sku;
  end if;
  return normalized;
@@ -137,14 +140,78 @@ revoke all on function app.refresh_family_sku_costs() from public,anon,authentic
 create trigger zz_items_refresh_family_sku_costs after insert or update or delete
  on app.items for each row execute function app.refresh_family_sku_costs();
 
+-- FBA plans and stock reports retain the SKU captured from Amazon.
+create function app.inventory_sku_matches(item_id uuid, current_sku text, reference_sku text)
+returns boolean language sql stable security invoker set search_path='' as $$
+  select current_sku=reference_sku or exists(
+    select 1 from app.item_sku_aliases a
+    where a.item_id=inventory_sku_matches.item_id and a.sku=reference_sku
+  );
+$$;
+revoke all on function app.inventory_sku_matches(uuid,text,text) from public,anon;
+grant execute on function app.inventory_sku_matches(uuid,text,text) to authenticated,service_role;
+
+do $fba$
+declare
+  source text;
+  patched text;
+  target regprocedure;
+  anchor text;
+begin
+ for target,anchor in select * from (values
+  ('app.publish_fba_inbound_items(uuid,uuid[])'::regprocedure, 'i.sku=f.sku'),
+  ('app.record_fba_completion_dispatch_date()'::regprocedure, 'i.sku = f.sku'),
+  ('workload_private.delivery_fba_confirmed(uuid)'::regprocedure, 'f.sku = i.sku')
+ ) as guards(fn, expression) loop
+  source:=pg_get_functiondef(target);
+  patched:=replace(source,anchor,'app.inventory_sku_matches(i.id,i.sku,f.sku)');
+  if source=patched then raise exception 'FBA SKU guard changed: %',target;end if;
+  execute patched;
+ end loop;
+
+ source:=pg_get_viewdef('workload_private.fba_stock_evidence'::regclass,true);
+ patched:=replace(source,'item.item_id, item.sku, plan.account','item.item_id, inventory.sku AS sku, plan.account');
+ patched:=replace(patched,'GROUP BY item.item_id, inventory.sku AS sku, plan.account','GROUP BY item.item_id, inventory.sku, plan.account');
+ patched:=replace(patched,'FROM app.fba_inbound_items item','FROM app.fba_inbound_items item
+  JOIN app.items inventory ON inventory.id=item.item_id
+   AND app.inventory_sku_matches(inventory.id,inventory.sku,item.sku)');
+ if source=patched or position('inventory.sku AS sku' in patched)=0 or position('JOIN app.items inventory' in patched)=0 then
+  raise exception 'FBA stock evidence SKU anchor changed';
+ end if;
+ execute 'create or replace view workload_private.fba_stock_evidence with (security_barrier=true) as '||patched;
+
+ source:=pg_get_functiondef('app.create_fba_inbound_draft(uuid,uuid[])'::regprocedure);
+ patched:=replace(source,'values(v_plan,v_item.id,v_item.sku,btrim(v_item.asin::text)',
+ $sku$values(v_plan,v_item.id,coalesce(
+   (select s.sku from app.amazon_listing_submissions s
+    where s.item_id=v_item.id and s.asin=btrim(v_item.asin::text) and s.item_condition=v_item.condition::text
+     and s.account_id=case when v_account='FBA2' then 'amazon-2' else 'amazon-1' end
+     and s.sales_channel::text in (v_account,case when v_account='FBA1' then 'FBA' else v_account end)
+     and (s.state='verified' or (s.state='accepted' and s.submission_id is not null))
+     and app.inventory_sku_matches(v_item.id,v_item.sku,s.sku)
+    order by s.created_at desc,s.request_id limit 1),
+   (select prior.sku from app.fba_inbound_items prior join app.fba_inbound_plans previous on previous.id=prior.plan_id
+    where prior.item_id=v_item.id and previous.account=v_account and previous.amazon_id is not null
+     and prior.asin=btrim(v_item.asin::text) and prior.condition=v_item.condition::text
+     and app.inventory_sku_matches(v_item.id,v_item.sku,prior.sku)
+    order by previous.created_at desc,previous.id limit 1),
+   v_item.sku),btrim(v_item.asin::text)$sku$);
+ if source=patched then raise exception 'FBA draft SKU snapshot anchor changed';end if;
+ execute patched;
+end $fba$;
+
 -- Existing records follow the same rule. The normal alias/audit triggers keep
 -- all old SKUs resolvable; no prices, costs, state, or external listings change.
 do $backfill$
 declare before_hash text;after_hash text;
 begin
  select md5(string_agg((to_jsonb(i)-'sku'-'updated_at')::text,'|' order by i.id)) into before_hash from app.items i;
- update app.items i set sku=app.sku_with_total_cost(i)
- where i.sku is distinct from app.sku_with_total_cost(i);
+ with proposed as materialized (
+  select i.id, i.sku, app.sku_with_total_cost(i) as target from app.items i
+ ), unambiguous as (
+  select id,target,count(*) over(partition by target) as target_count from proposed where sku is distinct from target
+ )
+ update app.items i set sku=p.target from unambiguous p where i.id=p.id and p.target_count=1;
  select md5(string_agg((to_jsonb(i)-'sku'-'updated_at')::text,'|' order by i.id)) into after_hash from app.items i;
  if before_hash is distinct from after_hash then
   raise exception 'SKU補正で他の在庫情報が変更されたため処理を取り消しました';end if;

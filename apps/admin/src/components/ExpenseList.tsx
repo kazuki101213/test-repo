@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
 import { deleteExpenses, fetchExpenses, fetchExpenseDrafts, updateExpenseField, type ExpenseField } from '../api';
 import type { ExpenseInput, ExpenseDraft } from '../expenses';
-import { expenseCategoryLabel } from '../expenses';
+import { expenseCategories, expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
+import AskulExpenseImport from './AskulExpenseImport';
 import './ExpenseSelection.css';
 
-const columns = ['固定費', '変動費', '外注費'] as const;
+type ExpenseCategory = typeof expenseCategories[number];
+const compactExpenseLayout = 'screen and (max-width: 1023px)';
 const displayCategory = (row: ExpenseInput) => row.category === '固定費' ? '固定費' : row.category === '給与' || row.category === '外注費' ? '外注費' : '変動費';
 
 export function ExpenseTable({ rows }: { rows: ExpenseInput[] }) {
@@ -25,12 +27,25 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const [loading, setLoading] = useState(true);
   const [expenseBusy, setExpenseBusy] = useState(false);
   const [savedRevision, setSavedRevision] = useState(0);
+  const [compact, setCompact] = useState(() => window.matchMedia(compactExpenseLayout).matches);
+  const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | ''>('');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [deletion, setDeletion] = useState<{ rows: ExpenseInput[]; requestId: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [message, setMessage] = useState('');
+  const [askulImportOpen, setAskulImportOpen] = useState(false);
+  const [askulResult, setAskulResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  useEffect(() => {
+    const screen = window.matchMedia(compactExpenseLayout);
+    const update = (event: MediaQueryListEvent) => {
+      setCompact(event.matches);
+      setSelected(new Set());
+    };
+    screen.addEventListener('change', update);
+    return () => screen.removeEventListener('change', update);
+  }, []);
   const deleteLock = useRef(false);
   async function removeSelected() {
     if (!deletion || deleteLock.current) return;
@@ -62,18 +77,30 @@ export default function ExpenseList({ revision }: { revision: number }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [revision, savedRevision]);
-  const filtered = rows.filter(row => !query.trim() || row.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const visibleCategories = compact && categoryFilter ? [categoryFilter] : expenseCategories;
+  const search = query.trim().toLowerCase();
+  const matchesSearch = (name: string) => name.toLowerCase().includes(search);
+  const filtered = rows.filter(row => visibleCategories.includes(displayCategory(row)) && matchesSearch(row.name));
   const pending = drafts.filter(d => !rows.some(row => row.id === d.id || (expenseCategoryLabel(row.category) === d.category && row.incurred_on.slice(0, 7) === d.target_month.slice(0, 7) && row.name === d.name))
-    && (!query.trim() || d.name.toLowerCase().includes(query.trim().toLowerCase())));
+    && matchesSearch(d.name));
   return <div className="dashboard-workspace with-expense registration-workspace">
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費">
     <div className="toolbar expense-search-toolbar">
+      <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => { setAskulResult(null); setAskulImportOpen(true); }}>アスクルCSV取り込み</button>
+      {compact && <select aria-label="経費区分で絞り込む" value={categoryFilter} disabled={!!deletion} onChange={e => {
+        setCategoryFilter(e.currentTarget.value as ExpenseCategory | '');
+        setSelected(new Set());
+      }}>
+        <option value="">すべて</option>
+        {expenseCategories.map(category => <option key={category} value={category}>{category}</option>)}
+      </select>}
       <input aria-label="経費を検索" placeholder="検索" type="search" value={query} disabled={!!deletion} onChange={e => { setQuery(e.target.value); setSelected(new Set()); }} />
       <button type="button" className="btn" disabled={loading || expenseBusy || !!deletion || !selected.size} onClick={() => { setDeleteError(''); setMessage(''); setDeletion({ rows: filtered.filter(row => selected.has(row.id)).map(row => ({...row})), requestId: crypto.randomUUID() }); }}>削除</button>
     </div>
     {message && <p className="ok" role="status">{message}</p>}
+    {askulResult && <p className="ok" role="status" data-askul-inserted={askulResult.inserted} data-askul-skipped={askulResult.skipped}>アスクルCSVから{askulResult.inserted}件を登録しました。登録済み{askulResult.skipped}件。</p>}
     {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
-      <div className="expense-columns-scroll"><div className="expense-columns">{columns.map(category => {
+      <div className="expense-columns-scroll"><div className="expense-columns">{visibleCategories.map(category => {
         const entries = filtered.filter(row => displayCategory(row) === category);
         const categoryDrafts = pending.filter(row => row.category === category);
         const months = [...new Set([...entries.map(row => row.incurred_on.slice(0, 7)), ...categoryDrafts.map(row => row.target_month.slice(0, 7))])].sort().reverse();
@@ -100,6 +127,13 @@ export default function ExpenseList({ revision }: { revision: number }) {
     {error && <div className="error" role="alert">{error}</div>}
     <div className="toolbar"><button className="btn primary" disabled={expenseBusy} onClick={() => void saveField()}>保存</button><button className="btn" disabled={expenseBusy} onClick={() => setFieldEdit(null)}>閉じる</button></div>
   </div></div>}
+  {askulImportOpen && <AskulExpenseImport onClose={() => setAskulImportOpen(false)} onSaved={({ inserted, skipped }) => {
+    setAskulImportOpen(false);
+    setQuery('');
+    setCategoryFilter('');
+    setAskulResult({ inserted, skipped });
+    setSavedRevision(value => value + 1);
+  }} />}
   {deletion && <ExpenseDeleteConfirmation rows={deletion.rows} busy={deleting} error={deleteError} onDelete={() => void removeSelected()} onClose={() => { if (!deleteLock.current) setDeletion(null); }} />}
   </div>;
 }

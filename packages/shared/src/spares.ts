@@ -38,6 +38,8 @@ export interface SpareAccessory {
   asin: string | null;
   cost_amount: number;
   marketplace: string | null;
+  purchase_account_id?: string | null;
+  purchase_account_label?: string | null;
   marketplace_item_id: string | null;
   tracking_no: string | null;
   usage_note: string | null;

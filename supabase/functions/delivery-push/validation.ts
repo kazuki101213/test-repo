@@ -14,13 +14,30 @@ export function validSubscription(value: unknown): value is { endpoint: string; 
   } catch { return false; }
 }
 
+const deliveryHosts = ['https://test-repo-delivery.vercel.app/', 'https://bussan-delivery.vercel.app/'];
+
 export const appBaseUrls: Record<'admin' | 'delivery', readonly string[]> = {
-  admin: ['https://bussan-admin.vercel.app/', 'https://test-repo-delivery.vercel.app/', 'https://kazuki101213.github.io/test-repo/admin/', 'http://localhost:5173/'],
-  delivery: ['https://test-repo-delivery.vercel.app/', 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/'],
+  admin: ['https://bussan-admin.vercel.app/', ...deliveryHosts, 'https://kazuki101213.github.io/test-repo/admin/', 'http://localhost:5173/'],
+  delivery: [...deliveryHosts, 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/'],
 };
 
-export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string }) {
-  if (row.app_kind === 'delivery') return { body: notificationBody(row.kind, row.lot_seq), itemId: row.item_id, tag: `delivery-${row.item_id}-${row.kind}` };
+export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; delivery_id?: string; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string; listing_request_title?: string | null; reply_task_kind?: string }) {
+  if (row.app_kind === 'delivery') {
+    const isMessage = row.kind === 'reply' || row.kind === 'malfunction_return';
+    const tag = isMessage && row.delivery_id ? `delivery-message-${row.delivery_id}` : `delivery-${row.item_id}-${row.kind}`;
+    const body = row.kind === 'reply' && row.reply_task_kind === '仕入先確認'
+      ? `【${row.lot_seq}】仕入先確認のメッセージが届きました。`
+      : notificationBody(row.kind, row.lot_seq, row.listing_request_title);
+    return { body, itemId: row.item_id, tag };
+  }
+  if (row.kind === 'malfunction_message') {
+    return {
+      body: `【${row.lot_seq}】動作不良への返信があります。`,
+      kind: 'malfunction',
+      itemId: row.item_id,
+      tag: `admin-malfunction-message-${row.task_id || row.item_id}`,
+    };
+  }
   const docs = ['invoice','receipts'].includes(row.kind);
   const body = row.kind === 'malfunction' ? `【${row.lot_seq}】動作不良の報告が届きました。`
     : row.kind === 'packing_photo' ? `【${row.lot_seq}】梱包が追加されました。`
@@ -31,11 +48,11 @@ export function notificationPayload(row: { app_kind: string; kind: string; lot_s
     tag: docs ? `admin-docs-${row.invoice_staff_id}-${row.billing_month}` : `admin-${row.task_id || row.item_id}-${row.kind}` };
 }
 
-export function notificationBody(kind: string, lot: number): string {
+export function notificationBody(kind: string, lot: number, listingRequestTitle?: string | null): string {
   if (kind === 'shipping') return `【${lot}】発送お願いします。`;
   if (kind === 'photo_return') return `【${lot}】商品写真の修正お願いします。`;
   if (kind === 'malfunction_return') return `【${lot}】動作不良への返信があります。`;
   if (kind === 'reply') return `【${lot}】動作不良への返信があります。`;
-  if (kind === 'photo') return `【${lot}】出品お願いします。`;
+  if (kind === 'photo') return `【${lot}】${listingRequestTitle || '出品お願いします。'}`;
   return `【${lot}】新しい担当商品が追加されました。`;
 }

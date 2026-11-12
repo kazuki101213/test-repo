@@ -1,9 +1,9 @@
 import { staffDisplayName } from '@bussan/shared';
 import { useEffect, useState } from 'react';
 import { yen } from '@bussan/shared';
-import type { DelivererWorkload, MonthlySummary, StockSummary } from '@bussan/shared';
+import type { MonthlySummary, StockSummary } from '@bussan/shared';
 import type { Staff } from '@bussan/shared';
-import { fetchMonthly, fetchStockSummary, fetchWorkload, type WorkloadMetric } from '../api';
+import { fetchMonthly, fetchStockSummary, fetchWorkload, workloadMetrics, type DelivererWorkload, type WorkloadMetric } from '../api';
 import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
@@ -13,7 +13,7 @@ import MalfunctionTasks from '../components/MalfunctionTasks';
 import SpareShippingTasks from '../components/SpareShippingTasks';
 import PushSettings from '../components/PushSettings';
 
-const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス']);
+const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス', '石川秀樹']);
 
 function Kpi({ label, value, tone, detail, count, className }: { label: string; value: string; tone?: 'pos' | 'neg'; detail?: string; count?: number; className?: string }) {
   return (
@@ -92,25 +92,28 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
         <div className="card workload-card">
           <h3>納品担当者の稼働</h3>
           {visibleWorkload.length === 0 && <p className="empty">データがありません。</p>}
-          <div className="scroll"><table>
+          <div className="scroll workload-table" tabIndex={0} role="region" aria-label="納品担当者別の在庫"><table>
             <thead>
               <tr>
-                <th>担当者</th><th className="num">作業在庫</th><th className="num">保有在庫</th>
-                <th className="num">平均作業日数</th>
+                <th scope="col">納品担当者</th>
+                {workloadMetrics.map(metric => <th scope="col" className="num" key={metric.key}>{metric.label}</th>)}
               </tr>
             </thead>
             <tbody>
               {visibleWorkload.map((w) => (
                 <tr key={w.deliverer_id}>
-                  <td>
+                  <th scope="row">
                     {staffDisplayName(w.deliverer_name)}
-                  </td>
-                  {(['作業在庫', '保有在庫', '平均作業日数'] as const).map(metric => <td className="num" key={metric}>
-                    <button className="metric-link" aria-label={`${staffDisplayName(w.deliverer_name)} ${metric}の詳細`} onClick={() => setWorkloadDetail({ delivererId: w.deliverer_id, name: staffDisplayName(w.deliverer_name), metric })}>{w[metric] ?? '—'}</button>
+                  </th>
+                  {workloadMetrics.map(metric => <td className={`num${metric.key === 'on_hand' || metric.key === 'listed_on_hand' ? ' workload-emphasis' : ''}`} key={metric.key}>
+                    {w[metric.key] > 0 ? <button className="metric-link" aria-label={`${staffDisplayName(w.deliverer_name)} ${metric.label} ${w[metric.key]}点の詳細`} onClick={() => setWorkloadDetail({ delivererId: w.deliverer_id, name: staffDisplayName(w.deliverer_name), metric })}>{w[metric.key]}</button> : '0'}
                   </td>)}
                 </tr>
               ))}
             </tbody>
+            {visibleWorkload.length > 0 && <tfoot><tr><th scope="row">合計</th>
+              {workloadMetrics.map(metric => <td className="num" key={metric.key}>{visibleWorkload.reduce((sum, row) => sum + row[metric.key], 0)}</td>)}
+            </tr></tfoot>}
           </table></div>
         </div>
       </div>

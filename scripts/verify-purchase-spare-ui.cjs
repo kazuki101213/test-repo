@@ -4,8 +4,13 @@ const names={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNa
 const skus={exports:{}};vm.runInNewContext(compile('packages/shared/src/sku.ts'),skus);
 const codes=['AA','DD','EE','HH','II','KK','LL','MM'];
 const staff=[...codes,'FF','GG','JJ','NN'].reverse().map(code=>({id:code,code,name:code==='AA'?'長部一輝':code,role:code==='AA'?'admin':'deliverer',is_active:code!=='NN'}));
-assert.deepEqual(Array.from(names.exports.deliveryStaffOptions(staff),s=>s.code),codes);
+staff.push({id:'OO',code:'OO',name:'石嶋俊紀',role:'admin',is_active:true});
+const assigneeCodes=['DD','HH','II','LL','MM'];
+assert.deepEqual(Array.from(names.exports.deliveryStaffOptions(staff),s=>s.code),[...codes,'OO']);
+assert.deepEqual(Array.from(names.exports.deliveryStaffOptions(staff,'assignee'),s=>s.code),assigneeCodes);
 assert.equal(names.exports.staffDisplayName({name:'old',code:'AA',display_name:'old'}),'AA 長部 一輝');
+assert.equal(names.exports.staffDisplayName({name:'石川秀樹',code:'EE',display_name:'EE 石川 秀櫢'}),'EE 石川 秀樹');
+assert.equal(names.exports.staffDisplayName('石川 秀櫢'),'EE 石川 秀樹');
 const spare={id:'spare',title:'リモコン',cost_amount:1230,purchased_at:'2026-09-01',marketplace:'ヤフオク',marketplace_item_id:'spare-id',tracking_no:'spare-track',owner_staff_id:'AA'};
 let cursor=0, dirty=true, tree, pending=[], saved, selectedDraft;const hooks=[];
 const react={
@@ -15,7 +20,8 @@ const react={
  useEffect(fn,deps){const i=cursor++,old=hooks[i];if(!old||deps.some((v,j)=>v!==old.deps[j])){old?.cleanup?.();const h=hooks[i]={deps};pending.push(()=>{h.cleanup=fn();});}},
 };
 const jsx=(type,props)=>({type,props});
-const shared={...names.exports,...skus.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他','Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
+const shared={...require('./marketplace-account-modules.cjs'),...names.exports,...skus.exports,CONDITIONS:['非常に良い'],MARKETPLACES:['メルカリ','ヤフオク','その他','Amazon返品','動作品Amazon返品'],SALES_CHANNELS:['FBA'],WORK_STREAMS:['ブルーレイ','付属品'],yen:v=>String(v),fetchSpareAccessories:async()=>currentSpares};
+const channels={exports:{}};vm.runInNewContext(compile('packages/shared/src/salesChannels.ts'),channels);Object.assign(shared,channels.exports);
 let currentSpares=[spare];
 const api={fetchStaff:async()=>staff,fetchCards:async()=>[{id:'amex',name:'アメックスカード'}],nextLotSeq:async()=>5000,fetchProducts:async()=>[],createItem:async(payload,id)=>{saved={payload,id};return{id:'created',sku:'body-sku',accessory_sku:'accessory-sku'};}};
 const context={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../purchaseUrl'?{buildPurchaseUrl:()=>null,parsePurchaseUrl:()=>null}:{default:'select'},setTimeout:fn=>{fn();return 1;},clearTimeout(){},Date,URL,window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
@@ -30,7 +36,7 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
  for(const [label,value] of [['納品担当者','DD'],['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）','43210'],['商品ID','body-id'],['追跡番号','body-track'],['作業ライン','ブルーレイ']]){field(label).props.onChange({target:{value}});await settle();}
  all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
  for(const [label,value] of [['納品担当者','DD'],['型番','本体型番'],['ASIN','B000000001'],['仕入金額（円）',43210],['商品ID','body-id'],['追跡番号','body-track']])assert.equal(field(label).props.value,value,label+' must stay unchanged');
- assert.deepEqual(all(field('納品担当者')).filter(n=>n.type==='option'&&n.props.value).map(n=>n.props.value),codes);
+ assert.deepEqual(all(field('納品担当者')).filter(n=>n.type==='option'&&n.props.value).map(n=>n.props.value),assigneeCodes);
  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
  assert(saved);assert.equal(saved.id,'spare');assert.equal(saved.payload.title,'本体型番');assert.equal(saved.payload.cost_amount,43210);assert.equal(saved.payload.is_accessory,false);
  // A reserve allocated in another screen is rejected before registration, without clearing body inputs.
@@ -78,7 +84,7 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
   parents=[{id:'original',lot_seq:1894,sku:'1894-EEKK-20260701-1540'},{id:'return-a',lot_seq:1894,sku:'1894a-AAEE-20260927-0'},{id:'return-aa',lot_seq:1894,sku:'1894aa-AAII-20260921-0'}];
   await realApi.exports.createItem(saved.payload,'spare');assert.match(requests.at(-1).p_item.sku,/^1894aa-/);
  }
- console.log('Main form preserved; atomic spare save retains 1894aa; exact eight ordered assignee options passed');
+ console.log('Main form preserved; atomic spare save retains 1894aa; five eligible delivery assignees passed');
  // The requested location is the inventory registration form footer.
  for(const imported of [false,true]){
   hooks.splice(0);cursor=0;pending=[];dirty=true;currentSpares=[];saved=undefined;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 
 import type { Staff, InvoiceReceipt } from '@bussan/shared';
 import { staffDisplayName, deliveryStaffOptions, invoiceReceiptDetails, downloadInvoicePdf } from '@bussan/shared';
@@ -19,6 +19,7 @@ import '../invoice.css';
 
 const errorText = (e: unknown) => e instanceof Error ? e.message : (e as { message?: string })?.message ?? '読み込みに失敗しました。';
 const defaultAuctionDays = (month: string) => {
+  if (month === '2026-11') return ['02', '05', '07', '09', '12', '14', '16', '19', '21', '23', '26', '28', '30'].map(day => `${month}-${day}`);
   const [year, monthNumber] = month.split('-').map(Number);
   if (!year || !monthNumber) return [] as string[];
   const days = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
@@ -26,7 +27,8 @@ const defaultAuctionDays = (month: string) => {
     .filter(day => [1, 3, 5].includes(new Date(Date.UTC(year, monthNumber - 1, day)).getUTCDay()))
     .map(day => `${month}-${String(day).padStart(2, '0')}`);
 };
-const auctionWorkdayLine = (date: string): InvoiceLine => ({ date, description: 'ヤフオク入札作業日', quantity: 1, unit_price: 4500 });
+const auctionWorkdayLine = (date: string): InvoiceLine => ({ date, description: 'ヤフオク入札作業日', quantity: 1, unit_price: 2500 });
+const workdaysPerRow = 8;
 
 function ProfileEditor({ profile, onSave }: { profile: InvoiceProfile; onSave: (p: InvoiceProfile) => void }) {
   const [draft, setDraft] = useState(profile);
@@ -58,12 +60,12 @@ export interface InvoiceReviewState {
 }
 export interface InvoiceReviewContext {
   staffId: string; month: string; receiptVersion: number | null;
-  onStateChange: (state: InvoiceReviewState) => void; onSaved?: () => void; pdfButtonRef?: RefObject<HTMLButtonElement>;
+  onStateChange: (state: InvoiceReviewState) => void; onSaved?: () => void; pdfButtonRef?: RefObject<HTMLButtonElement>; toolbarActions?: ReactNode;
 }
-export default function Invoices({ staff, onNavigationChange, review }: { staff: Staff; onNavigationChange: (state: 'busy' | 'dirty' | null) => void; review?: InvoiceReviewContext }) {
+export default function Invoices({ staff, onNavigationChange, review, initialMonth }: { staff: Staff; onNavigationChange: (state: 'busy' | 'dirty' | null) => void; review?: InvoiceReviewContext; initialMonth?: string }) {
   const [profiles, setProfiles] = useState<InvoiceProfile[]>([]);
   const [staffId, setStaffId] = useState(review?.staffId ?? staff.id);
-  const [month, setMonth] = useState(review?.month ?? japanToday().slice(0, 7));
+  const [month, setMonth] = useState(review?.month ?? initialMonth ?? japanToday().slice(0, 7));
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [snapshot, setSnapshot] = useState<InvoiceSnapshot | null>(null);
   const [extras, setExtras] = useState<InvoiceLine[]>([]);
@@ -92,6 +94,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       pdfReady:!!snapshot && !loading && !profileLoading && !receiptBusy && !settings,
       ready:!!invoice && !!snapshot && !loading && !profileLoading && !receiptBusy && !error && !settings});
   }, [invoice,receiptVersion,busy,receiptSaving,pdfBusy,dirty,snapshot,loading,profileLoading,receiptBusy,error,settings,review?.onStateChange]);
+  const reviewPage = (label: string) => (page: ReactNode, index: number) => <section className="invoice-review-page" aria-label={`${label} ${index + 1}ページ`} key={`${label}-${index}`}><h3>{label}</h3><DocumentPreview>{page}</DocumentPreview></section>;
   const profile = profiles.find(p => p.staff_id === staffId);
   const isIshikawa = profile?.details.issuer_name === '石川秀樹';
 
@@ -157,6 +160,8 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
     setWorkdays(rows => [...rows, auctionWorkdayLine(newWorkday)].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))); setNewWorkday(''); setDirty(true); setMessage('');
   };
   const editableExtras: InvoiceLine[] = [...extras, ...workdays];
+  const workdayRows = Array.from({ length: Math.ceil(workdays.length / workdaysPerRow) }, (_, row) =>
+    workdays.slice(row * workdaysPerRow, (row + 1) * workdaysPerRow));
   const auctionBasePay = workdays.reduce((sum, row) => sum + (Number.isFinite(row.unit_price) ? row.quantity * row.unit_price : 0), 0);
   const auctionProfitPay = Math.floor(Math.max(grossProfit ?? 0, 0) * 0.1);
   const auctionAdjustment = Math.max(0, auctionProfitPay - auctionBasePay);
@@ -202,8 +207,9 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
         <label>作成日<DateInput form="invoice-submit-form" required value={issued} disabled={busy || receiptBusy || pdfBusy || loading || settings || !!invoice?.approved_at} onChange={e => { setIssued(e.target.value); setDirty(true); }} /></label>
         {!review && profile && <button type="button" className="btn invoice-settings-button" disabled={busy || receiptBusy || pdfBusy || loading} onClick={() => { if (leave()) setSettings(s => !s); }}>設定変更</button>}
         <div className="invoice-toolbar-actions">
-        {snapshot && <button ref={review?.pdfButtonRef} type="button" className="btn invoice-pdf-button" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>請求書PDF保存</button>}
+        {snapshot && <button ref={review?.pdfButtonRef} type="button" className="btn invoice-pdf-button" disabled={busy || receiptBusy || pdfBusy || settings} onClick={() => void printDocument()}>{review ? 'PDF保存' : '請求書PDF保存'}</button>}
         {snapshot && !invoice?.approved_at && <button type="submit" form="invoice-submit-form" className="btn primary invoice-send-button" disabled={busy || receiptBusy || pdfBusy || loading || settings || (isIshikawa && grossProfitLoading) || (!snapshot.lines.length && !editableExtras.length && !claimedReceipts.length)}>{review ? '保存' : '請求書送信'}</button>}
+        {review?.toolbarActions}
         </div>
       </div></div>
       {!loading && !profileLoading && !profile && <p>請求書の設定がありません。管理者に設定の登録を依頼してください。</p>}
@@ -219,9 +225,21 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
       <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save(); }}>
         {isIshikawa && <section className="invoice-auction-workdays">
-          <h3>ヤフオク入札作業日</h3>
+          <h3>ヤフオク入札作業</h3>
           <div className="invoice-auction-add"><DateInput aria-label="作業日を追加" min={`${month}-01`} max={`${month}-${String(new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5,7)), 0)).getUTCDate()).padStart(2, '0')}`} value={newWorkday} onChange={e => setNewWorkday(e.target.value)} /><button type="button" className="btn ghost" disabled={busy || !newWorkday || workdays.some(row => row.date === newWorkday)} onClick={addWorkday}>作業日を追加</button></div>
-          {workdays.map((line, index) => <div className="invoice-auction-day" key={line.date}><span>{line.date}</span><input aria-label={`${line.date}の料金(円)`} required type="number" min="0" max="10000000" step="1" value={Number.isFinite(line.unit_price) ? line.unit_price : ''} disabled={busy || receiptBusy || pdfBusy} onChange={e => { const price = e.target.valueAsNumber; setWorkdays(rows => rows.map((row, i) => i === index ? { ...row, unit_price: price } : row)); setDirty(true); setMessage(''); }} /><button type="button" className="invoice-auction-day-remove" aria-label={`${line.date}の作業日を削除`} disabled={busy} onClick={() => { setWorkdays(rows => rows.filter((_, i) => i !== index)); setDirty(true); }}>×</button></div>)}
+          {workdays.length > 0 && <div className="invoice-auction-workday-list">
+            {workdayRows.map((row, rowIndex) => <div className="invoice-auction-row" key={rowIndex}>
+              {row.map((line, columnIndex) => {
+                const index = rowIndex * workdaysPerRow + columnIndex;
+                const dateLabel = line.date ? `${Number(line.date.slice(5, 7))}/${Number(line.date.slice(8, 10))}` : '—';
+                return <div className="invoice-auction-day" key={line.date ?? index}>
+                  <span>{dateLabel}</span>
+                  <input aria-label={`${line.date ?? '日付未設定'}の料金(円)`} required type="number" min="0" max="10000000" step="1" value={Number.isFinite(line.unit_price) ? line.unit_price : ''} disabled={busy || receiptBusy || pdfBusy} onChange={e => { const price = e.target.valueAsNumber; setWorkdays(rows => rows.map((row, i) => i === index ? { ...row, unit_price: price } : row)); setDirty(true); setMessage(''); }} />
+                  <button type="button" className="invoice-auction-day-remove" aria-label={`${line.date ?? '日付未設定'}の作業日を削除`} disabled={busy} onClick={() => { setWorkdays(rows => rows.filter((_, i) => i !== index)); setDirty(true); }}>×</button>
+                </div>;
+              })}
+            </div>)}
+          </div>}
           <p>作業日分：¥{auctionBasePay.toLocaleString('ja-JP')}　粗利益の10%：{grossProfitLoading ? '計算中…' : `¥${auctionProfitPay.toLocaleString('ja-JP')}`}</p>
           {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
         </section>}
@@ -232,11 +250,15 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
       <div className="receipt-section">
       <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onSavingChange={setReceiptSaving} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
+      {review && <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />}
       </div>
       {review ? <div className="invoice-review-documents">
-        <section aria-label="請求書"><h3>請求書</h3><DocumentPreview><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts}/></DocumentPreview>{receiptRows.filter(row=>row.document_type==='invoice').map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
-        <section aria-label="領収書"><h3>領収書</h3>{claimedReceipts.length>0&&<DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="summary"/></DocumentPreview>}{receiptRows.filter(row=>row.document_type==='receipt').map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
-        <section aria-label="領収書の写真PDF"><h3>領収書の写真PDF</h3>{claimedReceipts.some(row=>row.mime_type.startsWith('image/'))&&<DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="photos"/></DocumentPreview>}{receiptRows.filter(row=>row.document_type==='receipt_photo'&&!claimedReceipts.some(claim=>claim.id===row.id&&claim.mime_type.startsWith('image/'))).map(row=><InvoiceAttachmentPreview key={row.id} file={row}/>)}</section>
+        <InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} renderPage={reviewPage('請求書')}/>
+        {receiptRows.filter(row=>row.document_type==='invoice').map(row=><InvoiceAttachmentPreview key={row.id} file={row} label="請求書"/>)}
+        {claimedReceipts.length>0&&<ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="summary" renderPage={reviewPage('領収書')}/>}
+        {receiptRows.filter(row=>row.document_type==='receipt').map(row=><InvoiceAttachmentPreview key={row.id} file={row} label="領収書"/>)}
+        {claimedReceipts.some(row=>row.mime_type.startsWith('image/'))&&<ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="photos" renderPage={reviewPage('領収書の写真PDF')}/>}
+        {receiptRows.filter(row=>row.document_type==='receipt_photo'&&!claimedReceipts.some(claim=>claim.id===row.id&&claim.mime_type.startsWith('image/'))).map(row=><InvoiceAttachmentPreview key={row.id} file={row} label="領収書の写真PDF"/>)}
       </div> : <>
       <DocumentPreview><div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div></DocumentPreview>
       <DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} /></DocumentPreview>
@@ -244,7 +266,7 @@ export default function Invoices({ staff, onNavigationChange, review }: { staff:
 
     </>}
     </div>
-    <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />
+    {!review && <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />}
     {!review&&<div className="no-print"><GrossProfitSummary staff={staff} /></div>}
     {!review&&<div className="card no-print"><PackedSummary staffId={staff.id} /></div>}
   </section>;

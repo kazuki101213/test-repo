@@ -1,0 +1,99 @@
+.fba-selection-group-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.fba-delivery h2 { margin:12px 0; font-size:18px; }
+.fba-work-items li > div { min-width:0; }
+.fba-item-name { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.fba-label-controls { border-top:1px solid var(--border); margin-top:12px; padding-top:10px; }
+.fba-label-controls h4 { margin:0 0 8px; }
+.fba-label-actions,.fba-label-dialog-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.fba-label-actions + .fba-label-actions { margin-top:8px; }
+.fba-label-actions a.btn { text-decoration:none; display:inline-flex; align-items:center; }
+.fba-label-controls p { margin:8px 0 0; }
+.fba-label-dialog { border:1px solid var(--border); border-radius:10px; color:var(--text); background:var(--surface); width:min(840px,94vw); max-height:88dvh; padding:12px; }
+.fba-label-dialog::backdrop { background:#0008; }
+.fba-label-dialog-actions { margin-bottom:8px; }
+.fba-label-paper { overflow:auto; }
+.fba-label-print-instructions { margin:0 0 8px; }
+.fba-label-adjustment { min-width:0; margin:0 0 8px; border:1px solid var(--border); border-radius:6px; padding:8px; }
+.fba-label-adjustment-fields { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.fba-label-adjustment-fields label { display:grid; gap:4px; min-width:0; }
+.fba-label-adjustment-fields input { width:100%; min-width:0; box-sizing:border-box; }
+.fba-label-adjustment-fields small { color:var(--muted); }
+.fba-label-adjustment .fba-label-dialog-actions { margin:8px 0 0; }
+@media(max-width:600px) {
+ .fba-label-adjustment-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+.fba-label-page { position:relative; box-sizing:border-box; overflow:hidden; background:#fff; color:#000; }
+.fba-product-label,.fba-label-guide { position:absolute; box-sizing:border-box; }
+.fba-product-label { overflow:hidden; outline:1px dashed #d8d8d8; outline-offset:-1px; }
+.fba-label-guide { display:grid; place-items:center; outline:.18mm solid #111; outline-offset:-.09mm; font-size:14pt; font-weight:700; }
+.fba-label-barcode { display:block; width:48mm; height:13.5mm; margin:1.5mm auto 0; fill:#000; shape-rendering:crispEdges; }
+.fba-label-details { display:flex; align-items:center; gap:3mm; height:17mm; padding:0 4mm; }
+.fba-label-identity { display:grid; flex:1; min-width:0; gap:.2mm; font-size:7pt; line-height:1.13; }
+.fba-label-sku { overflow-wrap:anywhere; }
+.fba-product-label img { width:17mm; height:16mm; object-fit:contain; }
+.fba-print-copy { display:none; }
+@media print {
+  @page fbaLabels { size:A4; margin:0; }
+  body:has(.fba-print-copy) > :not(.fba-print-copy) { display:none !important; }
+  body:has(.fba-print-copy) { margin:0; padding:0; background:#fff; overflow:visible; }
+  .fba-label-dialog::backdrop { display:none; }
+  .fba-print-copy { display:block; page:fbaLabels; }
+  .fba-label-page + .fba-label-page { break-before:page; }
+  .fba-product-label { outline:none; }
+}
+.fba-workflow { margin-top:12px; min-width:0; }
+.fba-workflow h3,.fba-workflow h4,.fba-workflow p { margin:0 0 8px; }
+.fba-work-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; align-items:start; }
+.fba-work-sidebar { min-width:0; }
+.fba-work-box { margin-top:8px; border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--surface); min-width:0; overflow-wrap:anywhere; }
+.fba-work-box .fba-label-controls { border-top:0; padding-top:0; margin-top:0; }
+.fba-operation-box { padding-block:8px; }
+.fba-operation-box h4 { margin-bottom:6px; }
+.fba-operation-box .fba-label-actions { flex-wrap:wrap; align-items:center; gap:var(--control-gap); }
+.app .fba-operation-box .fba-label-actions > .btn { font-size:13px; white-space:nowrap; }
+.fba-operation-box .fba-label-controls + :is(p,div,label,button) { margin-top:8px; }
+.fba-work-field.fba-label-destination { width:max-content; max-width:100%; }
+.fba-work-items { list-style:none; margin:0 0 8px; padding:0; }
+.fba-work-items li { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
+.fba-work-items li+li { border-top:1px solid var(--border); }
+.fba-work-item-details :is(span,small) { display:block; font-size:.85em; color:var(--muted); }
+.fba-work-item-controls { display:flex; flex-shrink:0; align-items:center; gap:var(--control-gap); white-space:nowrap; }
+.fba-work-item-controls select { width:max-content; }
+.fba-work-settings { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 8px; margin:0; }
+.fba-work-settings dd { margin:0; }
+.fba-work-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0; }
+.fba-work-actions a { text-decoration:none; }
+.fba-shipment-actions { flex-wrap:nowrap; gap:var(--control-gap); margin-top:0; }
+.fba-shipment-actions > .btn { white-space:nowrap; }
+.fba-work-field,.fba-carton-fields label { display:grid; gap:4px; min-width:0; }
+.fba-work-field { margin-bottom:8px; }
+.fba-transport-actions,.fba-mode-carriers { align-items:flex-end; }
+.fba-mode-carriers { display:flex; flex-wrap:wrap; gap:4px var(--control-gap); max-width:100%; min-width:0; }
+.fba-transport-actions .fba-work-field { margin:0; max-width:100%; }
+.fba-transport-actions .fba-carrier-field { flex:0 1 auto; }
+.app .fba-transport-actions :is(.btn,select,.calendar-control > input[type=text],.calendar-control > .calendar-button) {
+ box-sizing:border-box;
+ height:var(--input-min-height);
+ min-height:var(--input-min-height);
+ margin:0;
+}
+.fba-carton { border-top:1px solid var(--border); padding:8px 0; }
+.fba-carton-fields { display:grid; grid-template-columns:repeat(4,max-content); gap:var(--control-gap); justify-content:start; }
+.fba-carton-fields input { min-width:52px; justify-self:start; box-sizing:border-box; }
+.fba-work-field select { width:100%; min-width:0; }
+.fba-carrier-field { width:fit-content; max-width:100%; justify-items:start; }
+.fba-carrier-field select { width:auto; max-width:100%; field-sizing:content; }
+.fba-history { display:grid; grid-template-columns:minmax(0,max-content) max-content; gap:8px; margin:12px 0; }
+.fba-history label { display:flex; gap:8px; }
+.fba-history label > span { align-self:center; white-space:nowrap; }
+.fba-history label select { width:17rem; min-width:0; field-sizing:fixed; }
+.app .fba-history > .btn { min-height:var(--input-min-height); }
+@media(max-width:767px) {
+ .fba-work-grid { grid-template-columns:minmax(0,1fr); gap:0; }
+ .fba-carton-fields { grid-template-columns:repeat(4,minmax(0,4.5rem)); gap:4px; }
+ .fba-carton-fields label { grid-template-columns:minmax(0,1fr); font-size:12px; white-space:nowrap; }
+ .app .fba-carton-fields input { min-width:0; max-width:100%; padding-inline:4px; font-size:16px; }
+ .app .fba-mode-carriers select { font-size:14px; padding-inline:4px; }
+ .app .fba-operation-box .fba-label-actions > .btn { font-size:12px; }
+}

@@ -1,0 +1,15 @@
+/* Backgrounds come from inventoryBoxColor; status labels have a separate palette. */
+.inventory-label { display:inline-block; width:max-content; max-width:100%; padding:2px 6px; border-radius:4px; font-size:11px; line-height:17px; vertical-align:middle; overflow-wrap:anywhere; }
+.inventory-status-label { font-weight:600; }
+.inventory-accessory-label { background:#dce7f1; color:#3c6085; font-weight:400; }
+.inventory-inline-link { display:inline; font:inherit; line-height:1; padding:0 3px; border:0; background:transparent; text-decoration:none; color:inherit; }
+.external-link-arrow {
+ display:inline-block;
+ width:1em;
+ height:1em;
+ vertical-align:-0.12em;
+ background-color:currentColor;
+ --external-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' d='M4 12L12 4M6 4h6v6'/%3E%3C/svg%3E");
+ -webkit-mask:var(--external-arrow) center / contain no-repeat;
+ mask:var(--external-arrow) center / contain no-repeat;
+}

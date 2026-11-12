@@ -2,6 +2,7 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),asser
 const testTimers=[];
 function load(file,imports={}){const c={exports:{},crypto:require('node:crypto').webcrypto,document:{visibilityState:'visible'},window:{confirm:()=>true,setInterval:fn=>{testTimers.push(fn);return testTimers.length;},clearInterval:()=>{}},require:id=>imports[id]??{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);return c.exports;}
 const seller=load('packages/shared/src/seller.ts',{'./productCategory':load('packages/shared/src/productCategory.ts')}),model=load('packages/shared/src/productModel.ts'),workflow=load('packages/shared/src/workflow.ts');
+const channels=load('packages/shared/src/salesChannels.ts');
 const description=load('apps/delivery/src/description.ts',{'./descriptionTemplates':load('apps/delivery/src/descriptionTemplates.ts')});
 const {listingDraft}=load('apps/delivery/src/listingDraft.ts',{'@bussan/shared':{...seller,...model,...load('packages/shared/src/productCategory.ts')},'./description':description});
 const base={id:'test',sku:'2407b-AAMM-20261012-1000',lot_seq:2407,title:'ブルーレイレコーダー',model_no:'DBR-W508',marketplace:'ヤフオク',sales_channel:'メルカリ',planned_price:15981,condition:'非常に良い',deliverer_name:'株式会社吉光',status:'商品登録前',inspected:true,cleaned:true};
@@ -36,7 +37,7 @@ for(const channel of ['FBA','自己発送','メルカリ','ヤフオク'])for(co
 async function panelCheck(approved,saved,uncertain=false,channel='メルカリ'){
  let cursor=0,hooks=[],pending=[],tree,dirty=true,queued,checks=0,finished=false,changed=[];const checkOperation=()=>({id:'uncertain-op',kind:'listing',status:finished?'succeeded':'uncertain',created_at:'2026-01-01T00:00:00Z',result:checks&&!finished?{read_check_state:'queued',read_check_requested_at:new Date().toISOString()}:{}});
  const hookReact={useRef(v){return hooks[cursor++]??={current:v};},useState(v){const n=cursor++;hooks[n]??={value:v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){const previous=hooks[n];hooks[n]={deps};pending.push(()=>{previous?.cleanup?.();hooks[n].cleanup=fn();});}}};
- const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,canViewDeliveryAssignee:()=>false},'./DescriptionEditor':{default:({embedded})=>jsx('div',{children:[jsx('input',{maxLength:128,value:embedded.value.title,disabled:embedded.disabled}),jsx('textarea',{maxLength:5000,value:embedded.value.description,disabled:embedded.disabled})]})},'../listingDraft':{listingDraft},'../api':{
+ const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,...channels,...require('./marketplace-account-modules.cjs'),canViewDeliveryAssignee:()=>false},'./DescriptionEditor':{default:({embedded})=>jsx('div',{children:[jsx('input',{maxLength:128,value:embedded.value.title,disabled:embedded.disabled}),jsx('textarea',{maxLength:5000,value:embedded.value.description,disabled:embedded.disabled})]})},'../listingDraft':{listingDraft},'../api':{
   fetchTask:async()=>{for(let i=0;i<4;i++)await Promise.resolve();return {...base,sales_channel:channel,description:saved,status:finished?'出品中':base.status};},fetchSellerContext:async()=>({revision:'one',operations:uncertain?[checkOperation()]:[],photo_review_approved:approved}),fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',requestListingResultCheck:async id=>{assert.equal(id,base.id);checks++;},fetchSellerOperation:async()=>{throw Error('Extra polling RPC');},queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
  }}).default;
  const props={mode:'listing',task:{...base,sales_channel:channel,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(task){changed.push(task);},onClose(){}};
@@ -87,7 +88,7 @@ for(const description of [null,'商品名（ヤフオク）\n保存済み名\n\n
 
 // Missing catalog models must not turn a known return product name into the display placeholder.
 const namedReturn={...base,title:"RODE VideoMic GO",model_no:null,marketplace:"動作品Amazon返品",sku:"2219b-AAII-20261001-448",lot_seq:2219};
-assert.equal(model.productModelText(namedReturn),"未登録");
+assert.equal(model.productModelText(namedReturn),"RODE VideoMic GO");
 assert.equal(listingDraft(namedReturn,"").title,"【2219b】RODE VideoMic GO");
 assert.equal(listingDraft({...namedReturn,description:"商品名（メルカリ）\n手入力名\n\n説明文\n手入力本文"},"").title,"手入力名");
 for(const title of ["X001234567","未登録","型番未登録","—"])assert.equal(model.productListingName({...namedReturn,title}),"");

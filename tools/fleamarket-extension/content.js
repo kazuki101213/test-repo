@@ -66,8 +66,18 @@
     }
     return {itemId:id,role:seller?'seller':buyer?'buyer':'unknown',state:completed?'completed':buyer?'pending':'unknown',trackingNo:nums.size===1?[...nums][0]:null,trackingAmbiguous:nums.size>1,receiptControls:buttons.filter(t=>RECEIPT.test(t))};
   }
-  function conversation(a,recipe){
-    const d=detail(a,recipe);if(d.auth)return d;
+  function messageContext(a,recipe){
+    const problem=authProblem();if(problem)return {auth:problem};
+    if(a.site==='auctions'&&location.origin==='https://contact.auctions.yahoo.co.jp'&&/^\/(?:buyer|trade)\/(?:top|message|messages)\/?$/.test(location.pathname)){
+      identity(a);
+      const id=getId(a.site,location.href);
+      if(!id)throw Error('取引ナビの商品IDを確認できません');
+      return {itemId:id};
+    }
+    return detail(a,recipe);
+  }
+  function conversation(a,recipe,expectedBody){
+    const d=messageContext(a,recipe);if(d.auth)return d;
     const root=one(recipe.messageScope||'main');
     const marked=[...root.querySelectorAll('[data-testid*="message" i],[class*="message" i],[aria-label*="メッセージ"]')].filter(visible);
     const nodes=marked.filter(e=>{
@@ -82,7 +92,7 @@
       const authorNode=e.querySelector('[data-testid*="author" i],[class*="author" i],[aria-label*="さん"]');
       const author=norm(authorNode?.getAttribute('aria-label')||authorNode?.innerText||e.getAttribute('data-author')||'').slice(0,200)||null;
       const ownName=(a.identity?.text||'').replace(/さんのマイページ$/,'');
-      const own=author===ownName||!!author&&!!ownName&&author.includes(ownName);
+      const own=(a.site==='auctions'&&author==='あなた')||author===ownName||!!author&&!!ownName&&author.includes(ownName);
       const time=e.querySelector('time[datetime]');
       const timeText=norm(time?.getAttribute('datetime')||'');
       const signature=[author||'',timeText,body].join('|');
@@ -92,34 +102,69 @@
       messages.push({external_id:externalId,author,author_role:own?'self':author?'other':'unknown',body,sent_at:instant});
       if(messages.length>=500)break;
     }
+    if(a.site==='auctions'&&expectedBody&&!messages.some(message=>message.author_role==='self'&&norm(message.body)===norm(expectedBody))){
+      const matches=[...root.querySelectorAll('p,span,div')].filter(element=>visible(element)&&norm(element.innerText)===norm(expectedBody));
+      const own=matches.some(element=>{
+        let row=element.parentElement;
+        for(let depth=0;row&&row!==root&&depth<4;depth++,row=row.parentElement){
+          if([...row.querySelectorAll('p,span,div,small')].some(label=>!label.children.length&&visible(label)&&norm(label.innerText)==='あなた'))return true;
+        }
+        return false;
+      });
+      if(own)messages.push({external_id:messageHash([a.site,d.itemId,'あなた',norm(expectedBody)].join('|')),author:'あなた',author_role:'self',body:expectedBody,sent_at:null});
+    }
     return {...d,messages};
   }
+  function yahooMessageComposer(root){
+    const fields=[...root.querySelectorAll('textarea,[contenteditable="true"],input[type="text"],input:not([type])')].filter(element=>{
+      if(!visible(element)||element.disabled||element.readOnly)return false;
+      if(element.tagName!=='INPUT')return true;
+      return /^(?:入力してください|.*(?:メッセージ|取引連絡).*)$/.test(norm(element.getAttribute('placeholder')||element.getAttribute('aria-label')));
+    });
+    const buttons=[...root.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')]
+      .filter(element=>visible(element)&&/^(送信|送信する)$/.test(controlText(element).replace(/\s/g,'')));
+    if(fields.length!==1||buttons.length!==1)throw Error('取引メッセージの入力欄・送信ボタンを確認できません（入力欄 '+fields.length+' 件、送信 '+buttons.length+' 件）');
+    return {field:fields[0],button:buttons[0]};
+  }
   function messageComposer(a,recipe,expected){
-    const d=detail(a,recipe);
-    if(d.auth||d.itemId!==expected)throw new Error('送信する取引IDが一致しません');
+    const d=messageContext(a,recipe);
+    if(d.auth||d.itemId!==expected)throw Error('送信する取引IDが一致しません');
+    if(a.site==='auctions'&&location.origin==='https://contact.auctions.yahoo.co.jp')return yahooMessageComposer(document);
     const root=one(recipe.messageScope||'main');
-    const forms=[...root.querySelectorAll('form')].filter(visible).map(form=>({form,fields:[...form.querySelectorAll('textarea,[contenteditable="true"]')].filter(visible),buttons:[...form.querySelectorAll('button,input[type="submit"]')].filter(visible)})).filter(x=>x.fields.length===1&&x.buttons.length===1);
-    if(forms.length!==1)throw new Error('取引メッセージの入力欄と送信ボタンを一組に特定できません');
-    const {form,fields:[field],buttons:[button]}=forms[0];
-    const label=norm(field.getAttribute('aria-label')||field.getAttribute('placeholder')||field.getAttribute('data-placeholder'));
-    const buttonLabel=controlText(button);
-    if(!/メッセージ|取引連絡|コメント/.test(label+' '+buttonLabel)||!/送信|送る|投稿/.test(buttonLabel))throw new Error('取引メッセージ用の送信フォームと確認できません');
-    if(field.disabled||button.disabled||!visible(form))throw new Error('取引メッセージのフォームが利用できません');
-    return {field,button,form};
+    const buttonsIn=scope=>[...scope.querySelectorAll('button,input[type="submit"]')]
+      .filter(element=>visible(element)&&/^(送信|送信する|送る|投稿)$/.test(controlText(element)));
+    const fields=[...root.querySelectorAll('textarea,[contenteditable="true"]')].filter(visible);
+    const candidates=fields.map(field=>{
+      const label=norm(field.getAttribute('aria-label')||field.getAttribute('placeholder')||field.getAttribute('data-placeholder'));
+      if(!/メッセージ|取引連絡|コメント/.test(label)&&!(a.site==='auctions'&&label==='入力してください'))return null;
+      const scope=field.closest('form');
+      if(!scope||scope===root||!root.contains(scope))return null;
+      const [button,extra]=buttonsIn(scope);
+      return button&&!extra?{field,button}:null;
+    }).filter(Boolean);
+    if(candidates.length!==1||candidates[0].field.disabled)throw Error('取引メッセージの入力欄と送信ボタンを一組に特定できません');
+    return candidates[0];
   }
   function setMessageValue(field,value){
     if(field.isContentEditable){field.textContent=value;field.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));return;}
     setValue(field,value);
   }
   async function sendMarketplaceMessage(a,recipe,expected,body){
-    if(typeof body!=='string'||!body.trim()||body.length>2000)throw new Error('メッセージは1〜2000文字で入力してください');
-    identity(a);const {field,button}=messageComposer(a,recipe,expected);
-    if(field.isContentEditable?norm(field.innerText):field.value)throw new Error('入力欄に既存の文章があるため送信を中止しました');
-    setMessageValue(field,body.trim());
-    if(norm(field.isContentEditable?field.innerText:field.value)!==body.trim())throw new Error('送信文を入力欄で確認できません');
-    if(!visible(button)||button.disabled)throw new Error('送信ボタンが利用できません');
-    identity(a);if(getId(a.site,location.href)!==expected)throw new Error('送信直前に取引画面が変わりました');
-    button.click();return {clicked:true,itemId:expected};
+    let button;
+    try{
+      if(typeof body!=='string'||!body.trim()||body.length>2000)throw Error('メッセージは1〜2000文字で入力してください');
+      const {field,button:sendButton}=messageComposer(a,recipe,expected);
+      if(field.isContentEditable?norm(field.innerText):field.value)throw Error('入力欄に既存の文章があります');
+      setMessageValue(field,field.tagName==='INPUT'?norm(body):body.trim());
+      await new Promise(resolve=>setTimeout(resolve,200));
+      const value=field.isContentEditable?field.innerText:field.value;
+      if(norm(value)!==norm(body))throw Error('送信文を入力欄で確認できません');
+      if(!visible(sendButton)||sendButton.disabled||sendButton.getAttribute('aria-disabled')==='true')throw Error('送信ボタンが利用できません');
+      if(messageContext(a,recipe).itemId!==expected)throw Error('送信直前に取引画面が変わりました');
+      button=sendButton;
+    }catch(error){return {clicked:false,reason:error.message};}
+    button.click();
+    return {clicked:true,itemId:expected};
   }
 
   function purchaseDate(row,site,referenceDay){
@@ -288,36 +333,7 @@
       if(Date.now()>=until)return d;await new Promise(resolve=>setTimeout(resolve,350));
     }while(true);
   }
-  function recipeField(root,selector){if(!selector)return null;return one(selector,root);}
-  function receiptPreflight(a,r,expected){
-    if(!r.receiptVerified) throw new Error('評価画面の実地検証が未完了です');
-    const d=detail(a,r);if(d.auth||d.role!=='buyer'||d.state!=='pending'||d.itemId!==expected)throw new Error('評価直前の取引条件が一致しません');
-    const root=one(r.receiptScope);
-    const positive=recipeField(root,r.positive),submit=recipeField(root,r.submit),comment=recipeField(root,r.comment);
-    if(!positive||!submit||controlText(submit)!==r.submitText||!RECEIPT.test(r.submitText))throw new Error('検証済み評価ボタンと一致しません');
-    const statefulButton=positive.tagName==='BUTTON'&&(positive.hasAttribute('aria-pressed')||(positive.getAttribute('role')==='radio'&&positive.hasAttribute('aria-checked')));
-    if(!(positive.type==='radio'||statefulButton)||positive.disabled||submit.disabled)throw new Error('良い評価の選択要素を確認できません');
-    const label=positive.labels?.[0]?.innerText||positive.getAttribute('aria-label')||positive.innerText;
-    if(!/^(良かった|よい|良い|非常に良い)$/.test(norm(label))) throw new Error('良い評価のラベルを確認できません');
-    const confirm=recipeField(root,r.confirm);
-    if(confirm&&(!/^商品を受け取りました$/.test(norm(confirm.labels?.[0]?.innerText||confirm.getAttribute('aria-label')))||confirm.type!=='checkbox'))throw new Error('受け取り確認の要素が一致しません');
-    if(comment&&comment.tagName!=='TEXTAREA')throw new Error('評価コメント欄が一致しません');
-    if(comment?.value) throw new Error('入力済みの評価コメントがあるため停止しました');
-    const fields=[...root.querySelectorAll('input,textarea,select')].filter(e=>visible(e)&&!e.disabled&&e.required);
-    if(fields.some(e=>e!==positive&&e!==comment&&e!==confirm&&!e.checkValidity()))throw new Error('未知の必須入力があるため停止しました');
-    return {positive,submit,comment,confirm};
-  }
   function setValue(e,value){const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}
-  async function submitReceipt(a,r,expected){
-    const {positive,submit,comment,confirm}=receiptPreflight(a,r,expected);
-    if(!positive.checked)positive.click();if(confirm&&!confirm.checked)confirm.click();
-    if(comment?.required)setValue(comment,'ありがとうございました。');
-    identity(a);if(getId(a.site,location.href)&&getId(a.site,location.href)!==expected)throw new Error('送信前に取引が変わりました');
-    const selected=positive.type==='radio'?positive.checked:positive.getAttribute('aria-pressed')==='true'||positive.getAttribute('aria-checked')==='true';
-    if(!selected)throw new Error('良い評価が選択されていません');
-    if(!visible(submit)||submit.disabled)throw new Error('評価送信ボタンが利用できません');
-    submit.click();return {clicked:true};
-  }
   function selectorFor(e){
     if(e.id&&document.querySelectorAll('#'+CSS.escape(e.id)).length===1)return '#'+CSS.escape(e.id);
     for(const attr of ['data-testid','aria-label'])if(e.getAttribute(attr)){const s=`${e.tagName.toLowerCase()}[${attr}="${CSS.escape(e.getAttribute(attr))}"]`;if(document.querySelectorAll(s).length===1)return s;}
@@ -394,11 +410,11 @@
       if(m.type==='fm:pick')return pickIdentity();
       if(m.type==='fm:list')return readList(m.account,m.recipe||{});
       if(m.type==='fm:purchaseMore')return purchaseMore(m.account,m.recipe||{},m.seenIds||[]);if(m.type==='fm:purchaseDetail')return purchaseDetail(m.account,m.recipe||{},m.itemId);if(m.type==='fm:detail')return readDetail(m.account,m.recipe||{});
-      if(m.type==='fm:messageDetail')return conversation(m.account,m.recipe||{});
+      if(m.type==='fm:messageDetail')return conversation(m.account,m.recipe||{},m.expectedBody);
       if(m.type==='fm:sendMessage')return sendMarketplaceMessage(m.account,m.recipe||{},m.itemId,m.body);
-      if(m.type==='fm:preflight'){receiptPreflight(m.account,m.recipe,m.itemId);return {ok:true};}
-      if(m.type==='fm:submit')return submitReceipt(m.account,m.recipe,m.itemId);
-      if(m.type==='fm:success'){const problem=authProblem();if(problem)return {auth:problem};identity(m.account);const root=one(m.recipe.scope||'main');const d=detail(m.account,m.recipe);return {success:d.itemId===m.itemId&&norm(root.innerText).includes(m.recipe.successText)};}
+
+
+
       throw new Error('未知の操作です');
     })().then(value=>respond({ok:true,value}),error=>respond({ok:false,error:error.message}));return true;
   });

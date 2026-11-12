@@ -1,34 +1,64 @@
-const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict'),path=require('node:path');
-const root=path.resolve(__dirname,'..');
-const compile=f=>ts.transpileModule(fs.readFileSync(path.join(root,f),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-class FixedDate extends Date { constructor(...args){super(...(args.length?args:['2026-10-08T02:00:00Z']));} }
-const period={exports:{},Date:FixedDate};vm.runInNewContext(compile('apps/admin/src/workloadPeriod.ts'),period);
-assert.equal(period.exports.workloadPeriod(new Date('2026-05-31T00:00:00Z')).averageStart,'2026-02-28');
-assert.equal(period.exports.workloadPeriod(new Date('2026-09-30T16:00:00Z')).monthStart,'2026-10-01');
-const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
-let calls=[],source=[];
-const shared={HELD_STATUSES:['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','動作不良'],getSupabase:()=>({from(table){const conditions=[];const q={select(s){assert(!s.includes('arrived_on'));calls.push(['select',s]);return q;},eq(k,v){conditions.push(r=>r[k]===v);calls.push(['eq',k,v]);return q;},or(filter){calls.push(['or',filter]);assert(filter.includes('shipped_on.is.null'));assert(filter.includes('自己発送,メルカリ,ヤフオク'));conditions.push(r=>shared.HELD_STATUSES.includes(r.status)||(['自己発送','メルカリ','ヤフオク'].includes(r.sales_channel)&&(r.status==='出品中'||r.status==='取引中'&&r.shipped_on===null)));return q;},in(k,vs){conditions.push(r=>vs.includes(r[k]));calls.push(['in',k,vs]);return q;},is(k,v){conditions.push(r=>r[k]===v);calls.push(['is',k,v]);return q;},gte(k,v){conditions.push(r=>r[k]>=v);return q;},lte(k,v){conditions.push(r=>r[k]<=v);return q;},not(k,op,v){conditions.push(r=>r[k]!=null);calls.push(['not',k,op,v]);return q;},order(){return q;},range(from,to){calls.push(['range',from,to]);return Promise.resolve({data:source.filter(r=>conditions.every(c=>c(r))).slice(from,to+1),error:null});}};return q;}})};
-const api={exports:{},require:id=>id==='@bussan/shared'?shared:id==='./inventory'?inventory.exports:id==='./workloadPeriod'?period.exports:{}};vm.runInNewContext(compile('apps/admin/src/api.ts'),api);
-let cursor=0,hooks=[],pending=[],dirty=true,tree;
-const react={useState(v){const n=cursor++;if(!hooks[n])hooks[n]={value:v};return[hooks[n].value,next=>{hooks[n].value=next;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]?.cleanup?.();const h=hooks[n]={deps};pending.push(()=>h.cleanup=fn());}}};
-const jsx=(type,props)=>({type,props});
-const view={exports:{},Date,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='../api'?api.exports:id==='../inventory'?inventory.exports:{default:'component'}};
-vm.runInNewContext(compile('apps/admin/src/components/WorkloadDetail.tsx'),view);
-function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
-function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)){n.forEach(x=>all(x,out));return out;}out.push(n);all(n.props?.children,out);return out;}
-(async()=>{
- source=Array.from({length:1001},(_,i)=>({id:String(i),deliverer_id:'II',status:'検品中',is_accessory:false,sku:`${i}-AAII-0-0`,lot_seq:i,marketplace:i%2?'Amazon返品':'ヤフオク',title:'商品',purchased_at:'2026-09-01',shipped_on:null}));
- source.push({...source[0],id:'accessory',is_accessory:true},{...source[0],id:'sold',status:'販売済',shipped_on:null},{...source[0],id:'listed',status:'出品中',shipped_on:'2026-09-11'});
- const working=await api.exports.fetchWorkloadDetail('II','保有在庫');assert.equal(working.length,1001);assert(working.some(r=>r.marketplace==='Amazon返品'));assert(calls.filter(c=>c[0]==='range').length>=3);assert(calls.some(c=>c[0]==='or'));
- const workOnly=await api.exports.fetchWorkloadDetail('II','作業在庫');assert.equal(workOnly.length,1001);
- const base=source[0];source=['自己発送','メルカリ','ヤフオク','FBA','ヤフフリ',null].flatMap((sales_channel,n)=>['出品中','取引中','販売済'].flatMap((status,k)=>[null,'2026-10-01'].map((shipped_on,j)=>({...base,id:n+'-'+k+'-'+j,sales_channel,status,shipped_on}))));
- assert.equal((await api.exports.fetchWorkloadDetail('II','保有在庫')).length,9,'Three channels: listed both shipping dates, trading only before shipping');assert.equal((await api.exports.fetchWorkloadDetail('II','作業在庫')).length,0,'Listed and trading are not working stock');
- source=[base];
- calls=[];source=[{...source[0],id:'one',packed_on:'2026-09-11',shipped_on:'2026-09-30'},{...source[0],id:'two',packed_on:'2026-09-21',shipped_on:null},{...source[0],id:'no-purchase',purchased_at:null,packed_on:'2026-09-21'},{...source[0],id:'no-packing',packed_on:null},{...source[0],id:'old',packed_on:'2026-07-07'},{...source[0],id:'future',packed_on:'2026-10-09'},{...source[0],id:'packed-accessory',is_accessory:true,packed_on:'2026-09-11'}];
- const rows=await api.exports.fetchWorkloadDetail('II','平均作業日数');assert.equal(rows.length,2);assert(calls.some(c=>c[0]==='not'&&c[1]==='purchased_at'));
- for(let i=0;i<12;i++){if(dirty){cursor=0;dirty=false;tree=view.exports.default({delivererId:'II',name:'担当者',metric:'平均作業日数',onClose(){}});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}
- const rendered=text(tree);assert(rendered.includes('平均 15.0日'));assert(!rendered.includes('入荷日'));assert(rendered.includes('仕入日から作業完了日'));assert.deepEqual(all(tree).filter(n=>n.type==='th').map(text),['通番号','商品・仕入先','状況','仕入日','作業完了日','出荷日','作業日数']);
- source=[{...source[0],id:'unpacked',packed_on:null,shipped_on:null},{...source[0],id:'old-unpacked',packed_on:null,purchased_at:'2025-01-01'},{...source[0],id:'unpacked-accessory',is_accessory:true,packed_on:null},{...source[0],id:'other-assignee',deliverer_id:'EE',packed_on:null},{...source[0],id:'packed',packed_on:'2026-10-01',shipped_on:null},{...source[0],id:'shipped',packed_on:'2026-09-30',shipped_on:'2026-10-01'},{...source[0],id:'accessory',is_accessory:true,packed_on:'2026-10-01',shipped_on:'2026-10-01'},{...source[0],id:'future',packed_on:'2026-10-09',shipped_on:'2026-10-09'}];
- const constants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),constants);assert(!constants.exports.STATUSES.includes('保留'));assert(!constants.exports.STATUSES.includes('廃棄'));
- console.log('1001-row working query including Amazon returns, selected work status, main-only unpacked all-period/monthly shipping, three-month packed-date average, date boundaries and seven-column detail passed');
-})().catch(e=>{console.error(e);process.exitCode=1;});
+const fs = require('node:fs');
+const vm = require('node:vm');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const compile = file => ts.transpileModule(fs.readFileSync(path.join(root, file), 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const inventory = { exports: {} };
+vm.runInNewContext(compile('apps/admin/src/inventory.ts'), inventory);
+
+const source = Array.from({ length: 1001 }, (_, i) => ({
+  id: String(i), deliverer_id: 'II', bucket: '手元出品', on_hand: true,
+}));
+source.push({ id: 'other-assignee', deliverer_id: 'EE', bucket: '手元出品', on_hand: true });
+source.push({ id: 'fba', deliverer_id: 'II', bucket: 'FBA出品', on_hand: false });
+source.push({ id: 'registration', deliverer_id: 'II', bucket: '登録前', on_hand: true });
+source.push({ id: 'amazon-return', deliverer_id: 'II', bucket: 'Amazon返品', on_hand: false });
+source.push({ id: 'other-amazon-return', deliverer_id: 'EE', bucket: 'Amazon返品', on_hand: false });
+const ranges = [];
+const shared = {
+  getSupabase: () => ({
+    from(table) {
+      assert.equal(table, 'v_deliverer_stock_workload_items');
+      const conditions = [];
+      const query = {
+        select(fields) {
+          assert(fields.includes('model_no'));
+          assert(!fields.includes('arrived_on'));
+          return query;
+        },
+        eq(key, value) {
+          conditions.push(row => row[key] === value);
+          return query;
+        },
+        order() { return query; },
+        async range(from, to) {
+          ranges.push([from, to]);
+          return { data: source.filter(row => conditions.every(matches => matches(row))).slice(from, to + 1), error: null };
+        },
+      };
+      return query;
+    },
+  }),
+};
+const api = { exports: {}, require: name => name === '@bussan/shared' ? shared : name === './inventory' ? inventory.exports : {} };
+vm.runInNewContext(compile('apps/admin/src/api.ts'), api);
+
+(async () => {
+  const { fetchWorkloadDetail, workloadMetrics } = api.exports;
+  const metric = key => workloadMetrics.find(entry => entry.key === key);
+  assert.deepEqual(Array.from(workloadMetrics, entry => entry.label), [
+    '手元にある在庫', '受取前', '検品中', 'Amazon返品', '商品登録前', '出品中・手元', '出品中・FBA倉庫',
+    '取引中・発送前', '取引中・発送済み', '動作不良・手元',
+  ]);
+  assert.equal((await fetchWorkloadDetail('II', metric('listed_on_hand'))).length, 1001);
+  assert(ranges.length > 1);
+  assert.equal((await fetchWorkloadDetail('II', metric('on_hand'))).length, 1002);
+  assert.equal((await fetchWorkloadDetail('II', metric('listed_in_fba')))[0].id, 'fba');
+  const amazonReturns = await fetchWorkloadDetail('II', metric('amazon_returns'));
+  assert.deepEqual(Array.from(amazonReturns, item => item.id), ['amazon-return']);
+  console.log('Workload detail preserves the selected person and metric through pagination.');
+})().catch(error => { console.error(error); process.exitCode = 1; });

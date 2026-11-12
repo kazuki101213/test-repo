@@ -22,21 +22,46 @@ assert.equal(numbered.reduce((sum,row)=>sum+row.quantity*row.unit_price,0),4500)
 assert.equal(JSON.stringify(numberedSnapshot),numberedBefore,'PDF formatting must not mutate source invoice data');
 const numberedSheet=context.exports.default({snapshot:numberedSnapshot,month:'2026-10',issued:'2026-11-02',extras:[],note:''});
 for(const row of numbered.slice(0,3))assert(text(numberedSheet).includes(row.description));
+const auctionLine={date:'2026-11-01',description:'ヤフオク入札作業日',quantity:1,unit_price:4500};
+const auctionSheet=context.exports.default({snapshot:{profile:{},lines:[],tax_percent:0},month:'2026-11',issued:'2026-12-01',extras:[auctionLine],note:''});
+const auctionRow=all(auctionSheet).find(n=>n.type==='tbody').props.children[0];
+assert.equal(text(auctionRow.props.children[0]),'11/01');
+assert.equal(text(auctionRow.props.children[1]),'ヤフオク入札作業');
+assert.equal(auctionLine.description,'ヤフオク入札作業日','Display wording must preserve saved workday data');
 function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}
 const receipt=(id,amount,type='receipt_photo')=>({id,original_name:id+'.pdf',spent_on:'2026-10-01',description:'資材費',amount,mime_type:type==='receipt'?'application/pdf':'image/jpeg',document_type:type,url:'blob:'+id,include_in_invoice:true});
+// Fee categories keep their display order even when their dates differ.
+for(const review_edited of [false,true]){
+ const snapshot={profile:{},lines:[{date:'2026-10-31',description:'小物',serial:'9001',quantity:2,unit_price:500}],review_edited,tax_percent:10};
+ const extras=[{date:'2026-10-01',description:'追加費用',quantity:1,unit_price:250}],receipts=[{...receipt('ordered',330),spent_on:'2026-10-15',description:'領収書の費用'}];
+ const original=JSON.stringify({snapshot,extras,receipts});
+ const ordered=context.exports.default({snapshot,month:'2026-10',issued:'2026-11-02',extras,note:'',receipts});
+ const descriptions=all(ordered).filter(n=>n.props?.className==='invoice-lines').flatMap(table=>all(table).filter(n=>n.type==='tbody').flatMap(body=>all(body).filter(n=>n.type==='tr').map(row=>text(row.props.children[1]))));
+ assert.deepEqual(descriptions,[review_edited?'小物':'納品外注費(9001)','領収書の費用（税込）','追加費用']);
+ assert(text(ordered).includes('作業費：¥1,000'));assert(text(ordered).includes('手当：¥250'));assert(text(ordered).includes('¥1,705'),'Receipt reimbursement remains tax-inclusive; additional fees retain the original tax calculation');
+ assert.equal(JSON.stringify({snapshot,extras,receipts}),original,'Changing the printed order must not alter saved invoice data');
+}
 const rows=Array.from({length:5},(_,i)=>receipt(String(i),1100));rows.push(receipt('pdf',2200,'receipt'));
 const sheet=context.exports.default({snapshot:{profile:{},lines:[{date:'2026-10-01',description:'ブルーレイレコーダー',quantity:1,unit_price:1000}],tax_percent:10},month:'2026-10',issued:'2026-10-14',extras:[],note:'',receipts:rows});
-assert(text(sheet).includes('¥8,800'));assert(text(sheet).includes('消費税：¥100'));assert(text(sheet).includes('立替経費（税込）：¥7,700'));
+assert(text(sheet).includes('作業費：¥1,000'));assert(text(sheet).includes('手当：¥0'));assert(text(sheet).includes('¥8,800'));assert(text(sheet).includes('消費税：¥100'));assert(text(sheet).includes('立替経費（税込）：¥7,700'));
 assert.equal(all(sheet).find(n=>n.type==='tfoot').props.children.props.children[1].props.children,1,'Receipt rows must not add delivery quantity');
 const photos={exports:{},require:name=>name==='react/jsx-runtime'?{jsx,jsxs:jsx}:{} };vm.runInNewContext(compile('apps/delivery/src/components/ReceiptSheets.tsx'),photos);
 const tree=photos.exports.default({rows,month:'2026-10',name:'Test'});const pages=all(tree).filter(n=>n.props?.className==='receipt-photo-sheet');assert.equal(pages.length,2);assert.equal(all(pages[0]).filter(n=>n.type==='img').length,4);assert.equal(all(pages[1]).filter(n=>n.type==='img').length,1);assert.equal(all(tree).filter(n=>n.type==='img').length,5,'PDFs must not become images');
+const captionRows=[{...receipt('caption',1848),spent_on:'2026-10-15',description:'巻きダンボール'},receipt('zero',0),receipt('unset',null)];
+const captionSheet=photos.exports.default({rows:captionRows,month:'2026-10',name:'Test',part:'photos'});
+const captions=all(captionSheet).filter(n=>n.type==='figcaption').map(text);
+assert.equal(captions[0],'No.1 2026-10-15 巻きダンボール ¥1,848');
+assert(captions[1].endsWith('¥0'));assert(captions[2].endsWith('金額未登録'));
 
 const profileFields={issuer_name:'氏名保持',postal:'100-0000',address:'住所保持',phone:'000-0000-0000',email:'sample@example.com',recipient:'請求先保持',bank:'銀行名保持',branch:'支店名保持',bank_code:'0000',branch_code:'001',account_type:'普通',account_number:'1234567',holder:'口座名義保持',holder_kana:'メイギカナ'};
 const manyExtras=Array.from({length:45},(_,i)=>({date:'2026-10-01',description:'明細保持'+i,quantity:1,unit_price:1000}));
 const manySheet=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:10},month:'2026-10',issued:'2026-10-15',extras:manyExtras,note:'備考保持',receipts:[]});
 assert(all(manySheet).filter(n=>n.props?.className==='invoice-sheet').length>1);assert.equal(all(manySheet).filter(n=>n.type==='tfoot').length,1,'Totals belong only on the final page');
 for(const line of manyExtras)assert(text(manySheet).includes(line.description));const allFieldsText=text(manySheet)+all(manySheet).filter(n=>typeof n.type==='function').map(n=>text(n.type(n.props))).join('');for(const value of Object.values(profileFields))assert(allFieldsText.includes(value),value);assert(text(manySheet).includes('備考保持'));assert(text(manySheet).includes('¥49,500'));
+const wrappedSheet=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:10},month:'2026-10',issued:'2026-10-15',extras:manyExtras,note:'備考保持',renderPage:(page,index)=>jsx('section',{className:'review-page',pageIndex:index,children:page})});
+assert.equal(all(wrappedSheet).filter(n=>n.props?.className==='review-page').length,all(manySheet).filter(n=>n.props?.className==='invoice-sheet').length);
+assert.equal(text(wrappedSheet),text(manySheet),'Spreading preview pages preserves the full invoice and export order');
 const longExtras=Array.from({length:8},(_,i)=>({date:null,description:i+'長い明細を省略しない'.repeat(18),quantity:1,unit_price:1000}));
 const longSheet=context.exports.default({snapshot:{profile:profileFields,lines:[],tax_percent:10},month:'2026-10',issued:'2026-10-15',extras:longExtras,note:'',receipts:[]});
 assert(all(longSheet).filter(n=>n.props?.className==='invoice-sheet').length>1);for(const line of longExtras)assert(text(longSheet).includes(line.description));
@@ -95,6 +120,9 @@ function testExtraRows(){
  const ctx={exports:{},document:{fonts:{ready:Promise.resolve()}},fetch:async()=>({ok:true,arrayBuffer:async()=>bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)}),require:name=>{dependencyLoads.push(name);return name==='pdf-lib'?require('../packages/shared/node_modules/pdf-lib'):name==='html2canvas'?{__esModule:true,default:()=>{throw Error('PDF should not be rasterized')}}:{}}};
  vm.runInNewContext(compile('packages/shared/src/invoicePdf.ts'),ctx);
  assert(dependencyLoads.includes('pdf-lib')&&dependencyLoads.includes('html2canvas'),'PDF dependencies must load with the app, before a later deployment can remove old lazy chunks');
+ const split=await ctx.exports.splitInvoicePdfPages(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength));
+ assert.equal(split.length,2);
+ for(const [i,part] of split.entries()){const page=await PDFDocument.load(part);assert.equal(page.getPageCount(),1);assert.deepEqual([page.getPages()[0].getWidth(),page.getPages()[0].getHeight()],[[420,595],[842,595]][i]);}
  const merged=await PDFDocument.load(await ctx.exports.buildInvoicePdf([],rows.filter(row=>row.document_type==='receipt')));
  assert.equal(merged.getPageCount(),2);assert.deepEqual(merged.getPages().map(p=>[p.getWidth(),p.getHeight()]),[[420,595],[842,595]]);
  assert(merged.catalog.has(require('../packages/shared/node_modules/pdf-lib').PDFName.of('Names')),'Original PDF should also be embedded');

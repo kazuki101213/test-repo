@@ -16391,7 +16391,5109 @@ alter table app.delivery_line_size_history add constraint delivery_line_size_his
   check(size in ('60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'));
 
 
--- ▼▼▼ 20261105105410_sku_cost_including_accessories.sql ▼▼▼
+-- ▼▼▼ 20261105124708_accessory_shared_fields_on_registration.sql ▼▼▼
+
+-- Updates already share these sale fields. Also inherit them when an accessory
+-- is registered after its body has been inspected, shipped or sold. Purchase
+-- identity (including supplier, order, tracking and cost) remains independent.
+create function app.inherit_accessory_shared_fields_on_insert() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare parent app.items;
+begin
+ if not new.is_accessory or new.parent_item_id is null
+  or app.is_standalone_accessory_serial(new.sku,new.lot_seq) then return new;end if;
+ select * into parent from app.items where id=new.parent_item_id and not is_accessory for update;
+ if parent.id is null then return new;end if;
+ new.condition:=parent.condition;
+ new.shipped_on:=parent.shipped_on;
+ new.sold_on:=parent.sold_on;
+ return new;
+end $$;
+revoke all on function app.inherit_accessory_shared_fields_on_insert() from public,anon,authenticated;
+-- After items_link_accessory_parent_on_insert, before items_mark_sold/status.
+create trigger items_lz_inherit_accessory_shared_fields
+before insert on app.items for each row execute function app.inherit_accessory_shared_fields_on_insert();
+
+-- Existing dates are already synchronized. Correct only old condition drift,
+-- without redirecting an accessory's historical fields back into its body.
+-- The lock and trigger toggle are transactional; normal writes cannot overlap.
+lock table app.items in share row exclusive mode;
+do $$declare baseline text;afterwards text;begin
+ select md5(coalesce(string_agg((to_jsonb(i)-array['condition','updated_at'])::text,'' order by id),''))
+ into baseline from app.items i;
+ alter table app.items disable trigger items_redirect_accessory_shared_edits;
+ with parents as (
+  select a.id,(array_agg(p.id))[1] parent_id from app.items a join app.items p
+   on not p.is_accessory and (p.id=a.parent_item_id or (a.parent_item_id is null and p.lot_seq=a.lot_seq
+    and app.product_serial(p.sku,p.lot_seq)=app.product_serial(a.sku,a.lot_seq)))
+  where a.is_accessory and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+  group by a.id having count(*)=1
+ )
+ update app.items a set condition=p.condition from parents x join app.items p on p.id=x.parent_id
+ where a.id=x.id and a.condition is distinct from p.condition;
+ alter table app.items enable trigger items_redirect_accessory_shared_edits;
+ select md5(coalesce(string_agg((to_jsonb(i)-array['condition','updated_at'])::text,'' order by id),''))
+ into afterwards from app.items i;
+ if baseline is distinct from afterwards then raise exception 'Accessory condition repair changed unrelated item data';end if;
+end $$;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261105125937_line_shipping_catalog_size_and_resend.sql ▼▼▼
+
+-- Gate the code image on the product catalog size and provide an authenticated
+-- resend path for an explicitly requested, previously sent LINE notification.
+
+create or replace function app.line_shipping_media(p_id uuid) returns jsonb
+language sql stable set search_path='' as $$
+ select case
+  when required.shipping_size is not null and code.id is null then null
+  else jsonb_build_object(
+   'itemId',i.id,
+   'serial',app.product_serial(i.sku,i.lot_seq),
+   'sku',i.sku,
+   'supplierUrl',i.marketplace_url,
+   'automatic',true,
+   'photoPaths',jsonb_build_array(front.storage_path,model.storage_path),
+   'codeOperationId',case when required.shipping_size is not null then code.id end,
+   'withoutBarcode',case when required.shipping_size is null then 'size_unset' end
+  )
+ end
+ from app.delivery_line_outbox o
+ join app.delivery_shipping_tasks t on t.id=o.task_id
+ join app.items i on i.id=t.item_id
+ join app.delivery_line_preferences pref on pref.item_id=i.id
+ join app.item_photos front on front.id=pref.overview_photo_id
+  and front.item_id=i.id and coalesce(front.photo_kind,'product')='product'
+ join app.item_photos model on model.id=pref.model_photo_id
+  and model.item_id=i.id and coalesce(model.photo_kind,'product')='product'
+ left join app.seller_listings listing on listing.item_id=i.id and listing.active
+  and listing.trade_key=o.trade_key
+ left join lateral (
+  select app.line_fixed_shipping_size(i.id) as shipping_size
+ ) required on true
+ left join lateral (
+  select op.id
+  from app.seller_operations op
+  where required.shipping_size is not null
+   and listing.item_id is not null
+   and op.item_id=i.id
+   and op.account_id=listing.account_id
+   and op.channel=listing.channel
+   and op.kind in ('shipping_code','register_package')
+   and op.status='succeeded'
+   and op.payload->>'trade_key'=o.trade_key
+   and op.created_at>=t.created_at-interval '5 minutes'
+   and nullif(op.result->>'qr_code','') is not null
+  order by op.created_at desc limit 1
+ ) code on true
+ where o.id=p_id and app.line_shipping_eligible(o.id)
+  and pref.overview_photo_id is not null and pref.model_photo_id is not null;
+$$;
+
+create or replace function app.request_delivery_line_resend(p_item_id uuid)
+returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare
+ i app.items;
+ task uuid;
+ link uuid;
+ outbox uuid;
+ required_size text;
+begin
+ if auth.uid() is null or not exists(
+  select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active
+ ) then raise exception 'ログインが必要です' using errcode='42501'; end if;
+
+ select * into i from app.items where id=p_item_id for update;
+ if i.id is null or not (app.is_admin() or i.deliverer_id=app.current_staff_id()) then
+  raise exception '担当商品だけ再送できます' using errcode='42501';
+ end if;
+ if i.status<>'取引中' or i.shipped_on is not null or i.sold_on is not null
+  or i.seller_cancelled_at is not null or i.seller_trade_key is null then
+  raise exception '現在の未発送取引を確認できません';
+ end if;
+ if not coalesce((select enabled from app.delivery_line_settings where singleton),false) then
+  raise exception 'LINE通知が有効ではありません';
+ end if;
+ if not exists(
+  select 1 from app.delivery_line_preferences pref
+  join app.item_photos front on front.id=pref.overview_photo_id and front.item_id=i.id
+   and coalesce(front.photo_kind,'product')='product'
+  join app.item_photos model on model.id=pref.model_photo_id and model.item_id=i.id
+   and coalesce(model.photo_kind,'product')='product'
+  where pref.item_id=i.id
+ ) then raise exception '全体写真と型番写真を先に保存してください'; end if;
+
+ select t.id into task from app.delivery_shipping_tasks t
+ where t.item_id=i.id and t.resolved_at is null order by t.created_at desc limit 1;
+ if task is null then raise exception '未完了の発送依頼がありません'; end if;
+ select l.id into link from app.delivery_line_links l
+ join app.staff s on s.id=l.staff_id and s.is_active and not l.blocked
+ where l.staff_id=i.deliverer_id order by l.linked_at desc limit 1;
+ if link is null then raise exception 'LINE連携を確認してください'; end if;
+ select o.id into outbox from app.delivery_line_outbox o
+ where o.task_id=task and o.link_id=link and o.trade_key=i.seller_trade_key
+ for update;
+ if outbox is null then raise exception '現在の取引に対応するLINE通知がありません'; end if;
+ if not exists(select 1 from app.delivery_line_outbox where id=outbox and state='sent') then
+  raise exception '再送できる送信済み通知がありません';
+ end if;
+
+ required_size:=app.line_fixed_shipping_size(i.id);
+ update app.delivery_line_outbox set state='pending',attempts=0,next_attempt_at=now(),
+  first_attempt_at=null,sent_at=null,last_status=null,lease=null,message_payload=null,
+  last_error=null,code_cleaned_at=null
+ where id=outbox;
+ perform app.kick_delivery_line();
+ return jsonb_build_object('queued',true,'codeRequired',required_size is not null,'outboxId',outbox);
+end $$;
+
+revoke all on function app.request_delivery_line_resend(uuid) from public,anon;
+grant execute on function app.request_delivery_line_resend(uuid) to authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261105141446_line_resend_utf8_repair.sql ▼▼▼
+
+-- Keep user-facing messages and enum literals transport-safe even through legacy shell encodings.
+create or replace function app.request_delivery_line_resend(p_item_id uuid)
+returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare
+ i app.items;
+ task uuid;
+ link uuid;
+ outbox uuid;
+ required_size text;
+begin
+ if auth.uid() is null or not exists(
+  select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active
+ ) then raise exception using message=U&'\30ED\30B0\30A4\30F3\304C\5FC5\8981\3067\3059',errcode='42501'; end if;
+
+ select * into i from app.items where id=p_item_id for update;
+ if i.id is null or not (app.is_admin() or i.deliverer_id=app.current_staff_id()) then
+  raise exception using message=U&'\62C5\5F53\5546\54C1\3060\3051\518D\9001\3067\304D\307E\3059',errcode='42501';
+ end if;
+ if i.status<>U&'\53D6\5F15\4E2D' or i.shipped_on is not null or i.sold_on is not null
+  or i.seller_cancelled_at is not null or i.seller_trade_key is null then
+  raise exception using message=U&'\73FE\5728\306E\672A\767A\9001\53D6\5F15\3092\78BA\8A8D\3067\304D\307E\305B\3093';
+ end if;
+ if not coalesce((select enabled from app.delivery_line_settings where singleton),false) then
+  raise exception using message=U&'LINE\901A\77E5\304C\6709\52B9\3067\306F\3042\308A\307E\305B\3093';
+ end if;
+ if not exists(
+  select 1 from app.delivery_line_preferences pref
+  join app.item_photos front on front.id=pref.overview_photo_id and front.item_id=i.id
+   and coalesce(front.photo_kind,'product')='product'
+  join app.item_photos model on model.id=pref.model_photo_id and model.item_id=i.id
+   and coalesce(model.photo_kind,'product')='product'
+  where pref.item_id=i.id
+ ) then raise exception using message=U&'\5168\4F53\5199\771F\3068\578B\756A\5199\771F\3092\5148\306B\4FDD\5B58\3057\3066\304F\3060\3055\3044'; end if;
+
+ select t.id into task from app.delivery_shipping_tasks t
+ where t.item_id=i.id and t.resolved_at is null order by t.created_at desc limit 1;
+ if task is null then raise exception using message=U&'\672A\5B8C\4E86\306E\767A\9001\4F9D\983C\304C\3042\308A\307E\305B\3093'; end if;
+ select l.id into link from app.delivery_line_links l
+ join app.staff s on s.id=l.staff_id and s.is_active and not l.blocked
+ where l.staff_id=i.deliverer_id order by l.linked_at desc limit 1;
+ if link is null then raise exception using message=U&'LINE\9023\643A\3092\78BA\8A8D\3057\3066\304F\3060\3055\3044'; end if;
+ select o.id into outbox from app.delivery_line_outbox o
+ where o.task_id=task and o.link_id=link and o.trade_key=i.seller_trade_key
+ for update;
+ if outbox is null then raise exception using message=U&'\73FE\5728\306E\53D6\5F15\306B\5BFE\5FDC\3059\308BLINE\901A\77E5\304C\3042\308A\307E\305B\3093'; end if;
+ if not exists(select 1 from app.delivery_line_outbox where id=outbox and state='sent') then
+  raise exception using message=U&'\518D\9001\3067\304D\308B\9001\4FE1\6E08\307F\901A\77E5\304C\3042\308A\307E\305B\3093';
+ end if;
+
+ required_size:=app.line_fixed_shipping_size(i.id);
+ update app.delivery_line_outbox set state='pending',attempts=0,next_attempt_at=now(),
+  first_attempt_at=null,sent_at=null,last_status=null,lease=null,message_payload=null,
+  last_error=null,code_cleaned_at=null
+ where id=outbox;
+ perform app.kick_delivery_line();
+ return jsonb_build_object('queued',true,'codeRequired',required_size is not null,'outboxId',outbox);
+end $$;
+
+revoke all on function app.request_delivery_line_resend(uuid) from public,anon;
+grant execute on function app.request_delivery_line_resend(uuid) to authenticated;
+notify pgrst,'reload schema';
+
+do $$begin
+ if position(chr(65533) in pg_get_functiondef('app.request_delivery_line_resend(uuid)'::regprocedure))>0 then
+  raise exception 'LINE resend function contains replacement characters';
+ end if;
+end $$;
+
+
+-- ▼▼▼ 20261105153618_line_resend_fresh_retry_key.sql ▼▼▼
+
+-- Preserve the original retry key for in-flight automatic retries. Rotate it only
+-- when a staff member deliberately requests a new LINE message.
+alter table app.delivery_line_outbox add column line_retry_key uuid;
+update app.delivery_line_outbox set line_retry_key=id where line_retry_key is null;
+alter table app.delivery_line_outbox alter column line_retry_key set default gen_random_uuid();
+alter table app.delivery_line_outbox alter column line_retry_key set not null;
+create unique index delivery_line_outbox_retry_key_unique on app.delivery_line_outbox(line_retry_key);
+
+create or replace function app.claim_delivery_line()
+returns table(id uuid,lease uuid,recipient text,payload jsonb,eligible boolean)
+language plpgsql security definer set search_path='' as $$
+begin
+ if not coalesce((select enabled from app.delivery_line_settings where singleton),false) then return;end if;
+ update app.delivery_line_outbox o set state='failed',last_error=U&'LINE\901A\77E5\3092\5B8C\4E86\3067\304D\307E\305B\3093\3067\3057\305F\3002\7BA1\7406\8005\3078\78BA\8A8D\3057\3066\304F\3060\3055\3044'
+ where o.state in ('pending','sending') and o.next_attempt_at<=now()
+  and (o.attempts>=5 or o.first_attempt_at<now()-interval '23 hours');
+ return query with ready as (
+ select o.id from app.delivery_line_outbox o where o.state in ('pending','sending')
+  and o.next_attempt_at<=now() and o.attempts<5
+  and coalesce(o.first_attempt_at,now())>now()-interval '23 hours'
+  and app.line_shipping_media(o.id) is not null
+ order by o.next_attempt_at limit 2 for update skip locked
+ ),claimed as (
+ update app.delivery_line_outbox o set state='sending',attempts=o.attempts+1,
+  first_attempt_at=coalesce(o.first_attempt_at,now()),
+  next_attempt_at=now()+interval '5 minutes',lease=gen_random_uuid()
+ from ready r where o.id=r.id returning o.*
+ )
+ select o.id,o.lease,l.line_user_id,
+  coalesce(o.message_payload,jsonb_build_object('media',app.line_shipping_media(o.id)))
+   || jsonb_build_object('lineRetryKey',o.line_retry_key::text),
+  app.line_shipping_eligible(o.id)
+ from claimed o join app.delivery_line_links l on l.id=o.link_id;
+ perform app.arm_delivery_line_retry();
+end $$;
+
+create or replace function app.request_delivery_line_resend(p_item_id uuid)
+returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare
+ i app.items;
+ task uuid;
+ link uuid;
+ outbox uuid;
+ required_size text;
+begin
+ if auth.uid() is null or not exists(
+  select 1 from app.staff s where s.id=app.current_staff_id() and s.is_active
+ ) then raise exception using message=U&'\30ED\30B0\30A4\30F3\304C\5FC5\8981\3067\3059',errcode='42501'; end if;
+
+ select * into i from app.items where id=p_item_id for update;
+ if i.id is null or not (app.is_admin() or i.deliverer_id=app.current_staff_id()) then
+  raise exception using message=U&'\62C5\5F53\5546\54C1\3060\3051\518D\9001\3067\304D\307E\3059',errcode='42501';
+ end if;
+ if i.status<>U&'\53D6\5F15\4E2D' or i.shipped_on is not null or i.sold_on is not null
+  or i.seller_cancelled_at is not null or i.seller_trade_key is null then
+  raise exception using message=U&'\73FE\5728\306E\672A\767A\9001\53D6\5F15\3092\78BA\8A8D\3067\304D\307E\305B\3093';
+ end if;
+ if not coalesce((select enabled from app.delivery_line_settings where singleton),false) then
+  raise exception using message=U&'LINE\901A\77E5\304C\6709\52B9\3067\306F\3042\308A\307E\305B\3093';
+ end if;
+ if not exists(
+  select 1 from app.delivery_line_preferences pref
+  join app.item_photos front on front.id=pref.overview_photo_id and front.item_id=i.id
+   and coalesce(front.photo_kind,'product')='product'
+  join app.item_photos model on model.id=pref.model_photo_id and model.item_id=i.id
+   and coalesce(model.photo_kind,'product')='product'
+  where pref.item_id=i.id
+ ) then raise exception using message=U&'\5168\4F53\5199\771F\3068\578B\756A\5199\771F\3092\5148\306B\4FDD\5B58\3057\3066\304F\3060\3055\3044'; end if;
+
+ select t.id into task from app.delivery_shipping_tasks t
+ where t.item_id=i.id and t.resolved_at is null order by t.created_at desc limit 1;
+ if task is null then raise exception using message=U&'\672A\5B8C\4E86\306E\767A\9001\4F9D\983C\304C\3042\308A\307E\305B\3093'; end if;
+ select l.id into link from app.delivery_line_links l
+ join app.staff s on s.id=l.staff_id and s.is_active and not l.blocked
+ where l.staff_id=i.deliverer_id order by l.linked_at desc limit 1;
+ if link is null then raise exception using message=U&'LINE\9023\643A\3092\78BA\8A8D\3057\3066\304F\3060\3055\3044'; end if;
+ select o.id into outbox from app.delivery_line_outbox o
+ where o.task_id=task and o.link_id=link and o.trade_key=i.seller_trade_key
+ for update;
+ if outbox is null then raise exception using message=U&'\73FE\5728\306E\53D6\5F15\306B\5BFE\5FDC\3059\308BLINE\901A\77E5\304C\3042\308A\307E\305B\3093'; end if;
+ if not exists(select 1 from app.delivery_line_outbox where id=outbox and state='sent') then
+  raise exception using message=U&'\518D\9001\3067\304D\308B\9001\4FE1\6E08\307F\901A\77E5\304C\3042\308A\307E\305B\3093';
+ end if;
+
+ required_size:=app.line_fixed_shipping_size(i.id);
+ update app.delivery_line_outbox set state='pending',attempts=0,next_attempt_at=now(),
+  first_attempt_at=null,sent_at=null,last_status=null,lease=null,message_payload=null,
+  last_error=null,code_cleaned_at=null,line_retry_key=gen_random_uuid()
+ where id=outbox;
+ perform app.kick_delivery_line();
+ return jsonb_build_object('queued',true,'codeRequired',required_size is not null,'outboxId',outbox);
+end $$;
+
+revoke all on function app.request_delivery_line_resend(uuid) from public,anon;
+grant execute on function app.request_delivery_line_resend(uuid) to authenticated;
+notify pgrst,'reload schema';
+
+do $$begin
+ if position(chr(65533) in pg_get_functiondef('app.request_delivery_line_resend(uuid)'::regprocedure))>0 then
+  raise exception 'LINE resend function contains replacement characters';
+ end if;
+end $$;
+
+
+-- ▼▼▼ 20261106033240_inventory_presentation_parent_context.sql ▼▼▼
+
+-- Presentation-only parent metadata. The join uses the same authorized raw rows;
+-- it does not change inventory scope, pagination, totals, SKU or sale fields.
+do $migration$
+declare definition text; function_name text; old_prefix text:='r.d || case when $1=''delivery'' then';
+ new_prefix text:=$prefix$r.d || jsonb_build_object(
+   'inventory_parent_serial',lower(substring(parent.d->>'sku' from '^([0-9]+[a-zA-Z]*)[-_]')),
+   'inventory_parent_status',parent.d->>'status',
+   'inventory_parent_purchased_at',parent.d->>'purchased_at') || case when $1='delivery' then$prefix$;
+begin
+ foreach function_name in array array['app.read_inventory_page(text,jsonb,integer,jsonb)','app.read_delivery_catalog_snapshot(text,jsonb,integer,jsonb)'] loop
+  definition:=pg_get_functiondef(function_name::regprocedure);
+  if position('inventory_parent_status' in definition)>0 then continue;end if;
+  if position(old_prefix in definition)=0 or position('left join app.items relation on $1=''delivery''' in definition)=0 then
+   raise exception 'Inventory parent presentation insertion point missing: %',function_name;
+  end if;
+  definition:=replace(definition,old_prefix,new_prefix);
+  definition:=replace(definition,'left join app.items relation on $1=''delivery''','left join app.items relation on $1 in (''delivery'',''management'')');
+  execute definition;
+ end loop;
+end $migration$;
+
+
+-- ▼▼▼ 20261106050000_retry_uncertain_shipping_code.sql ▼▼▼
+
+create function app.retry_uncertain_shipping_code(p_item_id uuid, p_payload jsonb, p_request_id uuid)
+returns uuid language plpgsql security definer set search_path=pg_catalog,app as $$
+declare i app.items; prior app.seller_operations; staff_id uuid:=app.current_staff_id();
+begin
+ if auth.uid() is null or staff_id is null or not exists(select 1 from app.staff where id=staff_id and is_active) then raise exception 'ログインが必要です' using errcode='42501'; end if;
+ select * into i from app.items where id=p_item_id for update;
+ if i.id is null or not coalesce(app.is_admin() or i.deliverer_id=staff_id,false) then raise exception '納品担当者または管理者のみ操作できます' using errcode='42501'; end if;
+ select * into prior from app.seller_operations where item_id=i.id and status='uncertain' for update;
+ if prior.id is null or prior.kind<>'shipping_code' or prior.payload->>'trade_key' is distinct from p_payload->>'trade_key' then raise exception '再確認する発送コードの取引が一致しません'; end if;
+ update app.seller_operations set status='failed',result=result||jsonb_build_object('retry_requested_at',clock_timestamp(),'retry_requested_by',staff_id) where id=prior.id;
+ return app.queue_seller_operation(p_item_id,'shipping_code',p_payload,p_request_id);
+end $$;
+revoke all on function app.retry_uncertain_shipping_code(uuid,jsonb,uuid) from public,anon;
+grant execute on function app.retry_uncertain_shipping_code(uuid,jsonb,uuid) to authenticated;
+
+
+-- ▼▼▼ 20261106080953_amazon_account_sales_channels.sql ▼▼▼
+
+-- Keep legacy channel values for old clients and historical data.
+alter type app.sales_channel add value if not exists 'FBA1';
+alter type app.sales_channel add value if not exists 'FBA2';
+alter type app.sales_channel add value if not exists '自己発送1';
+alter type app.sales_channel add value if not exists '自己発送2';
+
+-- Classify fulfillment without discarding the account stored on an item.
+create function app.sales_channel_family(p_channel app.sales_channel)
+returns app.sales_channel language sql immutable strict parallel safe set search_path='' as $$
+ select case when p_channel::text in ('FBA1','FBA2') then 'FBA'::app.sales_channel
+   when p_channel::text in ('自己発送1','自己発送2') then '自己発送'::app.sales_channel else p_channel end;
+$$;
+revoke all on function app.sales_channel_family(app.sales_channel) from public,anon;
+grant execute on function app.sales_channel_family(app.sales_channel) to authenticated,service_role;
+
+-- Payment histories already use SHA-256 of the seller ID as their account key.
+-- Only explicit account channels constrain old historical reconciliation.
+create function app.amazon_channel_account_key(p_channel app.sales_channel)
+returns text language sql immutable strict parallel safe set search_path='' as $$
+ select case when p_channel::text in ('FBA1','自己発送1') then '0488eda5964421b790fc7dade17b3cbdeea0ced17af746e1f58da2e8199929fb'
+   when p_channel::text in ('FBA2','自己発送2') then 'aa469f79b88e99c9cce7a392cd506259919bc673e727044662747cca96304957' end;
+$$;
+revoke all on function app.amazon_channel_account_key(app.sales_channel) from public,anon;
+grant execute on function app.amazon_channel_account_key(app.sales_channel) to authenticated,service_role;
+
+-- Preserve the current action guards, permissions, notification and date logic;
+-- expand only fulfillment predicates in these existing, reviewed functions.
+do $migration$
+declare f record; source text; patched text; count_functions integer:=0;
+begin
+ for f in select p.oid,p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+   where n.nspname='app' and p.proname=any(array[
+     'apply_amazon_sale','capture_shipping_request','claim_delivery_push','clear_prior_trade_shipping_date',
+     'ensure_line_shipping_requests','line_shipping_eligible','perform_inventory_action','product_sale_summaries',
+     'read_resource_snapshot','record_work_completion_date','validate_packing_photo_stage']) loop
+  source:=pg_get_functiondef(f.oid);
+  patched:=regexp_replace(source,
+    $pattern$(\m(?:[a-z_]+\.)?sales_channel)(\s+(?:not\s+)?in\s*\(|\s*=\s*'(?:FBA|自己発送)')$pattern$,
+    $replacement$app.sales_channel_family(\1)\2$replacement$,'g');
+  if patched=source then raise exception 'Amazon channel predicate not found in %',f.proname; end if;
+  if f.proname='apply_amazon_sale' then
+   patched:=replace(patched,'  if (inventory.purchased_at is not null',
+    $guard$  if app.amazon_channel_account_key(inventory.sales_channel) is not null and app.amazon_channel_account_key(inventory.sales_channel)<>p_account then
+    return jsonb_build_object('status','review','reason','販売先のAmazonアカウントと取引が一致しません。'); end if;
+  if (inventory.purchased_at is not null$guard$);
+  end if;
+  execute patched;
+  count_functions:=count_functions+1;
+ end loop;
+ if count_functions<>11 then raise exception 'Expected eleven Amazon channel functions, got %',count_functions; end if;
+
+ source:=pg_get_functiondef('app.apply_amazon_refund(text,text,text,uuid)'::regprocedure);
+ patched:=replace(source,' select * into prior from app.amazon_refund_matches',
+   $guard$ if app.amazon_channel_account_key(target.sales_channel) is not null and app.amazon_channel_account_key(target.sales_channel)<>p_account then
+   return jsonb_build_object('status','review','reason','販売先のAmazonアカウントと取引が一致しません。'); end if;
+ select * into prior from app.amazon_refund_matches$guard$);
+ if patched=source then raise exception 'Amazon refund account guard location not found'; end if;
+ execute patched;
+end $migration$;
+
+-- Reapply each view's existing security options explicitly. Output channel
+-- values and grants retain their existing meaning and account suffix.
+do $migration$
+declare v text; source text; patched text;
+begin
+ foreach v in array array['v_amazon_unmatched_app_sales','v_deliverer_workload','v_delivery_notice_tasks','v_amazon_listing_feed'] loop
+  source:=pg_get_viewdef(('app.'||v)::regclass,true);
+  patched:=regexp_replace(source,$pattern$(items\.sales_channel)(\)?\s*::text\s*=\s*ANY)$pattern$,
+    $replacement$app.sales_channel_family(\1)\2$replacement$,'g');
+  patched:=replace(patched,'i.sales_channel = ANY','app.sales_channel_family(i.sales_channel) = ANY');
+  patched:=replace(patched,'CASE i.sales_channel','CASE app.sales_channel_family(i.sales_channel)');
+  if source=patched then raise exception 'Amazon channel predicate not found in view %',v; end if;
+  execute format('create or replace view app.%I with (security_invoker=true%s) as %s',
+    v,case when v='v_deliverer_workload' then ',security_barrier=true' else '' end,patched);
+ end loop;
+end $migration$;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261106093327_verified_amazon_listing_submission.sql ▼▼▼
+
+-- Amazon may be accepted asynchronously. Only server-verified evidence can finish listing.
+create table app.amazon_listing_submissions (
+ request_id uuid primary key,
+ item_id uuid not null references app.items(id),
+ requested_by uuid not null references auth.users(id),
+ sku text not null, asin text not null, sales_channel app.sales_channel not null,
+ account_id text not null check(account_id in ('amazon-1','amazon-2')),
+ seller_id text not null, price bigint not null check(price>0),
+ item_condition text not null, description text not null,
+ work_completed_on date not null,
+ state text not null check(state in ('submitting','accepted','uncertain','failed','verified')),
+ submission_id text, note text not null default '',
+ created_at timestamptz not null default clock_timestamp(),
+ verified_at timestamptz
+);
+create unique index amazon_listing_one_pending on app.amazon_listing_submissions(item_id) where state in ('submitting','accepted','uncertain');
+create index amazon_listing_item_history on app.amazon_listing_submissions(item_id,created_at desc);
+alter table app.amazon_listing_submissions enable row level security;
+revoke all on app.amazon_listing_submissions from public,anon,authenticated;
+grant select on app.amazon_listing_submissions to authenticated;
+grant all on app.amazon_listing_submissions to service_role;
+create policy amazon_listing_assignee_read on app.amazon_listing_submissions for select to authenticated
+ using(exists(select 1 from app.items i where i.id=item_id and (app.is_admin() or i.deliverer_id=app.current_staff_id())));
+create policy amazon_listing_service on app.amazon_listing_submissions for all to service_role using(true) with check(true);
+
+-- Existing manual callers and stale app tabs cannot claim an Amazon submission succeeded.
+do $patch$
+declare original text; patched text;
+begin
+ original:=pg_get_functiondef('app.perform_inventory_action(uuid,text,app.item_status,text,uuid)'::regprocedure);
+ patched:=replace(original, E'when ''listing_complete'' then\n', E'when ''listing_complete'' then\n  if not exists(select 1 from app.amazon_listing_submissions s where s.request_id=p_request_id and s.item_id=i.id and s.state=''verified'' and s.verified_at>clock_timestamp()-interval ''10 minutes'' and s.sku=i.sku and s.asin=btrim(i.asin::text) and s.sales_channel=i.sales_channel and s.price=i.planned_price and s.item_condition=i.condition::text and s.description=coalesce(i.description,'''') and s.seller_id=case when i.sales_channel::text in (''FBA2'',''自己発送2'') then ''A3E7BXJWH9TP11'' else ''A1WI3OGPE43N2T'' end) then raise exception ''Amazonへの登録を確認できていません。出品画面から登録結果を確認してください'' using errcode=''42501'';end if;\n');
+ if patched=original then raise exception 'Amazon listing confirmation anchor missing';end if;
+ execute patched;
+end $patch$;
+
+
+-- ▼▼▼ 20261106235708_line_shipping_photo_fallback.sql ▼▼▼
+
+-- Photo selection is optional for automatic shipping requests. Keep the
+-- current-trade code requirement for catalog products with a configured size.
+create or replace function app.line_shipping_media(p_id uuid) returns jsonb
+language sql stable set search_path='' as $$
+ select case
+  when required.shipping_size is not null and code.id is null then null
+  else jsonb_build_object(
+   'itemId',i.id,
+   'serial',app.product_serial(i.sku,i.lot_seq),
+   'sku',i.sku,
+   'supplierUrl',i.marketplace_url,
+   'automatic',true,
+   'photoPaths',case when front.id is not null and model.id is not null
+    then jsonb_build_array(front.storage_path,model.storage_path)
+    else coalesce((select jsonb_agg(photo.storage_path order by photo.created_at,photo.id)
+     from (select p.id,p.storage_path,p.created_at from app.item_photos p
+      where p.item_id=i.id and coalesce(p.photo_kind,'product')='product'
+       and p.storage_path ~* '\.(jpe?g|png)$'
+      order by p.created_at,p.id limit 2) photo),'[]'::jsonb) end,
+   'codeOperationId',case when required.shipping_size is not null then code.id end,
+   'withoutBarcode',case when required.shipping_size is null then 'size_unset' end
+  )
+ end
+ from app.delivery_line_outbox o
+ join app.delivery_shipping_tasks t on t.id=o.task_id
+ join app.items i on i.id=t.item_id
+ left join app.delivery_line_preferences pref on pref.item_id=i.id
+ left join app.item_photos front on front.id=pref.overview_photo_id
+  and front.item_id=i.id and coalesce(front.photo_kind,'product')='product'
+  and front.storage_path ~* '\.(jpe?g|png)$'
+ left join app.item_photos model on model.id=pref.model_photo_id
+  and model.item_id=i.id and coalesce(model.photo_kind,'product')='product'
+  and model.storage_path ~* '\.(jpe?g|png)$'
+ left join app.seller_listings listing on listing.item_id=i.id and listing.active
+  and listing.trade_key=o.trade_key
+ left join lateral (select app.line_fixed_shipping_size(i.id) as shipping_size) required on true
+ left join lateral (
+  select op.id from app.seller_operations op
+  where required.shipping_size is not null and listing.item_id is not null
+   and op.item_id=i.id and op.account_id=listing.account_id and op.channel=listing.channel
+   and op.kind in ('shipping_code','register_package') and op.status='succeeded'
+   and op.payload->>'trade_key'=o.trade_key
+   and op.created_at>=t.created_at-interval '5 minutes'
+   and nullif(op.result->>'qr_code','') is not null
+  order by op.created_at desc limit 1
+ ) code on true
+ where o.id=p_id and app.line_shipping_eligible(o.id);
+$$;
+
+-- CREATE OR REPLACE preserves the existing service-only execution privileges.
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261107004044_line_patrol_optional_photo_dispatch.sql ▼▼▼
+
+-- The four-hour patrol must hand off ready notifications even when no photos
+-- were explicitly selected. Code preparation uses shipping settings, not photos.
+do $migration$
+declare source text;patched text;begin
+ source:=pg_get_functiondef('app.extension_prepare_line_shipping(text[])'::regprocedure);
+ patched:=replace(source,
+  'and exists(select 1 from app.delivery_line_preferences pref where pref.item_id=item.id and pref.overview_photo_id is not null and pref.model_photo_id is not null)',
+  '');
+ if patched=source then raise exception 'LINE patrol photo filter anchor changed';end if;
+ source:=patched;
+ patched:=replace(source,
+  'if app.line_shipping_media(o.id)->>''codeOperationId'' is not null then continue;end if;',
+  'if app.line_shipping_media(o.id) is not null then update app.delivery_line_outbox set last_error=null where id=o.id;continue;end if;');
+ if patched=source then raise exception 'LINE patrol ready handoff anchor changed';end if;
+ source:=patched;
+ patched:=replace(source,
+  'if not exists(select 1 from app.delivery_line_preferences where item_id=i.id and overview_photo_id is not null and model_photo_id is not null) then reason:=''通知写真を指定してください'';end if;',
+  '');
+ if patched=source then raise exception 'LINE patrol photo requirement anchor changed';end if;
+ execute patched;
+end $migration$;
+
+-- Keep the existing authenticated-admin gate, current-trade checks, shipping
+-- configuration validation and retry keys. No new schedule or public access.
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261107012911_line_photo_auto_selection.sql ▼▼▼
+
+-- Private, event-driven preparation. Existing LINE retry cron also drains this
+-- queue; no new polling schedule or listing prerequisite is introduced.
+create table app.line_photo_selections (
+ item_id uuid primary key references app.items(id) on delete cascade,
+ state text not null default 'pending' check(state in('pending','running','ready','unavailable','failed')),
+ lease uuid, attempts integer not null default 0, next_attempt_at timestamptz not null default now(),
+ source_snapshot jsonb, result jsonb, last_error text, updated_at timestamptz not null default now()
+);
+alter table app.line_photo_selections enable row level security;
+revoke all on app.line_photo_selections from public,anon,authenticated;
+grant all on app.line_photo_selections to service_role;
+-- Intentionally no client access; this policy makes the service-only boundary explicit.
+create policy line_photo_selections_service on app.line_photo_selections to service_role using(true) with check(true);
+create index line_photo_selections_due on app.line_photo_selections(next_attempt_at) where state in('pending','running','failed');
+
+create function app.enqueue_line_photo_selection(p_item uuid,p_changed boolean default false) returns void
+language plpgsql security definer set search_path='' as $$begin
+ if not exists(select 1 from app.items where id=p_item and shipped_on is null and sold_on is null) then return;end if;
+ if exists(select 1 from app.delivery_line_preferences where item_id=p_item and overview_photo_id is not null and model_photo_id is not null) then return;end if;
+ insert into app.line_photo_selections(item_id) values(p_item) on conflict(item_id) do update
+ set state='pending',lease=null,attempts=0,next_attempt_at=now()+interval '30 seconds',updated_at=now()
+ where p_changed and app.line_photo_selections.state<>'running';
+end $$;
+
+create function app.capture_line_photo_selection() returns trigger
+language plpgsql security definer set search_path='' as $$begin
+ if tg_table_name='item_photos' then
+  if tg_op='DELETE' then
+   if coalesce(old.photo_kind,'product')='product' then perform app.enqueue_line_photo_selection(old.item_id,true);end if;
+  elsif coalesce(new.photo_kind,'product')='product' and new.storage_path not like '%/line-auto-%' then
+   perform app.enqueue_line_photo_selection(new.item_id,true);
+  end if;
+ else
+  if new.active and (tg_op='INSERT' or old.external_id is distinct from new.external_id or not old.active) then perform app.enqueue_line_photo_selection(new.item_id,true);end if;
+ end if;
+ return null;
+end $$;
+create trigger line_photo_selection_photos after insert or update of storage_path,photo_kind or delete on app.item_photos for each row execute function app.capture_line_photo_selection();
+create trigger line_photo_selection_listing after insert or update of active,external_id on app.seller_listings for each row execute function app.capture_line_photo_selection();
+
+create function app.claim_line_photo_selection(p_item uuid default null) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare q app.line_photo_selections;context jsonb;
+begin
+ -- Repair previously missed pending shipping requests, without replaying sent ones.
+ if p_item is not null then perform app.enqueue_line_photo_selection(p_item);else
+  perform app.enqueue_line_photo_selection(t.item_id) from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id
+   where o.state='pending' and app.line_shipping_eligible(o.id) order by o.next_attempt_at limit 20;
+ end if;
+ select s.* into q from app.line_photo_selections s join app.items i on i.id=s.item_id
+ where (p_item is null or s.item_id=p_item) and s.state in('pending','failed','running') and s.next_attempt_at<=now() and s.attempts<3
+  and i.shipped_on is null and i.sold_on is null
+ order by exists(select 1 from app.delivery_line_outbox o join app.delivery_shipping_tasks t on t.id=o.task_id where t.item_id=s.item_id and o.state='pending') desc,
+  s.next_attempt_at limit 1 for update of s skip locked;
+ if q.item_id is null then return null;end if;
+ if exists(select 1 from app.delivery_line_preferences where item_id=q.item_id and overview_photo_id is not null and model_photo_id is not null) then
+  update app.line_photo_selections set state='ready',last_error=null where item_id=q.item_id;return null;
+ end if;
+ select jsonb_build_object('itemId',i.id,'sku',i.sku,'model',coalesce(p.model_no,case when i.title ~ '^[A-Z][A-Z0-9]{1,15}-[A-Z0-9-]{1,30}$' then i.title end),
+  'photos',coalesce((select jsonb_agg(jsonb_build_object('id',v.id,'path',v.storage_path) order by v.created_at,v.id)
+   from(select id,storage_path,created_at from app.item_photos where item_id=i.id and coalesce(photo_kind,'product')='product'
+    and storage_path ~* '\.(jpe?g|png)$' order by created_at,id limit 20)v),'[]'),
+  'listing',(select jsonb_build_object('id',l.id,'channel',l.channel,'externalId',l.external_id) from app.seller_listings l
+   where l.item_id=i.id and l.active and l.channel in('メルカリ','ヤフオク')
+    and (i.seller_trade_key is null or l.trade_key=i.seller_trade_key) order by l.observed_at desc,l.id limit 1)) into context
+ from app.items i left join app.products p on p.id=i.product_id where i.id=q.item_id;
+ update app.line_photo_selections set state='running',lease=gen_random_uuid(),attempts=attempts+1,next_attempt_at=now()+interval '5 minutes',source_snapshot=context,updated_at=now()
+ where item_id=q.item_id returning * into q;
+ return context||jsonb_build_object('lease',q.lease);
+end $$;
+
+create function app.finish_line_photo_selection(p_item uuid,p_lease uuid,p_result jsonb,p_error text default null) returns boolean
+language plpgsql security invoker set search_path='' as $$
+declare q app.line_photo_selections;front uuid;model uuid;value jsonb;photo uuid;expected_path text;listing app.seller_listings;
+begin
+ select * into q from app.line_photo_selections where item_id=p_item and lease=p_lease and state='running' for update;
+ if q.item_id is null then return false;end if;
+ if p_error is not null then
+  update app.line_photo_selections set state='failed',last_error=left(p_error,160),next_attempt_at=now()+interval '15 minutes',lease=null,updated_at=now() where item_id=p_item;return false;
+ end if;
+ if jsonb_typeof(p_result) is distinct from 'object' or octet_length(p_result::text)>4000 then raise exception 'Invalid selection';end if;
+ if jsonb_array_length(q.source_snapshot->'photos')>0 and exists(
+  select 1 from app.item_photos p where p.item_id=p_item and coalesce(p.photo_kind,'product')='product'
+   and p.storage_path ~* '\.(jpe?g|png)$' and not exists(select 1 from jsonb_array_elements(q.source_snapshot->'photos')v where v->>'id'=p.id::text)
+ ) and jsonb_array_length(q.source_snapshot->'photos')<20 then
+  update app.line_photo_selections set state='pending',lease=null,attempts=0,next_attempt_at=now()+interval '30 seconds' where item_id=p_item;return false;
+ end if;
+ -- Recheck listing identity and absence of app photos before importing the fallback.
+ if jsonb_array_length(q.source_snapshot->'photos')=0 then
+  select * into listing from app.seller_listings where id=(q.source_snapshot->'listing'->>'id')::uuid and item_id=p_item and active
+   and external_id=q.source_snapshot->'listing'->>'externalId';
+  if listing.id is null or exists(select 1 from app.item_photos where item_id=p_item and coalesce(photo_kind,'product')='product') then
+   update app.line_photo_selections set state='pending',lease=null,next_attempt_at=now(),updated_at=now() where item_id=p_item;return false;
+  end if;
+ end if;
+ foreach expected_path in array array['overview','model'] loop
+  value:=p_result->expected_path;photo:=null;
+  if value is not null and value<>'null'::jsonb then
+   if jsonb_array_length(q.source_snapshot->'photos')>0 then
+    select p.id into photo from app.item_photos p where p.item_id=p_item and coalesce(p.photo_kind,'product')='product'
+     and p.id=(value->>'id')::uuid and exists(select 1 from jsonb_array_elements(q.source_snapshot->'photos')v where v->>'id'=p.id::text and v->>'path'=p.storage_path);
+    if photo is null then update app.line_photo_selections set state='pending',lease=null,next_attempt_at=now() where item_id=p_item;return false;end if;
+   else
+    if coalesce(value->>'mime','') not in('image/jpeg','image/png') then raise exception 'Invalid imported photo type';end if;
+    if value->>'path' is distinct from (q.source_snapshot->>'sku')||'/line-auto-'||listing.id::text||'-'||expected_path||(case when value->>'mime'='image/jpeg' then '.jpg' else '.png' end) then raise exception 'Invalid imported photo';end if;
+    if not exists(select 1 from storage.objects where bucket_id='item-photos' and name=value->>'path') then raise exception 'Photo file missing';end if;
+    insert into app.item_photos(item_id,storage_path,photo_kind) values(p_item,value->>'path','product') returning id into photo;
+   end if;
+  end if;
+  if expected_path='overview' then front:=photo;else model:=photo;end if;
+ end loop;
+ -- Preserve manual choices and shipping, including a manual save during AI work.
+ insert into app.delivery_line_preferences(item_id,overview_photo_id,model_photo_id) values(p_item,front,model)
+ on conflict(item_id) do update set overview_photo_id=coalesce(app.delivery_line_preferences.overview_photo_id,excluded.overview_photo_id),
+  model_photo_id=coalesce(app.delivery_line_preferences.model_photo_id,excluded.model_photo_id),updated_at=now();
+ update app.line_photo_selections set state=case when front is not null and model is not null then 'ready' else 'unavailable' end,
+  result=p_result,last_error=null,lease=null,updated_at=now() where item_id=p_item;
+ return true;
+end $$;
+
+revoke all on function app.enqueue_line_photo_selection(uuid,boolean),app.capture_line_photo_selection(),app.claim_line_photo_selection(uuid),app.finish_line_photo_selection(uuid,uuid,jsonb,text) from public,anon,authenticated;
+grant execute on function app.enqueue_line_photo_selection(uuid,boolean),app.claim_line_photo_selection(uuid),app.finish_line_photo_selection(uuid,uuid,jsonb,text) to service_role;
+-- Reuse the existing private dispatcher and its existing cron; no extra timer.
+create or replace function app.kick_delivery_line() returns bigint
+language plpgsql security definer set search_path='' as $$
+declare dispatch_token text;project_url text;request_id bigint;
+begin
+ if not coalesce((select enabled from app.delivery_line_settings where singleton),false) or (
+  not exists(select 1 from app.delivery_line_outbox o where state in('pending','sending') and next_attempt_at<=now() and attempts<5 and app.line_shipping_media(o.id) is not null)
+  and not exists(select 1 from app.line_photo_selections q join app.items i on i.id=q.item_id where q.state in('pending','failed','running') and q.attempts<3 and q.next_attempt_at<=now()
+   and i.shipped_on is null and i.sold_on is null
+   and not exists(select 1 from app.delivery_line_preferences p where p.item_id=i.id and p.overview_photo_id is not null and p.model_photo_id is not null))
+ ) then return null;end if;
+ select decrypted_secret into dispatch_token from vault.decrypted_secrets where name='delivery_push_dispatch_token';
+ select decrypted_secret into project_url from vault.decrypted_secrets where name='delivery_push_project_url';
+ if dispatch_token is null or project_url is null then return null;end if;
+ select net.http_post(url:=project_url||'/functions/v1/delivery-line',headers:=jsonb_build_object('Content-Type','application/json','x-delivery-dispatch',dispatch_token),
+ body:='{"action":"dispatch"}'::jsonb,timeout_milliseconds:=50000) into request_id;return request_id;
+end $$;
+-- A deliberate resend uses the same automatic preparation, not a separate
+-- manual-photo prerequisite. All trade, assignment and duplicate guards stay.
+do $$declare source text;startpos integer;endpos integer;begin
+ source:=pg_get_functiondef('app.request_delivery_line_resend(uuid)'::regprocedure);
+ startpos:=strpos(source,' if not exists('||chr(10)||'  select 1 from app.delivery_line_preferences pref');
+ if startpos=0 then raise exception 'Resend photo prerequisite changed';end if;
+ endpos:=strpos(substring(source from startpos),'end if;')+startpos+length('end if;')-1;
+ execute overlay(source placing ' perform app.enqueue_line_photo_selection(i.id);' from startpos for endpos-startpos);
+end $$;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261107025918_amazon_listing_reconciliation.sql ▼▼▼
+
+-- Keep the submitted photo order and permit one explicit recovery of a vanished SKU.
+alter table app.amazon_listing_submissions
+ add column photo_ids uuid[] not null default '{}',
+ add column photo_fingerprint text,
+ add column photos_verified_at timestamptz,
+ add column photo_submitted_at timestamptz,
+ add column photo_submitted_fingerprint text,
+ add column photo_submission_id text,
+ add column recovery_count smallint not null default 0 check(recovery_count between 0 and 1),
+ add column recovery_at timestamptz,
+ add column recovery_submission_id text;
+grant select(sku,item_id) on app.item_sku_aliases to service_role;
+
+-- Cost/date edits still generate inventory SKUs as before. A verified Amazon SKU
+-- can be an alias of the same inventory item; it must never belong to another item.
+do $$declare original text;patched text;begin
+ original:=pg_get_functiondef('app.perform_inventory_action(uuid,text,app.item_status,text,uuid)'::regprocedure);
+ patched:=replace(original,'s.sku=i.sku and s.asin=',
+  '(s.sku=i.sku or exists(select 1 from app.item_sku_aliases a where a.item_id=i.id and a.sku=s.sku)) and s.asin=');
+ if patched=original then raise exception 'Amazon SKU verification anchor missing';end if;
+ execute patched;
+end $$;
+
+-- The server verifies Amazon and photograph contents before calling this RPC.
+-- No user JWT is manufactured: the original request records the real actor.
+-- The service role has no general items UPDATE/workflow INSERT grants. This
+-- narrowly scoped definer RPC authorizes only a fresh verified receipt, retaining
+-- the actor, item snapshot, approval, alias and idempotency checks below.
+create function app.complete_verified_amazon_listing(p_request_id uuid,p_expected_sku text) returns void
+language plpgsql security definer set search_path=pg_catalog,app as $$
+declare r app.amazon_listing_submissions;i app.items;actor app.staff;event app.inventory_workflow_events;
+begin
+ if coalesce(auth.role(),'')<>'service_role' then raise exception '内部処理専用です' using errcode='42501';end if;
+ select * into r from app.amazon_listing_submissions where request_id=p_request_id for update;
+ if r.request_id is null or r.state<>'verified' or r.verified_at is null or r.verified_at<clock_timestamp()-interval '10 minutes'
+  or r.photos_verified_at is null or r.photos_verified_at<clock_timestamp()-interval '10 minutes'
+  or r.photo_fingerprint is null then raise exception 'Amazonと写真の確認が必要です' using errcode='42501';end if;
+ select * into i from app.items where id=r.item_id for update;
+ if i.id is null or i.sku is distinct from p_expected_sku or i.status not in ('商品登録前','出品中')
+  or i.is_accessory and not app.is_standalone_accessory_serial(i.sku,i.lot_seq)
+  or i.asin::text is distinct from r.asin or i.sales_channel is distinct from r.sales_channel
+  or i.planned_price is distinct from r.price or i.condition::text is distinct from r.item_condition
+  or coalesce(i.description,'') is distinct from r.description
+  or r.seller_id is distinct from (case when i.sales_channel::text in ('FBA2','自己発送2') then 'A3E7BXJWH9TP11' else 'A1WI3OGPE43N2T' end)
+  or not(i.sku=r.sku or exists(select 1 from app.item_sku_aliases a where a.item_id=i.id and a.sku=r.sku))
+ then raise exception '確認後に商品情報が変更されています' using errcode='40001';end if;
+ select s.* into actor from app.staff s join app.profiles p on p.staff_id=s.id where p.user_id=r.requested_by;
+ if actor.id is null or not actor.is_active or not(actor.role='admin' or actor.id=i.deliverer_id)
+ then raise exception '元の出品依頼者の権限を確認できません' using errcode='42501';end if;
+ if not app.listing_photos_approved(i.id) or cardinality(r.photo_ids) not between 1 and 6
+  or (select count(distinct x) from unnest(r.photo_ids)x)<>cardinality(r.photo_ids)
+  or exists(select 1 from unnest(r.photo_ids)x where not exists(select 1 from app.item_photos p where p.id=x and p.item_id=i.id and p.photo_kind='product'))
+ then raise exception '承認済みの商品写真を確認してください' using errcode='42501';end if;
+ perform app.validate_work_completion_date(r.work_completed_on,i.purchased_at);
+ select * into event from app.inventory_workflow_events where id=r.request_id;
+ if event.id is not null then
+  if event.item_id=i.id and event.action='listing_complete' and i.status='出品中' then return;end if;
+  raise exception '操作IDが重複しています' using errcode='22023';
+ end if;
+ if i.status<>'商品登録前' then raise exception '出品状態が変更されています' using errcode='40001';end if;
+ update app.items set status='出品中',product_registered_at=clock_timestamp(),
+  packed_on=coalesce(packed_on,r.work_completed_on),packed_completed_at=coalesce(packed_completed_at,clock_timestamp()) where id=i.id;
+ insert into app.inventory_workflow_events(id,item_id,actor_id,action,from_status,to_status,note)
+ values(r.request_id,i.id,actor.id,'listing_complete',i.status,'出品中','Amazon登録SKU: '||r.sku);
+end $$;
+revoke all on function app.complete_verified_amazon_listing(uuid,text) from public,anon,authenticated;
+grant execute on function app.complete_verified_amazon_listing(uuid,text) to service_role;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261107045343_restore_fba_registration_stage.sql ▼▼▼
+
+-- Amazon offer/photo verification is not completion of the FBA inbound work.
+-- Guard the database too, including requests from an older Edge deployment.
+-- The existing explicit inventory workflow remains separate from this automatic RPC.
+do $$declare original text;patched text;begin
+ original:=pg_get_functiondef('app.complete_verified_amazon_listing(uuid,text)'::regprocedure);
+ patched:=replace(original,' perform app.validate_work_completion_date(r.work_completed_on,i.purchased_at);',
+  E' if app.sales_channel_family(i.sales_channel)=''FBA'' then return;end if;\n perform app.validate_work_completion_date(r.work_completed_on,i.purchased_at);');
+ if patched=original then raise exception 'Amazon completion date anchor missing';end if;
+ execute patched;
+end $$;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261107110609_delivery_invoice_category_rates.sql ▼▼▼
+
+-- These rates are administered separately from the self-editable invoice profile.
+alter table app.delivery_invoice_profiles add column category_rates jsonb;
+revoke update(category_rates) on app.delivery_invoice_profiles from public,anon,authenticated;
+
+update app.delivery_invoice_profiles p
+set category_rates = v.rates
+from app.staff s
+join (values
+ ('KK','{"from_month":"2026-11-01","monitor":450,"bluray":500}'::jsonb),
+ ('MM','{"from_month":"2026-11-01","monitor":450,"bluray":500,"trial":400}'::jsonb)
+) v(code,rates) on s.code=v.code
+where p.staff_id=s.id;
+
+create or replace function app.prepare_delivery_invoice(p_staff uuid,p_month date)
+returns jsonb language plpgsql stable security invoker set search_path=pg_catalog,app as $$
+declare p app.delivery_invoice_profiles; lines jsonb; subtotal bigint; rates jsonb; trial_price bigint;
+begin
+ if auth.uid() is null or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active)
+ or not coalesce(p_staff=app.current_staff_id() or app.is_admin(),false) then
+  raise exception '請求書へのアクセス権がありません' using errcode='42501';
+ end if;
+ if p_month is null or extract(day from p_month)<>1 then raise exception '対象月が不正です'; end if;
+ select * into p from app.delivery_invoice_profiles where staff_id=p_staff;
+ if not found or not p.enabled or p.unit_price is null then raise exception '請求単価の設定を管理者に確認してください'; end if;
+ if p_month >= (p.category_rates->>'from_month')::date then
+  rates := p.category_rates;
+  if p_month < coalesce((rates->>'trial_until')::date, 'infinity'::date) then
+   trial_price := (rates->>'trial')::bigint;
+  end if;
+ end if;
+ with invoice_items as (
+  select distinct on(lower(app.product_serial(sku,lot_seq))) id,sku,lot_seq,purchased_at,packed_on,work_stream,marketplace,title,
+   app.product_serial(sku,lot_seq) as serial_key,
+   app.is_standalone_accessory_serial(sku,lot_seq) as standalone,
+   (lower(app.product_serial(sku,lot_seq)) ~ '^[0-9]+[ab]*b$' or marketplace::text='動作品Amazon返品') as half_return
+  from app.items where deliverer_id=p_staff and packed_on is not null
+    and (not is_accessory or app.is_standalone_accessory_serial(sku,lot_seq))
+  order by lower(app.product_serial(sku,lot_seq)),packed_on,id
+ ), priced as (
+  select *,coalesce(trial_price,case work_stream::text
+   when 'テレビ' then (rates->>'monitor')::bigint
+   when 'ブルーレイ' then (rates->>'bluray')::bigint
+  end,p.unit_price::bigint) as base_price
+  from invoice_items where packed_on>=p_month and packed_on<p_month+interval '1 month'
+ ), selected as (
+  select *,case when standalone or half_return then base_price/2 else base_price end as price
+  from priced
+ )
+ select coalesce(jsonb_agg(jsonb_build_object(
+  'item_id',id,'sku',sku,'serial',serial_key,'lot_seq',lot_seq,'date',purchased_at,'packed_on',packed_on,
+  'description',case when standalone then '付属品単体販売' when half_return then '動作品Amazon返品対応'
+   when marketplace::text='Amazon返品' then 'Amazon返品対応' when work_stream::text='テレビ' then 'モニター・テレビ'
+   when work_stream::text='ブルーレイ' then 'ブルーレイレコーダー' else '小物' end,
+  'title',title,'quantity',1,'unit_price',price,'amount',price
+ ) order by purchased_at nulls last,lot_seq,serial_key,id),'[]'::jsonb),coalesce(sum(price),0)
+ into lines,subtotal from selected;
+ return jsonb_build_object('profile',p.details,'lines',lines,'subtotal',subtotal,'tax_percent',p.tax_percent);
+end $$;
+revoke all on function app.prepare_delivery_invoice(uuid,date) from public,anon,authenticated;
+grant execute on function app.prepare_delivery_invoice(uuid,date) to authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261107115153_yoshimitsu_october_trial_rate.sql ▼▼▼
+
+-- Yoshimitsu's 400-yen trial rate also applies to the October 2026 invoice.
+do $correction$
+declare
+  owner_user uuid;
+  yoshimitsu uuid;
+  invoice app.delivery_invoices;
+  saved app.delivery_invoices;
+  fresh jsonb;
+  expected_lines jsonb;
+begin
+  select id into yoshimitsu from app.staff where code='MM';
+  if yoshimitsu is null then return; end if;
+  perform set_config('lock_timeout','3s',true);
+  perform pg_advisory_xact_lock(hashtextextended(yoshimitsu::text||date '2026-10-01'::text,0));
+  select * into invoice from app.delivery_invoices where staff_id=yoshimitsu and billing_month=date '2026-10-01' for update;
+  if not found then
+    update app.delivery_invoice_profiles set category_rates=jsonb_set(category_rates,'{from_month}','"2026-10-01"'::jsonb,false)
+    where staff_id=yoshimitsu and category_rates='{"from_month":"2026-11-01","monitor":450,"bluray":500,"trial":400}'::jsonb;
+    return;
+  end if;
+  select p.user_id into strict owner_user from app.profiles p join app.staff s on s.id=p.staff_id
+  where s.code='AA' and s.role='admin' and s.is_active;
+  perform set_config('request.jwt.claim.sub',owner_user::text,true);
+  if invoice.version<>6 or invoice.total<>25270 or invoice.review_content is not null
+    or exists(select 1 from app.delivery_invoice_approvals where invoice_id=invoice.id) then
+    raise exception 'Unexpected invoice state';
+  end if;
+  select jsonb_agg(jsonb_set(jsonb_set(line,'{unit_price}','400'::jsonb),'{amount}',to_jsonb(400*(line->>'quantity')::integer)) order by n)
+  into expected_lines from jsonb_array_elements(invoice.snapshot->'lines') with ordinality x(line,n);
+  update app.delivery_invoice_profiles set category_rates=jsonb_set(category_rates,'{from_month}','"2026-10-01"'::jsonb,false)
+  where staff_id=invoice.staff_id and category_rates='{"from_month":"2026-11-01","monitor":450,"bluray":500,"trial":400}'::jsonb;
+  if not found then raise exception 'Unexpected category rate settings'; end if;
+  fresh:=app.prepare_delivery_invoice(invoice.staff_id,invoice.billing_month);
+  if fresh->'lines' is distinct from expected_lines or fresh->'profile' is distinct from invoice.snapshot->'profile'
+    or fresh->'tax_percent' is distinct from invoice.snapshot->'tax_percent'
+    or (fresh->>'subtotal')::bigint<>13200
+    or app.invoice_receipt_lines(invoice.staff_id,invoice.billing_month) is distinct from invoice.snapshot->'receipt_lines' then
+    raise exception 'A change other than unit price was detected';
+  end if;
+  -- Keep the normal invoice and receipt calculations. Suppress only the new push for this correction.
+  if not exists(select 1 from pg_trigger where tgrelid='app.delivery_invoices'::regclass
+    and tgname='invoices_admin_push' and tgenabled='O') then
+    raise exception 'Unexpected invoice notification trigger state';
+  end if;
+  alter table app.delivery_invoices disable trigger invoices_admin_push;
+  update app.delivery_invoices set extras=invoice.extras
+  where id=invoice.id and version=invoice.version returning * into strict saved;
+  alter table app.delivery_invoices enable trigger invoices_admin_push;
+  if saved.version<>invoice.version+1 or saved.total<>21970
+    or saved.snapshot->'lines' is distinct from expected_lines
+    or saved.snapshot->'receipt_lines' is distinct from invoice.snapshot->'receipt_lines'
+    or saved.extras is distinct from invoice.extras or saved.note is distinct from invoice.note
+    or saved.issued_on is distinct from invoice.issued_on then
+    raise exception 'Unexpected recalculated invoice';
+  end if;
+end $correction$;
+
+
+-- ▼▼▼ 20261107121126_invoice_approval_line.sql ▼▼▼
+
+-- An approval and its notification are committed together. The invoice is
+-- locked by the approval RPC and can no longer be edited once approved.
+create table app.invoice_approval_line_outbox (
+  invoice_id uuid primary key references app.delivery_invoice_approvals(invoice_id),
+  staff_id uuid not null references app.staff(id),
+  invoice_version integer not null,
+  billing_month date not null,
+  total bigint not null check (total > 0),
+  staff_name text not null,
+  -- Retain the binding generation even if it is unlinked. Never redirect a
+  -- notification already bound to one LINE account to a different account.
+  link_id uuid,
+  retry_key uuid not null unique default gen_random_uuid(),
+  state text not null default 'pending' check (state in ('pending','sending','sent','failed','link_changed')),
+  attempts integer not null default 0,
+  next_attempt_at timestamptz not null default now(),
+  first_attempt_at timestamptz,
+  sent_at timestamptz,
+  last_status integer,
+  lease uuid
+);
+create index invoice_approval_line_due on app.invoice_approval_line_outbox(next_attempt_at)
+  where state in ('pending','sending');
+alter table app.invoice_approval_line_outbox enable row level security;
+revoke all on app.invoice_approval_line_outbox from public,anon,authenticated;
+grant select,update on app.invoice_approval_line_outbox to service_role;
+grant select(id,staff_id,version,billing_month,total) on app.delivery_invoices to service_role;
+
+create function app.capture_invoice_approval_line() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+  insert into app.invoice_approval_line_outbox(invoice_id,staff_id,invoice_version,billing_month,total,staff_name,link_id)
+  select i.id,i.staff_id,i.version,i.billing_month,i.total,s.name,l.id
+  from app.delivery_invoices i
+  join app.staff s on s.id=i.staff_id
+  join app.expenses e on e.id=new.expense_id and e.staff_id=i.staff_id
+    and e.amount=i.total and e.category='外注費' and e.memo='納品請求書 '||i.id::text
+  left join app.delivery_line_links l on l.staff_id=i.staff_id and not l.blocked
+  where i.id=new.invoice_id and i.total>0
+  on conflict do nothing;
+  return new;
+end $$;
+create trigger capture_invoice_approval_line after insert on app.delivery_invoice_approvals
+  for each row execute function app.capture_invoice_approval_line();
+
+create function app.claim_invoice_approval_line()
+returns table(invoice_id uuid,lease uuid,retry_key uuid,billing_month text,total bigint,staff_name text)
+language plpgsql security invoker set search_path='' as $$
+begin
+  update app.invoice_approval_line_outbox o set state='link_changed',lease=null
+  where o.state in ('pending','sending') and o.next_attempt_at<=now() and o.link_id is not null
+    and not exists(select 1 from app.delivery_line_links l where l.staff_id=o.staff_id and l.id=o.link_id);
+  update app.invoice_approval_line_outbox o set state='failed',lease=null
+  where o.state in ('pending','sending') and o.next_attempt_at<=now()
+    and (o.attempts>=5 or o.first_attempt_at<=now()-interval '23 hours');
+
+  return query with due as (
+    select o.invoice_id,l.id as link_id
+    from app.invoice_approval_line_outbox o
+    join app.delivery_line_links l on l.staff_id=o.staff_id and not l.blocked
+      and (o.link_id is null or o.link_id=l.id)
+    join app.staff s on s.id=o.staff_id and s.is_active
+    join app.delivery_invoices i on i.id=o.invoice_id and i.staff_id=o.staff_id
+      and i.billing_month=o.billing_month and i.version=o.invoice_version and i.total=o.total
+    where o.state in ('pending','sending') and o.next_attempt_at<=now()
+    order by o.next_attempt_at,o.invoice_id limit 3 for update of o skip locked
+  ), claimed as (
+    update app.invoice_approval_line_outbox o
+    set state='sending',link_id=d.link_id,lease=gen_random_uuid(),attempts=o.attempts+1,
+      first_attempt_at=coalesce(o.first_attempt_at,now()),next_attempt_at=now()+interval '2 minutes'
+    from due d where o.invoice_id=d.invoice_id
+    returning o.invoice_id,o.lease,o.retry_key,o.billing_month,o.total,o.staff_name
+  ) select c.invoice_id,c.lease,c.retry_key,to_char(c.billing_month,'YYYY-MM'),c.total,c.staff_name from claimed c;
+end $$;
+
+create function app.invoice_approval_line_recipient(p_invoice uuid,p_lease uuid) returns text
+language sql security invoker set search_path='' as $$
+  select l.line_user_id
+  from app.invoice_approval_line_outbox o
+  join app.delivery_line_links l on l.id=o.link_id and l.staff_id=o.staff_id and not l.blocked
+  join app.staff s on s.id=o.staff_id and s.is_active
+  where o.invoice_id=p_invoice and o.lease=p_lease and o.state='sending' and o.next_attempt_at>now();
+$$;
+
+create function app.finish_invoice_approval_line(p_invoice uuid,p_lease uuid,p_state text,p_status integer)
+returns void language sql security invoker set search_path='' as $$
+  update app.invoice_approval_line_outbox
+  set state=p_state,last_status=p_status,lease=null,
+    sent_at=case when p_state='sent' then now() end,
+    next_attempt_at=now()+interval '1 minute'*power(2,attempts-1)
+  where invoice_id=p_invoice and lease=p_lease and state='sending'
+    and p_state in ('pending','sent','failed');
+$$;
+
+-- Only dispatch when there is actionable work. Unlinked recipients remain
+-- queued and become eligible when the same staff account is linked.
+create function app.kick_invoice_approval_line() returns bigint
+language plpgsql security invoker set search_path='' as $$
+declare dispatch_token text; project_url text; request_id bigint;
+begin
+  if not exists(
+    select 1 from app.invoice_approval_line_outbox o
+    left join app.delivery_line_links l on l.staff_id=o.staff_id
+    join app.staff s on s.id=o.staff_id
+    where o.state in ('pending','sending') and o.next_attempt_at<=now()
+      and ((s.is_active and l.id is not null and not l.blocked)
+        or (o.link_id is not null and l.id is distinct from o.link_id)
+        or o.attempts>=5 or o.first_attempt_at<=now()-interval '23 hours')
+  ) then return null; end if;
+  select decrypted_secret into dispatch_token from vault.decrypted_secrets where name='delivery_push_dispatch_token';
+  select decrypted_secret into project_url from vault.decrypted_secrets where name='delivery_push_project_url';
+  if dispatch_token is null or project_url is null then return null; end if;
+  select net.http_post(url:=project_url||'/functions/v1/delivery-line',
+    headers:=jsonb_build_object('Content-Type','application/json','x-delivery-dispatch',dispatch_token),
+    body:='{"action":"dispatch-invoice-approvals"}'::jsonb,timeout_milliseconds:=35000) into request_id;
+  return request_id;
+end $$;
+
+create function app.invoice_approval_line_status(p_invoice uuid) returns text
+language sql stable security definer set search_path='' as $$
+  select case
+    when o.state not in ('pending','sending') then o.state
+    when o.link_id is not null and l.id is distinct from o.link_id then 'link_changed'
+    when l.id is null or l.blocked or not s.is_active then 'waiting_link'
+    else o.state end
+  from app.invoice_approval_line_outbox o
+  join app.staff s on s.id=o.staff_id
+  left join app.delivery_line_links l on l.staff_id=o.staff_id
+  where o.invoice_id=p_invoice and auth.uid() is not null and (select app.is_admin())
+    and exists(select 1 from app.staff a where a.id=app.current_staff_id() and a.is_active);
+$$;
+
+revoke all on function app.capture_invoice_approval_line(),app.claim_invoice_approval_line(),
+  app.invoice_approval_line_recipient(uuid,uuid),app.finish_invoice_approval_line(uuid,uuid,text,integer),
+  app.kick_invoice_approval_line(),app.invoice_approval_line_status(uuid) from public,anon,authenticated;
+grant execute on function app.claim_invoice_approval_line(),app.invoice_approval_line_recipient(uuid,uuid),
+  app.finish_invoice_approval_line(uuid,uuid,text,integer) to service_role;
+grant execute on function app.invoice_approval_line_status(uuid) to authenticated;
+select cron.schedule('invoice-approval-line','* * * * *','select app.kick_invoice_approval_line();');
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261107133844_fba_inbound_workflow.sql ▼▼▼
+
+create table app.fba_inbound_plans (
+ id uuid primary key default gen_random_uuid(),
+ account text not null check(account in ('FBA1','FBA2')),
+ staff_id uuid not null references app.staff(id),
+ name text not null,
+ created_by uuid not null references auth.users(id),
+ created_at timestamptz not null default now(),
+ updated_at timestamptz not null default now(),
+ revision integer not null default 0,
+ stage text not null default 'draft' check(stage in ('draft','created','packing-options','packing-confirmed','packed','placement-options','transport-options','placement-confirmed','ready','cancelled')),
+ amazon_id text,
+ pending jsonb,
+ work jsonb not null default '{}'::jsonb,
+ unique(account,amazon_id)
+);
+create index fba_inbound_staff_recent on app.fba_inbound_plans(staff_id,created_at desc);
+create table app.fba_inbound_items (
+ plan_id uuid not null references app.fba_inbound_plans(id) on delete cascade,
+ item_id uuid not null references app.items(id) on delete restrict,
+ sku text not null,
+ asin text not null,
+ title text not null,
+ condition text not null,
+ sales_channel app.sales_channel not null,
+ released_at timestamptz,
+ published_at timestamptz,
+ primary key(plan_id,item_id),
+ unique(plan_id,sku)
+);
+create unique index fba_inbound_reserved_item on app.fba_inbound_items(item_id) where released_at is null;
+alter table app.fba_inbound_plans enable row level security;
+alter table app.fba_inbound_items enable row level security;
+revoke all on app.fba_inbound_plans,app.fba_inbound_items from public,anon,authenticated;
+grant select,insert,update,delete on app.fba_inbound_plans,app.fba_inbound_items to service_role;
+
+create function app.create_fba_inbound_draft(p_user uuid,p_items uuid[])
+returns uuid language plpgsql set search_path='' as $$
+declare
+ v_actor app.staff; v_staff app.staff; v_item app.items;
+ v_account text; v_channel text; v_plan uuid; v_count integer:=0;
+begin
+ select s.* into v_actor from app.profiles p join app.staff s on s.id=p.staff_id
+ where p.user_id=p_user and s.is_active;
+ if not found then raise exception '利用権限がありません。' using errcode='42501'; end if;
+ if coalesce(cardinality(p_items),0) not between 1 and 100
+ or cardinality(p_items)<>(select count(distinct a) from unnest(p_items) a)
+ then raise exception '納品商品は1〜100点を選んでください。' using errcode='22023'; end if;
+ for v_item in select i.* from app.items i where i.id=any(p_items) order by i.id for update loop
+   v_count:=v_count+1;
+   v_channel:=case when v_item.sales_channel::text in ('FBA','FBA1') then 'FBA1'
+                   when v_item.sales_channel::text='FBA2' then 'FBA2' end;
+   if v_channel is null or v_item.status::text<>'商品登録前'
+     or v_item.deliverer_id is null or (v_actor.role::text<>'admin' and v_actor.id<>v_item.deliverer_id)
+     or (coalesce(v_item.is_accessory,false) and v_item.sku !~* '^\d+c+[-_]')
+     or nullif(v_item.sku,'') is null or coalesce(btrim(v_item.asin::text),'') !~ '^[A-Z0-9]{10}$'
+     or v_item.condition is null then
+      raise exception '担当者・販売先・状態・ASIN・コンディションを確認し、在庫で選び直してください。' using errcode='22023';
+   end if;
+   if v_plan is null then
+     select s.* into v_staff from app.staff s where s.id=v_item.deliverer_id and s.is_active;
+     if not found then raise exception '納品担当者を確認してください。' using errcode='22023'; end if;
+     v_account:=v_channel;
+     insert into app.fba_inbound_plans(account,staff_id,name,created_by)
+     values(v_account,v_staff.id,left(v_staff.name,24)||to_char(now() at time zone 'Asia/Tokyo','YYYY/FMMM/FMDD'),p_user)
+     returning id into v_plan;
+   elsif v_account<>v_channel or v_staff.id<>v_item.deliverer_id then
+     raise exception '販売先・納品担当者ごとに分けて登録してください。' using errcode='22023';
+   end if;
+   insert into app.fba_inbound_items(plan_id,item_id,sku,asin,title,condition,sales_channel)
+   values(v_plan,v_item.id,v_item.sku,btrim(v_item.asin::text),coalesce(nullif(v_item.title,''),v_item.sku),v_item.condition::text,v_item.sales_channel);
+ end loop;
+ if v_count<>cardinality(p_items) then raise exception '商品を確認できません。' using errcode='22023'; end if;
+ return v_plan;
+exception when unique_violation then
+ raise exception '別の納品に登録済みの商品があります。納品履歴を確認してください。' using errcode='23505';
+end $$;
+
+create function app.cancel_fba_inbound_plan(p_plan uuid,p_revision integer)
+returns boolean language plpgsql set search_path='' as $$
+begin
+ update app.fba_inbound_plans set stage='cancelled',pending=null,revision=revision+1,updated_at=now()
+ where id=p_plan and revision=p_revision;
+ if not found then return false; end if;
+ update app.fba_inbound_items set released_at=now() where plan_id=p_plan and released_at is null;
+ return true;
+end $$;
+
+create function app.publish_fba_inbound_items(p_plan uuid,p_items uuid[])
+returns integer language plpgsql set search_path='' as $$
+declare v_count integer;
+begin
+ with verified as (
+  update app.items i set status='出品中',product_registered_at=coalesce(i.product_registered_at,now())
+  from app.fba_inbound_items f join app.fba_inbound_plans p on p.id=f.plan_id
+  where p.id=p_plan and p.stage='ready' and f.released_at is null and f.published_at is null
+  and i.id=f.item_id and i.id=any(p_items) and i.sku=f.sku and btrim(i.asin::text)=f.asin
+  and i.condition::text=f.condition and i.deliverer_id=p.staff_id and i.status::text='商品登録前'
+  and (i.sales_channel::text=p.account or (i.sales_channel::text='FBA' and p.account='FBA1'))
+  returning i.id
+ )
+ update app.fba_inbound_items f set published_at=now(),released_at=now()
+ from verified v where f.plan_id=p_plan and f.item_id=v.id;
+ get diagnostics v_count=row_count;
+ return v_count;
+end $$;
+
+revoke all on function app.create_fba_inbound_draft(uuid,uuid[]),app.cancel_fba_inbound_plan(uuid,integer),
+ app.publish_fba_inbound_items(uuid,uuid[]) from public,anon,authenticated;
+grant execute on function app.create_fba_inbound_draft(uuid,uuid[]),app.cancel_fba_inbound_plan(uuid,integer),
+ app.publish_fba_inbound_items(uuid,uuid[]) to service_role;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261108064839_relink_inventory_asin.sql ▼▼▼
+
+-- An ASIN already in the catalogue identifies an existing product.
+-- Relink the inventory row in the same update that saves its ASIN.
+create function app.resolve_inventory_asin_product()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+declare
+  matching_product uuid;
+begin
+  if coalesce(app.current_role() in ('admin','purchaser'), false) then
+    if new.asin is null and old.asin is distinct from new.asin and new.product_id is not null then
+      raise exception '商品リストに紐づく商品にはASINを入力してください。' using errcode = '22023';
+    end if;
+    if new.asin is not null then
+      select id into matching_product from app.products where asin = new.asin for share;
+      if found then
+        new.product_id := matching_product;
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function app.resolve_inventory_asin_product() from public, anon, authenticated;
+create trigger items_resolve_inventory_asin_product
+before update of asin on app.items
+for each row execute function app.resolve_inventory_asin_product();
+
+create or replace function app.sync_inventory_shared_product_fields()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.asin is distinct from old.asin and new.product_id is not distinct from old.product_id then
+    if new.product_id is null then
+      update app.items sibling set asin = new.asin
+       where sibling.id <> new.id and sibling.product_id is null
+         and app.product_serial(sibling.sku,sibling.lot_seq) = app.product_serial(new.sku,new.lot_seq)
+         and sibling.asin is distinct from new.asin;
+    elsif app.current_role() in ('admin','purchaser') then
+      -- A new ASIN for a linked product retains the catalogue-wide edit.
+      -- The existing catalogue trigger then updates its linked inventory.
+      begin
+        update app.products set asin = new.asin
+         where id = new.product_id and asin is distinct from new.asin;
+      exception when unique_violation then
+        raise exception '同じASINが先に登録されました。在庫を再読み込みして保存してください。' using errcode = '40001';
+      end;
+    else
+      update app.items sibling set asin = new.asin
+       where sibling.id <> new.id and sibling.product_id = new.product_id
+         and sibling.asin is distinct from new.asin;
+    end if;
+  end if;
+  if new.planned_price is distinct from old.planned_price or new.planned_payout is distinct from old.planned_payout then
+    update app.items sibling set planned_price = new.planned_price, planned_payout = new.planned_payout
+     where sibling.id <> new.id
+       and app.product_serial(sibling.sku,sibling.lot_seq) = app.product_serial(new.sku,new.lot_seq)
+       and (sibling.planned_price is distinct from new.planned_price or sibling.planned_payout is distinct from new.planned_payout);
+  end if;
+  return new;
+end;
+$$;
+
+
+-- ▼▼▼ 20261108065402_preserve_inventory_asin_clear.sql ▼▼▼
+
+-- Keep existing inventory-only clearing of ASINs available to other workflows.
+-- An ASIN already in the catalogue identifies an existing product.
+-- Relink the inventory row in the same update that saves its ASIN.
+create or replace function app.resolve_inventory_asin_product()
+returns trigger language plpgsql security invoker set search_path = '' as $$
+declare
+  matching_product uuid;
+begin
+  if coalesce(app.current_role() in ('admin','purchaser'), false) then
+    if new.asin is not null then
+      select id into matching_product from app.products where asin = new.asin for share;
+      if found then
+        new.product_id := matching_product;
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+
+create or replace function app.sync_inventory_shared_product_fields()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.asin is distinct from old.asin and new.product_id is not distinct from old.product_id then
+    if new.product_id is null then
+      update app.items sibling set asin = new.asin
+       where sibling.id <> new.id and sibling.product_id is null
+         and app.product_serial(sibling.sku,sibling.lot_seq) = app.product_serial(new.sku,new.lot_seq)
+         and sibling.asin is distinct from new.asin;
+    elsif new.asin is not null and app.current_role() in ('admin','purchaser') then
+      -- A new ASIN for a linked product retains the catalogue-wide edit.
+      -- The existing catalogue trigger then updates its linked inventory.
+      begin
+        update app.products set asin = new.asin
+         where id = new.product_id and asin is distinct from new.asin;
+      exception when unique_violation then
+        raise exception '同じASINが先に登録されました。在庫を再読み込みして保存してください。' using errcode = '40001';
+      end;
+    else
+      update app.items sibling set asin = new.asin
+       where sibling.id <> new.id and sibling.product_id = new.product_id
+         and sibling.asin is distinct from new.asin;
+    end if;
+  end if;
+  if new.planned_price is distinct from old.planned_price or new.planned_payout is distinct from old.planned_payout then
+    update app.items sibling set planned_price = new.planned_price, planned_payout = new.planned_payout
+     where sibling.id <> new.id
+       and app.product_serial(sibling.sku,sibling.lot_seq) = app.product_serial(new.sku,new.lot_seq)
+       and (sibling.planned_price is distinct from new.planned_price or sibling.planned_payout is distinct from new.planned_payout);
+  end if;
+  return new;
+end;
+$$;
+
+
+-- ▼▼▼ 20261108111525_invoice_outsourcing_posting_date.sql ▼▼▼
+
+-- Use the billing month from the locked invoice, including for older clients
+-- that still supply the previous month-end date to the approval RPC.
+create or replace function app.approve_delivery_invoice(p_invoice uuid,p_version integer,p_incurred_on date)
+returns uuid language plpgsql security invoker set search_path=pg_catalog,app as $$
+declare inv app.delivery_invoices; existing uuid; expense uuid;
+begin
+ if auth.uid() is null or not app.is_admin()
+ or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active) then
+  raise exception '請求書を承認できるのは管理者だけです' using errcode='42501';
+ end if;
+ select * into inv from app.delivery_invoices where id=p_invoice for update;
+ if not found then raise exception '請求書が見つかりません'; end if;
+ select expense_id into existing from app.delivery_invoice_approvals where invoice_id=inv.id;
+ if found then return existing; end if;
+ if inv.version<>p_version then raise exception '請求書が更新されました。最新の内容を確認してください'; end if;
+ if inv.total<=0 then raise exception '請求金額が0円のため承認できません'; end if;
+ insert into app.expenses(incurred_on,category,name,amount,staff_id,memo)
+ values((date_trunc('month',inv.billing_month::timestamp) + interval '1 month 9 days')::date,'外注費',
+ coalesce(inv.snapshot->'profile'->>'issuer_name','納品担当者')||' '||to_char(inv.billing_month,'YYYY年MM月')||' 請求書',
+ inv.total,inv.staff_id,'納品請求書 '||inv.id::text) returning id into expense;
+ insert into app.delivery_invoice_approvals(invoice_id,expense_id) values(inv.id,expense);
+ return expense;
+end $$;
+
+-- Move only active expenses created by the approval of an October invoice
+-- that are still posted on the previous default date.
+update app.expenses as expense
+set incurred_on = date '2026-11-10'
+from app.delivery_invoice_approvals as approval
+join app.delivery_invoices as invoice on invoice.id = approval.invoice_id
+where expense.id = approval.expense_id
+  and invoice.billing_month = date '2026-10-01'
+  and expense.category = '外注費'
+  and expense.deleted_at is null
+  and expense.incurred_on = date '2026-10-31';
+
+
+-- ▼▼▼ 20261108154307_inventory_accessory_search.sql ▼▼▼
+
+-- Search actual accessory names and purchase IDs within the existing inventory scopes.
+create or replace function app.inventory_page_matches(d jsonb,f jsonb,scope text)
+returns boolean language plpgsql immutable set search_path=pg_catalog,app as $$
+declare field text; needle text; candidate text; serial text; values jsonb;
+ accessory boolean:=coalesce((d->>'is_accessory')::boolean,false);
+begin
+ foreach field in array array['status','marketplace','sales_channel'] loop
+  values:=f->'states'->field;
+  if jsonb_typeof(values)='array' and jsonb_array_length(values)>0 and not values ? coalesce(d->>field,'') then return false;end if;
+ end loop;
+ if nullif(f->>'status','') is not null and f->>'status'<>'all' and d->>'status'<>f->>'status' then return false;end if;
+ if nullif(f->>'delivererId','') is not null and coalesce(d->>'deliverer_id','')<>f->>'delivererId' then return false;end if;
+ values:=f->'delivererIds';
+ if f ? 'delivererIds' and jsonb_typeof(values)<>'array' then raise exception '納品担当者の条件が不正です' using errcode='22023';end if;
+ if jsonb_typeof(values)='array' and jsonb_array_length(values)>0 and not values ? coalesce(d->>'deliverer_id','') then return false;end if;
+ if nullif(f->>'from','') is not null and coalesce(d->>'purchased_at','')<f->>'from' then return false;end if;
+ if nullif(f->>'to','') is not null and (d->>'purchased_at' is null or d->>'purchased_at'>f->>'to') then return false;end if;
+ field:=coalesce(f->>'queryField','serial');needle:=coalesce(f->>'query','');
+ if scope='delivery' then needle:=regexp_replace(lower(normalize(needle,NFKC)),'[[:space:]‐‑–—−ー]','','g');else needle:=lower(btrim(needle));end if;
+ if needle='' or field='deliverer' then return true;end if;
+ serial:=coalesce(substring(d->>'sku' from '^([0-9]+[a-zA-Z]*)[-_]'),d->>'lot_seq');
+ candidate:=case field when 'serial' then serial when 'model' then
+  case when scope='management' and accessory then d->>'title'
+   else coalesce(nullif(btrim(d->>'model_no'),''),case when d->>'marketplace'='動作品Amazon返品' then '未登録' else coalesce(nullif(btrim(d->>'title'),''),'—') end) end
+  when 'accessory_name' then case when accessory then d->>'title' end
+  when 'marketplace_item_id' then case when scope='delivery' and not accessory and d->>'marketplace'<>'動作品Amazon返品' then coalesce(nullif(d->>'original_marketplace_item_id',''),d->>'marketplace_item_id') else d->>'marketplace_item_id' end
+  when 'sku' then d->>'sku' when 'asin' then d->>'asin' when 'tracking_no' then d->>'tracking_no' else '' end;
+ if scope='delivery' then candidate:=regexp_replace(lower(normalize(coalesce(candidate,''),NFKC)),'[[:space:]‐‑–—−ー]','','g');else candidate:=lower(coalesce(candidate,''));end if;
+ if field='serial' then
+  needle:=lower(btrim(normalize(needle,NFKC)));
+  if needle ~ '^[0-9]+$' then return candidate ~ ('^'||needle||'[a-z]*$');end if;
+  return candidate=needle;
+ end if;
+ return position(needle in candidate)>0;
+end $$;
+
+
+-- ▼▼▼ 20261108160630_delivery_accessory_usage_record.sql ▼▼▼
+
+-- Show the recorded prior use of a transferred spare on its matching delivery accessory.
+-- The inventory readers keep their current roles and only add this field to delivery rows.
+do $migration$
+declare
+ definition text;
+ function_name text;
+ field_anchor text:=$field$'original_marketplace_item_id',o.item_id$field$;
+ join_anchor text:=$join$left join origins o on$join$;
+begin
+ foreach function_name in array array['app.read_inventory_page(text,jsonb,integer,jsonb)','app.read_delivery_catalog_snapshot(text,jsonb,integer,jsonb)'] loop
+  definition:=pg_get_functiondef(function_name::regprocedure);
+  if position('accessory_usage_note' in definition)>0 then continue;end if;
+  if position(field_anchor in definition)=0 or position(join_anchor in definition)=0 then
+   raise exception 'Delivery accessory usage insertion point missing: %',function_name;
+  end if;
+  definition:=replace(definition,field_anchor,field_anchor||$field$,'accessory_usage_note',spare.usage_note$field$);
+  definition:=replace(definition,join_anchor,$join$left join (
+    select used_for_item_id,marketplace,marketplace_item_id,min(btrim(usage_note)) usage_note
+    from app.spare_accessories
+    where used_for_item_id is not null and nullif(btrim(usage_note),'') is not null
+      and nullif(btrim(marketplace_item_id),'') is not null
+    group by used_for_item_id,marketplace,marketplace_item_id
+    having min(btrim(usage_note))=max(btrim(usage_note))
+   ) spare on $1='delivery' and spare.used_for_item_id=relation.parent_item_id
+    and spare.marketplace=r.d->>'marketplace' and spare.marketplace_item_id=r.d->>'marketplace_item_id'
+   $join$||join_anchor);
+  execute definition;
+ end loop;
+end $migration$;
+
+
+-- ▼▼▼ 20261108160837_delivery_accessory_usage_direct_link.sql ▼▼▼
+
+-- A spare may be registered as an accessory directly, rather than with a new main item.
+-- Prefer that exact link over a match inherited through the parent.
+do $migration$
+declare
+ definition text;
+ function_name text;
+ field_anchor text:=$field$'accessory_usage_note',spare.usage_note$field$;
+ join_anchor text:=$join$left join origins o on$join$;
+begin
+ foreach function_name in array array['app.read_inventory_page(text,jsonb,integer,jsonb)','app.read_delivery_catalog_snapshot(text,jsonb,integer,jsonb)'] loop
+  definition:=pg_get_functiondef(function_name::regprocedure);
+  if position('direct_spare.usage_note' in definition)>0 then continue;end if;
+  if position(field_anchor in definition)=0 or position(join_anchor in definition)=0 then
+   raise exception 'Direct delivery accessory usage insertion point missing: %',function_name;
+  end if;
+  definition:=replace(definition,field_anchor,$field$'accessory_usage_note',coalesce(direct_spare.usage_note,spare.usage_note)$field$);
+  definition:=replace(definition,join_anchor,$join$left join lateral (
+    select min(btrim(s.usage_note)) usage_note
+    from app.spare_accessories s
+    where $1='delivery' and s.used_for_item_id=relation.id
+      and s.marketplace=r.d->>'marketplace' and s.marketplace_item_id=r.d->>'marketplace_item_id'
+      and nullif(btrim(s.usage_note),'') is not null
+    having min(btrim(s.usage_note))=max(btrim(s.usage_note))
+   ) direct_spare on true
+   $join$||join_anchor);
+  execute definition;
+ end loop;
+end $migration$;
+
+
+-- ▼▼▼ 20261108230927_yahoo_bundle_receipt_gate.sql ▼▼▼
+
+-- A Yahoo purchase may share its parcel with other main units under different auction IDs.
+create function app.receipt_bundle_lots(p_memo text)
+returns text[] language sql immutable strict set search_path='' as $$
+ select coalesce(array_agg(distinct btrim(lot)),array[]::text[])
+ from regexp_matches(p_memo,
+   '^[[:blank:]]*([0-9]{1,9}([[:blank:]]*[、,，。][[:blank:]]*[0-9]{1,9})+)[[:blank:]]*同梱([[:blank:]。．.]|$)',
+   'gn') as match
+ cross join lateral regexp_split_to_table(match[1],'[、,，。]') as lot
+$$;
+revoke all on function app.receipt_bundle_lots(text) from public,anon;
+grant execute on function app.receipt_bundle_lots(text) to authenticated,service_role;
+
+create function app.receipt_bundle_is_waiting(p_item app.items)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select case when (p_item).marketplace='ヤフオク' and not (p_item).is_accessory then exists (
+   select 1
+   from app.items sibling
+   cross join (
+     select app.receipt_bundle_lots((p_item).memo) as lots,
+       regexp_replace((p_item).tracking_no,'[[:space:]－-]','','g') as tracking
+   ) source
+   where sibling.marketplace=(p_item).marketplace and not sibling.is_accessory
+     and sibling.id<>(p_item).id
+     and (sibling.inspected_at is null or sibling.cleaned_at is null)
+     and (
+       (source.tracking ~ '^[0-9]{8,20}$'
+         and source.tracking=regexp_replace(sibling.tracking_no,'[[:space:]－-]','','g'))
+       or (source.lots @> array[(p_item).lot_seq::text,sibling.lot_seq::text])
+       or (app.receipt_bundle_lots(sibling.memo) @> array[(p_item).lot_seq::text,sibling.lot_seq::text])
+     )
+ ) else false end
+$$;
+revoke all on function app.receipt_bundle_is_waiting(app.items) from public,anon;
+grant execute on function app.receipt_bundle_is_waiting(app.items) to authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION app.marketplace_receipt_context(p_marketplace app.marketplace, p_item_id text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'app', 'public'
+AS $function$
+declare
+  v_probe jsonb;
+  v_items jsonb;
+  v_group_ok boolean;
+  v_source_ready boolean;
+  v_representative jsonb;
+  v_skus jsonb;
+  v_count integer;
+  v_unallocated_count integer;
+begin
+  v_probe=app.marketplace_extension_probe(p_marketplace,p_item_id);
+
+  select coalesce(jsonb_agg(e.value || jsonb_build_object(
+    'receipt_ready', (i.inspected_at is not null and i.cleaned_at is not null) or
+      (i.is_accessory and p.id is not null and not p.is_accessory and p.id<>i.id and p.inspected_at is not null and p.cleaned_at is not null),
+    'receipt_source', case when i.inspected_at is not null and i.cleaned_at is not null then 'own'
+      when i.is_accessory and p.id is not null and not p.is_accessory and p.id<>i.id and p.inspected_at is not null and p.cleaned_at is not null then 'parent' else null end,
+    'receipt_parent_sku', case when i.is_accessory and p.id is not null and not p.is_accessory then p.sku else null end
+  ) order by i.id),'[]'::jsonb) into v_items
+  from jsonb_array_elements(v_probe->'items') e(value)
+  join app.items i on i.id=(e.value->>'id')::uuid
+  left join app.items p on i.is_accessory and p.id=i.parent_item_id;
+
+  if p_marketplace='ヤフオク' and exists (
+    select 1 from jsonb_array_elements(v_items) e(value)
+    join app.items i on i.id=(e.value->>'id')::uuid
+    where app.receipt_bundle_is_waiting(i)
+  ) then
+    -- Older extensions use the timestamps as a fallback eligibility signal.
+    select jsonb_agg((e.value - 'inspected_at' - 'cleaned_at') ||
+      jsonb_build_object('receipt_ready',false,'receipt_source',null) order by e.ordinality)
+      into v_items from jsonb_array_elements(v_items) with ordinality e(value,ordinality);
+    return v_probe || jsonb_build_object('items',v_items,'receipt_bundle_waiting',true);
+  end if;
+
+  v_count=jsonb_array_length(v_items);
+  if p_marketplace='ヤフオク' and v_count between 2 and 40 then
+    with members as (
+      select e.value,i.is_accessory,
+        coalesce((e.value->>'receipt_ready')::boolean,false) as ready,
+        i.is_accessory and i.parent_item_id is not null and exists(
+          select 1 from app.spare_accessories s
+          where s.marketplace_item_id=p_item_id and s.marketplace='ヤフオク'
+          and (s.used_for_item_id=i.parent_item_id or exists(
+            select 1 from app.spare_shipping_tasks t
+            where t.spare_id=s.id and t.accessory_item_id=i.id and t.item_id=i.parent_item_id
+          ))
+        ) as allocated
+      from jsonb_array_elements(v_items) e(value)
+      join app.items i on i.id=(e.value->>'id')::uuid
+    )
+    select bool_and(ready or allocated),
+      bool_or(ready and not allocated),
+      jsonb_agg(value->>'sku' order by value->>'sku'),
+      count(*) filter (where not allocated),
+      (select value from members where not allocated order by is_accessory,value->>'id' limit 1)
+      into v_group_ok,v_source_ready,v_skus,v_unallocated_count,v_representative
+    from members;
+
+    -- A single unallocated row identifies the transaction source even if
+    -- inspection/cleaning is incomplete. Readiness is still enforced by the
+    -- extension's eligibility check before any rating can be sent.
+    if v_unallocated_count=1 and v_representative is not null then
+      return v_probe || jsonb_build_object(
+        'inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),
+        'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,
+        'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation'
+      );
+    end if;
+
+    if v_group_ok and v_source_ready and v_representative is not null then
+      return v_probe || jsonb_build_object(
+        'inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),
+        'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,
+        'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation'
+      );
+    end if;
+  end if;
+  return v_probe || jsonb_build_object('items',v_items);
+end
+$function$;
+
+create or replace view app.v_receipt_evaluation_tasks with(security_invoker=true) as
+with eligible as (
+ select t.item_id as id,t.item_id,t.requested_at,i.sku,i.lot_seq,i.title,p.model_no,i.asin,
+ i.marketplace,i.marketplace_item_id,i.marketplace_url,i.is_accessory,
+ row_number() over(partition by app.receipt_purchase_market(i.marketplace),
+   coalesce(nullif(btrim(i.marketplace_item_id),''),i.id::text)
+   order by i.is_accessory,t.requested_at,i.id) as purchase_rank
+ from app.receipt_evaluation_tasks t join app.items i on i.id=t.item_id
+ left join app.products p on p.id=i.product_id
+ left join app.items parent on parent.id=i.parent_item_id and not parent.is_accessory and parent.id<>i.id
+ where t.completed_at is null and not app.receipt_item_is_spare_accessory(i)
+ and not app.receipt_bundle_is_waiting(i)
+ and ((i.inspected_at is not null and i.cleaned_at is not null)
+   or (i.is_accessory and parent.inspected_at is not null and parent.cleaned_at is not null))
+ and (not i.is_accessory or parent.id is null
+   or row(app.receipt_purchase_market(i.marketplace),i.marketplace_item_id)
+     is distinct from row(app.receipt_purchase_market(parent.marketplace),parent.marketplace_item_id))
+ and i.marketplace in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ')
+ and not exists(select 1 from app.marketplace_extension_receipts r
+   where r.marketplace=app.receipt_purchase_market(i.marketplace) and r.marketplace_item_id=i.marketplace_item_id and r.state='succeeded')
+ and not exists(select 1 from app.receipt_evaluation_tasks done join app.items d on d.id=done.item_id
+   where done.completed_at is not null and nullif(btrim(i.marketplace_item_id),'') is not null
+   and d.marketplace_item_id=i.marketplace_item_id and app.receipt_purchase_market(d.marketplace)=app.receipt_purchase_market(i.marketplace))
+)
+select id,item_id,requested_at,sku,lot_seq,title,model_no,asin,marketplace,marketplace_item_id,marketplace_url,is_accessory
+from eligible where purchase_rank=1;
+
+create or replace function app.complete_receipt_evaluation_task(p_item_id uuid) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+ if auth.uid() is null or not app.is_admin() or not exists(select 1 from app.staff where id=app.current_staff_id() and is_active) then
+  raise exception '管理者のみ操作できます' using errcode='42501';
+ end if;
+ if exists(select 1 from app.items i where i.id=p_item_id and app.receipt_item_is_spare_accessory(i)) then
+  raise exception '予備・付属品から割り当てた付属品は受取評価の対象外です' using errcode='22023';
+ end if;
+ if exists(select 1 from app.items i where i.id=p_item_id and app.receipt_bundle_is_waiting(i)) then
+  raise exception '同梱の本体がすべて検品・清掃完了するまで受取評価を保留します' using errcode='22023';
+ end if;
+ if not exists(select 1 from app.receipt_evaluation_tasks where item_id=p_item_id) then
+  raise exception '受取評価のやることがありません' using errcode='22023';
+ end if;
+ update app.receipt_evaluation_tasks t
+ set completed_at=coalesce(t.completed_at,clock_timestamp()),completed_by=coalesce(t.completed_by,app.current_staff_id())
+ from app.items i,app.items target
+ where i.id=t.item_id and target.id=p_item_id
+ and (i.id=target.id or (nullif(btrim(target.marketplace_item_id),'') is not null
+   and i.marketplace_item_id=target.marketplace_item_id
+   and app.receipt_purchase_market(i.marketplace)=app.receipt_purchase_market(target.marketplace)));
+end $$;
+
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261109003700_purchaser_delivery_notifications.sql ▼▼▼
+
+-- Give purchasers the same delivery notification access for their own assignments.
+CREATE OR REPLACE FUNCTION app.claim_delivery_push()
+ RETURNS TABLE(delivery_id uuid, subscription_id uuid, endpoint text, p256dh text, auth text, base_url text, item_id uuid, lot_seq integer, kind text, eligible boolean)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  update app.delivery_push_deliveries set state='failed'
+    where state='sending' and attempts>=5 and next_attempt_at<=now();
+  insert into app.delivery_push_deliveries(event_id,subscription_id)
+    select e.id,s.id from app.delivery_push_events e join app.delivery_push_subscriptions s
+      on s.staff_id=e.staff_id and s.app_kind='delivery' and s.enabled and s.created_at<=e.created_at
+    where e.created_at>now()-interval '24 hours'
+    on conflict do nothing;
+  return query
+  with ready as (
+    select d.id from app.delivery_push_deliveries d where d.state in ('pending','sending')
+      and d.next_attempt_at<=now() and d.attempts<5
+    order by d.next_attempt_at limit 20 for update skip locked
+  ), claimed as (
+    update app.delivery_push_deliveries d set state='sending',attempts=d.attempts+1,next_attempt_at=now()+interval '5 minutes'
+      from ready where d.id=ready.id returning d.*
+  )
+  select d.id,s.id,s.endpoint,s.p256dh,s.auth,s.base_url,i.id,i.lot_seq,e.kind,
+    s.enabled and s.app_kind='delivery' and st.is_active and s.staff_id=e.staff_id and s.created_at<=e.created_at
+    and e.created_at>now()-interval '24 hours'
+    and (st.role='admin' or (i.deliverer_id=st.id and st.role in ('purchaser','deliverer')))
+    and case e.kind
+ when 'shipping' then i.status='取引中' and i.shipped_on is null and app.sales_channel_family(i.sales_channel) in ('メルカリ','ヤフオク','自己発送') and exists(select 1 from app.delivery_shipping_tasks t where t.item_id=i.id and t.created_at=e.event_at and t.resolved_at is null and not exists(select 1 from app.delivery_notice_completions c where c.staff_id=st.id and c.notice_id='shipping:'||t.id::text and c.item_id=i.id))
+ when 'photo_return' then exists(select 1 from app.delivery_return_tasks t where t.item_id=i.id and t.kind=e.kind and t.created_at=e.event_at and t.resolved_at is null)
+ when 'malfunction_return' then exists(select 1 from app.delivery_return_tasks t where t.item_id=i.id and t.kind=e.kind and t.created_at=e.event_at and t.resolved_at is null)
+      when 'reply' then i.malfunction_reported_at<e.event_at and coalesce(r.reply_read_at,'-infinity')<e.event_at
+      when 'photo' then p.approved_at=e.event_at and coalesce(r.photo_read_at,'-infinity')<e.event_at
+      else i.shipped_on is null and i.sold_on is null end
+  from claimed d join app.delivery_push_events e on e.id=d.event_id
+    join app.delivery_push_subscriptions s on s.id=d.subscription_id
+    join app.staff st on st.id=s.staff_id join app.items i on i.id=e.item_id
+    left join app.item_notice_reads r on r.item_id=i.id and r.staff_id=st.id
+    left join app.photo_reviews p on p.item_id=i.id;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION app.enqueue_delivery_push(p_item_id uuid, p_kind text, p_at timestamp with time zone, p_actor uuid)
+ RETURNS void
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  insert into app.delivery_push_events(item_id,staff_id,kind,event_at)
+  select i.id,s.id,p_kind,p_at from app.items i join app.staff s
+    on s.is_active and (s.role='admin' or (s.id=i.deliverer_id and s.role in ('purchaser','deliverer')))
+  where i.id=p_item_id and s.id is distinct from p_actor
+  on conflict(item_id,staff_id,kind,event_at) do nothing;
+$function$;
+
+CREATE OR REPLACE FUNCTION app.handle_delivery_line_event(p_event text, p_kind text, p_user text, p_hash text DEFAULT NULL::text)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare target uuid;
+begin
+ perform pg_advisory_xact_lock(173511019);
+ if p_user !~ '^U[0-9a-f]{32}$' or length(p_event)>128 or p_kind not in ('link','unfollow') then return false;end if;
+ insert into app.delivery_line_webhooks(event_id) values(p_event) on conflict do nothing;
+ if not found then return false;end if;
+ delete from app.delivery_line_webhooks where created_at<now()-interval '7 days';
+ delete from app.delivery_line_codes where expires_at<now();
+ if p_kind='unfollow' then
+  update app.delivery_line_links set blocked=true where line_user_id=p_user;
+  update app.delivery_line_outbox o set state='cancelled' from app.delivery_line_links l
+   where o.link_id=l.id and l.line_user_id=p_user and o.state in ('pending','sending');
+  return false;
+ end if;
+ select c.staff_id into target from app.delivery_line_codes c join app.staff s on s.id=c.staff_id
+  where c.code_hash=p_hash and c.expires_at>now() and s.is_active and s.role in ('admin','purchaser','deliverer') for update of c;
+ if target is null or exists(select 1 from app.delivery_line_links where line_user_id=p_user and staff_id<>target) then return false;end if;
+ -- A new generation cancels old pending messages, including retries to an old LINE.
+ delete from app.delivery_line_links where staff_id=target;
+ insert into app.delivery_line_links(staff_id,line_user_id) values(target,p_user);
+ delete from app.delivery_line_codes where staff_id=target;
+ perform app.ensure_line_shipping_requests(target); perform app.kick_delivery_line(); return true;
+end $function$;
+
+CREATE OR REPLACE FUNCTION app.issue_delivery_line_code(p_staff uuid, p_hash text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+ perform pg_advisory_xact_lock(hashtextextended(p_staff::text,17351));
+ if not exists(select 1 from app.staff where id=p_staff and is_active and role in ('admin','purchaser','deliverer')) then raise exception 'Invalid staff';end if;
+ if exists(select 1 from app.delivery_line_codes where staff_id=p_staff and created_at>now()-interval '1 minute') then raise exception 'Please wait one minute';end if;
+ insert into app.delivery_line_codes(staff_id,code_hash,expires_at) values(p_staff,p_hash,now()+interval '10 minutes')
+ on conflict(staff_id) do update set code_hash=excluded.code_hash,created_at=now(),expires_at=excluded.expires_at;
+end $function$;
+
+
+-- ▼▼▼ 20261109012517_correct_ishikawa_display_name.sql ▼▼▼
+
+update app.staff
+set display_name = 'EE 石川 秀樹'
+where code = 'EE'
+  and name = '石川秀樹'
+  and display_name is distinct from 'EE 石川 秀樹';
+
+
+-- ▼▼▼ 20261109015659_allow_manual_shipping_without_catalog_size.sql ▼▼▼
+
+-- Preserve the catalog requirement for automatic LINE, while allowing a
+-- validated per-shipment choice from the manual shipping screen.
+do $migration$
+declare
+  definition text := pg_get_functiondef('app.queue_seller_operation(uuid,text,jsonb,uuid)'::regprocedure);
+  listing_anchor text := '(?in)^[[:blank:]]*if p_kind[[:blank:]]*=[[:blank:]]*''listing''[[:blank:]]+then';
+  old_gate text := $old$  -- The catalog is authoritative for both manual and automatic code requests.
+  IF p_kind IN ('shipping_code', 'register_package') THEN
+    IF app.line_fixed_shipping_size(i.id) IS NULL THEN
+      RAISE EXCEPTION '商品リストの配送サイズが未設定です。サイズを保存してからコードを発行してください' USING errcode = '22023';
+    END IF;
+    IF p_payload->>'size' IS DISTINCT FROM app.line_fixed_shipping_size(i.id) THEN
+      RAISE EXCEPTION '商品リストと配送サイズが一致しません。設定を確認してください' USING errcode = '22023';
+    END IF;
+  END IF;
+$old$;
+  shipping_gate text := $gate$  IF p_kind IN ('shipping_code', 'register_package') THEN
+    DECLARE
+      catalog_size text := app.line_fixed_shipping_size(i.id);
+      shipment_size text := coalesce(p_payload->>'size', '');
+      shipping_method text := p_payload->>'shippingMethod';
+      dropoff text := coalesce(p_payload->>'dropoff', '');
+    BEGIN
+      IF catalog_size IS NOT NULL THEN
+        IF shipment_size <> catalog_size THEN
+          RAISE EXCEPTION '商品リストと配送サイズが一致しません。設定を確認してください' USING errcode = '22023';
+        END IF;
+      ELSIF p_payload ? 'automatic_line' THEN
+        RAISE EXCEPTION '商品リストの配送サイズが未設定です。サイズを保存してからコードを発行してください' USING errcode = '22023';
+      ELSIF NOT (
+        CASE shipping_method
+          WHEN 'らくらくメルカリ便' THEN i.sales_channel = 'メルカリ'
+            AND shipment_size IN ('100','140','宅急便コンパクト','ネコポス') AND dropoff IN ('セブンイレブン','ヤマト営業所')
+          WHEN 'おてがる配送（ヤマト運輸）' THEN i.sales_channel = 'ヤフオク'
+            AND shipment_size IN ('100','140','宅急便コンパクト') AND dropoff IN ('セブンイレブン','ヤマト営業所')
+          WHEN 'ゆうゆうメルカリ便' THEN i.sales_channel = 'メルカリ'
+            AND shipment_size IN ('100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット') AND dropoff IN ('ローソン','郵便局')
+          WHEN 'おてがる配送（日本郵便）' THEN i.sales_channel = 'ヤフオク'
+            AND shipment_size IN ('100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット') AND dropoff IN ('ローソン','郵便局')
+          ELSE false
+        END
+      ) OR ((p_kind = 'register_package') <> (shipment_size = 'ゆうパケットポストmini')) THEN
+        RAISE EXCEPTION '配送方法に対応する配送サイズと発送場所を選択してください' USING errcode = '22023';
+      END IF;
+    END;
+  END IF;
+$gate$;
+begin
+  if strpos(definition, shipping_gate)>0 then return; end if;
+  if strpos(definition, old_gate)>0 then
+    definition := replace(definition, old_gate, shipping_gate);
+  elsif strpos(definition, '商品リストの配送サイズが未設定です')>0 then
+    raise exception 'Existing catalog shipping check changed unexpectedly';
+  elsif definition ~ listing_anchor then
+    definition := regexp_replace(definition, listing_anchor, shipping_gate || '  IF p_kind = ''listing'' THEN');
+  else
+    raise exception 'Seller operation listing validation anchor not found';
+  end if;
+  execute definition;
+end $migration$;
+
+
+-- ▼▼▼ 20261109055300_consistent_manual_shipping_claim.sql ▼▼▼
+
+-- Apply the same shipping rules when a request is queued and when a worker claims it.
+create or replace function app.seller_shipping_validation_error(
+  p_item_id uuid, p_channel text, p_kind text, p_payload jsonb
+) returns text
+language plpgsql stable
+set search_path = pg_catalog, app
+as $function$
+declare
+  catalog_size text := app.line_fixed_shipping_size(p_item_id);
+  shipment_size text := coalesce(p_payload->>'size', '');
+  shipping_method text := p_payload->>'shippingMethod';
+  dropoff text := coalesce(p_payload->>'dropoff', '');
+begin
+  if catalog_size is not null then
+    if shipment_size <> catalog_size then
+      return '商品リストと配送サイズが一致しません。設定を確認してください';
+    end if;
+    return null;
+  end if;
+
+  if p_payload ? 'automatic_line' then
+    return '商品リストの配送サイズが未設定です。サイズを保存してからコードを発行してください';
+  end if;
+
+  if (
+    case shipping_method
+      when 'らくらくメルカリ便' then p_channel = 'メルカリ'
+        and shipment_size in ('100', '140', '宅急便コンパクト', 'ネコポス') and dropoff in ('セブンイレブン', 'ヤマト営業所')
+      when 'おてがる配送（ヤマト運輸）' then p_channel = 'ヤフオク'
+        and shipment_size in ('100', '140', '宅急便コンパクト') and dropoff in ('セブンイレブン', 'ヤマト営業所')
+      when 'ゆうゆうメルカリ便' then p_channel = 'メルカリ'
+        and shipment_size in ('100', '140', 'ゆうパケットプラス', 'ゆうパケットポストmini', 'ゆうパケット') and dropoff in ('ローソン', '郵便局')
+      when 'おてがる配送（日本郵便）' then p_channel = 'ヤフオク'
+        and shipment_size in ('100', '140', 'ゆうパケットプラス', 'ゆうパケットポストmini', 'ゆうパケット') and dropoff in ('ローソン', '郵便局')
+      else false
+    end
+  ) is not true or ((p_kind = 'register_package') <> (shipment_size = 'ゆうパケットポストmini')) then
+    return '配送方法に対応する配送サイズと発送場所を選択してください';
+  end if;
+
+  return null;
+end;
+$function$;
+
+revoke all on function app.seller_shipping_validation_error(uuid, text, text, jsonb) from public, anon, authenticated;
+
+do $migration$
+declare
+  definition text := pg_get_functiondef('app.queue_seller_operation(uuid,text,jsonb,uuid)'::regprocedure);
+  gate_start integer := strpos(definition, E'  IF p_kind IN (''shipping_code'', ''register_package'') THEN\n');
+  gate_end integer := strpos(definition, E'  IF p_kind = ''listing'' THEN\n');
+  shipping_gate text := $gate$  IF p_kind IN ('shipping_code', 'register_package') THEN
+    DECLARE
+      validation_error text := app.seller_shipping_validation_error(i.id, i.sales_channel::text, p_kind, p_payload);
+    BEGIN
+      IF validation_error IS NOT NULL THEN
+        RAISE EXCEPTION USING message = validation_error, errcode = '22023';
+      END IF;
+    END;
+  END IF;
+$gate$;
+begin
+  if strpos(definition, shipping_gate) > 0 then return; end if;
+  if gate_start = 0 or gate_end <= gate_start
+    or strpos(substr(definition, gate_start, gate_end - gate_start), 'ELSIF p_payload ? ''automatic_line''') = 0 then
+    raise exception 'Seller operation shipping validation has changed';
+  end if;
+  execute substr(definition, 1, gate_start - 1) || shipping_gate || substr(definition, gate_end);
+end;
+$migration$;
+
+create or replace function app.extension_claim_seller_operation(p_id uuid, p_account_id text)
+returns boolean
+language plpgsql security definer
+set search_path = pg_catalog, app
+as $function$
+begin
+  if auth.uid() is null or not app.is_admin()
+    or not exists(select 1 from app.staff where id = app.current_staff_id() and is_active) then
+    raise exception '権限がありません' using errcode = '42501';
+  end if;
+
+  update app.seller_operations o
+  set status = 'running', claimed_at = clock_timestamp()
+  where o.id = p_id and o.status = 'queued' and o.account_id = p_account_id
+    and exists (
+      select 1 from app.items i
+      where i.id = o.item_id and i.status = o.expected_status and i.updated_at = o.expected_updated_at
+        and i.sold_on is null and i.sales_channel = o.channel
+        and (o.kind <> 'listing' or app.listing_photos_approved(i.id))
+        and (o.kind not in ('shipping_code', 'register_package')
+          or app.seller_shipping_validation_error(i.id, i.sales_channel::text, o.kind, o.payload) is null)
+        and (o.kind = 'listing' or exists (
+          select 1 from app.seller_listings l
+          where l.item_id = i.id and l.active and l.trade_key = o.payload->>'trade_key'
+        ))
+    );
+  if found then return true; end if;
+
+  update app.seller_operations
+  set status = 'failed', finished_at = clock_timestamp(),
+    result = jsonb_build_object('note', '商品または取引が変更されたため実行しませんでした')
+  where id = p_id and account_id = p_account_id and status = 'queued';
+  return false;
+end;
+$function$;
+
+
+-- ▼▼▼ 20261109061715_inventory_purchaser_filter.sql ▼▼▼
+
+-- Narrow each inventory scope before pagination without adding fields to its response.
+do $migration$
+declare
+  definition text;
+  function_name text;
+  filter_anchor text := 'where app.inventory_page_matches(d,$2,$1)';
+  validation_anchor text := ' -- Only whitelisted view names';
+  purchaser_filter text := $filter$where app.inventory_page_matches(d,$2,$1)
+   and case
+    when coalesce($2->'purchaserIds','[]'::jsonb) = '[]'::jsonb then true
+    else ($2->'purchaserIds') ? coalesce(d->>'purchaser_id', (
+     select i.purchaser_id::text from app.items i where i.id=(d->>'id')::uuid
+    ), '')
+   end$filter$;
+begin
+  foreach function_name in array array[
+    'app.read_inventory_page(text,jsonb,integer,jsonb)',
+    'app.read_delivery_catalog_snapshot(text,jsonb,integer,jsonb)'
+  ] loop
+    definition := pg_get_functiondef(function_name::regprocedure);
+    if position(purchaser_filter in definition) > 0 then continue; end if;
+    if position(filter_anchor in definition) = 0 or position(validation_anchor in definition) = 0 then
+      raise exception 'Inventory filter insertion point missing: %', function_name;
+    end if;
+    definition := replace(definition, validation_anchor,
+      $check$ if p_filters ? 'purchaserIds' and jsonb_typeof(p_filters->'purchaserIds') is distinct from 'array' then
+  raise exception '仕入担当者の条件が不正です' using errcode='22023';
+ end if;
+$check$ || validation_anchor);
+    execute replace(definition, filter_anchor, purchaser_filter);
+  end loop;
+end $migration$;
+
+
+-- ▼▼▼ 20261109061721_product_catalog_owner.sql ▼▼▼
+
+alter table app.products
+  add column owner_staff_id uuid references app.staff(id);
+
+-- The existing catalog belongs to the original administrator.
+update app.products
+   set owner_staff_id = (select id from app.staff where code = 'AA')
+ where owner_staff_id is null;
+
+alter table app.products alter column owner_staff_id set not null;
+create index products_owner_staff_id_idx on app.products (owner_staff_id);
+
+create function app.set_product_catalog_owner()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, app
+as $function$
+begin
+  if tg_op = 'UPDATE' then
+    if new.owner_staff_id is distinct from old.owner_staff_id and auth.uid() is not null then
+      raise exception '商品リストの管理者は変更できません。' using errcode = '42501';
+    end if;
+    return new;
+  end if;
+
+  if new.owner_staff_id is not null and auth.uid() is not null then
+    raise exception '商品リストの管理者は自動で設定されます。' using errcode = '42501';
+  end if;
+  if new.owner_staff_id is null then
+    if app.is_admin() then
+      new.owner_staff_id := app.current_staff_id();
+    else
+      -- Existing imports and staff registration can continue without an owner field.
+      select id into new.owner_staff_id from app.staff where code = 'AA';
+    end if;
+  end if;
+  return new;
+end;
+$function$;
+
+create trigger products_set_catalog_owner
+before insert or update of owner_staff_id on app.products
+for each row execute function app.set_product_catalog_owner();
+
+revoke all on function app.set_product_catalog_owner() from public, anon, authenticated;
+
+
+-- ▼▼▼ 20261109071933_product_catalog_number.sql ▼▼▼
+
+create function app.assign_product_catalog_number()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, app
+as $function$
+begin
+  if tg_level = 'STATEMENT' then
+    -- Coordinate registrations and explicit number changes before locking any rows.
+    perform pg_advisory_xact_lock(hashtextextended('app.products.product_no', 0));
+    return null;
+  end if;
+
+  select greatest(coalesce(max(product_no), 0), 0) + 1
+    into new.product_no
+    from app.products;
+  return new;
+end;
+$function$;
+
+create trigger products_lock_catalog_number
+before insert or update of product_no on app.products
+for each statement execute function app.assign_product_catalog_number();
+
+create trigger products_assign_catalog_number
+before insert on app.products
+for each row when (new.product_no is null)
+execute function app.assign_product_catalog_number();
+
+revoke all on function app.assign_product_catalog_number() from public, anon, authenticated;
+
+
+-- ▼▼▼ 20261110032654_inline_inventory_serial_functions.sql ▼▼▼
+
+-- Let PostgreSQL inline these pure SKU expressions during inventory rollups.
+-- SQL-standard bodies bind the referenced functions and operator at definition
+-- time, so no per-row search_path switch is needed.
+create or replace function app.product_serial(p_sku text, p_lot_seq integer default null)
+returns text language sql immutable parallel safe security invoker
+return coalesce(pg_catalog.upper((pg_catalog.regexp_match(p_sku, '^([0-9]+[a-z]*)[-_]'))[1]), p_lot_seq::text);
+
+create or replace function app.financial_product_serial(p_sku text, p_lot_seq integer)
+returns text language sql immutable parallel safe security invoker
+return pg_catalog.regexp_replace(pg_catalog.lower(app.product_serial(p_sku,p_lot_seq)), '^([0-9]+)[ab]+$', '\1');
+
+create or replace function app.is_standalone_accessory_serial(p_sku text, p_lot_seq integer)
+returns boolean language sql immutable parallel safe security invoker
+return coalesce(pg_catalog.right(pg_catalog.lower(app.product_serial(p_sku,p_lot_seq)),1) operator(pg_catalog.=) 'c', false);
+
+
+-- ▼▼▼ 20261110044657_fba_daily_shipment_refresh.sql ▼▼▼
+
+alter table app.fba_inbound_plans add column received_at timestamptz;
+
+-- Older plans may already contain exact received quantities from Amazon.
+update app.fba_inbound_plans plan
+set received_at = now()
+where plan.stage = 'ready'
+  and exists (select 1 from app.fba_inbound_items item where item.plan_id = plan.id)
+  and not exists (
+    select 1
+    from app.fba_inbound_items item
+    where item.plan_id = plan.id
+      and not exists (
+        select 1
+        from jsonb_array_elements(case when jsonb_typeof(plan.work->'shipments') = 'array'
+          then plan.work->'shipments' else '[]'::jsonb end) shipment
+        where nullif(shipment->>'confirmationId', '') is not null
+          and shipment->>'status' in ('DELIVERED', 'CHECKED_IN', 'RECEIVING', 'CLOSED')
+          and case when jsonb_typeof(shipment->'received'->item.sku) = 'number'
+          then (shipment->'received'->>item.sku)::numeric >= 1 else false end
+      )
+  );
+
+-- 16:00 UTC is 01:00 JST. Each plan has an independent request so a
+-- remote failure on one plan does not stop the other plans.
+select cron.schedule('fba-daily-shipment-refresh', '0 16 * * *', $job$
+  select net.http_post(
+    url := rtrim(config.project_url, '/') || '/functions/v1/amazon-fba-inbound',
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-amazon-cron-token', config.token),
+    body := jsonb_build_object('action', 'refresh', 'id', plan.id, 'revision', plan.revision),
+    timeout_milliseconds := 120000
+  )
+  from app.fba_inbound_plans plan
+  cross join (
+    select
+      (select decrypted_secret from vault.decrypted_secrets where name = 'delivery_push_project_url') project_url,
+      (select decrypted_secret from vault.decrypted_secrets where name = 'amazon_daily_sync_token') token
+  ) config
+  where config.project_url is not null and config.token is not null
+    and plan.stage = 'ready' and plan.pending is null and plan.amazon_id is not null
+    and (
+      plan.received_at is null or exists (
+        select 1 from app.fba_inbound_items item
+        where item.plan_id = plan.id and item.published_at is null and item.released_at is null
+      )
+    );
+$job$);
+
+notify pgrst, 'reload schema';
+
+
+
+-- ▼▼▼ 20261110100000_prioritize_attached_yahoo_remote.sql ▼▼▼
+
+create or replace function app.prepare_yahoo_auction_item(p_item_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_body app.items%rowtype;
+  v_remote app.items%rowtype;
+  v_remote_count integer;
+  v_owner_id uuid;
+  v_owner_name text;
+  v_model_no text;
+  v_maker text;
+  v_serial text;
+begin
+  if auth.uid() is null or app.current_role() not in ('admin','purchaser') then
+    raise exception 'ヤフオク販売の準備を行う権限がありません' using errcode='42501';
+  end if;
+
+  select * into v_body from app.items where id=p_item_id for update;
+  if not found then raise exception '対象の在庫行が見つかりません' using errcode='P0002'; end if;
+  if v_body.is_accessory then raise exception '本体の在庫行を選択してください' using errcode='22023'; end if;
+  if app.current_role() = 'purchaser' and v_body.purchaser_id is distinct from app.current_staff_id() then
+    raise exception '担当外の商品はヤフオク販売に設定できません' using errcode='42501';
+  end if;
+
+  v_serial := lower(app.product_serial(v_body.sku,v_body.lot_seq));
+
+  select count(*) into v_remote_count from app.items i
+  where app.product_serial(i.sku,i.lot_seq)=app.product_serial(v_body.sku,v_body.lot_seq) and i.is_accessory and i.title ilike '%リモコン%'
+    and (i.parent_item_id is null or i.parent_item_id=v_body.id);
+  if v_remote_count > 1 then
+    raise exception '通番号 % のリモコン行が複数あります。在庫一覧を確認してください。', v_serial using errcode='22023';
+  end if;
+
+  if v_remote_count = 1 then
+    select * into v_remote from app.items i
+    where app.product_serial(i.sku,i.lot_seq)=app.product_serial(v_body.sku,v_body.lot_seq) and i.is_accessory and i.title ilike '%リモコン%'
+      and (i.parent_item_id is null or i.parent_item_id=v_body.id)
+    limit 1 for update;
+    select p.model_no,p.maker into v_model_no,v_maker from app.products p where p.id=v_remote.product_id;
+    v_owner_id := coalesce(v_body.deliverer_id,v_remote.deliverer_id,v_remote.purchaser_id,v_body.purchaser_id,app.current_staff_id());
+    select s.name into v_owner_name from app.staff s where s.id=v_owner_id;
+    -- Keep the earlier allocation as history when its accessory row is moved again.
+    update app.spare_accessories set used_for_item_id=v_body.id, updated_at=now()
+    where used_for_item_id=v_remote.id;
+    perform app.move_inventory_accessory_to_spares(v_remote.id,jsonb_build_object(
+      'source_sku',v_remote.sku,
+      'owner_staff_id',v_owner_id,
+      'owner_name',v_owner_name,
+      'purchased_at',v_remote.purchased_at,
+      'title',v_remote.title,
+      'manufacturer',v_maker,
+      'model_no',v_model_no,
+      'asin',v_remote.asin,
+      'cost_amount',v_remote.cost_amount,
+      'marketplace',v_remote.marketplace,
+      'marketplace_item_id',v_remote.marketplace_item_id,
+      'tracking_no',v_remote.tracking_no,
+      'usage_note',v_serial
+    ));
+  elsif not exists (
+    select 1 from app.spare_accessories s
+    where lower(btrim(s.usage_note))=v_serial and s.title ilike '%リモコン%'
+  ) then
+    select p.model_no,p.maker into v_model_no,v_maker from app.products p where p.id=v_body.product_id;
+    v_owner_id := coalesce(v_body.deliverer_id,v_body.purchaser_id,app.current_staff_id());
+    select s.name into v_owner_name from app.staff s where s.id=v_owner_id;
+    insert into app.spare_accessories (
+      source_sku,owner_staff_id,owner_name,purchased_at,title,manufacturer,model_no,asin,
+      cost_amount,marketplace,marketplace_item_id,tracking_no,usage_note
+    ) values (
+      null,v_owner_id,v_owner_name,v_body.purchased_at,'リモコン',v_maker,v_model_no,v_body.asin,
+      0,v_body.marketplace,v_body.marketplace_item_id,v_body.tracking_no,v_serial
+    );
+  end if;
+  -- Move the remote before the body update synchronizes and replaces its SKU.
+  update app.items set sales_channel='ヤフオク'::app.sales_channel, updated_at=now() where id=v_body.id;
+end;
+$$;
+
+revoke all on function app.prepare_yahoo_auction_item(uuid) from public, anon;
+grant execute on function app.prepare_yahoo_auction_item(uuid) to authenticated;
+
+
+-- ▼▼▼ 20261110124753_inventory_return_model_title.sql ▼▼▼
+
+-- Use the saved title as the model fallback for legacy Amazon returns.
+create or replace function app.inventory_page_matches(d jsonb,f jsonb,scope text)
+returns boolean language plpgsql immutable set search_path=pg_catalog,app as $$
+declare field text; needle text; candidate text; serial text; values jsonb;
+ accessory boolean:=coalesce((d->>'is_accessory')::boolean,false);
+begin
+ foreach field in array array['status','marketplace','sales_channel'] loop
+  values:=f->'states'->field;
+  if jsonb_typeof(values)='array' and jsonb_array_length(values)>0 and not values ? coalesce(d->>field,'') then return false;end if;
+ end loop;
+ if nullif(f->>'status','') is not null and f->>'status'<>'all' and d->>'status'<>f->>'status' then return false;end if;
+ if nullif(f->>'delivererId','') is not null and coalesce(d->>'deliverer_id','')<>f->>'delivererId' then return false;end if;
+ values:=f->'delivererIds';
+ if f ? 'delivererIds' and jsonb_typeof(values)<>'array' then raise exception '納品担当者の条件が不正です' using errcode='22023';end if;
+ if jsonb_typeof(values)='array' and jsonb_array_length(values)>0 and not values ? coalesce(d->>'deliverer_id','') then return false;end if;
+ if nullif(f->>'from','') is not null and coalesce(d->>'purchased_at','')<f->>'from' then return false;end if;
+ if nullif(f->>'to','') is not null and (d->>'purchased_at' is null or d->>'purchased_at'>f->>'to') then return false;end if;
+ field:=coalesce(f->>'queryField','serial');needle:=coalesce(f->>'query','');
+ if scope='delivery' then needle:=regexp_replace(lower(normalize(needle,NFKC)),'[[:space:]‐‑–—−ー]','','g');else needle:=lower(btrim(needle));end if;
+ if needle='' or field='deliverer' then return true;end if;
+ serial:=coalesce(substring(d->>'sku' from '^([0-9]+[a-zA-Z]*)[-_]'),d->>'lot_seq');
+ candidate:=case field when 'serial' then serial when 'model' then
+  case when scope='management' and accessory then d->>'title'
+   else coalesce(nullif(btrim(d->>'model_no'),''),case when d->>'marketplace'='動作品Amazon返品' and (coalesce(btrim(d->>'title'),'')='' or btrim(d->>'title') ~* '^(X[0-9A-Z]{9}|未登録|型番未登録|—)$') then '未登録' else coalesce(nullif(btrim(d->>'title'),''),'—') end) end
+  when 'accessory_name' then case when accessory then d->>'title' end
+  when 'marketplace_item_id' then case when scope='delivery' and not accessory and d->>'marketplace'<>'動作品Amazon返品' then coalesce(nullif(d->>'original_marketplace_item_id',''),d->>'marketplace_item_id') else d->>'marketplace_item_id' end
+  when 'sku' then d->>'sku' when 'asin' then d->>'asin' when 'tracking_no' then d->>'tracking_no' else '' end;
+ if scope='delivery' then candidate:=regexp_replace(lower(normalize(coalesce(candidate,''),NFKC)),'[[:space:]‐‑–—−ー]','','g');else candidate:=lower(coalesce(candidate,''));end if;
+ if field='serial' then
+  needle:=lower(btrim(normalize(needle,NFKC)));
+  if needle ~ '^[0-9]+$' then return candidate ~ ('^'||needle||'[a-z]*$');end if;
+  return candidate=needle;
+ end if;
+ return position(needle in candidate)>0;
+end $$;
+
+
+-- ▼▼▼ 20261110125156_inventory_marketplace_accounts.sql ▼▼▼
+
+-- Share the installed listing route with the inventory label. Preserve each environment's route.
+do $migration$
+declare
+  definition text := pg_get_functiondef('app.queue_seller_operation(uuid,text,jsonb,uuid)'::regprocedure);
+  route_pattern constant text := $pattern$when i\.sales_channel\s*=\s*'メルカリ' then '(mercari-[12])' else '(auctions-[12])' end$pattern$;
+  route text[] := regexp_match(definition,route_pattern,'i');
+begin
+  if route is null then raise exception 'Marketplace listing route could not be located'; end if;
+  execute format($function$
+    create function app.default_marketplace_seller_account(channel app.sales_channel)
+    returns text language sql immutable security invoker set search_path=pg_catalog,app
+    as $body$ select case channel when 'メルカリ' then %L when 'ヤフオク' then %L end $body$
+  $function$,route[1],route[2]);
+  execute regexp_replace(definition,route_pattern,'else app.default_marketplace_seller_account(i.sales_channel) end','i');
+end $migration$;
+
+-- The delivery catalog already exposes these items to all active inventory staff.
+create function app.inventory_marketplace_accounts(p_item_id uuid)
+returns jsonb language sql stable security definer set search_path=pg_catalog,app as $$
+  select jsonb_build_object('purchase_account_label',purchase.account_label,'sales_account_label',
+    case coalesce(listing.account_id,history.account_id,
+      case when coalesce(parent.status,i.status) in ('受取前','検品中','商品登録前') and coalesce(parent.sold_on,i.sold_on) is null
+        then app.default_marketplace_seller_account(coalesce(parent.sales_channel,i.sales_channel)) end)
+      when 'mercari-1' then 'メルカリ1' when 'mercari-2' then 'メルカリ2'
+      when 'auctions-1' then 'ヤフオク1' when 'auctions-2' then 'ヤフオク2' end,
+    'flea_listing_account_label',case other_listing.account_id
+      when 'mercari-1' then 'メルカリ1' when 'mercari-2' then 'メルカリ2'
+      when 'auctions-1' then 'ヤフオク1' when 'auctions-2' then 'ヤフオク2' end)
+  from app.items i
+  join app.staff viewer on viewer.id=app.current_staff_id() and viewer.is_active
+  left join app.items parent on parent.id=i.parent_item_id and not parent.is_accessory
+    and i.is_accessory and not app.is_standalone_accessory_serial(i.sku,i.lot_seq)
+  left join lateral (
+    select d.account_label from app.marketplace_purchase_drafts d
+    where d.marketplace=i.marketplace::text
+      and (d.id=i.source_purchase_draft_id or d.marketplace_item_id=i.marketplace_item_id)
+    order by (d.id=i.source_purchase_draft_id) desc nulls last limit 1
+  ) purchase on true
+  left join lateral (
+    select l.account_id from app.seller_listings l
+    where l.item_id=coalesce(parent.id,i.id) and l.channel=coalesce(parent.sales_channel,i.sales_channel)
+      and (l.active or (coalesce(parent.status,i.status)='販売済' and l.verified_sale is not null))
+    order by l.active desc,l.observed_at desc nulls last,l.id limit 1
+  ) listing on true
+  left join app.seller_listings other_listing on other_listing.item_id=coalesce(parent.id,i.id)
+    and other_listing.active and other_listing.observed_status in ('出品中','取引中')
+    and other_listing.channel is distinct from coalesce(parent.sales_channel,i.sales_channel)
+    and coalesce(parent.sold_on,i.sold_on) is null
+  left join lateral (
+    select o.account_id from app.seller_operations o
+    where listing.account_id is null and coalesce(parent.status,i.status)='販売済'
+      and o.item_id=coalesce(parent.id,i.id) and o.channel=coalesce(parent.sales_channel,i.sales_channel)
+      and o.kind='listing' and o.status='succeeded'
+      and nullif(o.result->>'external_id','') is not null
+    order by o.created_at desc,o.id limit 1
+  ) history on true
+  where auth.uid() is not null and i.id=p_item_id
+    and viewer.role in ('admin','purchaser','deliverer')
+$$;
+revoke all on function app.inventory_marketplace_accounts(uuid) from public,anon,authenticated;
+grant execute on function app.inventory_marketplace_accounts(uuid) to authenticated;
+
+-- Enrich the selected page before fingerprinting so account-only changes reach cached rows.
+do $migration$
+declare
+  signature text;
+  definition text;
+  anchor constant text := 'select d.*,md5(d.d::text) fingerprint,g.lot,g.purchased from';
+begin
+  foreach signature in array array['app.read_inventory_page(text,jsonb,integer,jsonb)',
+    'app.read_delivery_catalog_snapshot(text,jsonb,integer,jsonb)'] loop
+    definition := pg_get_functiondef(signature::regprocedure);
+    if strpos(definition,anchor)=0 then raise exception 'Inventory page insertion point missing: %',signature; end if;
+    definition := replace(definition,anchor,
+      'select enriched.d,d.serial,md5(enriched.d::text) fingerprint,g.lot,g.purchased from');
+    execute replace(definition,'join page_groups g using(serial)',
+      $sql$join page_groups g using(serial)
+  cross join lateral (select d.d || coalesce(app.inventory_marketplace_accounts((d.d->>'id')::uuid),'{}'::jsonb) d offset 0) enriched$sql$);
+  end loop;
+end $migration$;
+
+
+-- ▼▼▼ 20261110172137_inventory_page_hydrate_selected_rows.sql ▼▼▼
+
+-- Filter and count using a narrow projection, then build full rows for the selected groups.
+do $migration$
+declare
+  signature constant text := 'app.read_inventory_page(text,jsonb,integer,jsonb)';
+  definition text := pg_get_functiondef(signature::regprocedure);
+  old_raw constant text := 'with raw as materialized (select to_jsonb(v) d from %s v)';
+  old_page constant text := $old$
+ page as materialized (
+  select enriched.d,d.serial,md5(enriched.d::text) fingerprint,g.lot,g.purchased from
+  (select * from data where $1='delivery' union all select * from matched where $1='management') d
+  join page_groups g using(serial)
+  cross join lateral (select d.d || coalesce(app.inventory_marketplace_accounts((d.d->>'id')::uuid),'{}'::jsonb) d offset 0) enriched
+ ),
+$old$;
+  new_page constant text := $new$
+ page_meta as materialized (
+  select d.d,d.serial,g.lot,g.purchased
+  from (select * from data where $1='delivery' union all select * from matched where $1='management') d
+  join page_groups g using(serial)
+ ),
+ hydrated as materialized (
+  select to_jsonb(v) d,v.id
+  from %1$s v
+  where v.id=any(array(select (m.d->>'id')::uuid from page_meta m))
+ ),
+ page as materialized (
+  select enriched.d,d.serial,md5(enriched.d::text) fingerprint,d.lot,d.purchased
+  from page_meta d join hydrated h on h.id=(d.d->>'id')::uuid
+  cross join lateral (
+   select h.d || d.d || coalesce(app.inventory_marketplace_accounts(h.id),'{}'::jsonb) d
+   offset 0
+  ) enriched
+ ),
+$new$;
+  search_source constant text := $sources$
+case when p_scope='delivery' then $delivery$
+ select jsonb_build_object(
+  'id',i.id,'sku',i.sku,'lot_seq',i.lot_seq,'is_accessory',i.is_accessory,
+  'status',i.status,'marketplace',i.marketplace,'sales_channel',
+    case when i.is_accessory then sale.sales_channel else i.sales_channel end,
+  'deliverer_id',i.deliverer_id,'purchased_at',i.purchased_at,
+  'title',i.title,'model_no',p.model_no,'marketplace_item_id',i.marketplace_item_id,
+  'asin',i.asin,'tracking_no',i.tracking_no
+ ) d
+ from app.items i
+ left join app.products p on p.id=i.product_id
+   or (i.product_id is null and i.marketplace::text='動作品Amazon返品' and p.asin=i.asin)
+ left join lateral (
+  select l.sales_channel from app.shared_product_sale_values(i.id) l
+  where i.is_accessory offset 0
+ ) sale on true
+ where (select app.is_admin()) or i.deliverer_id=(select app.current_staff_id())
+$delivery$ else $management$
+ select jsonb_build_object(
+  'id',v.id,'sku',v.sku,'lot_seq',v.lot_seq,'is_accessory',v.is_accessory,
+  'status',v.status,'marketplace',v.marketplace,'sales_channel',v.sales_channel,
+  'deliverer_id',v.deliverer_id,'purchaser_id',v.purchaser_id,'purchased_at',v.purchased_at,
+  'title',v.title,'model_no',v.model_no,'marketplace_item_id',ref.marketplace_item_id,
+  'asin',v.asin,'tracking_no',v.tracking_no
+ ) d
+ from app.v_items v join app.items ref on ref.id=v.id
+$management$ end
+$sources$;
+begin
+  if strpos(definition,old_raw)=0 or strpos(definition,old_page)=0
+    or strpos(definition,'$query$,source);')=0 then
+    raise exception 'Inventory page no longer matches the expected definition';
+  end if;
+  definition := replace(definition,old_raw,'with raw as materialized (%2$s)');
+  definition := replace(definition,old_page,new_page);
+  execute replace(definition,'$query$,source);','$query$,source,' || search_source || ');');
+end $migration$;
+
+
+-- ▼▼▼ 20261110175256_deliverer_stock_workload.sql ▼▼▼
+
+-- Keep the inbound plans private. Management reports only need two facts per SKU.
+create schema if not exists workload_private;
+revoke all on schema workload_private from public, anon;
+grant usage on schema workload_private to authenticated;
+
+create view workload_private.fba_stock_evidence with (security_barrier = true) as
+select item.item_id, item.sku, plan.account,
+  bool_or(item.published_at is not null or plan.received_at is not null or coalesce(shipment.received, false)) as received,
+  bool_or(coalesce(shipment.dispatched, false)) as dispatched
+from app.fba_inbound_items item
+join app.fba_inbound_plans plan on plan.id = item.plan_id
+left join lateral (
+  select
+    bool_or(s->>'status' in ('DELIVERED', 'CHECKED_IN', 'RECEIVING', 'CLOSED') and
+      case when jsonb_typeof(s->'received'->item.sku) = 'number'
+        then (s->'received'->>item.sku)::numeric >= 1 else false end) as received,
+    bool_or(s->>'status' in ('SHIPPED', 'IN_TRANSIT', 'DELIVERED', 'CHECKED_IN', 'RECEIVING', 'CLOSED') and exists (
+      select 1 from jsonb_array_elements(case when jsonb_typeof(s->'boxes') = 'array'
+        then s->'boxes' else '[]'::jsonb end) box where (box->'skus') ? item.sku
+    )) as dispatched
+  from jsonb_array_elements(case when jsonb_typeof(plan.work->'shipments') = 'array'
+    then plan.work->'shipments' else '[]'::jsonb end) s
+  where nullif(s->>'confirmationId', '') is not null
+) shipment on true
+where (select app.management_reports_allowed()) and plan.stage = 'ready'
+  and (item.released_at is null or item.published_at is not null)
+group by item.item_id, item.sku, plan.account;
+
+revoke all on workload_private.fba_stock_evidence from public, anon, authenticated;
+grant select on workload_private.fba_stock_evidence to authenticated;
+
+create view app.v_deliverer_stock_workload_items with (security_invoker = true, security_barrier = true) as
+select i.id, i.deliverer_id, i.lot_seq, i.sku, i.title, p.model_no, i.status, i.marketplace,
+  i.sales_channel, i.purchased_at, i.packed_on, i.shipped_on, state.bucket,
+  coalesce(i.shipped_on is null and not location.left_for_fba and (
+    state.bucket in ('登録前', '手元出品', '発送前', '手元不良')
+    or (state.bucket = '検品中' and (i.inspected_at is not null or i.cleaned_at is not null))
+  ), false) as on_hand
+from app.items i
+left join app.products p on p.id = i.product_id
+left join workload_private.fba_stock_evidence f on f.item_id = i.id and f.sku = i.sku
+  and f.account = case when i.sales_channel::text = 'FBA' then 'FBA1' else i.sales_channel::text end
+cross join lateral (select
+  coalesce(f.received or f.dispatched, false) as left_for_fba,
+  i.sales_channel::text in ('自己発送', '自己発送1', '自己発送2', 'メルカリ', 'ヤフオク', 'ヤフフリ') as self_fulfilled
+) location
+cross join lateral (select case
+  when i.status = '受取前' then '受取前'
+  when i.status = '検品中' then '検品中'
+  when i.status = '商品登録前' then '登録前'
+  when i.status = '出品中' and location.self_fulfilled and i.shipped_on is null then '手元出品'
+  when i.status = '出品中' and f.received then 'FBA出品'
+  when i.status = '取引中' and i.shipped_on is not null then '発送済み'
+  when i.status = '取引中' and location.self_fulfilled then '発送前'
+  when i.status = '動作不良' and i.shipped_on is null and not location.left_for_fba
+    and (i.inspected_at is not null or i.cleaned_at is not null or i.malfunction_reported_at is not null) then '手元不良'
+end as bucket) state
+where (select app.management_reports_allowed()) and not i.is_accessory and i.deliverer_id is not null
+  and i.status in ('受取前', '検品中', '商品登録前', '出品中', '取引中', '動作不良');
+
+create view app.v_deliverer_stock_workload with (security_invoker = true, security_barrier = true) as
+select s.id as deliverer_id, s.name as deliverer_name,
+  count(*) filter (where i.on_hand) as on_hand,
+  count(*) filter (where i.bucket = '受取前') as awaiting_receipt,
+  count(*) filter (where i.bucket = '検品中') as inspecting,
+  count(*) filter (where i.bucket = '登録前') as awaiting_registration,
+  count(*) filter (where i.bucket = '手元出品') as listed_on_hand,
+  count(*) filter (where i.bucket = 'FBA出品') as listed_in_fba,
+  count(*) filter (where i.bucket = '発送前') as trading_unshipped,
+  count(*) filter (where i.bucket = '発送済み') as trading_shipped,
+  count(*) filter (where i.bucket = '手元不良') as defective_on_hand
+from app.staff s left join app.v_deliverer_stock_workload_items i on i.deliverer_id = s.id
+where (select app.management_reports_allowed()) and s.is_active
+  and (s.role = 'deliverer' or i.id is not null)
+group by s.id, s.name;
+
+revoke all on app.v_deliverer_stock_workload, app.v_deliverer_stock_workload_items from public, anon, authenticated;
+grant select on app.v_deliverer_stock_workload, app.v_deliverer_stock_workload_items to authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261110225751_keep_zero_workload_assignees.sql ▼▼▼
+
+-- Keep assignees with inventory history even when all displayed status counts are zero.
+create or replace view app.v_deliverer_stock_workload with (security_invoker = true, security_barrier = true) as
+select s.id as deliverer_id, s.name as deliverer_name,
+  count(*) filter (where i.on_hand) as on_hand,
+  count(*) filter (where i.bucket = '受取前') as awaiting_receipt,
+  count(*) filter (where i.bucket = '検品中') as inspecting,
+  count(*) filter (where i.bucket = '登録前') as awaiting_registration,
+  count(*) filter (where i.bucket = '手元出品') as listed_on_hand,
+  count(*) filter (where i.bucket = 'FBA出品') as listed_in_fba,
+  count(*) filter (where i.bucket = '発送前') as trading_unshipped,
+  count(*) filter (where i.bucket = '発送済み') as trading_shipped,
+  count(*) filter (where i.bucket = '手元不良') as defective_on_hand
+from app.staff s left join app.v_deliverer_stock_workload_items i on i.deliverer_id = s.id
+where (select app.management_reports_allowed()) and s.is_active
+  and (s.role = 'deliverer' or exists (select 1 from app.items history where history.deliverer_id = s.id))
+group by s.id, s.name;
+
+
+-- ▼▼▼ 20261110234233_workload_amazon_returns.sql ▼▼▼
+
+-- Show Amazon return requests separately from inventory physically on hand.
+create or replace view app.v_deliverer_stock_workload_items with (security_invoker = true, security_barrier = true) as
+select i.id, i.deliverer_id, i.lot_seq, i.sku, i.title, p.model_no, i.status, i.marketplace,
+  i.sales_channel, i.purchased_at, i.packed_on, i.shipped_on, state.bucket,
+  coalesce(i.shipped_on is null and not location.left_for_fba and (
+    state.bucket in ('登録前', '手元出品', '発送前', '手元不良')
+    or (state.bucket = '検品中' and (i.inspected_at is not null or i.cleaned_at is not null))
+  ), false) as on_hand
+from app.items i
+left join app.products p on p.id = i.product_id
+left join workload_private.fba_stock_evidence f on f.item_id = i.id and f.sku = i.sku
+  and f.account = case when i.sales_channel::text = 'FBA' then 'FBA1' else i.sales_channel::text end
+cross join lateral (select
+  coalesce(f.received or f.dispatched, false) as left_for_fba,
+  i.sales_channel::text in ('自己発送', '自己発送1', '自己発送2', 'メルカリ', 'ヤフオク', 'ヤフフリ') as self_fulfilled
+) location
+cross join lateral (select case
+  when i.status = '受取前' then '受取前'
+  when i.status = '検品中' then '検品中'
+  when i.status = 'Amazon返送依頼' then 'Amazon返品'
+  when i.status = '商品登録前' then '登録前'
+  when i.status = '出品中' and location.self_fulfilled and i.shipped_on is null then '手元出品'
+  when i.status = '出品中' and f.received then 'FBA出品'
+  when i.status = '取引中' and i.shipped_on is not null then '発送済み'
+  when i.status = '取引中' and location.self_fulfilled then '発送前'
+  when i.status = '動作不良' and i.shipped_on is null and not location.left_for_fba
+    and (i.inspected_at is not null or i.cleaned_at is not null or i.malfunction_reported_at is not null) then '手元不良'
+end as bucket) state
+where (select app.management_reports_allowed()) and not i.is_accessory and i.deliverer_id is not null
+  and i.status in ('受取前', '検品中', 'Amazon返送依頼', '商品登録前', '出品中', '取引中', '動作不良');
+
+create or replace view app.v_deliverer_stock_workload with (security_invoker = true, security_barrier = true) as
+select s.id as deliverer_id, s.name as deliverer_name,
+  count(*) filter (where i.on_hand) as on_hand,
+  count(*) filter (where i.bucket = '受取前') as awaiting_receipt,
+  count(*) filter (where i.bucket = '検品中') as inspecting,
+  count(*) filter (where i.bucket = '登録前') as awaiting_registration,
+  count(*) filter (where i.bucket = '手元出品') as listed_on_hand,
+  count(*) filter (where i.bucket = 'FBA出品') as listed_in_fba,
+  count(*) filter (where i.bucket = '発送前') as trading_unshipped,
+  count(*) filter (where i.bucket = '発送済み') as trading_shipped,
+  count(*) filter (where i.bucket = '手元不良') as defective_on_hand,
+  count(*) filter (where i.bucket = 'Amazon返品') as amazon_returns
+from app.staff s left join app.v_deliverer_stock_workload_items i on i.deliverer_id = s.id
+where (select app.management_reports_allowed()) and s.is_active
+  and (s.role = 'deliverer' or exists (select 1 from app.items history where history.deliverer_id = s.id))
+group by s.id, s.name;
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261111011512_delivery_work_deadlines.sql ▼▼▼
+
+-- Remember when tracking first became available. Corrections to an existing
+-- number preserve the deadline, and unrelated inventory updates do not reset it.
+create table app.item_tracking_recordings (
+  item_id uuid primary key references app.items(id) on delete cascade,
+  recorded_at timestamptz not null
+);
+alter table app.item_tracking_recordings enable row level security;
+revoke all on app.item_tracking_recordings from public, anon, authenticated;
+grant select on app.item_tracking_recordings to authenticated;
+create policy item_tracking_recordings_read on app.item_tracking_recordings for select to authenticated
+using (
+  exists (select 1 from app.staff s where s.id = (select app.current_staff_id()) and s.is_active)
+  and exists (select 1 from app.items i where i.id = item_tracking_recordings.item_id
+    and ((select app.is_admin()) or i.deliverer_id = (select app.current_staff_id())))
+);
+
+create function app.capture_item_tracking_recording()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if nullif(btrim(new.tracking_no), '') is null then
+    if tg_op = 'UPDATE' and nullif(btrim(old.tracking_no), '') is not null then
+      delete from app.item_tracking_recordings where item_id = new.id;
+    end if;
+  elsif tg_op = 'INSERT' or nullif(btrim(old.tracking_no), '') is null then
+    insert into app.item_tracking_recordings(item_id, recorded_at)
+    values (new.id, clock_timestamp()) on conflict (item_id) do nothing;
+  end if;
+  return new;
+end $$;
+revoke all on function app.capture_item_tracking_recording() from public, anon, authenticated;
+create trigger items_tracking_recording after insert or update of tracking_no on app.items
+  for each row execute function app.capture_item_tracking_recording();
+
+-- Use the actual recorded transition for existing products, including records
+-- that were originally inserted with a number. Do not invent missing dates.
+insert into app.item_tracking_recordings(item_id, recorded_at)
+select i.id, history.created_at
+from app.items i
+cross join lateral (
+  select a.created_at from app.audit_log a
+  where a.table_name = 'items' and a.row_id = i.id
+    and nullif(btrim(a.new_data->>'tracking_no'), '') is not null
+    and nullif(btrim(a.old_data->>'tracking_no'), '') is null
+  order by a.created_at desc limit 1
+) history
+where nullif(btrim(i.tracking_no), '') is not null
+on conflict (item_id) do nothing;
+
+-- FBA plan tables are private. An active user may only learn whether an item
+-- they can handle has completed the inbound confirmation for its current SKU.
+create function workload_private.delivery_fba_confirmed(p_item_id uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from app.items i
+    join app.staff actor on actor.id = (select app.current_staff_id()) and actor.is_active
+    join app.fba_inbound_items f on f.item_id = i.id and f.sku = i.sku
+    join app.fba_inbound_plans p on p.id = f.plan_id and p.staff_id = i.deliverer_id
+    where (select auth.uid()) is not null and i.id = p_item_id
+      and (actor.role = 'admin' or actor.id = i.deliverer_id)
+      and p.stage = 'ready' and (f.released_at is null or f.published_at is not null)
+      and p.account = case when i.sales_channel::text = 'FBA' then 'FBA1' else i.sales_channel::text end
+  )
+$$;
+revoke all on function workload_private.delivery_fba_confirmed(uuid) from public, anon, authenticated;
+grant execute on function workload_private.delivery_fba_confirmed(uuid) to authenticated;
+
+create view app.v_delivery_work_tasks with (security_invoker = true, security_barrier = true) as
+with notices as materialized (
+  select n.*, t.recorded_at as tracking_recorded_at
+  from app.v_delivery_notice_tasks n
+  left join app.item_tracking_recordings t on t.item_id = n.item_id
+  where n.kind <> 'photo_approved' or not workload_private.delivery_fba_confirmed(n.item_id)
+), candidates as (
+  select i.id, i.sku, i.lot_seq, i.marketplace_item_id, i.marketplace, i.marketplace_url,
+    i.created_at, t.recorded_at, i.status, i.inspected_at, i.cleaned_at, i.malfunction_reported_at,
+    i.listed_on, app.sales_channel_family(i.sales_channel) as channel
+  from app.items i
+  left join app.item_tracking_recordings t on t.item_id = i.id
+  where (select auth.uid()) is not null
+    and exists (select 1 from app.staff s where s.id = (select app.current_staff_id()) and s.is_active)
+    and ((select app.is_admin()) or i.deliverer_id = (select app.current_staff_id()))
+    and i.deliverer_id is not null
+    and (not i.is_accessory or app.is_standalone_accessory_serial(i.sku, i.lot_seq))
+    and i.status in ('受取前','検品中','商品登録前') and i.sold_on is null
+    and nullif(btrim(i.tracking_no), '') is not null
+)
+select * from notices
+union all
+select 'inspection:'||i.id::text, i.id, 'inspection', coalesce(i.recorded_at, i.created_at),
+  i.sku, i.lot_seq, i.marketplace_item_id, i.marketplace, i.marketplace_url,
+  null::timestamptz, null::text, i.recorded_at
+from candidates i
+where i.status in ('受取前','検品中') and i.inspected_at is null
+  and i.cleaned_at is null and i.malfunction_reported_at is null
+union all
+select 'listing_due:'||i.id::text, i.id, 'listing_due', i.recorded_at,
+  i.sku, i.lot_seq, i.marketplace_item_id, i.marketplace, i.marketplace_url,
+  null::timestamptz, null::text, i.recorded_at
+from candidates i
+where i.recorded_at is not null and i.listed_on is null
+  and i.channel in ('FBA','自己発送','メルカリ','ヤフオク','ヤフフリ')
+  and not exists (select 1 from notices n where n.item_id = i.id and n.kind = 'photo_approved')
+  and (i.channel <> 'FBA' or not workload_private.delivery_fba_confirmed(i.id));
+revoke all on app.v_delivery_work_tasks from public, anon;
+grant select on app.v_delivery_work_tasks to authenticated;
+
+do $migration$
+declare original text; patched text;
+begin
+  original := pg_get_functiondef('app.read_resource_snapshot(text,jsonb,jsonb)'::regprocedure);
+  patched := replace(original, $old$when 'return_tasks' then$old$, $new$when 'delivery_work_tasks' then
+  source:=$q$select to_jsonb(t) d from app.v_delivery_work_tasks t$q$;
+ when 'return_tasks' then$new$);
+  if patched = original then raise exception 'Delivery notice snapshot branch not found'; end if;
+  execute patched;
+end $migration$;
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261111015016_admin_work_deadlines.sql ▼▼▼
+
+-- Management follows actual tracking and shipping clocks independently of
+-- photo approval and the delivery user's acknowledgement of an older notice.
+create view app.v_admin_work_deadlines with (security_invoker = true, security_barrier = true) as
+with candidates as (
+  select i.id, i.sku, i.lot_seq, i.sales_channel, i.marketplace,
+    i.marketplace_item_id, i.marketplace_url, t.recorded_at,
+    i.status, i.inspected_at, i.cleaned_at, i.malfunction_reported_at,
+    i.listed_on, app.sales_channel_family(i.sales_channel) as channel
+  from app.items i
+  join app.item_tracking_recordings t on t.item_id = i.id
+  where (select auth.uid()) is not null and (select app.is_admin())
+    and exists (select 1 from app.staff s where s.id = (select app.current_staff_id()) and s.is_active)
+    and i.deliverer_id is not null and i.sold_on is null
+    and i.status in ('受取前','検品中','商品登録前')
+    and nullif(btrim(i.tracking_no), '') is not null
+    and (not i.is_accessory or app.is_standalone_accessory_serial(i.sku, i.lot_seq))
+)
+select i.id, i.id as item_id, i.sku, i.lot_seq, i.sales_channel, i.marketplace,
+  i.marketplace_item_id, i.marketplace_url, i.recorded_at as created_at, 'listing'::text as kind
+from candidates i
+where i.recorded_at <= now() - interval '7 days' and i.listed_on is null
+  and i.channel in ('メルカリ','ヤフオク','自己発送','FBA','ヤフフリ')
+  and (i.channel <> 'FBA' or not workload_private.delivery_fba_confirmed(i.id))
+union all
+select i.id, i.id, i.sku, i.lot_seq, i.sales_channel, i.marketplace,
+  i.marketplace_item_id, i.marketplace_url, i.recorded_at, 'inspection'
+from candidates i
+where i.recorded_at <= now() - interval '3 days'
+  and i.status in ('受取前','検品中') and i.inspected_at is null
+  and i.cleaned_at is null and i.malfunction_reported_at is null
+union all
+select t.id, i.id, i.sku, i.lot_seq, i.sales_channel, i.marketplace,
+  i.marketplace_item_id, i.marketplace_url, t.created_at, 'shipping'
+from app.delivery_shipping_tasks t
+join app.items i on i.id = t.item_id
+where (select auth.uid()) is not null and (select app.is_admin())
+  and exists (select 1 from app.staff s where s.id = (select app.current_staff_id()) and s.is_active)
+  and t.resolved_at is null and t.created_at <= now() - interval '24 hours'
+  and i.status in ('取引中','販売済') and i.shipped_on is null
+  and not app.current_trade_completed(i.id)
+  and app.sales_channel_family(i.sales_channel) in ('メルカリ','ヤフオク','自己発送');
+revoke all on app.v_admin_work_deadlines from public, anon;
+grant select on app.v_admin_work_deadlines to authenticated;
+
+do $migration$
+declare original text; patched text; shipping_start integer; receipt_start integer; old_branches text;
+begin
+  original := pg_get_functiondef('app.read_resource_snapshot(text,jsonb,jsonb)'::regprocedure);
+  shipping_start := strpos(original, $tag$when 'admin_shipping_tasks' then$tag$);
+  receipt_start := strpos(original, $tag$when 'receipt_tasks' then$tag$);
+  if shipping_start = 0 or receipt_start <= shipping_start then
+    raise exception 'Management task snapshot branches not found';
+  end if;
+  old_branches := substring(original from shipping_start for receipt_start - shipping_start);
+  if strpos(old_branches, 'photo_reviews') = 0 or strpos(old_branches, 'approved_at') = 0 then
+    raise exception 'Management listing criteria changed unexpectedly';
+  end if;
+  patched := replace(original, old_branches, $new$when 'admin_shipping_tasks' then
+  if not app.is_admin() then raise exception '管理者のみ閲覧できます' using errcode='42501';end if;
+  source:=$q$select to_jsonb(t) d from app.v_admin_work_deadlines t where t.kind='shipping'$q$;
+ when 'admin_inspection_tasks' then
+  if not app.is_admin() then raise exception '管理者のみ閲覧できます' using errcode='42501';end if;
+  source:=$q$select to_jsonb(t) d from app.v_admin_work_deadlines t where t.kind='inspection'$q$;
+ when 'listing_tasks' then
+  source:=$q$select to_jsonb(t) d from app.v_admin_work_deadlines t where t.kind='listing'$q$;
+ $new$);
+  execute patched;
+end $migration$;
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261111022348_admin_accessory_inspection_reminders.sql ▼▼▼
+
+create or replace view app.v_admin_work_deadlines with (security_invoker = true, security_barrier = true) as
+with candidates as (
+  select i.id, i.sku, i.lot_seq, i.sales_channel, i.marketplace,
+    i.marketplace_item_id, i.marketplace_url, t.recorded_at, i.status,
+    greatest(i.inspected_at, i.cleaned_at, i.malfunction_reported_at) as action_at,
+    i.listed_on, app.sales_channel_family(i.sales_channel) as channel,
+    i.is_accessory and not app.is_standalone_accessory_serial(i.sku, i.lot_seq) as linked_accessory,
+    parent.id as parent_id,
+    greatest(parent.inspected_at, parent.cleaned_at, parent.malfunction_reported_at) as parent_action_at
+  from app.items i
+  join app.item_tracking_recordings t on t.item_id = i.id
+  left join app.items parent on parent.id = i.parent_item_id and not parent.is_accessory
+  where (select auth.uid()) is not null and (select app.is_admin())
+    and exists (select 1 from app.staff s where s.id = (select app.current_staff_id()) and s.is_active)
+    and i.deliverer_id is not null and i.sold_on is null
+    and i.status in ('受取前','検品中','商品登録前')
+    and nullif(btrim(i.tracking_no), '') is not null
+)
+select i.id, i.id as item_id, i.sku, i.lot_seq, i.sales_channel, i.marketplace,
+  i.marketplace_item_id, i.marketplace_url, i.recorded_at as created_at, 'listing'::text as kind,
+  i.id as action_item_id
+from candidates i
+where not i.linked_accessory
+  and i.recorded_at <= now() - interval '7 days' and i.listed_on is null
+  and i.channel in ('メルカリ','ヤフオク','自己発送','FBA','ヤフフリ')
+  and (i.channel <> 'FBA' or not workload_private.delivery_fba_confirmed(i.id))
+union all
+select i.id, i.id, i.sku, i.lot_seq, i.sales_channel, i.marketplace,
+  i.marketplace_item_id, i.marketplace_url, i.recorded_at, 'inspection',
+  case when i.linked_accessory then coalesce(i.parent_id, i.id) else i.id end
+from candidates i
+where i.recorded_at <= now() - interval '3 days' and i.action_at is null
+  and (i.status in ('受取前','検品中') or i.linked_accessory)
+  -- A body action can cover a linked accessory after its tracking number was recorded.
+  and not (i.linked_accessory and coalesce(i.parent_action_at >= i.recorded_at, false))
+union all
+select t.id, i.id, i.sku, i.lot_seq, i.sales_channel, i.marketplace,
+  i.marketplace_item_id, i.marketplace_url, t.created_at, 'shipping', i.id
+from app.delivery_shipping_tasks t
+join app.items i on i.id = t.item_id
+where (select auth.uid()) is not null and (select app.is_admin())
+  and exists (select 1 from app.staff s where s.id = (select app.current_staff_id()) and s.is_active)
+  and t.resolved_at is null and t.created_at <= now() - interval '24 hours'
+  and i.status in ('取引中','販売済') and i.shipped_on is null
+  and not app.current_trade_completed(i.id)
+  and app.sales_channel_family(i.sales_channel) in ('メルカリ','ヤフオク','自己発送');
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261111042802_yahoo_receipt_contact_readiness.sql ▼▼▼
+
+-- Buyer receipt contact can follow an explicit no-return/Yahoo-sale disposition.
+create function app.receipt_contact_disposition_ready(p_item app.items)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select coalesce(
+   not (p_item).is_accessory
+   and (p_item).marketplace='ヤフオク'
+   and (p_item).workflow_decision='yahoo'
+   and (p_item).status in ('商品登録前','出品中','取引中','販売済')
+   and (p_item).inspected_at is not null
+   and (p_item).malfunction_reported_at is not null
+   and (p_item).malfunction_resolved_at >= (p_item).malfunction_reported_at,
+   false
+ )
+$$;
+revoke all on function app.receipt_contact_disposition_ready(app.items) from public,anon;
+grant execute on function app.receipt_contact_disposition_ready(app.items) to authenticated,service_role;
+
+-- An approval identifies the purchased accessory, its current parent and the fault report.
+create function app.receipt_contact_accessory_approved(p_item app.items,p_parent app.items)
+returns boolean language sql stable security invoker set search_path='' as $$
+ select coalesce(
+   (p_item).is_accessory and (p_item).marketplace='ヤフオク'
+   and not (p_parent).is_accessory
+   and (p_parent).id=(p_item).parent_item_id
+   and (p_parent).status='動作不良'
+   and (p_parent).malfunction_reported_at is not null
+   and (p_item).malfunction_reported_at is null and not (p_item).malfunction_reported
+   and (p_item).marketplace_item_id is distinct from (p_parent).marketplace_item_id
+   and exists (
+     select 1 from app.inventory_workflow_events event
+     where event.item_id=(p_item).id
+       and event.action='receipt_contact_accessory_approved'
+       and event.created_at >= (p_parent).malfunction_reported_at
+       and starts_with(event.note,'site='||(p_item).marketplace_item_id||';parent='||(p_parent).id||';')
+   ),
+   false
+ )
+$$;
+revoke all on function app.receipt_contact_accessory_approved(app.items,app.items) from public,anon;
+grant execute on function app.receipt_contact_accessory_approved(app.items,app.items) to authenticated,service_role;
+
+create function app.approve_yahoo_accessory_receipt_contact(p_item_id uuid,p_note text)
+returns void language plpgsql security definer set search_path='' as $$
+declare
+  actor uuid := app.current_staff_id();
+  accessory app.items;
+  parent app.items;
+begin
+  if auth.uid() is null or not app.is_admin()
+     or not exists (select 1 from app.staff s where s.id=actor and s.is_active) then
+    raise exception '管理者のみ操作できます' using errcode='42501';
+  end if;
+  select * into accessory from app.items where id=p_item_id for update;
+  select * into parent from app.items where id=accessory.parent_item_id;
+  if accessory.id is null or not accessory.is_accessory or accessory.marketplace is distinct from 'ヤフオク'
+     or nullif(btrim(accessory.marketplace_item_id),'') is null
+     or parent.id is null or parent.is_accessory or parent.status is distinct from '動作不良'
+     or parent.malfunction_reported_at is null
+     or accessory.malfunction_reported or accessory.malfunction_reported_at is not null
+     or accessory.marketplace_item_id is not distinct from parent.marketplace_item_id
+     or nullif(btrim(p_note),'') is null then
+    raise exception '本体とは別に仕入れた、動作不良の報告がない付属品を確認してください' using errcode='22023';
+  end if;
+  if app.receipt_contact_accessory_approved(accessory,parent) then return; end if;
+  insert into app.inventory_workflow_events(id,item_id,actor_id,action,from_status,to_status,note)
+  values(gen_random_uuid(),accessory.id,actor,'receipt_contact_accessory_approved',accessory.status,accessory.status,
+    'site='||accessory.marketplace_item_id||';parent='||parent.id||';'||left(btrim(p_note),1000));
+end
+$$;
+revoke all on function app.approve_yahoo_accessory_receipt_contact(uuid,text) from public,anon;
+grant execute on function app.approve_yahoo_accessory_receipt_contact(uuid,text) to authenticated;
+
+CREATE OR REPLACE FUNCTION app.receipt_bundle_is_waiting(p_item app.items)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO ''
+AS $function$
+declare
+  source_lot text := (p_item).lot_seq::text;
+  source_lots text[];
+  source_tracking text;
+begin
+  if (p_item).marketplace is distinct from 'ヤフオク' or (p_item).is_accessory is distinct from false then
+    return false;
+  end if;
+  source_lots := app.receipt_bundle_lots((p_item).memo);
+  source_tracking := regexp_replace((p_item).tracking_no,'[[:space:]－-]','','g');
+
+  return exists (
+    select 1
+    from app.items sibling
+    where sibling.marketplace='ヤフオク'
+      and not sibling.is_accessory
+      and sibling.id<>(p_item).id
+      and sibling.inspected_at is null
+      and (
+        case when source_tracking ~ '^[0-9]{8,20}$'
+          then source_tracking=regexp_replace(sibling.tracking_no,'[[:space:]－-]','','g')
+          else false end
+        or (source_lot=any(source_lots) and sibling.lot_seq::text=any(source_lots))
+        or case when sibling.memo like '%同梱%' and strpos(sibling.memo,source_lot)>0
+          then app.receipt_bundle_lots(sibling.memo) @> array[source_lot,sibling.lot_seq::text]
+          else false end
+      )
+  );
+end
+$function$;
+
+CREATE OR REPLACE FUNCTION app.marketplace_receipt_context(p_marketplace app.marketplace, p_item_id text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'app', 'public'
+AS $function$
+declare
+  v_probe jsonb;
+  v_items jsonb;
+  v_group_ok boolean;
+  v_source_ready boolean;
+  v_representative jsonb;
+  v_skus jsonb;
+  v_count integer;
+  v_unallocated_count integer;
+begin
+  v_probe=app.marketplace_extension_probe(p_marketplace,p_item_id);
+
+  select coalesce(jsonb_agg(e.value || jsonb_build_object(
+    'receipt_ready', readiness.source is not null,
+    'receipt_source', readiness.source,
+    'receipt_parent_sku', case when i.is_accessory and p.id is not null and not p.is_accessory then p.sku else null end
+  ) order by i.id),'[]'::jsonb) into v_items
+  from jsonb_array_elements(v_probe->'items') e(value)
+  join app.items i on i.id=(e.value->>'id')::uuid
+  left join app.items p on i.is_accessory and p.id=i.parent_item_id
+  cross join lateral (
+    select case
+      when p_marketplace='ヤフオク' and app.receipt_contact_disposition_ready(i) then 'disposition'
+      when i.inspected_at is not null then 'own'
+      when i.is_accessory and not p.is_accessory
+        and p.inspected_at is not null then 'parent'
+      when p_marketplace='ヤフオク' and app.receipt_contact_accessory_approved(i,p) then 'accessory_approved'
+    end as source
+  ) readiness;
+
+  if p_marketplace='ヤフオク' and exists (
+    with matching_items as materialized (
+      select i as inventory_item
+      from jsonb_array_elements(v_items) e(value)
+      join app.items i on i.id=(e.value->>'id')::uuid
+    )
+    select 1 from matching_items
+    where app.receipt_bundle_is_waiting(inventory_item)
+  ) then
+    -- Older extensions use the timestamps as a fallback eligibility signal.
+    select jsonb_agg((e.value - 'inspected_at' - 'cleaned_at') ||
+      jsonb_build_object('receipt_ready',false,'receipt_source',null) order by e.ordinality)
+      into v_items from jsonb_array_elements(v_items) with ordinality e(value,ordinality);
+    return v_probe || jsonb_build_object('items',v_items,'receipt_bundle_waiting',true);
+  end if;
+
+  v_count=jsonb_array_length(v_items);
+  if p_marketplace='ヤフオク' and v_count between 2 and 40 then
+    with members as (
+      select e.value,i.is_accessory,
+        coalesce((e.value->>'receipt_ready')::boolean,false) as ready,
+        i.is_accessory and i.parent_item_id is not null and exists(
+          select 1 from app.spare_accessories s
+          where s.marketplace_item_id=p_item_id and s.marketplace='ヤフオク'
+          and (s.used_for_item_id=i.parent_item_id or exists(
+            select 1 from app.spare_shipping_tasks t
+            where t.spare_id=s.id and t.accessory_item_id=i.id and t.item_id=i.parent_item_id
+          ))
+        ) as allocated
+      from jsonb_array_elements(v_items) e(value)
+      join app.items i on i.id=(e.value->>'id')::uuid
+    )
+    select bool_and(ready or allocated),
+      bool_or(ready and not allocated),
+      jsonb_agg(value->>'sku' order by value->>'sku'),
+      count(*) filter (where not allocated),
+      (select value from members where not allocated order by is_accessory,value->>'id' limit 1)
+      into v_group_ok,v_source_ready,v_skus,v_unallocated_count,v_representative
+    from members;
+
+    -- A single unallocated row identifies the transaction source even if
+    -- inspection/cleaning is incomplete. Readiness is still enforced by the
+    -- extension's eligibility check before any rating can be sent.
+    if v_unallocated_count=1 and v_representative is not null then
+      return v_probe || jsonb_build_object(
+        'inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),
+        'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,
+        'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation'
+      );
+    end if;
+
+    if v_group_ok and v_source_ready and v_representative is not null then
+      return v_probe || jsonb_build_object(
+        'inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),
+        'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,
+        'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation'
+      );
+    end if;
+  end if;
+  return v_probe || jsonb_build_object('items',v_items);
+end
+$function$;
+
+notify pgrst,'reload schema';
+
+
+
+-- ▼▼▼ 20261111044301_retire_cleaning_completion.sql ▼▼▼
+
+-- Keep historical cleaning timestamps while stopping new writes and removing all workflow checks.
+
+CREATE OR REPLACE FUNCTION app.perform_inventory_action(p_item_id uuid, p_action text, p_expected_status app.item_status, p_note text DEFAULT NULL::text, p_request_id uuid DEFAULT gen_random_uuid())
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'app'
+AS $function$
+declare i app.items;actor uuid:=app.current_staff_id();manager boolean;target app.item_status;old_event app.inventory_workflow_events;
+begin
+ if auth.uid() is null or actor is null or not exists(select 1 from app.staff where id=actor and is_active) then raise exception 'ログインが必要です' using errcode='42501';end if;
+ select * into i from app.items where id=p_item_id for update;
+ manager:=coalesce(app.is_admin() or (app.current_role()='purchaser' and i.purchaser_id=actor),false);
+ if i.id is null or not coalesce(manager or i.deliverer_id=actor,false) then raise exception 'この商品を操作できません' using errcode='42501';end if;
+ if i.is_accessory and not app.is_standalone_accessory_serial(i.sku,i.lot_seq) then raise exception '本体から操作してください' using errcode='22023';end if;
+ if p_request_id is null then raise exception '操作IDがありません' using errcode='22023';end if;
+ select * into old_event from app.inventory_workflow_events where id=p_request_id;
+ if found then
+  if old_event.item_id=i.id and old_event.actor_id=actor and old_event.action=p_action and old_event.note is not distinct from nullif(btrim(p_note),'') then return;end if;
+  raise exception '操作IDが重複しています' using errcode='22023';
+ end if;
+ if exists(select 1 from app.seller_operations where item_id=i.id and status in ('running','uncertain')) or exists(select 1 from app.supplier_operations where item_id=i.id and status in ('running','uncertain')) then raise exception '実行中の操作の結果を確認してから状態を変更してください';end if;
+ if i.sold_on is not null or i.status='販売済' then raise exception '販売済の商品は管理機能で販売日を訂正してください' using errcode='22023';end if;
+ if i.status is distinct from p_expected_status then raise exception '状態が更新されています。一覧を再読み込みしてください' using errcode='40001';end if;
+ if length(coalesce(p_note,''))>2000 then raise exception '2000文字以内で入力してください' using errcode='22023';end if;
+ target:=i.status;
+ case p_action
+ when 'return_request_complete' then
+  if i.status<>'Amazon返送依頼' or i.marketplace not in ('Amazon返品','動作品Amazon返品') then raise exception '返送依頼待ちの商品ではありません';end if;
+  target:='検品中';update app.items set return_request_completed_at=clock_timestamp(),status=target where id=i.id;
+ when 'return_request_cancel' then
+  if i.status<>'検品中' or i.marketplace not in ('Amazon返品','動作品Amazon返品') then raise exception '返送依頼の取消対象ではありません';end if;
+  target:='Amazon返送依頼';update app.items set return_request_completed_at=null,status=target where id=i.id;
+ when 'inspection_complete' then
+  if i.status<>'検品中' then raise exception '検品中の商品ではありません';end if;
+  target:='商品登録前';update app.items set inspected_at=coalesce(inspected_at,clock_timestamp()),status=target where id=i.id;
+ when 'inspection_cancel' then
+  if i.status<>'商品登録前' or i.workflow_decision is not null then raise exception '検品完了の取消対象ではありません';end if;
+  target:='検品中';update app.items set inspected_at=null,product_registered_at=null,status=target where id=i.id;
+ when 'report' then
+  if i.status<>'検品中' or nullif(btrim(p_note),'') is null then raise exception '検品中の商品について報告内容を入力してください';end if;
+  target:=case when i.marketplace in ('Amazon返品','動作品Amazon返品') then 'Amazon補填申請中'::app.item_status else '動作不良'::app.item_status end;
+  update app.items set malfunction_reported=true,malfunction_comment=btrim(p_note),malfunction_reported_at=clock_timestamp(),malfunction_reported_by=actor,malfunction_resolved_at=null,malfunction_resolved_by=null,status=target where id=i.id;
+ when 'report_cancel','send_back' then
+  if p_action='send_back' and nullif(btrim(p_note),'') is null then raise exception '差し戻し理由を入力してください' using errcode='22023';end if;
+  if i.status not in ('動作不良','Amazon補填申請中') then raise exception '報告の取消対象ではありません';end if;
+  if p_action='send_back' and not manager then raise exception '管理者・仕入担当者のみ差し戻しできます' using errcode='42501';end if;
+  if i.status='Amazon補填申請中' and not manager then raise exception '破損報告の差し戻しは管理側から行ってください' using errcode='42501';end if;
+  target:='検品中';update app.items set malfunction_reported=false,malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=actor,supplier_contact_requested_at=null,workflow_decision=null,status=target where id=i.id;
+ when 'supplier_check' then
+  if not manager then raise exception '管理者・仕入担当者のみ操作できます' using errcode='42501';end if;
+  if i.status<>'動作不良' then raise exception '動作不良の商品ではありません';end if;
+  update app.items set supplier_contact_requested_at=clock_timestamp() where id=i.id;
+  insert into app.item_comments(item_id,author_id,body,task_kind) values(i.id,actor,'仕入先へ確認します。','仕入先確認');
+ when 'supplier_return_complete' then
+  if i.status<>'動作不良' or i.supplier_contact_requested_at is null then raise exception '仕入先確認後に返品完了を登録してください';end if;
+  target:='返品処理';update app.items set returned_on=(clock_timestamp() at time zone 'Asia/Tokyo')::date,status=target where id=i.id;
+ when 'supplier_return_cancel' then
+  if i.status<>'返品処理' or i.marketplace in ('Amazon返品','動作品Amazon返品') then raise exception '返品完了の取消対象ではありません';end if;
+  target:='動作不良';update app.items set returned_on=null,malfunction_reported=true,malfunction_resolved_at=null,status=target where id=i.id;
+ when 'return_impossible','yahoo_instruction' then
+  if i.status<>'動作不良' or (p_action='return_impossible' and i.supplier_contact_requested_at is null) then raise exception '動作不良の商品で仕入先確認後に操作してください';end if;
+  if p_action='yahoo_instruction' and not manager then raise exception '販売指示は管理側から行ってください' using errcode='42501';end if;
+  target:='商品登録前';update app.items set workflow_previous_sales_channel=sales_channel,workflow_decision='yahoo',sales_channel='ヤフオク',malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=actor,status=target where id=i.id;
+ when 'yahoo_instruction_cancel' then
+  if i.status<>'商品登録前' or i.workflow_decision is distinct from 'yahoo' then raise exception '返品不可・販売指示の取消対象ではありません';end if;
+  target:='動作不良';update app.items set sales_channel=coalesce(workflow_previous_sales_channel,sales_channel),workflow_decision=null,malfunction_reported=true,malfunction_resolved_at=null,status=target where id=i.id;
+ when 'compensation_complete','compensation_denied' then
+  if not manager then raise exception '補填結果は管理側から登録してください' using errcode='42501';end if;
+  if i.status<>'Amazon補填申請中' then raise exception 'Amazon補填申請中の商品ではありません';end if;
+  target:='商品登録前';update app.items set sales_channel='ヤフオク',workflow_decision=case when p_action='compensation_complete' then 'compensated' else 'compensation_denied' end,malfunction_resolved_at=clock_timestamp(),malfunction_resolved_by=actor,status=target where id=i.id;
+ when 'listing_complete' then
+  if not exists(select 1 from app.amazon_listing_submissions s where s.request_id=p_request_id and s.item_id=i.id and s.state='verified' and s.verified_at>clock_timestamp()-interval '10 minutes' and (s.sku=i.sku or exists(select 1 from app.item_sku_aliases a where a.item_id=i.id and a.sku=s.sku)) and s.asin=btrim(i.asin::text) and s.sales_channel=i.sales_channel and s.price=i.planned_price and s.item_condition=i.condition::text and s.description=coalesce(i.description,'') and s.seller_id=case when i.sales_channel::text in ('FBA2','自己発送2') then 'A3E7BXJWH9TP11' else 'A1WI3OGPE43N2T' end) then raise exception 'Amazonへの登録を確認できていません。出品画面から登録結果を確認してください' using errcode='42501';end if;
+  if not app.listing_photos_approved(i.id) then raise exception '管理アプリで商品写真の承認が必要です' using errcode='42501';end if;
+  if i.status<>'商品登録前' or app.sales_channel_family(i.sales_channel) not in ('FBA','自己発送') then raise exception 'FBA・自己発送の出品完了のみ手動で登録できます';end if;
+  target:='出品中';update app.items set product_registered_at=clock_timestamp(),status=target where id=i.id;
+ when 'listing_cancel' then
+  if i.status<>'出品中' or nullif(btrim(p_note),'') is null then raise exception '実際に出品されていないことを確認してください';end if;
+  target:='商品登録前';update app.items set product_registered_at=null,status=target,seller_cancelled_trade_key=coalesce(seller_trade_key,'*'),seller_cancelled_at=clock_timestamp() where id=i.id;
+ when 'trade_cancel','resell' then
+  if i.status<>'取引中' or nullif(btrim(p_note),'') is null then raise exception '取引中の商品について理由を入力してください';end if;
+  target:=case when p_action='trade_cancel' then '出品中'::app.item_status else '商品登録前'::app.item_status end;
+  update app.items set status=target,product_registered_at=case when p_action='resell' then null else product_registered_at end,seller_cancelled_trade_key=coalesce(seller_trade_key,'*'),seller_cancelled_at=clock_timestamp() where id=i.id;
+ else raise exception '未対応の操作です' using errcode='22023';
+ end case;
+ insert into app.inventory_workflow_events(id,item_id,actor_id,action,from_status,to_status,note) values(p_request_id,i.id,actor,p_action,i.status,target,nullif(btrim(p_note),''));
+end $function$;
+
+CREATE OR REPLACE FUNCTION app.items_sync_status()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'app'
+AS $function$
+declare explicit_change boolean:=false; parent_status app.item_status;
+begin
+ if new.marketplace in ('Amazon返品','動作品Amazon返品') then new.cost_amount:=0;end if;
+ if new.is_accessory and new.parent_item_id is not null and not app.is_standalone_accessory_serial(new.sku,new.lot_seq) then
+   select status into parent_status from app.items where id=new.parent_item_id;
+   if found then new.status:=parent_status;return new;end if;
+ end if;
+ -- Sale dates always win, including delayed browser snapshots and photo actions.
+ if new.sold_on is not null then new.status:='販売済';return new;end if;
+ if new.status='返品処理' or new.returned_on is not null then new.status:='返品処理';return new;end if;
+ if tg_op='UPDATE' then explicit_change:=new.status is distinct from old.status;end if;
+ if explicit_change then
+   if new.marketplace_status_observed_at is not distinct from old.marketplace_status_observed_at then new.marketplace_status_observed_at:=now();end if;
+   if new.status='販売済' then
+     new.sold_on:=(now() at time zone 'Asia/Tokyo')::date;
+     new.sold_price:=0;new.payout_amount:=0;return new;
+   elsif new.status='Amazon返送依頼' then new.return_request_completed_at:=null;return new;
+   elsif new.status='検品中' then
+     if new.marketplace not in ('Amazon返品','動作品Amazon返品') and nullif(btrim(new.tracking_no),'') is null then raise exception '検品中にするには追跡番号を登録してください' using errcode='22023';end if;
+     if new.marketplace in ('Amazon返品','動作品Amazon返品') then new.return_request_completed_at:=coalesce(new.return_request_completed_at,now());end if;
+     new.inspected_at:=null;new.product_registered_at:=null;
+     return new;
+   elsif new.status='商品登録前' then
+     new.product_registered_at:=null;new.inspected_at:=coalesce(new.inspected_at,now());
+     new.malfunction_resolved_at:=case when new.malfunction_reported then coalesce(new.malfunction_resolved_at,now()) else new.malfunction_resolved_at end;
+     return new;
+   elsif new.status='出品中' then
+     new.product_registered_at:=coalesce(new.product_registered_at,now());return new;
+   elsif new.status='動作不良' then new.malfunction_reported:=true;new.malfunction_resolved_at:=null;return new;
+   elsif new.status in ('取引中','Amazon補填申請中') then return new;
+   end if;
+ end if;
+ -- These stages require a business decision, not a shipping/photo timestamp.
+ if tg_op='UPDATE' and new.sales_channel is not distinct from old.sales_channel
+ and new.status in ('取引中','Amazon補填申請中')
+ and new.malfunction_reported is not distinct from old.malfunction_reported then return new;end if;
+ if tg_op='UPDATE' and not explicit_change and new.status='出品中'
+ and new.product_registered_at is not distinct from old.product_registered_at
+ and new.sales_channel is not distinct from old.sales_channel
+ and not coalesce(new.malfunction_reported and new.malfunction_resolved_at is null,false) then return new;end if;
+ if new.malfunction_reported and new.malfunction_resolved_at is null then new.status:='動作不良';
+ elsif new.product_registered_at is not null then new.status:='出品中';
+ elsif new.inspected_at is not null or (new.malfunction_resolved_at is not null and new.sales_channel='ヤフオク') then new.status:='商品登録前';
+ elsif new.marketplace in ('Amazon返品','動作品Amazon返品') then
+   new.status:=case when new.return_request_completed_at is not null then '検品中'::app.item_status else 'Amazon返送依頼'::app.item_status end;
+ elsif nullif(btrim(new.tracking_no),'') is not null then new.status:='検品中';
+ else new.status:='受取前';end if;
+ return new;
+end $function$;
+
+CREATE OR REPLACE FUNCTION app.set_delivery_progress(p_item_id uuid, p_step text, p_done boolean, p_on date DEFAULT NULL::date)
+ RETURNS app.items
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare result app.items; photo_exempt boolean;
+begin
+ if auth.uid() is null then raise exception 'ログインが必要です' using errcode='42501'; end if;
+ -- Older clients may still use the former combined step name.
+ if p_step='inspection_cleaning' then p_step:='inspection'; end if;
+ if p_done is null or p_step not in ('inspection','listing','packed','shipped') then raise exception '作業項目を確認してください' using errcode='22023'; end if;
+ if p_done and p_step in ('packed','shipped') and p_on is null then raise exception '日付を入力してください' using errcode='22023'; end if;
+ if p_step='listing' then return app.set_delivery_listing_progress(p_item_id,p_done); end if;
+ perform app.assert_can_work_on(p_item_id);
+ select marketplace::text='動作品Amazon返品' into photo_exempt from app.items where id=p_item_id;
+ if p_done and p_step in ('packed','shipped') and not coalesce(photo_exempt,false) and app.photo_review_enforced() and not app.is_delivery_master()
+  and not exists(select 1 from app.photo_reviews r where r.item_id=p_item_id and r.approved_at is not null) then raise exception '管理アプリの写真確認が完了するまで、梱包・出荷はできません' using errcode='42501'; end if;
+ update app.items set inspected_at=case when p_step='inspection' then case when p_done then coalesce(inspected_at,now()) else null end else inspected_at end,
+  packed_on=case when p_step='packed' then case when p_done then p_on else null end else packed_on end,
+  shipped_on=case when p_step='shipped' then case when p_done then p_on else null end else shipped_on end
+ where id=p_item_id returning * into result;
+ if p_step='packed' and p_done then perform app.queue_packed_shipping_code(p_item_id); end if;
+ return result;
+end $function$;
+
+CREATE OR REPLACE FUNCTION app.enqueue_accessory_receipt_tasks(p_parent_id uuid, p_requested_at timestamp with time zone)
+ RETURNS void
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+ insert into app.receipt_evaluation_tasks(item_id,requested_at)
+ select i.id,p_requested_at from app.items i join app.items parent on parent.id=i.parent_item_id
+ where parent.id=p_parent_id and not parent.is_accessory and i.is_accessory and i.id<>parent.id
+ and not app.receipt_item_is_spare_accessory(i)
+ and parent.inspected_at is not null
+ and i.marketplace in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ')
+ and nullif(btrim(i.marketplace_item_id),'') is not null
+ and row(app.receipt_purchase_market(i.marketplace),i.marketplace_item_id)
+   is distinct from row(app.receipt_purchase_market(parent.marketplace),parent.marketplace_item_id)
+ and not exists(select 1 from app.marketplace_extension_receipts r
+   where r.marketplace=app.receipt_purchase_market(i.marketplace) and r.marketplace_item_id=i.marketplace_item_id and r.state='succeeded')
+ and not exists(select 1 from app.receipt_evaluation_tasks done join app.items d on d.id=done.item_id
+   where done.completed_at is not null and d.marketplace_item_id=i.marketplace_item_id
+   and app.receipt_purchase_market(d.marketplace)=app.receipt_purchase_market(i.marketplace))
+ on conflict(item_id) do update set requested_at=excluded.requested_at where receipt_evaluation_tasks.completed_at is null
+$function$;
+
+CREATE OR REPLACE FUNCTION app.marketplace_extension_probe(p_marketplace app.marketplace, p_item_id text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'app', 'public'
+AS $function$
+declare v_items jsonb;
+begin
+  if auth.uid() is null or not app.is_admin() then raise exception '管理者認証が必要です'; end if;
+  if p_marketplace not in ('メルカリ','ヤフオク','ヤフフリ','PayPayフリマ','ラクマ') or nullif(trim(p_item_id),'') is null or length(p_item_id)>100 then raise exception '照合条件が不正です'; end if;
+  select coalesce(jsonb_agg(jsonb_build_object('id',id,'sku',sku,'marketplace',marketplace,'tracking_no',tracking_no,'inspected_at',inspected_at)), '[]'::jsonb)
+    into v_items from app.items
+    where marketplace_item_id=p_item_id and (marketplace=p_marketplace or (p_marketplace in ('ヤフフリ','PayPayフリマ') and marketplace in ('ヤフフリ','PayPayフリマ')));
+  return jsonb_build_object('items',v_items,'count',jsonb_array_length(v_items));
+end $function$;
+
+CREATE OR REPLACE FUNCTION app.marketplace_receipt_context(p_marketplace app.marketplace, p_item_id text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'app', 'public'
+AS $function$
+declare
+  v_probe jsonb;
+  v_items jsonb;
+  v_group_ok boolean;
+  v_source_ready boolean;
+  v_representative jsonb;
+  v_skus jsonb;
+  v_count integer;
+  v_unallocated_count integer;
+begin
+  v_probe=app.marketplace_extension_probe(p_marketplace,p_item_id);
+
+  select coalesce(jsonb_agg(e.value || jsonb_build_object(
+    'receipt_ready', readiness.source is not null,
+    'receipt_source', readiness.source,
+    'receipt_parent_sku', case when i.is_accessory and p.id is not null and not p.is_accessory then p.sku else null end
+  ) order by i.id),'[]'::jsonb) into v_items
+  from jsonb_array_elements(v_probe->'items') e(value)
+  join app.items i on i.id=(e.value->>'id')::uuid
+  left join app.items p on i.is_accessory and p.id=i.parent_item_id
+  cross join lateral (
+    select case
+      when p_marketplace='ヤフオク' and app.receipt_contact_disposition_ready(i) then 'disposition'
+      when i.inspected_at is not null then 'own'
+      when i.is_accessory and not p.is_accessory
+        and p.inspected_at is not null then 'parent'
+      when p_marketplace='ヤフオク' and app.receipt_contact_accessory_approved(i,p) then 'accessory_approved'
+    end as source
+  ) readiness;
+
+  if p_marketplace='ヤフオク' and exists (
+    with matching_items as materialized (
+      select i as inventory_item
+      from jsonb_array_elements(v_items) e(value)
+      join app.items i on i.id=(e.value->>'id')::uuid
+    )
+    select 1 from matching_items
+    where app.receipt_bundle_is_waiting(inventory_item)
+  ) then
+    -- Older extensions use the timestamps as a fallback eligibility signal.
+    select jsonb_agg((e.value - 'inspected_at') ||
+      jsonb_build_object('receipt_ready',false,'receipt_source',null) order by e.ordinality)
+      into v_items from jsonb_array_elements(v_items) with ordinality e(value,ordinality);
+    return v_probe || jsonb_build_object('items',v_items,'receipt_bundle_waiting',true);
+  end if;
+
+  v_count=jsonb_array_length(v_items);
+  if p_marketplace='ヤフオク' and v_count between 2 and 40 then
+    with members as (
+      select e.value,i.is_accessory,
+        coalesce((e.value->>'receipt_ready')::boolean,false) as ready,
+        i.is_accessory and i.parent_item_id is not null and exists(
+          select 1 from app.spare_accessories s
+          where s.marketplace_item_id=p_item_id and s.marketplace='ヤフオク'
+          and (s.used_for_item_id=i.parent_item_id or exists(
+            select 1 from app.spare_shipping_tasks t
+            where t.spare_id=s.id and t.accessory_item_id=i.id and t.item_id=i.parent_item_id
+          ))
+        ) as allocated
+      from jsonb_array_elements(v_items) e(value)
+      join app.items i on i.id=(e.value->>'id')::uuid
+    )
+    select bool_and(ready or allocated),
+      bool_or(ready and not allocated),
+      jsonb_agg(value->>'sku' order by value->>'sku'),
+      count(*) filter (where not allocated),
+      (select value from members where not allocated order by is_accessory,value->>'id' limit 1)
+      into v_group_ok,v_source_ready,v_skus,v_unallocated_count,v_representative
+    from members;
+
+    -- A single unallocated row identifies the transaction source even if
+    -- inspection/cleaning is incomplete. Readiness is still enforced by the
+    -- extension's eligibility check before any rating can be sent.
+    if v_unallocated_count=1 and v_representative is not null then
+      return v_probe || jsonb_build_object(
+        'inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),
+        'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,
+        'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation'
+      );
+    end if;
+
+    if v_group_ok and v_source_ready and v_representative is not null then
+      return v_probe || jsonb_build_object(
+        'inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),
+        'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,
+        'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation'
+      );
+    end if;
+  end if;
+  return v_probe || jsonb_build_object('items',v_items);
+end
+$function$;
+
+CREATE OR REPLACE FUNCTION app.marketplace_extension_receipt(p_action text, p_marketplace app.marketplace, p_item_id text, p_account_label text, p_token uuid DEFAULT NULL::uuid, p_details text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'app', 'public'
+AS $function$
+declare v_market text; v_probe jsonb; v_row app.marketplace_extension_receipts%rowtype; v_token uuid;
+begin
+  if auth.uid() is null or not app.is_admin() then raise exception '管理者認証が必要です'; end if;
+  if p_action not in ('reserve','begin','complete','unknown','release','review_unpublished') then raise exception '操作が不正です'; end if;
+  if nullif(trim(p_account_label),'') is null or length(p_account_label)>200 then raise exception 'アカウント識別が必要です'; end if;
+  v_probe=app.marketplace_receipt_context(p_marketplace,p_item_id);
+  v_market=case when p_marketplace in ('ヤフフリ','PayPayフリマ') then 'Yahoo!フリマ' else p_marketplace::text end;
+  perform pg_advisory_xact_lock(hashtextextended(v_market||':'||p_item_id,0));
+  select * into v_row from app.marketplace_extension_receipts where marketplace=v_market and marketplace_item_id=p_item_id for update;
+
+  -- Explicit operator review only; keep the existing unknown reservation intact.
+  if p_action='review_unpublished' then
+    if v_row.state is distinct from 'unknown'
+      or v_row.reserved_by is distinct from auth.uid()
+      or v_row.account_label is distinct from p_account_label then
+      return jsonb_build_object('eligible',false,'reason','Result review does not match the existing reservation');
+    end if;
+    if (v_probe->>'count')::int<>1
+      or coalesce((v_probe->'items'->0->>'receipt_ready')::boolean,false) is not true then
+      return jsonb_build_object('eligible',false,'reason','Inspection and cleaning eligibility changed');
+    end if;
+    return jsonb_build_object('eligible',true,'token',v_row.token,'reviewed',true,'sku',v_probe->'items'->0->>'sku');
+  end if;
+  if p_action='reserve' then
+    if (v_probe->>'count')::int<>1 then return jsonb_build_object('eligible',false,'reason','在庫1件一致が必要です'); end if;
+    if coalesce((v_probe->'items'->0->>'receipt_ready')::boolean,false) is not true then return jsonb_build_object('eligible',false,'reason','検品または受け取り連絡の判断待ち'); end if;
+    if v_row.state is not null then return jsonb_build_object('eligible',false,'reason','既存の評価記録: '||v_row.state); end if;
+    insert into app.marketplace_extension_receipts(marketplace,marketplace_item_id,account_label,state,reserved_by)
+      values(v_market,p_item_id,p_account_label,'reserved',auth.uid()) returning token into v_token;
+    return jsonb_build_object('eligible',true,'token',v_token,'sku',v_probe->'items'->0->>'sku');
+  end if;
+  if v_row.token is distinct from p_token or v_row.reserved_by is distinct from auth.uid() or v_row.account_label<>p_account_label then raise exception '評価予約が一致しません'; end if;
+  if p_action='begin' then
+    if v_row.state<>'reserved' or v_row.reserved_at<now()-interval '5 minutes' then raise exception '評価予約が期限切れか送信済みです'; end if;
+    if (v_probe->>'count')::int<>1 or coalesce((v_probe->'items'->0->>'receipt_ready')::boolean,false) is not true then raise exception '評価条件が変わりました'; end if;
+    update app.marketplace_extension_receipts set state='submitting',updated_at=now() where token=p_token;
+  elsif p_action='release' then
+    if v_row.state<>'reserved' then raise exception '送信開始後は予約を解除できません'; end if;
+    delete from app.marketplace_extension_receipts where token=p_token;
+  elsif p_action in ('complete','unknown') then
+    if v_row.state not in ('submitting','unknown') then raise exception '送信状態が不正です'; end if;
+    update app.marketplace_extension_receipts set state=case when p_action='complete' then 'succeeded' else 'unknown' end,details=left(p_details,2000),updated_at=now() where token=p_token;
+  end if;
+  return jsonb_build_object('ok',true);
+end $function$;
+
+create or replace view app.v_admin_work_deadlines
+with (security_invoker=true, security_barrier=true) as
+WITH candidates AS (
+         SELECT i.id,
+            i.sku,
+            i.lot_seq,
+            i.sales_channel,
+            i.marketplace,
+            i.marketplace_item_id,
+            i.marketplace_url,
+            t.recorded_at,
+            i.status,
+            GREATEST(i.inspected_at, i.malfunction_reported_at) AS action_at,
+            i.listed_on,
+            app.sales_channel_family(i.sales_channel) AS channel,
+            (i.is_accessory AND (NOT app.is_standalone_accessory_serial(i.sku, i.lot_seq))) AS linked_accessory,
+            parent.id AS parent_id,
+            GREATEST(parent.inspected_at, parent.malfunction_reported_at) AS parent_action_at
+           FROM ((app.items i
+             JOIN app.item_tracking_recordings t ON ((t.item_id = i.id)))
+             LEFT JOIN app.items parent ON (((parent.id = i.parent_item_id) AND (NOT parent.is_accessory))))
+          WHERE ((( SELECT auth.uid() AS uid) IS NOT NULL) AND ( SELECT app.is_admin() AS is_admin) AND (EXISTS ( SELECT 1
+                   FROM app.staff s
+                  WHERE ((s.id = ( SELECT app.current_staff_id() AS current_staff_id)) AND s.is_active))) AND (i.deliverer_id IS NOT NULL) AND (i.sold_on IS NULL) AND (i.status = ANY (ARRAY['受取前'::app.item_status, '検品中'::app.item_status, '商品登録前'::app.item_status])) AND (NULLIF(btrim(i.tracking_no), ''::text) IS NOT NULL))
+        )
+ SELECT i.id,
+    i.id AS item_id,
+    i.sku,
+    i.lot_seq,
+    i.sales_channel,
+    i.marketplace,
+    i.marketplace_item_id,
+    i.marketplace_url,
+    i.recorded_at AS created_at,
+    'listing'::text AS kind,
+    i.id AS action_item_id
+   FROM candidates i
+  WHERE ((NOT i.linked_accessory) AND (i.recorded_at <= (now() - '7 days'::interval)) AND (i.listed_on IS NULL) AND (i.channel = ANY (ARRAY['メルカリ'::app.sales_channel, 'ヤフオク'::app.sales_channel, '自己発送'::app.sales_channel, 'FBA'::app.sales_channel, 'ヤフフリ'::app.sales_channel])) AND ((i.channel <> 'FBA'::app.sales_channel) OR (NOT workload_private.delivery_fba_confirmed(i.id))))
+UNION ALL
+ SELECT i.id,
+    i.id AS item_id,
+    i.sku,
+    i.lot_seq,
+    i.sales_channel,
+    i.marketplace,
+    i.marketplace_item_id,
+    i.marketplace_url,
+    i.recorded_at AS created_at,
+    'inspection'::text AS kind,
+        CASE
+            WHEN i.linked_accessory THEN COALESCE(i.parent_id, i.id)
+            ELSE i.id
+        END AS action_item_id
+   FROM candidates i
+  WHERE ((i.recorded_at <= (now() - '3 days'::interval)) AND (i.action_at IS NULL) AND ((i.status = ANY (ARRAY['受取前'::app.item_status, '検品中'::app.item_status])) OR i.linked_accessory) AND (NOT (i.linked_accessory AND COALESCE((i.parent_action_at >= i.recorded_at), false))))
+UNION ALL
+ SELECT t.id,
+    i.id AS item_id,
+    i.sku,
+    i.lot_seq,
+    i.sales_channel,
+    i.marketplace,
+    i.marketplace_item_id,
+    i.marketplace_url,
+    t.created_at,
+    'shipping'::text AS kind,
+    i.id AS action_item_id
+   FROM (app.delivery_shipping_tasks t
+     JOIN app.items i ON ((i.id = t.item_id)))
+  WHERE ((( SELECT auth.uid() AS uid) IS NOT NULL) AND ( SELECT app.is_admin() AS is_admin) AND (EXISTS ( SELECT 1
+           FROM app.staff s
+          WHERE ((s.id = ( SELECT app.current_staff_id() AS current_staff_id)) AND s.is_active))) AND (t.resolved_at IS NULL) AND (t.created_at <= (now() - '24:00:00'::interval)) AND (i.status = ANY (ARRAY['取引中'::app.item_status, '販売済'::app.item_status])) AND (i.shipped_on IS NULL) AND (NOT app.current_trade_completed(i.id)) AND (app.sales_channel_family(i.sales_channel) = ANY (ARRAY['メルカリ'::app.sales_channel, 'ヤフオク'::app.sales_channel, '自己発送'::app.sales_channel])));
+
+create or replace view app.v_delivery_work_tasks
+with (security_invoker=true, security_barrier=true) as
+WITH notices AS MATERIALIZED (
+         SELECT n.id,
+            n.item_id,
+            n.kind,
+            n.created_at,
+            n.sku,
+            n.lot_seq,
+            n.marketplace_item_id,
+            n.marketplace,
+            n.marketplace_url,
+            n.expires_at,
+            n.reason,
+            t.recorded_at AS tracking_recorded_at
+           FROM (app.v_delivery_notice_tasks n
+             LEFT JOIN app.item_tracking_recordings t ON ((t.item_id = n.item_id)))
+          WHERE ((n.kind <> 'photo_approved'::text) OR (NOT workload_private.delivery_fba_confirmed(n.item_id)))
+        ), candidates AS (
+         SELECT i.id,
+            i.sku,
+            i.lot_seq,
+            i.marketplace_item_id,
+            i.marketplace,
+            i.marketplace_url,
+            i.created_at,
+            t.recorded_at,
+            i.status,
+            i.inspected_at,
+            i.malfunction_reported_at,
+            i.listed_on,
+            app.sales_channel_family(i.sales_channel) AS channel
+           FROM (app.items i
+             LEFT JOIN app.item_tracking_recordings t ON ((t.item_id = i.id)))
+          WHERE ((( SELECT auth.uid() AS uid) IS NOT NULL) AND (EXISTS ( SELECT 1
+                   FROM app.staff s
+                  WHERE ((s.id = ( SELECT app.current_staff_id() AS current_staff_id)) AND s.is_active))) AND (( SELECT app.is_admin() AS is_admin) OR (i.deliverer_id = ( SELECT app.current_staff_id() AS current_staff_id))) AND (i.deliverer_id IS NOT NULL) AND ((NOT i.is_accessory) OR app.is_standalone_accessory_serial(i.sku, i.lot_seq)) AND (i.status = ANY (ARRAY['受取前'::app.item_status, '検品中'::app.item_status, '商品登録前'::app.item_status])) AND (i.sold_on IS NULL) AND (NULLIF(btrim(i.tracking_no), ''::text) IS NOT NULL))
+        )
+ SELECT notices.id,
+    notices.item_id,
+    notices.kind,
+    notices.created_at,
+    notices.sku,
+    notices.lot_seq,
+    notices.marketplace_item_id,
+    notices.marketplace,
+    notices.marketplace_url,
+    notices.expires_at,
+    notices.reason,
+    notices.tracking_recorded_at
+   FROM notices
+UNION ALL
+ SELECT ('inspection:'::text || (i.id)::text) AS id,
+    i.id AS item_id,
+    'inspection'::text AS kind,
+    COALESCE(i.recorded_at, i.created_at) AS created_at,
+    i.sku,
+    i.lot_seq,
+    i.marketplace_item_id,
+    i.marketplace,
+    i.marketplace_url,
+    NULL::timestamp with time zone AS expires_at,
+    NULL::text AS reason,
+    i.recorded_at AS tracking_recorded_at
+   FROM candidates i
+  WHERE ((i.status = ANY (ARRAY['受取前'::app.item_status, '検品中'::app.item_status])) AND (i.inspected_at IS NULL) AND (i.malfunction_reported_at IS NULL))
+UNION ALL
+ SELECT ('listing_due:'::text || (i.id)::text) AS id,
+    i.id AS item_id,
+    'listing_due'::text AS kind,
+    i.recorded_at AS created_at,
+    i.sku,
+    i.lot_seq,
+    i.marketplace_item_id,
+    i.marketplace,
+    i.marketplace_url,
+    NULL::timestamp with time zone AS expires_at,
+    NULL::text AS reason,
+    i.recorded_at AS tracking_recorded_at
+   FROM candidates i
+  WHERE ((i.recorded_at IS NOT NULL) AND (i.listed_on IS NULL) AND (i.channel = ANY (ARRAY['FBA'::app.sales_channel, '自己発送'::app.sales_channel, 'メルカリ'::app.sales_channel, 'ヤフオク'::app.sales_channel, 'ヤフフリ'::app.sales_channel])) AND (NOT (EXISTS ( SELECT 1
+           FROM notices n
+          WHERE ((n.item_id = i.id) AND (n.kind = 'photo_approved'::text))))) AND ((i.channel <> 'FBA'::app.sales_channel) OR (NOT workload_private.delivery_fba_confirmed(i.id))));
+
+create or replace view app.v_deliverer_stock_workload_items
+with (security_invoker=true, security_barrier=true) as
+SELECT i.id,
+    i.deliverer_id,
+    i.lot_seq,
+    i.sku,
+    i.title,
+    p.model_no,
+    i.status,
+    i.marketplace,
+    i.sales_channel,
+    i.purchased_at,
+    i.packed_on,
+    i.shipped_on,
+    state.bucket,
+    COALESCE(((i.shipped_on IS NULL) AND (NOT location.left_for_fba) AND ((state.bucket = ANY (ARRAY['登録前'::text, '手元出品'::text, '発送前'::text, '手元不良'::text])) OR ((state.bucket = '検品中'::text) AND ((i.inspected_at IS NOT NULL))))), false) AS on_hand
+   FROM ((((app.items i
+     LEFT JOIN app.products p ON ((p.id = i.product_id)))
+     LEFT JOIN workload_private.fba_stock_evidence f ON (((f.item_id = i.id) AND (f.sku = i.sku) AND (f.account =
+        CASE
+            WHEN ((i.sales_channel)::text = 'FBA'::text) THEN 'FBA1'::text
+            ELSE (i.sales_channel)::text
+        END))))
+     CROSS JOIN LATERAL ( SELECT COALESCE((f.received OR f.dispatched), false) AS left_for_fba,
+            ((i.sales_channel)::text = ANY (ARRAY['自己発送'::text, '自己発送1'::text, '自己発送2'::text, 'メルカリ'::text, 'ヤフオク'::text, 'ヤフフリ'::text])) AS self_fulfilled) location)
+     CROSS JOIN LATERAL ( SELECT
+                CASE
+                    WHEN (i.status = '受取前'::app.item_status) THEN '受取前'::text
+                    WHEN (i.status = '検品中'::app.item_status) THEN '検品中'::text
+                    WHEN (i.status = 'Amazon返送依頼'::app.item_status) THEN 'Amazon返品'::text
+                    WHEN (i.status = '商品登録前'::app.item_status) THEN '登録前'::text
+                    WHEN ((i.status = '出品中'::app.item_status) AND location.self_fulfilled AND (i.shipped_on IS NULL)) THEN '手元出品'::text
+                    WHEN ((i.status = '出品中'::app.item_status) AND f.received) THEN 'FBA出品'::text
+                    WHEN ((i.status = '取引中'::app.item_status) AND (i.shipped_on IS NOT NULL)) THEN '発送済み'::text
+                    WHEN ((i.status = '取引中'::app.item_status) AND location.self_fulfilled) THEN '発送前'::text
+                    WHEN ((i.status = '動作不良'::app.item_status) AND (i.shipped_on IS NULL) AND (NOT location.left_for_fba) AND ((i.inspected_at IS NOT NULL) OR (i.malfunction_reported_at IS NOT NULL))) THEN '手元不良'::text
+                    ELSE NULL::text
+                END AS bucket) state)
+  WHERE (( SELECT app.management_reports_allowed() AS management_reports_allowed) AND (NOT i.is_accessory) AND (i.deliverer_id IS NOT NULL) AND (i.status = ANY (ARRAY['受取前'::app.item_status, '検品中'::app.item_status, 'Amazon返送依頼'::app.item_status, '商品登録前'::app.item_status, '出品中'::app.item_status, '取引中'::app.item_status, '動作不良'::app.item_status])));
+
+create or replace view app.v_receipt_evaluation_tasks
+with (security_invoker=true) as
+WITH eligible AS (
+         SELECT t.item_id AS id,
+            t.item_id,
+            t.requested_at,
+            i.sku,
+            i.lot_seq,
+            i.title,
+            p.model_no,
+            i.asin,
+            i.marketplace,
+            i.marketplace_item_id,
+            i.marketplace_url,
+            i.is_accessory,
+            row_number() OVER (PARTITION BY (app.receipt_purchase_market(i.marketplace)), COALESCE(NULLIF(btrim(i.marketplace_item_id), ''::text), (i.id)::text) ORDER BY i.is_accessory, t.requested_at, i.id) AS purchase_rank
+           FROM (((app.receipt_evaluation_tasks t
+             JOIN app.items i ON ((i.id = t.item_id)))
+             LEFT JOIN app.products p ON ((p.id = i.product_id)))
+             LEFT JOIN app.items parent ON (((parent.id = i.parent_item_id) AND (NOT parent.is_accessory) AND (parent.id <> i.id))))
+          WHERE ((t.completed_at IS NULL) AND (NOT app.receipt_item_is_spare_accessory(i.*)) AND (NOT app.receipt_bundle_is_waiting(i.*)) AND (((i.inspected_at IS NOT NULL)) OR (i.is_accessory AND (parent.inspected_at IS NOT NULL))) AND ((NOT i.is_accessory) OR (parent.id IS NULL) OR ((app.receipt_purchase_market(i.marketplace) IS DISTINCT FROM app.receipt_purchase_market(parent.marketplace)) OR (i.marketplace_item_id IS DISTINCT FROM parent.marketplace_item_id))) AND (i.marketplace = ANY (ARRAY['メルカリ'::app.marketplace, 'ヤフオク'::app.marketplace, 'ヤフフリ'::app.marketplace, 'PayPayフリマ'::app.marketplace, 'ラクマ'::app.marketplace])) AND (NOT (EXISTS ( SELECT 1
+                   FROM app.marketplace_extension_receipts r
+                  WHERE ((r.marketplace = app.receipt_purchase_market(i.marketplace)) AND (r.marketplace_item_id = i.marketplace_item_id) AND (r.state = 'succeeded'::text))))) AND (NOT (EXISTS ( SELECT 1
+                   FROM (app.receipt_evaluation_tasks done
+                     JOIN app.items d ON ((d.id = done.item_id)))
+                  WHERE ((done.completed_at IS NOT NULL) AND (NULLIF(btrim(i.marketplace_item_id), ''::text) IS NOT NULL) AND (d.marketplace_item_id = i.marketplace_item_id) AND (app.receipt_purchase_market(d.marketplace) = app.receipt_purchase_market(i.marketplace)))))))
+        )
+ SELECT id,
+    item_id,
+    requested_at,
+    sku,
+    lot_seq,
+    title,
+    model_no,
+    asin,
+    marketplace,
+    marketplace_item_id,
+    marketplace_url,
+    is_accessory
+   FROM eligible
+  WHERE (purchase_rank = 1);
+
+notify pgrst,'reload schema';
+
+
+
+-- ▼▼▼ 20261111062538_remove_buyer_rating_review.sql ▼▼▼
+
+-- The purchase workflow ends with buyer receipt contact.
+CREATE OR REPLACE FUNCTION app.marketplace_extension_receipt(p_action text, p_marketplace app.marketplace, p_item_id text, p_account_label text, p_token uuid DEFAULT NULL::uuid, p_details text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'app', 'public'
+AS $function$
+declare v_market text; v_probe jsonb; v_row app.marketplace_extension_receipts%rowtype; v_token uuid;
+begin
+  if auth.uid() is null or not app.is_admin() then raise exception '管理者認証が必要です'; end if;
+  if p_action is null or p_action not in ('reserve','begin','complete','unknown','release') then raise exception '操作が不正です'; end if;
+  if nullif(trim(p_account_label),'') is null or length(p_account_label)>200 then raise exception 'アカウント識別が必要です'; end if;
+  v_probe=app.marketplace_receipt_context(p_marketplace,p_item_id);
+  v_market=case when p_marketplace in ('ヤフフリ','PayPayフリマ') then 'Yahoo!フリマ' else p_marketplace::text end;
+  perform pg_advisory_xact_lock(hashtextextended(v_market||':'||p_item_id,0));
+  select * into v_row from app.marketplace_extension_receipts where marketplace=v_market and marketplace_item_id=p_item_id for update;
+
+  if p_action='reserve' then
+    if (v_probe->>'count')::int<>1 then return jsonb_build_object('eligible',false,'reason','在庫1件一致が必要です'); end if;
+    if coalesce((v_probe->'items'->0->>'receipt_ready')::boolean,false) is not true then return jsonb_build_object('eligible',false,'reason','検品または受け取り連絡の判断待ち'); end if;
+    if v_row.state is not null then return jsonb_build_object('eligible',false,'reason','既存の評価記録: '||v_row.state); end if;
+    insert into app.marketplace_extension_receipts(marketplace,marketplace_item_id,account_label,state,reserved_by)
+      values(v_market,p_item_id,p_account_label,'reserved',auth.uid()) returning token into v_token;
+    return jsonb_build_object('eligible',true,'token',v_token,'sku',v_probe->'items'->0->>'sku');
+  end if;
+  if v_row.token is distinct from p_token or v_row.reserved_by is distinct from auth.uid() or v_row.account_label<>p_account_label then raise exception '評価予約が一致しません'; end if;
+  if p_action='begin' then
+    if v_row.state<>'reserved' or v_row.reserved_at<now()-interval '5 minutes' then raise exception '評価予約が期限切れか送信済みです'; end if;
+    if (v_probe->>'count')::int<>1 or coalesce((v_probe->'items'->0->>'receipt_ready')::boolean,false) is not true then raise exception '評価条件が変わりました'; end if;
+    update app.marketplace_extension_receipts set state='submitting',updated_at=now() where token=p_token;
+  elsif p_action='release' then
+    if v_row.state<>'reserved' then raise exception '送信開始後は予約を解除できません'; end if;
+    delete from app.marketplace_extension_receipts where token=p_token;
+  elsif p_action in ('complete','unknown') then
+    if v_row.state not in ('submitting','unknown') then raise exception '送信状態が不正です'; end if;
+    update app.marketplace_extension_receipts set state=case when p_action='complete' then 'succeeded' else 'unknown' end,details=left(p_details,2000),updated_at=now() where token=p_token;
+  end if;
+  return jsonb_build_object('ok',true);
+end $function$;
+
+
+-- ▼▼▼ 20261111062946_classify_combined_receipt_fault_report.sql ▼▼▼
+
+-- One report can describe both the main unit and its remote.
+create function app.receipt_fault_report_scope(p_report text)
+returns text language sql immutable security invoker set search_path='' as $$
+ with sentences as (
+   select btrim(sentence) as text
+   from regexp_split_to_table(lower(normalize(coalesce(p_report,''),NFKC)), '[。！？!?\n\r;；]+') sentence
+ ), observations as (
+   select
+     text ~ '(本体|hdd|ハードディスク|ディスクドライブ|bdドライブ|dvdドライブ|hdmi端子|チューナー|レコーダー|ディスク|ドライブ)' as body_part,
+     (text ~ '(でき(ない|ません|なかった|なく)|出来(ない|ません|なかった|なく)|し(ません|ない|なかった|なく)|なりません|ならない|ならなく|落ち(る|ます|た)|エラー(が|は)?(出|表示|に)|エラーです|不良(です|あり)|故障(です|し)|破損(です|し)|止まり|止まる|止まって|読めな|読み込めな|出ない|入らない|入りません)'
+       and text !~ '(エラー|不良|故障|破損)(は|が)?(ありません|ない|なし|出ません|出ない)') as fault,
+     text ~ '(リモコン|リモートコントロール|remote control)' as mentions_remote,
+     text ~ '(リモコン|リモートコントロール|remote control)(自体|側|のボタン|の一部|の電池端子)?[がはも：:]?\s*(反応し(ません|ない)|動(きません|かない)|作動し(ません|ない)|使え(ない|ません)|効(かない|きません)|壊れ|故障|不良|破損|欠品|なし|がない|電池漏れ|液漏れ|電池を入れても反応し(ません|ない))' as remote_fault,
+     text ~ '^(リモコン|リモートコントロール|remote control)(自体|側)?[がはも：:]?\s*(正常(です|に動作(します|しました))?|動作確認済み(です)?|問題(は|が)?(ありません|ない)|問題なし|操作(が|は)?(できます|できました)|反応(します|しました)|使え(ます|ました))[。．]?\s*$' as remote_normal
+   from sentences
+ ), summary as (
+   select coalesce(bool_or(body_part and fault and (not mentions_remote or remote_fault)),false) as body_fault,
+          coalesce(bool_or(remote_fault),false) as remote_fault,
+          coalesce(bool_or(mentions_remote and not remote_normal),false) as unresolved_remote_mention
+   from observations
+ )
+ select case
+   when body_fault and remote_fault then 'both'
+   when remote_fault then 'remote'
+   when body_fault and not unresolved_remote_mention then 'body'
+   else 'unclear'
+ end
+ from summary
+$$;
+revoke all on function app.receipt_fault_report_scope(text) from public,anon;
+grant execute on function app.receipt_fault_report_scope(text) to authenticated,service_role;
+
+CREATE OR REPLACE FUNCTION app.marketplace_receipt_context(p_marketplace app.marketplace, p_item_id text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SET search_path TO 'app', 'public'
+AS $function$
+declare
+  v_probe jsonb;
+  v_items jsonb;
+  v_group_ok boolean;
+  v_source_ready boolean;
+  v_representative jsonb;
+  v_skus jsonb;
+  v_count integer;
+  v_unallocated_count integer;
+begin
+  v_probe=app.marketplace_extension_probe(p_marketplace,p_item_id);
+
+  select coalesce(jsonb_agg(e.value || jsonb_build_object(
+    'receipt_ready', readiness.source is not null,
+    'receipt_source', readiness.source,
+    'receipt_report_scope', report.scope,
+    'receipt_parent_sku', case when i.is_accessory and p.id is not null and not p.is_accessory then p.sku else null end
+  ) order by i.id),'[]'::jsonb) into v_items
+  from jsonb_array_elements(v_probe->'items') e(value)
+  join app.items i on i.id=(e.value->>'id')::uuid
+  left join app.items p on i.is_accessory and p.id=i.parent_item_id
+  cross join lateral (
+    select case
+      when p_marketplace='ヤフオク' and i.is_accessory and i.title ilike '%リモコン%'
+        and not p.is_accessory and p.status='動作不良' and p.malfunction_reported_at is not null
+        and nullif(btrim(i.marketplace_item_id),'') is not null
+        and i.marketplace_item_id is distinct from p.marketplace_item_id
+      then app.receipt_fault_report_scope(p.malfunction_comment)
+    end as scope
+  ) report
+  cross join lateral (
+    select case
+      when report.scope in ('remote','both') then null
+      when p_marketplace='ヤフオク' and app.receipt_contact_disposition_ready(i) then 'disposition'
+      when i.inspected_at is not null and (report.scope is null or i.inspected_at>p.malfunction_reported_at) then 'own'
+      when i.is_accessory and not p.is_accessory
+        and p.inspected_at is not null and report.scope is null then 'parent'
+      when report.scope='body' and not i.malfunction_reported and i.malfunction_reported_at is null
+        and i.title !~ '(作動しない|動作不良|不動|反応しない|故障|破損)' then 'accessory_approved'
+      when p_marketplace='ヤフオク' and app.receipt_contact_accessory_approved(i,p) then 'accessory_approved'
+    end as source
+  ) readiness;
+
+  if p_marketplace='ヤフオク' and exists (
+    with matching_items as materialized (
+      select i as inventory_item
+      from jsonb_array_elements(v_items) e(value)
+      join app.items i on i.id=(e.value->>'id')::uuid
+    )
+    select 1 from matching_items
+    where app.receipt_bundle_is_waiting(inventory_item)
+  ) then
+    -- Older extensions use the timestamps as a fallback eligibility signal.
+    select jsonb_agg((e.value - 'inspected_at') ||
+      jsonb_build_object('receipt_ready',false,'receipt_source',null) order by e.ordinality)
+      into v_items from jsonb_array_elements(v_items) with ordinality e(value,ordinality);
+    return v_probe || jsonb_build_object('items',v_items,'receipt_bundle_waiting',true);
+  end if;
+
+  v_count=jsonb_array_length(v_items);
+  if p_marketplace='ヤフオク' and v_count between 2 and 40 then
+    with members as (
+      select e.value,i.is_accessory,
+        coalesce((e.value->>'receipt_ready')::boolean,false) as ready,
+        i.is_accessory and i.parent_item_id is not null and exists(
+          select 1 from app.spare_accessories s
+          where s.marketplace_item_id=p_item_id and s.marketplace='ヤフオク'
+          and (s.used_for_item_id=i.parent_item_id or exists(
+            select 1 from app.spare_shipping_tasks t
+            where t.spare_id=s.id and t.accessory_item_id=i.id and t.item_id=i.parent_item_id
+          ))
+        ) as allocated
+      from jsonb_array_elements(v_items) e(value)
+      join app.items i on i.id=(e.value->>'id')::uuid
+    )
+    select bool_and(ready or allocated),
+      bool_or(ready and not allocated),
+      jsonb_agg(value->>'sku' order by value->>'sku'),
+      count(*) filter (where not allocated),
+      (select value from members where not allocated order by is_accessory,value->>'id' limit 1)
+      into v_group_ok,v_source_ready,v_skus,v_unallocated_count,v_representative
+    from members;
+
+    -- A single unallocated row identifies the transaction source even if
+    -- inspection/cleaning is incomplete. Readiness is still enforced by the
+    -- extension's eligibility check before any rating can be sent.
+    if v_unallocated_count=1 and v_representative is not null then
+      return v_probe || jsonb_build_object(
+        'inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),
+        'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,
+        'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation'
+      );
+    end if;
+
+    if v_group_ok and v_source_ready and v_representative is not null then
+      return v_probe || jsonb_build_object(
+        'inventory_count',v_count,'count',1,
+        'items',jsonb_build_array(v_representative),
+        'receipt_group_size',v_count,
+        'receipt_group_skus',v_skus,
+        'receipt_group_basis','same_yahoo_purchase_verified_source_and_allocation'
+      );
+    end if;
+  end if;
+  return v_probe || jsonb_build_object('items',v_items);
+end
+$function$;
+
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261111090309_number_marketplace_account_selectors.sql ▼▼▼
+
+-- Keep platform families for work queues, deadlines and historical imports.
+alter table app.items add column sales_account_id text, add column purchase_account_id text;
+alter table app.spare_accessories add column purchase_account_id text;
+
+create function app.marketplace_account_label(account_id text) returns text
+language sql immutable strict set search_path=pg_catalog as $$
+  select case account_id when 'mercari-1' then 'メルカリ1' when 'mercari-2' then 'メルカリ2'
+    when 'auctions-1' then 'ヤフオク1' when 'auctions-2' then 'ヤフオク2'
+    when 'flea-1' then 'Yahoo!フリマ1' when 'flea-2' then 'Yahoo!フリマ2'
+    when 'rakuma-1' then 'ラクマ1' end
+$$;
+
+create function app.marketplace_account_family(account_id text) returns text
+language sql immutable strict set search_path=pg_catalog as $$
+  select case
+    when account_id in ('mercari-1','mercari-2') then 'メルカリ'
+    when account_id in ('auctions-1','auctions-2') then 'ヤフオク'
+    when account_id in ('flea-1','flea-2') then 'ヤフフリ'
+    when account_id='rakuma-1' then 'ラクマ'
+  end
+$$;
+
+alter table app.items add constraint items_sales_account_family_check check (
+  sales_account_id is null or (sales_channel in ('メルカリ','ヤフオク')
+    and (app.marketplace_account_family(sales_account_id)=sales_channel::text) is true));
+alter table app.items add constraint items_purchase_account_family_check check (
+  purchase_account_id is null or (app.marketplace_account_family(purchase_account_id)
+    = case when marketplace='PayPayフリマ' then 'ヤフフリ' else marketplace::text end) is true);
+alter table app.spare_accessories add constraint spares_purchase_account_family_check check (
+  purchase_account_id is null or (app.marketplace_account_family(purchase_account_id)
+    = case when marketplace='PayPayフリマ' then 'ヤフフリ' else marketplace end) is true);
+
+-- An exact draft link wins. An unlinked record can inherit the account only from an unambiguous exact product ID.
+create function app.imported_purchase_account(p_marketplace text,p_external_id text,p_draft_id uuid default null)
+returns text language sql stable security definer set search_path=pg_catalog,app as $$
+  select case
+    when auth.uid() is not null and not exists (
+      select 1 from app.staff where id=app.current_staff_id() and is_active
+    ) then null
+    else (
+      select case when count(distinct d.account_label) filter (where d.id=p_draft_id)=1
+        then min(d.account_label) filter (where d.id=p_draft_id)
+        when count(distinct d.account_label)=1 then min(d.account_label) end
+      from app.marketplace_purchase_drafts d
+      where d.marketplace=case when p_marketplace='PayPayフリマ' then 'ヤフフリ' else p_marketplace end
+        and d.marketplace_item_id=nullif(p_external_id,'')
+    ) end
+$$;
+revoke all on function app.imported_purchase_account(text,text,uuid) from public,anon,authenticated;
+
+create function app.keep_marketplace_account_consistent() returns trigger
+language plpgsql security definer set search_path=pg_catalog,app as $$
+declare purchase_label text; sale_account text; explicit_purchase boolean;
+begin
+  if tg_op='UPDATE' then
+    if new.marketplace is distinct from old.marketplace and new.purchase_account_id is not distinct from old.purchase_account_id then
+      new.purchase_account_id:=null;
+    end if;
+    if tg_table_name='items' then
+      if new.sales_channel is distinct from old.sales_channel and new.sales_account_id is not distinct from old.sales_account_id then
+        new.sales_account_id:=null;
+      end if;
+      if new.sales_account_id is not null and new.sales_account_id is distinct from old.sales_account_id then
+        select l.account_id into sale_account from app.seller_listings l
+        where l.item_id=new.id and l.channel=new.sales_channel and (l.active or (new.status='販売済' and l.verified_sale is not null))
+        order by l.active desc,l.observed_at desc nulls last,l.id limit 1;
+        if sale_account is not null and sale_account<>new.sales_account_id then
+          raise exception 'この商品の出品は別のアカウントに紐づいています。出品記録を確認してください。' using errcode='22023';
+        end if;
+      end if;
+    end if;
+    explicit_purchase:=new.purchase_account_id is not null and
+      (new.purchase_account_id is distinct from old.purchase_account_id or new.marketplace_item_id is distinct from old.marketplace_item_id);
+  else
+    explicit_purchase:=new.purchase_account_id is not null;
+  end if;
+
+  if explicit_purchase then
+    if tg_table_name='items' then
+      purchase_label:=app.imported_purchase_account(new.marketplace::text,new.marketplace_item_id,new.source_purchase_draft_id);
+    else
+      purchase_label:=app.imported_purchase_account(new.marketplace::text,new.marketplace_item_id);
+    end if;
+    if purchase_label is not null and purchase_label<>app.marketplace_account_label(new.purchase_account_id) then
+      raise exception '仕入れリストの購入アカウントと一致しません。取引を確認してください。' using errcode='22023';
+    end if;
+  end if;
+  return new;
+end $$;
+revoke all on function app.keep_marketplace_account_consistent() from public,anon,authenticated;
+create trigger zz_keep_item_marketplace_account before insert or update of marketplace,marketplace_item_id,purchase_account_id,sales_channel,sales_account_id
+  on app.items for each row execute function app.keep_marketplace_account_consistent();
+create trigger zz_keep_spare_marketplace_account before insert or update of marketplace,marketplace_item_id,purchase_account_id
+  on app.spare_accessories for each row execute function app.keep_marketplace_account_consistent();
+
+-- Relisting honors a saved choice, then the last verified account for the same platform.
+create function app.listing_account_for(p_item app.items) returns text
+language sql stable set search_path=pg_catalog,app as $$
+  select coalesce((p_item).sales_account_id,(
+    select l.account_id from app.seller_listings l
+    where l.item_id=(p_item).id and l.channel=(p_item).sales_channel
+      and app.marketplace_account_family(l.account_id)=(p_item).sales_channel::text
+    order by l.active desc,l.observed_at desc nulls last,l.id limit 1
+  ),app.default_marketplace_seller_account((p_item).sales_channel))
+$$;
+revoke all on function app.listing_account_for(app.items) from public,anon;
+grant execute on function app.listing_account_for(app.items) to authenticated;
+
+create or replace function app.inventory_marketplace_accounts(p_item_id uuid)
+returns jsonb language sql stable security definer set search_path=pg_catalog,app as $$
+  select jsonb_build_object(
+    'purchase_account_label',coalesce(
+      app.imported_purchase_account(i.marketplace::text,i.marketplace_item_id,i.source_purchase_draft_id),
+      app.marketplace_account_label(i.purchase_account_id)),
+    'sales_account_label',app.marketplace_account_label(coalesce(listing.account_id,history.account_id,
+      case when parent.id is null then i.sales_account_id else parent.sales_account_id end,
+      case when coalesce(parent.status,i.status) in ('受取前','検品中','商品登録前') and coalesce(parent.sold_on,i.sold_on) is null
+        then case when parent.id is null then app.listing_account_for(i) else app.listing_account_for(parent) end end)),
+    'flea_listing_account_label',app.marketplace_account_label(other_listing.account_id))
+  from app.items i
+  join app.staff viewer on viewer.id=app.current_staff_id() and viewer.is_active
+  left join app.items parent on parent.id=i.parent_item_id and not parent.is_accessory
+    and i.is_accessory and not app.is_standalone_accessory_serial(i.sku,i.lot_seq)
+  left join lateral (
+    select l.account_id from app.seller_listings l
+    where l.item_id=coalesce(parent.id,i.id) and l.channel=coalesce(parent.sales_channel,i.sales_channel)
+      and (l.active or (coalesce(parent.status,i.status)='販売済' and l.verified_sale is not null))
+    order by l.active desc,l.observed_at desc nulls last,l.id limit 1
+  ) listing on true
+  left join app.seller_listings other_listing on other_listing.item_id=coalesce(parent.id,i.id)
+    and other_listing.active and other_listing.observed_status in ('出品中','取引中')
+    and other_listing.channel is distinct from coalesce(parent.sales_channel,i.sales_channel)
+    and coalesce(parent.sold_on,i.sold_on) is null
+  left join lateral (
+    select o.account_id from app.seller_operations o
+    where listing.account_id is null and coalesce(parent.status,i.status)='販売済'
+      and o.item_id=coalesce(parent.id,i.id) and o.channel=coalesce(parent.sales_channel,i.sales_channel)
+      and o.kind='listing' and o.status='succeeded' and nullif(o.result->>'external_id','') is not null
+    order by o.created_at desc,o.id limit 1
+  ) history on true
+  where auth.uid() is not null and i.id=p_item_id and viewer.role in ('admin','purchaser','deliverer')
+$$;
+
+-- Apply numbered filters on the server before pagination. Generic options still match both accounts.
+create function app.inventory_account_filter_matches(d jsonb, states jsonb) returns boolean
+language plpgsql stable set search_path=pg_catalog,app as $$
+declare field text; family text; values jsonb; labels jsonb;
+begin
+  foreach field in array array['marketplace','sales_channel'] loop
+    values:=states->field;
+    if jsonb_typeof(values) is distinct from 'array' then continue; end if;
+    if jsonb_array_length(values)=0 then continue; end if;
+    family:=coalesce(d->>field,'');
+    if values ? family or (field='sales_channel' and
+      ((family='FBA' and values ? 'FBA1') or (family='自己発送' and values ? '自己発送1'))) then continue; end if;
+    if not (
+      (family='メルカリ' and values ?| array['メルカリ1','メルカリ2']) or
+      (family='ヤフオク' and values ?| array['ヤフオク1','ヤフオク2']) or
+      (field='marketplace' and family in ('ヤフフリ','PayPayフリマ') and values ?| array['Yahoo!フリマ1','Yahoo!フリマ2'])
+    ) then return false; end if;
+    if labels is null then labels:=coalesce(app.inventory_marketplace_accounts((d->>'id')::uuid),'{}'::jsonb); end if;
+    if not values ? coalesce(labels->>case when field='marketplace' then 'purchase_account_label' else 'sales_account_label' end,'') then
+      return false;
+    end if;
+  end loop;
+  return true;
+end $$;
+revoke all on function app.inventory_account_filter_matches(jsonb,jsonb) from public,anon;
+grant execute on function app.inventory_account_filter_matches(jsonb,jsonb) to authenticated;
+
+do $migration$
+declare
+  definition text;
+  signature text;
+  anchor text;
+  replacement text;
+begin
+  for signature,anchor,replacement in
+    select * from (values
+      ('app.queue_seller_operation(uuid,text,jsonb,uuid)',
+        'else app.default_marketplace_seller_account(i.sales_channel) end',
+        'else app.listing_account_for(i) end'),
+      ('app.seller_operation_context(uuid)',
+        $$'photo_review_approved',app.listing_photos_approved(i.id)$$,
+        $$'listing_account_id',app.listing_account_for(i),'photo_review_approved',app.listing_photos_approved(i.id)$$),
+      ('app.read_inventory_page(text,jsonb,integer,jsonb)',
+        'app.inventory_page_matches(d,$2,$1)',
+        $$app.inventory_page_matches(d,$2 #- '{states,marketplace}' #- '{states,sales_channel}',$1)
+    and app.inventory_account_filter_matches(d,$2->'states')$$),
+      ('app.read_delivery_catalog_snapshot(text,jsonb,integer,jsonb)',
+        'app.inventory_page_matches(d,$2,$1)',
+        $$app.inventory_page_matches(d,$2 #- '{states,marketplace}' #- '{states,sales_channel}',$1)
+    and app.inventory_account_filter_matches(d,$2->'states')$$),
+      ('app.register_item_with_spare(jsonb,uuid)',
+        'sales_channel,status,memo,source_purchase_draft_id)',
+        'sales_channel,status,memo,source_purchase_draft_id,sales_account_id,purchase_account_id)'),
+      ('app.register_item_with_spare(jsonb,uuid)',
+        'v_input.memo,v_input.source_purchase_draft_id)',
+        'v_input.memo,v_input.source_purchase_draft_id,v_input.sales_account_id,v_input.purchase_account_id)'),
+      ('app.register_item_with_spare(jsonb,uuid)',
+        'product_id,sales_channel,memo)',
+        'product_id,sales_channel,memo,purchase_account_id)'),
+      ('app.register_item_with_spare(jsonb,uuid)',
+        'v_item.sales_channel,v_spare.usage_note)',
+        'v_item.sales_channel,v_spare.usage_note,v_spare.purchase_account_id)'),
+      ('app.move_inventory_accessory_to_spares(uuid,jsonb)',
+        'cost_amount,marketplace,marketplace_item_id,tracking_no,usage_note',
+        'cost_amount,marketplace,marketplace_item_id,tracking_no,usage_note,purchase_account_id'),
+      ('app.move_inventory_accessory_to_spares(uuid,jsonb)',
+        $$p_spare_input->>'usage_note'
+  ) returning$$,
+        $$p_spare_input->>'usage_note',
+    case when p_spare_input ? 'purchase_account_id' then p_spare_input->>'purchase_account_id'
+      when v_item.marketplace::text=p_spare_input->>'marketplace' then v_item.purchase_account_id end
+  ) returning$$),
+      ('app.supplier_conversation(uuid)',
+        $$select case when count(distinct account_label)=1 then min(account_label) else null end into account from app.marketplace_purchase_drafts d where d.marketplace=i.marketplace::text and d.marketplace_item_id=i.marketplace_item_id;$$,
+        $$account:=coalesce(app.imported_purchase_account(i.marketplace::text,i.marketplace_item_id,i.source_purchase_draft_id),app.marketplace_account_label(i.purchase_account_id));$$),
+      ('app.queue_supplier_operation(uuid,text,text,text,uuid)',
+        ' select * into q from app.supplier_operations where id=p_request_id;',
+        $$ if coalesce(app.imported_purchase_account(i.marketplace::text,i.marketplace_item_id,i.source_purchase_draft_id),app.marketplace_account_label(i.purchase_account_id))
+    <> app.marketplace_account_label(p_account_id) then
+   raise exception '記録されている購入アカウントを選択してください';
+ end if;
+ select * into q from app.supplier_operations where id=p_request_id;$$)
+    ) edits(signature,anchor,replacement)
+  loop
+    definition:=replace(pg_get_functiondef(signature::regprocedure),chr(13),'');
+    if strpos(definition,anchor)=0 then raise exception 'Marketplace account insertion point missing: %',signature; end if;
+    execute replace(definition,anchor,replacement);
+  end loop;
+end $migration$;
+
+-- Spares keep their imported account label even when they predate the manual selector.
+create function app.spare_purchase_account_label(p_spare_id uuid) returns text
+language sql stable security definer set search_path=pg_catalog,app as $$
+  select coalesce(app.imported_purchase_account(s.marketplace,s.marketplace_item_id),app.marketplace_account_label(s.purchase_account_id))
+  from app.spare_accessories s
+  where s.id=p_spare_id and s.used_for_item_id is null and auth.uid() is not null
+    and exists(select 1 from app.staff where id=app.current_staff_id() and is_active)
+$$;
+revoke all on function app.spare_purchase_account_label(uuid) from public,anon;
+grant execute on function app.spare_purchase_account_label(uuid) to authenticated;
+
+do $migration$
+declare
+  definition text:=pg_get_functiondef('app.read_resource_snapshot(text,jsonb,jsonb)'::regprocedure);
+  anchor text:=$$to_jsonb(s)||jsonb_build_object('_owner_code',p.code) d from app.spare_accessories s$$;
+begin
+  if strpos(definition,anchor)=0 then raise exception 'Spare account insertion point missing'; end if;
+  execute replace(definition,anchor,
+    $$to_jsonb(s)||jsonb_build_object('_owner_code',p.code,'purchase_account_label',app.spare_purchase_account_label(s.id)) d from app.spare_accessories s$$);
+end $migration$;
+
+
+-- ▼▼▼ 20261111103911_marketplace_code_shipping_date.sql ▼▼▼
+
+-- Code issuance is the dispatch date for marketplace trades. A LINE request
+-- already queued for that code must still reach the person who will use it.
+alter table app.delivery_line_outbox
+  add column code_issue_operation_id uuid references app.seller_operations(id) on delete set null;
+
+create or replace function app.line_shipping_eligible(p_id uuid)
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select coalesce((
+    select not l.blocked and s.is_active and s.id = i.deliverer_id
+      and o.state <> 'cancelled' and i.status = '取引中'
+      and i.sold_on is null and i.seller_cancelled_at is null
+      and (
+        (t.resolved_at is null and i.shipped_on is null)
+        or exists (
+          select 1 from app.seller_operations issue
+          join app.seller_listings listing on listing.item_id = i.id and listing.active
+            and listing.channel = issue.channel and listing.account_id = issue.account_id
+            and listing.trade_key = o.trade_key
+          where issue.id = o.code_issue_operation_id and issue.item_id = i.id
+            and issue.kind in ('shipping_code', 'register_package') and issue.status = 'succeeded'
+            and issue.channel = i.sales_channel and issue.payload->>'trade_key' = i.seller_trade_key
+            and issue.created_at >= t.created_at
+            and (issue.finished_at at time zone 'Asia/Tokyo')::date = i.shipped_on
+        )
+      )
+      and (
+        app.sales_channel_family(i.sales_channel) = '自己発送'
+        or (
+          app.sales_channel_family(i.sales_channel) in ('メルカリ', 'ヤフオク')
+          and o.trade_key = i.seller_trade_key
+          and exists (
+            select 1 from app.seller_listings sl where sl.item_id = i.id and sl.active
+              and sl.trade_key = o.trade_key and sl.channel = i.sales_channel
+          )
+        )
+      )
+    from app.delivery_line_outbox o join app.delivery_line_links l on l.id = o.link_id
+    join app.staff s on s.id = l.staff_id join app.delivery_shipping_tasks t on t.id = o.task_id
+    join app.items i on i.id = t.item_id where o.id = p_id
+  ), false);
+$$;
+
+create function app.record_marketplace_code_shipping_date()
+returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  trade text := new.payload->>'trade_key';
+  issued_on date := (new.finished_at at time zone 'Asia/Tokyo')::date;
+begin
+  if new.kind not in ('shipping_code', 'register_package') or new.status <> 'succeeded'
+    or old.status = 'succeeded' or issued_on is null or nullif(trade, '') is null
+    or app.sales_channel_family(new.channel) not in ('メルカリ', 'ヤフオク') then
+    return new;
+  end if;
+
+  perform 1 from app.items i
+  join app.seller_listings l on l.item_id = i.id and l.active
+    and l.channel = new.channel and l.account_id = new.account_id and l.trade_key = trade
+  where i.id = new.item_id and i.sales_channel = new.channel and i.seller_trade_key = trade
+    and i.status = '取引中' and i.shipped_on is null and i.sold_on is null
+    and i.seller_cancelled_at is null
+    and exists (
+      select 1 from app.delivery_shipping_tasks t
+      where t.item_id = i.id and t.resolved_at is null and t.created_at <= new.created_at
+    )
+  for update of i;
+  if not found then return new; end if;
+
+  update app.delivery_line_outbox o set code_issue_operation_id = new.id
+  from app.delivery_shipping_tasks t
+  where o.task_id = t.id and t.item_id = new.item_id and t.resolved_at is null
+    and t.created_at <= new.created_at and o.trade_key = trade
+    and o.state in ('pending', 'sending', 'failed');
+
+  update app.items set shipped_on = issued_on where id = new.item_id;
+  return new;
+end;
+$$;
+revoke all on function app.record_marketplace_code_shipping_date() from public, anon, authenticated;
+
+create trigger seller_operations_record_code_shipping_date
+after update of status on app.seller_operations
+for each row when (old.status is distinct from new.status and new.status = 'succeeded')
+execute function app.record_marketplace_code_shipping_date();
+
+
+-- ▼▼▼ 20261111112107_fba_completion_dispatch_date.sql ▼▼▼
+
+-- A completed FBA workflow and its inventory dispatch date commit together.
+create function app.record_fba_completion_dispatch_date()
+returns trigger language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  requested_at timestamptz;
+begin
+  if old.stage <> 'placement-confirmed' or old.pending->>'action' is distinct from 'confirmTransport'
+    or new.pending is not null or new.amazon_id is null then
+    return new;
+  end if;
+
+  requested_at := coalesce(new.work->>'dispatchRequestedAt', old.pending->>'at')::timestamptz;
+  if requested_at is null or requested_at < new.created_at or requested_at > clock_timestamp() then
+    return new;
+  end if;
+
+  update app.items i set shipped_on = (requested_at at time zone 'Asia/Tokyo')::date
+  from app.fba_inbound_items f
+  where f.plan_id = new.id and f.released_at is null and i.id = f.item_id
+    and i.sku = f.sku and btrim(i.asin::text) = f.asin and i.deliverer_id = new.staff_id
+    and i.shipped_on is null and i.sold_on is null and i.status in ('商品登録前', '出品中')
+    and (i.sales_channel::text = new.account or (new.account = 'FBA1' and i.sales_channel = 'FBA'));
+  return new;
+end;
+$$;
+revoke all on function app.record_fba_completion_dispatch_date() from public, anon, authenticated;
+
+create trigger fba_inbound_record_completion_dispatch_date
+after update of stage on app.fba_inbound_plans
+for each row when (old.stage is distinct from new.stage and new.stage = 'ready')
+execute function app.record_fba_completion_dispatch_date();
+
+
+-- ▼▼▼ 20261111112701_amazon_self_dispatch_write.sql ▼▼▼
+
+-- The service account can apply a verified dispatch date through this
+-- restricted function without gaining direct write access to inventory.
+create function app.apply_amazon_self_dispatch(
+  p_item uuid, p_account text, p_sku text, p_asin text,
+  p_status app.item_status, p_updated_at timestamptz, p_shipped_on date
+)
+returns boolean language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if p_account is null or p_account not in ('amazon-1', 'amazon-2')
+    or p_shipped_on is null or p_shipped_on > (now() at time zone 'Asia/Tokyo')::date
+    or nullif(p_sku, '') is null or coalesce(p_asin, '') !~ '^[A-Z0-9]{10}$' then
+    return false;
+  end if;
+
+  update app.items i set shipped_on = p_shipped_on
+  where i.id = p_item and i.sku = p_sku and i.asin = p_asin
+    and i.updated_at = p_updated_at and i.status = p_status
+    and i.status in ('出品中', '取引中', '販売済')
+    and i.shipped_on is null and i.purchased_at <= p_shipped_on
+    and (
+      (p_account = 'amazon-1' and i.sales_channel in ('自己発送', '自己発送1'))
+      or (p_account = 'amazon-2' and i.sales_channel = '自己発送2')
+    );
+  return found;
+end;
+$$;
+revoke all on function app.apply_amazon_self_dispatch(uuid,text,text,text,app.item_status,timestamptz,date)
+  from public, anon, authenticated;
+grant execute on function app.apply_amazon_self_dispatch(uuid,text,text,text,app.item_status,timestamptz,date)
+  to service_role;
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261111114611_fba_amazon_confirmed_dispatch_date.sql ▼▼▼
+
+-- Amazon returns the transportation operation result without a completion
+-- timestamp. The JST date is certain only when both bounds fall on that date.
+create or replace function app.record_fba_completion_dispatch_date()
+returns trigger language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  last_unconfirmed_at timestamptz;
+  observed_at timestamptz;
+  confirmed_on date;
+begin
+  if old.stage <> 'placement-confirmed' or old.pending->>'action' is distinct from 'confirmTransport'
+    or nullif(old.pending->>'op', '') is null or new.pending is not null or new.amazon_id is null then
+    return new;
+  end if;
+
+  last_unconfirmed_at := greatest(
+    (old.pending->>'at')::timestamptz,
+    (old.pending->>'transportStillPendingAt')::timestamptz
+  );
+  observed_at := (new.work->>'transportConfirmationObservedAt')::timestamptz;
+  if last_unconfirmed_at is null or observed_at is null or last_unconfirmed_at < new.created_at
+    or observed_at < last_unconfirmed_at or observed_at > clock_timestamp() then
+    return new;
+  end if;
+  confirmed_on := (observed_at at time zone 'Asia/Tokyo')::date;
+  if confirmed_on <> (last_unconfirmed_at at time zone 'Asia/Tokyo')::date then
+    return new;
+  end if;
+
+  update app.items i set shipped_on = confirmed_on
+  from app.fba_inbound_items f
+  where f.plan_id = new.id and f.released_at is null and i.id = f.item_id
+    and i.sku = f.sku and btrim(i.asin::text) = f.asin and i.deliverer_id = new.staff_id
+    and i.shipped_on is null and i.sold_on is null and i.status in ('商品登録前', '出品中')
+    and (i.sales_channel::text = new.account or (new.account = 'FBA1' and i.sales_channel = 'FBA'));
+  return new;
+end;
+$$;
+
+
+-- ▼▼▼ 20261111115546_delivery_listing_request_titles_by_channel.sql ▼▼▼
+
+create or replace function app.delivery_listing_request_title(p_channel app.sales_channel)
+returns text
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select case app.sales_channel_family(p_channel)
+    when 'FBA' then 'FBA納品お願いします。'
+    when 'ヤフオク' then 'ヤフオク出品お願いします。'
+    when 'メルカリ' then 'メルカリ出品お願いします。'
+    when '自己発送' then '自己発送の出品お願いします。'
+    else null
+  end;
+$$;
+
+revoke all on function app.delivery_listing_request_title(app.sales_channel) from public, anon;
+grant execute on function app.delivery_listing_request_title(app.sales_channel) to authenticated, service_role;
+
+create or replace view app.v_delivery_work_tasks
+with (security_invoker = true, security_barrier = true)
+as
+WITH notices AS MATERIALIZED (
+         SELECT n.id,
+            n.item_id,
+            n.kind,
+            n.created_at,
+            n.sku,
+            n.lot_seq,
+            n.marketplace_item_id,
+            n.marketplace,
+            n.marketplace_url,
+            n.expires_at,
+            n.reason,
+            t.recorded_at AS tracking_recorded_at,
+            app.delivery_listing_request_title(i.sales_channel) AS listing_request_title
+           FROM app.v_delivery_notice_tasks n
+             LEFT JOIN app.items i ON i.id=n.item_id AND n.kind='photo_approved'
+             LEFT JOIN app.item_tracking_recordings t ON t.item_id = n.item_id
+          WHERE n.kind <> 'photo_approved'::text OR NOT workload_private.delivery_fba_confirmed(n.item_id)
+        ), candidates AS (
+         SELECT i.id,
+            i.sku,
+            i.lot_seq,
+            i.marketplace_item_id,
+            i.marketplace,
+            i.marketplace_url,
+            i.created_at,
+            t.recorded_at,
+            i.status,
+            i.inspected_at,
+            i.malfunction_reported_at,
+            i.listed_on,
+            app.sales_channel_family(i.sales_channel) AS channel
+           FROM app.items i
+             LEFT JOIN app.item_tracking_recordings t ON t.item_id = i.id
+          WHERE (( SELECT auth.uid() AS uid)) IS NOT NULL AND (EXISTS ( SELECT 1
+                   FROM app.staff s
+                  WHERE s.id = (( SELECT app.current_staff_id() AS current_staff_id)) AND s.is_active)) AND (( SELECT app.is_admin() AS is_admin) OR i.deliverer_id = (( SELECT app.current_staff_id() AS current_staff_id))) AND i.deliverer_id IS NOT NULL AND (NOT i.is_accessory OR app.is_standalone_accessory_serial(i.sku, i.lot_seq)) AND (i.status = ANY (ARRAY['受取前'::app.item_status, '検品中'::app.item_status, '商品登録前'::app.item_status])) AND i.sold_on IS NULL AND NULLIF(btrim(i.tracking_no), ''::text) IS NOT NULL
+        )
+ SELECT notices.id,
+    notices.item_id,
+    notices.kind,
+    notices.created_at,
+    notices.sku,
+    notices.lot_seq,
+    notices.marketplace_item_id,
+    notices.marketplace,
+    notices.marketplace_url,
+    notices.expires_at,
+    notices.reason,
+    notices.tracking_recorded_at,
+    notices.listing_request_title
+   FROM notices
+UNION ALL
+ SELECT 'inspection:'::text || i.id::text AS id,
+    i.id AS item_id,
+    'inspection'::text AS kind,
+    COALESCE(i.recorded_at, i.created_at) AS created_at,
+    i.sku,
+    i.lot_seq,
+    i.marketplace_item_id,
+    i.marketplace,
+    i.marketplace_url,
+    NULL::timestamp with time zone AS expires_at,
+    NULL::text AS reason,
+    i.recorded_at AS tracking_recorded_at,
+    NULL::text AS listing_request_title
+   FROM candidates i
+  WHERE (i.status = ANY (ARRAY['受取前'::app.item_status, '検品中'::app.item_status])) AND i.inspected_at IS NULL AND i.malfunction_reported_at IS NULL
+UNION ALL
+ SELECT 'listing_due:'::text || i.id::text AS id,
+    i.id AS item_id,
+    'listing_due'::text AS kind,
+    i.recorded_at AS created_at,
+    i.sku,
+    i.lot_seq,
+    i.marketplace_item_id,
+    i.marketplace,
+    i.marketplace_url,
+    NULL::timestamp with time zone AS expires_at,
+    NULL::text AS reason,
+    i.recorded_at AS tracking_recorded_at,
+    app.delivery_listing_request_title(i.channel) AS listing_request_title
+   FROM candidates i
+  WHERE i.recorded_at IS NOT NULL AND i.listed_on IS NULL AND (i.channel = ANY (ARRAY['FBA'::app.sales_channel, '自己発送'::app.sales_channel, 'メルカリ'::app.sales_channel, 'ヤフオク'::app.sales_channel, 'ヤフフリ'::app.sales_channel])) AND NOT (EXISTS ( SELECT 1
+           FROM notices n
+          WHERE n.item_id = i.id AND n.kind = 'photo_approved'::text)) AND (i.channel <> 'FBA'::app.sales_channel OR NOT workload_private.delivery_fba_confirmed(i.id));
+
+create or replace function app.claim_delivery_push_with_listing_title()
+returns setof jsonb
+language sql
+volatile
+security invoker
+set search_path = ''
+as $$
+  select to_jsonb(c) || case when c.kind = 'photo'
+    then jsonb_build_object('listing_request_title', app.delivery_listing_request_title(i.sales_channel))
+    else '{}'::jsonb end
+  from app.claim_delivery_push() c
+  left join app.items i on i.id = c.item_id and c.kind = 'photo';
+$$;
+
+revoke all on function app.claim_delivery_push_with_listing_title() from public, anon, authenticated;
+grant execute on function app.claim_delivery_push_with_listing_title() to service_role;
+
+
+-- ▼▼▼ 20261111120001_restore_fba_button_dispatch_date.sql ▼▼▼
+
+-- Use the completion button's Japan date after Amazon confirms transport.
+create or replace function app.record_fba_completion_dispatch_date()
+returns trigger language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  requested_at timestamptz;
+begin
+  if old.stage <> 'placement-confirmed' or old.pending->>'action' is distinct from 'confirmTransport'
+    or new.pending is not null or new.amazon_id is null then
+    return new;
+  end if;
+
+  requested_at := coalesce(new.work->>'dispatchRequestedAt', old.pending->>'at')::timestamptz;
+  if requested_at is null or requested_at < new.created_at or requested_at > clock_timestamp() then
+    return new;
+  end if;
+
+  update app.items i set shipped_on = (requested_at at time zone 'Asia/Tokyo')::date
+  from app.fba_inbound_items f
+  where f.plan_id = new.id and f.released_at is null and i.id = f.item_id
+    and i.sku = f.sku and btrim(i.asin::text) = f.asin and i.deliverer_id = new.staff_id
+    and i.shipped_on is null and i.sold_on is null and i.status in ('商品登録前', '出品中')
+    and (i.sales_channel::text = new.account or (new.account = 'FBA1' and i.sales_channel = 'FBA'));
+  return new;
+end;
+$$;
+
+
+-- ▼▼▼ 20261111124530_fba_listing_inventory_work_date.sql ▼▼▼
+
+-- Record the date chosen at Amazon listing acceptance, while leaving FBA inbound status to its own workflow.
+-- Only the listing service can write these receipts. Keep inventory writes scoped to this trigger.
+create function app.record_fba_listing_inventory_work_date() returns trigger
+language plpgsql security definer set search_path=pg_catalog,app as $$
+begin
+  update app.items i
+     set packed_on=new.work_completed_on
+   where i.id=new.item_id
+     and i.packed_on is null
+     and i.sales_channel=new.sales_channel
+     and i.status in ('商品登録前','出品中','取引中','販売済')
+     and (i.sku=new.sku or exists (
+       select 1 from app.item_sku_aliases a where a.item_id=i.id and a.sku=new.sku
+     ))
+     and new.work_completed_on between i.purchased_at and (new.created_at at time zone 'Asia/Tokyo')::date;
+  return new;
+end;
+$$;
+revoke all on function app.record_fba_listing_inventory_work_date() from public,anon,authenticated;
+
+create trigger amazon_listing_record_fba_work_date
+after insert or update of state on app.amazon_listing_submissions
+for each row when (new.sales_channel in ('FBA','FBA1','FBA2') and new.state in ('accepted','verified'))
+execute function app.record_fba_listing_inventory_work_date();
+
+-- Restore recorded work dates only where the current inventory row is blank.
+with saved_dates as (
+  select distinct on (i.id) i.id,s.work_completed_on
+    from app.amazon_listing_submissions s
+    join app.items i on i.id=s.item_id and i.sales_channel=s.sales_channel
+   where s.sales_channel in ('FBA','FBA1','FBA2') and s.state in ('accepted','verified')
+     and i.packed_on is null and i.status in ('商品登録前','出品中','取引中','販売済')
+     and (i.sku=s.sku or exists (
+       select 1 from app.item_sku_aliases a where a.item_id=i.id and a.sku=s.sku
+     ))
+     and s.work_completed_on between i.purchased_at and (s.created_at at time zone 'Asia/Tokyo')::date
+   order by i.id,s.created_at desc,s.request_id desc
+)
+update app.items i
+   set packed_on=s.work_completed_on
+  from saved_dates s
+ where i.id=s.id and i.packed_on is null;
+
+
+-- ▼▼▼ 20261112040341_malfunction_message_notifications.sql ▼▼▼
+
+alter table app.admin_push_events drop constraint admin_push_events_kind_check;
+alter table app.admin_push_events add constraint admin_push_events_kind_check
+  check (kind in ('malfunction','action','photo_review','invoice','receipts','packing_photo','malfunction_message'));
+
+-- A comment from the assigned delivery worker belongs in the management app.
+create function app.capture_admin_malfunction_message() returns trigger
+language plpgsql security definer set search_path=pg_catalog,app as $$
+begin
+  if auth.uid() is null or new.author_id is distinct from app.current_staff_id() then
+    return new;
+  end if;
+
+  insert into app.admin_push_events(staff_id,kind,source_id,item_id,event_at,source_key)
+  select recipient.id,'malfunction_message',new.id,i.id,new.created_at,'malfunction_message:'||new.id
+  from app.items i
+  join app.staff author on author.id=new.author_id and author.is_active
+  join app.staff recipient on recipient.is_active and recipient.id<>author.id
+    and (recipient.role='admin' or (recipient.role='purchaser' and recipient.id=i.purchaser_id))
+  where i.id=new.item_id and i.deliverer_id=author.id
+    and (author.role='deliverer' or (author.role='purchaser' and author.id is distinct from i.purchaser_id))
+    and i.malfunction_reported and i.malfunction_resolved_at is null
+    and (i.status='動作不良' or (i.status='Amazon補填申請中'
+      and i.compensation_report_completed_for is distinct from i.malfunction_reported_at))
+    and i.sold_on is null and new.created_at>i.malfunction_reported_at
+  on conflict (staff_id,source_key) do nothing;
+  return new;
+end;
+$$;
+revoke all on function app.capture_admin_malfunction_message() from public,anon,authenticated;
+
+create trigger item_comments_admin_malfunction_message
+after insert on app.item_comments for each row when (new.task_kind is null)
+execute function app.capture_admin_malfunction_message();
+
+-- Do not send a second copy to the delivery app when a purchaser is acting as the delivery worker.
+create or replace function app.capture_delivery_push() returns trigger
+language plpgsql security definer set search_path=pg_catalog,app as $$
+begin
+  if tg_table_name='item_comments' then
+    if exists(select 1 from app.delivery_return_tasks where id=new.id) then return new;end if;
+    if exists(
+      select 1 from app.items i join app.staff s on s.id=new.author_id
+      where i.id=new.item_id and i.malfunction_reported_at<new.created_at and s.role in ('admin','purchaser')
+        and not (new.task_kind is null and s.role='purchaser'
+          and s.is_active and s.id is not distinct from i.deliverer_id and s.id is distinct from i.purchaser_id
+          and i.malfunction_reported and i.malfunction_resolved_at is null and i.sold_on is null
+          and (i.status='動作不良' or (i.status='Amazon補填申請中'
+            and i.compensation_report_completed_for is distinct from i.malfunction_reported_at)))
+    ) then
+      perform app.enqueue_delivery_push(new.item_id,'reply',new.created_at,new.author_id);
+    end if;
+  elsif tg_table_name='photo_reviews' then
+    if new.approved_at is not null then
+      if tg_op='INSERT' then
+        perform app.enqueue_delivery_push(new.item_id,'photo',new.approved_at,new.approved_by);
+      elsif new.approved_at is distinct from old.approved_at then
+        perform app.enqueue_delivery_push(new.item_id,'photo',new.approved_at,new.approved_by);
+      end if;
+    end if;
+  else
+    if new.deliverer_id is not null and new.shipped_on is null and new.sold_on is null then
+      if tg_op='INSERT' then
+        perform app.enqueue_delivery_push(new.id,'assigned',clock_timestamp(),app.current_staff_id());
+      elsif new.deliverer_id is distinct from old.deliverer_id then
+        perform app.enqueue_delivery_push(new.id,'assigned',clock_timestamp(),app.current_staff_id());
+      end if;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+CREATE OR REPLACE FUNCTION app.claim_admin_push()
+ RETURNS TABLE(delivery_id uuid, subscription_id uuid, endpoint text, p256dh text, auth text, base_url text, item_id uuid, lot_seq integer, kind text, task_id uuid, invoice_staff_id uuid, billing_month date, owner_name text, task_name text, eligible boolean)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  update app.admin_push_deliveries set state='failed' where state='sending' and attempts>=5 and next_attempt_at<=now();
+  insert into app.admin_push_deliveries(event_id,subscription_id)
+    select e.id,s.id from app.admin_push_events e join app.delivery_push_subscriptions s
+      on s.staff_id=e.staff_id and s.app_kind='admin' and s.enabled and s.created_at<=e.created_at
+    where e.created_at>now()-interval '24 hours' on conflict do nothing;
+  return query
+  with ready as (
+    select d.id from app.admin_push_deliveries d where d.state in ('pending','sending') and d.next_attempt_at<=now() and d.attempts<5
+    order by d.next_attempt_at limit 20 for update skip locked
+  ), claimed as (
+    update app.admin_push_deliveries d set state='sending',attempts=d.attempts+1,next_attempt_at=now()+interval '5 minutes'
+    from ready where d.id=ready.id returning d.*
+  )
+  select d.id,s.id,s.endpoint,s.p256dh,s.auth,s.base_url,e.item_id,i.lot_seq,e.kind,
+    case when e.kind in ('action','malfunction_message') then e.source_id end,e.invoice_staff_id,e.billing_month,coalesce(owner.display_name,owner.name),c.task_kind,
+    coalesce(s.enabled and s.app_kind='admin' and st.is_active and s.staff_id=e.staff_id and s.created_at<=e.created_at
+      and e.created_at>now()-interval '24 hours'
+      and (st.role='admin' or (e.kind in ('malfunction','malfunction_message') and st.role='purchaser' and i.purchaser_id=st.id))
+      and case e.kind
+        when 'packing_photo' then exists(select 1 from app.packing_photo_notices n where n.item_id=e.item_id and n.submitted_at=e.event_at and n.checked_at is null and exists(select 1 from app.item_photos p where p.item_id=n.item_id and p.photo_kind='packing'))
+        when 'malfunction' then i.malfunction_reported and i.malfunction_resolved_at is null and i.malfunction_reported_at=e.event_at
+        when 'malfunction_message' then c.item_id=i.id and c.created_at=e.event_at
+          and c.author_id<>st.id and c.created_at>i.malfunction_reported_at
+          and i.malfunction_reported and i.malfunction_resolved_at is null
+          and (i.status='動作不良' or (i.status='Amazon補填申請中'
+            and i.compensation_report_completed_for is distinct from i.malfunction_reported_at))
+          and i.sold_on is null
+        when 'action' then c.task_kind is not null and c.task_kind<>'仕入先確認' and c.task_kind not like '%ヤフオク%' and c.task_completed_at is null
+        when 'photo_review' then p.rejected_at is null and p.approved_at is null and p.submitted_at=e.event_at
+        when 'invoice' then inv.version=e.source_version and not exists(select 1 from app.delivery_invoice_approvals a where a.invoice_id=inv.id)
+        else rec.version=e.source_version and not exists(select 1 from app.delivery_invoices vi join app.delivery_invoice_approvals a on a.invoice_id=vi.id
+          where vi.staff_id=e.invoice_staff_id and vi.billing_month=e.billing_month) end
+      and (e.kind not in ('invoice','receipts') or not exists(
+        select 1 from app.admin_push_events newer where newer.staff_id=e.staff_id and newer.invoice_staff_id=e.invoice_staff_id
+          and newer.billing_month=e.billing_month and newer.kind in ('invoice','receipts') and newer.created_at>e.created_at)),false)
+  from claimed d join app.admin_push_events e on e.id=d.event_id
+    join app.delivery_push_subscriptions s on s.id=d.subscription_id join app.staff st on st.id=s.staff_id
+    left join app.items i on i.id=e.item_id left join app.item_comments c on c.id=e.source_id and e.kind in ('action','malfunction_message')
+    left join app.photo_reviews p on p.item_id=e.item_id
+    left join app.delivery_invoices inv on inv.id=e.source_id and e.kind='invoice'
+    left join app.invoice_receipt_submissions rec on rec.staff_id=e.invoice_staff_id and rec.billing_month=e.billing_month
+    left join app.staff owner on owner.id=e.invoice_staff_id;
+end;
+$function$;
+
+
+-- ▼▼▼ 20261112041307_complete_admin_malfunction_task.sql ▼▼▼
+
+create table app.malfunction_task_completions (
+  item_id uuid primary key references app.items(id) on delete cascade,
+  reported_at timestamptz not null
+);
+alter table app.malfunction_task_completions enable row level security;
+revoke all on app.malfunction_task_completions from public,anon,authenticated;
+grant select on app.malfunction_task_completions to authenticated;
+create policy malfunction_task_completions_management_read on app.malfunction_task_completions
+for select to authenticated
+using (
+  (select app.is_admin())
+  or ((select app.current_role())='purchaser' and exists (
+    select 1 from app.items i where i.id=item_id and i.purchaser_id=(select app.current_staff_id())
+  ))
+);
+
+create function app.complete_malfunction_task(p_item_id uuid, p_reported_at timestamptz) returns void
+language plpgsql security definer set search_path=pg_catalog,app as $$
+declare
+  actor_id uuid := app.current_staff_id();
+  item app.items;
+begin
+  if auth.uid() is null or actor_id is null
+     or not exists (select 1 from app.staff where id=actor_id and is_active) then
+    raise exception 'ログインが必要です' using errcode='42501';
+  end if;
+
+  select * into item from app.items where id=p_item_id for no key update;
+  if not found or not coalesce(app.is_admin() or (app.current_role()='purchaser' and item.purchaser_id=actor_id),false) then
+    raise exception 'このやることを完了する権限がありません' using errcode='42501';
+  end if;
+  if p_reported_at is null or p_reported_at is distinct from item.malfunction_reported_at
+     or item.status<>'動作不良' or not item.malfunction_reported
+     or item.malfunction_resolved_at is not null or item.sold_on is not null then
+    raise exception '動作不良の報告が更新されています。一覧を再読み込みしてください' using errcode='40001';
+  end if;
+
+  insert into app.malfunction_task_completions as completion(item_id,reported_at)
+  values (p_item_id,p_reported_at)
+  on conflict (item_id) do update set reported_at=excluded.reported_at
+  where completion.reported_at is distinct from excluded.reported_at;
+end;
+$$;
+revoke all on function app.complete_malfunction_task(uuid,timestamptz) from public,anon,authenticated;
+grant execute on function app.complete_malfunction_task(uuid,timestamptz) to authenticated;
+
+-- Reopen the management task when the assigned delivery worker sends a new message.
+create or replace function app.capture_admin_malfunction_message() returns trigger
+language plpgsql security definer set search_path=pg_catalog,app as $$
+begin
+  if auth.uid() is null or new.author_id is distinct from app.current_staff_id() then
+    return new;
+  end if;
+
+  insert into app.admin_push_events(staff_id,kind,source_id,item_id,event_at,source_key)
+  select recipient.id,'malfunction_message',new.id,i.id,new.created_at,'malfunction_message:'||new.id
+  from app.items i
+  join app.staff author on author.id=new.author_id and author.is_active
+  join app.staff recipient on recipient.is_active and recipient.id<>author.id
+    and (recipient.role='admin' or (recipient.role='purchaser' and recipient.id=i.purchaser_id))
+  where i.id=new.item_id and i.deliverer_id=author.id
+    and (author.role='deliverer' or (author.role='purchaser' and author.id is distinct from i.purchaser_id))
+    and i.malfunction_reported and i.malfunction_resolved_at is null
+    and (i.status='動作不良' or (i.status='Amazon補填申請中'
+      and i.compensation_report_completed_for is distinct from i.malfunction_reported_at))
+    and i.sold_on is null and new.created_at>i.malfunction_reported_at
+  on conflict (staff_id,source_key) do nothing;
+
+  if found then
+    perform 1 from app.items where id=new.item_id and status='動作不良' for no key update;
+    if found then
+      delete from app.malfunction_task_completions where item_id=new.item_id;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+do $patch$
+declare original text; patched text;
+begin
+  original:=pg_get_functiondef('app.read_resource_snapshot(text,jsonb,jsonb)'::regprocedure);
+  patched:=replace(original,
+    'where (i.status<>''Amazon補填申請中'' or i.compensation_report_completed_for is distinct from i.malfunction_reported_at) and i.malfunction_reported',
+    'where (i.status<>''Amazon補填申請中'' or i.compensation_report_completed_for is distinct from i.malfunction_reported_at)
+      and (i.status<>''動作不良'' or not exists(select 1 from app.malfunction_task_completions done where done.item_id=i.id and done.reported_at=i.malfunction_reported_at)) and i.malfunction_reported');
+  if original=patched then raise exception 'Management malfunction snapshot source changed'; end if;
+  execute patched;
+
+  original:=pg_get_functiondef('app.claim_admin_push()'::regprocedure);
+  patched:=replace(original,'and case e.kind',
+    'and (e.kind not in (''malfunction'',''malfunction_message'') or i.status<>''動作不良''
+      or not exists(select 1 from app.malfunction_task_completions done where done.item_id=i.id and done.reported_at=i.malfunction_reported_at))
+      and case e.kind');
+  if original=patched then raise exception 'Management push source changed'; end if;
+  execute patched;
+end;
+$patch$;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261112042611_supplier_check_push.sql ▼▼▼
+
+-- An explicit supplier check is a reply even when the item was marked faulty manually.
+do $patch$
+declare original text; patched text;
+begin
+  original := pg_get_functiondef('app.capture_delivery_push()'::regprocedure);
+  patched := replace(original,
+    'i.malfunction_reported_at<new.created_at and s.role in',
+    '(i.malfunction_reported_at<new.created_at
+      or (new.task_kind=''仕入先確認'' and i.status=''動作不良'' and i.malfunction_reported_at is null))
+      and s.role in');
+  if patched=original then raise exception 'Delivery reply trigger source changed'; end if;
+  execute patched;
+
+  original := pg_get_functiondef('app.claim_delivery_push()'::regprocedure);
+  patched := replace(original,
+    'i.malfunction_reported_at<e.event_at and coalesce(r.reply_read_at,',
+    '(i.malfunction_reported_at<e.event_at or (i.malfunction_reported_at is null and exists (
+       select 1 from app.item_comments c
+       where c.item_id=i.id and c.created_at=e.event_at and c.task_kind=''仕入先確認''
+     ))) and coalesce(r.reply_read_at,');
+  if patched=original then raise exception 'Delivery reply eligibility source changed'; end if;
+  execute patched;
+
+  original := pg_get_viewdef('app.v_delivery_notice_tasks'::regclass);
+  patched := replace(original, 'c.created_at > i.malfunction_reported_at',
+    '(c.created_at > i.malfunction_reported_at or (i.malfunction_reported_at is null and c.task_kind=''仕入先確認''))');
+  if patched=original then raise exception 'Delivery reply task source changed'; end if;
+  execute 'create or replace view app.v_delivery_notice_tasks with (security_invoker=true) as '||patched;
+end;
+$patch$;
+
+-- Only the existing dispatcher may read the reply classification.
+create or replace function app.claim_delivery_push_with_listing_title()
+returns setof jsonb
+language plpgsql volatile security definer set search_path = ''
+as $$
+declare
+  claimed record;
+  details jsonb;
+begin
+  for claimed in select * from app.claim_delivery_push() loop
+    details := '{}'::jsonb;
+    if claimed.kind='photo' then
+      select jsonb_build_object('listing_request_title',app.delivery_listing_request_title(item.sales_channel))
+      into details from app.items item where item.id=claimed.item_id;
+    elsif claimed.kind='reply' and exists (
+      select 1
+      from app.delivery_push_deliveries delivery
+      join app.delivery_push_events event on event.id=delivery.event_id
+      join app.item_comments message on message.item_id=event.item_id and message.created_at=event.event_at
+      where delivery.id=claimed.delivery_id and message.task_kind='仕入先確認'
+    ) then
+      details := jsonb_build_object('reply_task_kind','仕入先確認');
+    end if;
+    return next to_jsonb(claimed) || coalesce(details,'{}'::jsonb);
+  end loop;
+end;
+$$;
+revoke all on function app.claim_delivery_push_with_listing_title() from public,anon,authenticated;
+grant execute on function app.claim_delivery_push_with_listing_title() to service_role;
+
+
+-- ▼▼▼ 20261112043630_supplier_return_tracking.sql ▼▼▼
+
+alter table app.items add column return_tracking_no text;
+comment on column app.items.return_tracking_no is '仕入先への返品時に登録した追跡番号';
+
+-- Reuse the inventory action's authorization, state checks and request idempotency.
+do $patch$
+declare original text; patched text;
+begin
+  original:=pg_get_functiondef('app.perform_inventory_action(uuid,text,app.item_status,text,uuid)'::regprocedure);
+  patched:=replace(original,
+    'target:=''返品処理'';update app.items set returned_on=(clock_timestamp() at time zone ''Asia/Tokyo'')::date,status=target where id=i.id;',
+    'if nullif(btrim(p_note),'''') is null or p_note !~ ''[[:alnum:]]''
+      or p_note ~ ''[[:cntrl:]]'' or length(btrim(p_note))>100 then
+    raise exception ''返品の追跡番号を入力してください'' using errcode=''22023'';
+  end if;
+  target:=''返品処理'';
+  update app.items set returned_on=(clock_timestamp() at time zone ''Asia/Tokyo'')::date,
+    return_tracking_no=btrim(p_note),status=target where id=i.id;');
+  if patched=original then raise exception 'Supplier return action source changed'; end if;
+  original:=patched;
+  patched:=replace(original,'set returned_on=null,malfunction_reported=true',
+    'set returned_on=null,return_tracking_no=null,malfunction_reported=true');
+  if patched=original then raise exception 'Supplier return cancellation source changed'; end if;
+  execute patched;
+
+  original:=rtrim(pg_get_viewdef('app.v_delivery_tasks'::regclass,true),E';\n ');
+  execute 'create or replace view app.v_delivery_tasks with (security_invoker=true) as
+    select task.*,i.return_tracking_no from ('||original||') task join app.items i on i.id=task.id';
+end;
+$patch$;
+
+create function app.complete_supplier_return(
+  p_item_id uuid, p_work_completed_on date, p_tracking_no text, p_request_id uuid
+) returns void
+language plpgsql security definer set search_path=pg_catalog,app as $$
+declare
+  item app.items;
+  actor uuid:=app.current_staff_id();
+  previous_date text:=current_setting('app.work_completed_on',true);
+begin
+  if auth.uid() is null or actor is null or not exists(select 1 from app.staff where id=actor and is_active) then
+    raise exception 'ログインが必要です' using errcode='42501';
+  end if;
+  select * into item from app.items where id=p_item_id for update;
+  if not found or not coalesce(app.is_admin() or item.deliverer_id=actor,false) then
+    raise exception 'この商品の返品を登録できません' using errcode='42501';
+  end if;
+  perform app.validate_work_completion_date(p_work_completed_on,item.purchased_at);
+  perform set_config('app.work_completed_on',p_work_completed_on::text,true);
+  perform app.perform_inventory_action(p_item_id,'supplier_return_complete','動作不良',btrim(p_tracking_no),p_request_id);
+  perform set_config('app.work_completed_on',coalesce(previous_date,''),true);
+end;
+$$;
+revoke all on function app.complete_supplier_return(uuid,date,text,uuid) from public,anon,authenticated;
+grant execute on function app.complete_supplier_return(uuid,date,text,uuid) to authenticated;
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261112055004_supplier_return_message.sql ▼▼▼
+
+alter table app.supplier_operations add column return_tracking_no text;
+
+-- Queue the same supplier operation as a manually sent message, using the purchase record.
+create function app.queue_supplier_return_message(p_item app.items, p_tracking_no text, p_request_id uuid)
+returns void language plpgsql set search_path=pg_catalog,app as $$
+declare
+  account_label text;
+  destination_account text;
+  message_body text:='商品を返送しました。'||chr(10)||'追跡番号：'||p_tracking_no||chr(10)||'よろしくお願いいたします。';
+begin
+  if p_item.marketplace not in ('ヤフオク','メルカリ') then return; end if;
+  account_label:=coalesce(app.imported_purchase_account(p_item.marketplace::text,
+    p_item.marketplace_item_id,p_item.source_purchase_draft_id),app.marketplace_account_label(p_item.purchase_account_id));
+  destination_account:=case account_label when 'ヤフオク1' then 'auctions-1' when 'ヤフオク2' then 'auctions-2'
+    when 'メルカリ1' then 'mercari-1' when 'メルカリ2' then 'mercari-2' end;
+  if nullif(btrim(p_item.marketplace_item_id),'') is null
+    or app.marketplace_account_family(destination_account) is distinct from p_item.marketplace::text then
+    raise exception '仕入れ時の購入アカウントと商品IDを確認してください。追跡番号の送信先を特定できません。'
+      using errcode='22023';
+  end if;
+
+  -- A message already confirmed on the site survives an app-only cancellation.
+  if exists(select 1 from app.supplier_operations q where q.item_id=p_item.id and q.status='succeeded'
+    and q.return_tracking_no=p_tracking_no and q.account_id=destination_account
+    and q.marketplace=p_item.marketplace::text and q.external_id=p_item.marketplace_item_id) then return; end if;
+
+  update app.supplier_operations q set status='failed',finished_at=clock_timestamp(),
+    note='返品の追跡番号の送信を優先したため、取得を取り消しました'
+  where q.item_id=p_item.id and q.kind='read' and q.status='queued';
+
+  perform app.queue_supplier_operation(p_item.id,'send',message_body,destination_account,p_request_id);
+  update app.supplier_operations set return_tracking_no=p_tracking_no where id=p_request_id;
+end $$;
+revoke all on function app.queue_supplier_return_message(app.items,text,uuid) from public,anon,authenticated;
+
+-- Both listing and claiming enforce the current transaction. Only the return notice may run after completion.
+create function app.supplier_operation_is_current(q app.supplier_operations, i app.items)
+returns boolean language sql stable set search_path=pg_catalog,app as $$
+  select i.sold_on is null and i.marketplace_item_id=q.external_id and i.marketplace::text=q.marketplace
+    and i.supplier_contact_requested_at=q.contact_requested_at
+    and case when q.return_tracking_no is null then i.status='動作不良'
+      else i.status='返品処理' and i.return_tracking_no=q.return_tracking_no end
+$$;
+revoke all on function app.supplier_operation_is_current(app.supplier_operations,app.items) from public,anon,authenticated;
+
+create or replace function app.extension_supplier_queue(p_account_ids text[])
+returns jsonb language plpgsql stable security definer set search_path=pg_catalog,app as $$
+begin
+  if auth.uid() is null or not app.is_admin() or not exists(
+    select 1 from app.staff where id=app.current_staff_id() and is_active
+  ) then raise exception '権限がありません' using errcode='42501'; end if;
+  return coalesce((select jsonb_agg(to_jsonb(q)) from (
+    select o.* from app.supplier_operations o join app.items i on i.id=o.item_id
+    where o.status='queued' and o.account_id=any(p_account_ids) and app.supplier_operation_is_current(o,i)
+    order by o.created_at limit 10
+  ) q),'[]'::jsonb);
+end $$;
+
+create or replace function app.extension_claim_supplier_operation(p_id uuid,p_account_id text)
+returns boolean language plpgsql security definer set search_path=pg_catalog,app as $$
+declare
+  item app.items;
+begin
+  if auth.uid() is null or not app.is_admin() or not exists(
+    select 1 from app.staff where id=app.current_staff_id() and is_active
+  ) then raise exception '権限がありません' using errcode='42501'; end if;
+  -- Lock the item before the operation, in the same order as a return or cancellation.
+  select i.* into item from app.items i join app.supplier_operations q on q.item_id=i.id
+  where q.id=p_id and q.account_id=p_account_id and q.status='queued' for update of i;
+  if not found then return false; end if;
+
+  update app.supplier_operations q set status='running',claimed_at=clock_timestamp()
+  where q.id=p_id and q.account_id=p_account_id and q.status='queued'
+    and app.supplier_operation_is_current(q,item);
+  if found then return true; end if;
+  update app.supplier_operations set status='failed',finished_at=clock_timestamp(),
+    note='商品の状態が変更されたため実行しませんでした'
+  where id=p_id and account_id=p_account_id and status='queued';
+  return false;
+end $$;
+
+do $patch$
+declare
+  definition text:=pg_get_functiondef('app.perform_inventory_action(uuid,text,app.item_status,text,uuid)'::regprocedure);
+  completion text:='target:=''返品処理'';'||chr(10)||'  update app.items set returned_on=';
+  cancellation text:='target:=''動作不良'';update app.items set returned_on=null,return_tracking_no=null';
+begin
+  if strpos(definition,completion)=0 or strpos(definition,cancellation)=0 then
+    raise exception 'Supplier return workflow changed';
+  end if;
+  definition:=replace(definition,completion,
+    'perform app.queue_supplier_return_message(i,btrim(p_note),p_request_id);'||chr(10)||'  '||completion);
+  definition:=replace(definition,cancellation,$sql$
+  update app.supplier_operations set status='failed',finished_at=clock_timestamp(),
+    note='返品完了を取り消したため送信しませんでした'
+  where item_id=i.id and status='queued' and return_tracking_no is not null;
+  $sql$||cancellation);
+  execute definition;
+end $patch$;
+
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261112090912_allow_relist_sales_account.sql ▼▼▼
+
+-- Saving the next account during listing preparation must preserve the previous transaction.
+do $migration$
+declare
+  definition text;
+  updated text;
+begin
+  definition := pg_get_functiondef('app.keep_marketplace_account_consistent()'::regprocedure);
+  updated := replace(definition,
+    'if new.sales_account_id is not null and new.sales_account_id is distinct from old.sales_account_id then',
+    'if new.sales_account_id is not null and new.sales_account_id is distinct from old.sales_account_id
+          and (new.status is distinct from ''商品登録前'' or new.sold_on is not null) then');
+  if updated = definition then raise exception 'Marketplace account trigger guard not found'; end if;
+  execute updated;
+
+  definition := pg_get_functiondef('app.inventory_marketplace_accounts(uuid)'::regprocedure);
+  updated := replace(definition, 'coalesce(listing.account_id,history.account_id,',
+    'coalesce(planned.account_id,listing.account_id,history.account_id,');
+  if updated = definition then raise exception 'Marketplace account display not found'; end if;
+  definition := updated;
+  updated := replace(definition,
+    '''flea_listing_account_label'',app.marketplace_account_label(other_listing.account_id))',
+    '''flea_listing_account_label'',app.marketplace_account_label(coalesce(other_listing.account_id,
+      case when planned.account_id is distinct from listing.account_id and planned.account_id is not null
+        then listing.account_id end)))');
+  if updated = definition then raise exception 'Marketplace listing display not found'; end if;
+  definition := updated;
+  updated := replace(definition, '  ) listing on true',
+    '  ) listing on true
+  cross join lateral (
+    select case when coalesce(parent.status,i.status)=''商品登録前'' and coalesce(parent.sold_on,i.sold_on) is null
+      then case when parent.id is null then i.sales_account_id else parent.sales_account_id end end as account_id
+  ) planned');
+  if updated = definition then raise exception 'Marketplace listing join not found'; end if;
+  execute updated;
+
+  -- A saved account is a preference. Keep the live listing from being duplicated across accounts.
+  definition := pg_get_functiondef('app.queue_seller_operation(uuid,text,jsonb,uuid)'::regprocedure);
+  updated := regexp_replace(definition,
+    '(if[[:space:]]+p_kind[[:space:]]*=[[:space:]]*''listing''[[:space:]]+then)',
+    $replacement$\1
+    if link.id is not null and link.account_id is distinct from app.listing_account_for(i) then
+      raise exception '元のアカウントに出品・取引が残っています。元の取引を確認してから再出品してください。' using errcode='22023';
+    end if;$replacement$, 'i');
+  if updated = definition then raise exception 'Seller listing queue guard not found'; end if;
+  execute updated;
+
+  -- The same cancelled trade can arrive after the item has moved back to listing preparation.
+  definition := pg_get_functiondef('app.sync_seller_observation(text,jsonb)'::regprocedure);
+  updated := replace(definition, ' if state=''販売済'' then'||chr(10)||'  day:=', $replacement$
+ if l.id is not null and not l.active and l.observed_status='キャンセル'
+   and (trade is null or trade=l.trade_key or trade=ext) then return 'protected'; end if;
+ if state='キャンセル' and i.status='商品登録前' and i.sold_on is null
+   and l.active and trade is not null and trade=l.trade_key then
+  update app.seller_listings set active=false,observed_status=state,observed_at=observed where id=l.id;
+  update app.items set seller_cancelled_trade_key=trade,seller_cancelled_at=observed,
+    marketplace_status_observed_at=observed where id=i.id;
+  return 'updated';
+ end if;
+ if state='販売済' then
+  day:=$replacement$);
+  if updated = definition then raise exception 'Seller observation guard not found'; end if;
+  execute updated;
+end $migration$;
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261112092903_record_cancel_on_relist.sql ▼▼▼
+
+-- Keep the operator's cancellation record separate from observations made on the marketplace.
+alter table app.seller_listings
+  add column relist_event_id uuid references app.inventory_workflow_events(id);
+create unique index seller_listings_relist_event_idx
+  on app.seller_listings(relist_event_id) where relist_event_id is not null;
+
+do $migration$
+declare
+  definition text;
+  updated text;
+  event_insert constant text := $anchor$ insert into app.inventory_workflow_events(id,item_id,actor_id,action,from_status,to_status,note) values(p_request_id,i.id,actor,p_action,i.status,target,nullif(btrim(p_note),''));$anchor$;
+  listing_match constant text := $anchor$ if l.id is not null and l.item_id<>i.id then return 'unmatched';end if;$anchor$;
+begin
+  definition := pg_get_functiondef('app.perform_inventory_action(uuid,text,app.item_status,text,uuid)'::regprocedure);
+  updated := replace(definition, event_insert, event_insert || $body$
+ if p_action='resell' then
+  update app.seller_listings set active=false,relist_event_id=p_request_id
+   where item_id=i.id and channel=i.sales_channel and active and verified_sale is null;
+ end if;$body$);
+  if updated = definition then raise exception 'Inventory workflow history insert not found'; end if;
+  execute updated;
+
+  definition := pg_get_functiondef('app.sync_seller_observation(text,jsonb)'::regprocedure);
+  updated := replace(definition, listing_match, listing_match || $body$
+ if l.relist_event_id is not null then
+  -- A late marketplace confirmation can update the old link only.
+  if state='キャンセル' and trade is not null and trade=l.trade_key
+    and (l.observed_at is null or observed>l.observed_at) then
+   update app.seller_listings set observed_status=state,observed_at=observed where id=l.id;
+   return 'updated';
+  end if;
+  return 'protected';
+ end if;$body$);
+  if updated = definition then raise exception 'Seller observation listing lookup not found'; end if;
+  execute updated;
+end $migration$;
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261112121744_workload_return_model.sql ▼▼▼
+
+-- Legacy sellable Amazon returns may only have an ASIN link to the catalog.
+do $migration$
+declare
+  definition text := pg_get_viewdef('app.v_deliverer_stock_workload_items'::regclass, true);
+  updated text;
+begin
+  updated := replace(definition, '    p.model_no,', $model$
+    COALESCE(p.model_no, CASE
+      WHEN i.product_id IS NULL AND i.marketplace = '動作品Amazon返品' THEN
+        (SELECT catalog.model_no FROM app.products catalog WHERE catalog.asin = i.asin)
+    END) AS model_no,$model$);
+  if updated = definition then
+    raise exception 'Workload model column not found';
+  end if;
+  execute 'create or replace view app.v_deliverer_stock_workload_items
+    with (security_invoker=true, security_barrier=true) as ' || updated;
+end $migration$;
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261112135147_sku_cost_including_accessories.sql ▼▼▼
 
 -- The body SKU uses the same original-body-plus-accessories cost as accounting.
 -- Each accessory retains its own purchase cost. Do not rewrite marketplace SKUs.
@@ -16401,8 +21503,8 @@ declare family text; body_cost bigint; accessory_cost bigint;normalized text;per
 begin
  if p_item.sku !~ '^[0-9]+[a-z]*-[A-Z]{2,4}-[0-9]{8}-[0-9]+$' then return p_item.sku;end if;
  if p_item.is_accessory then
-  return regexp_replace(p_item.sku,'-[0-9]+$','-'||(p_item.cost_amount/10)::text);
- end if;
+  normalized:=regexp_replace(p_item.sku,'-[0-9]+$','-'||(p_item.cost_amount/10)::text);
+ else
  family:=app.financial_product_serial(p_item.sku,p_item.lot_seq);
  -- Include NEW and exclude its persisted version, so inserts and cost edits
  -- use the exact same origin ordering as v_financial_families.
@@ -16418,13 +21520,16 @@ begin
  select coalesce(sum(a.cost_amount),0)::bigint into accessory_cost from app.items a
  where a.is_accessory and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
   and app.financial_product_serial(a.sku,a.lot_seq)=family;
- normalized:=regexp_replace(p_item.sku,'-[0-9]+$','-'||((body_cost+accessory_cost)/10)::text);
+  normalized:=regexp_replace(p_item.sku,'-[0-9]+$','-'||((body_cost+accessory_cost)/10)::text);
+ end if;
  -- Legacy bodies and accessories sometimes share the entire SKU prefix.
  -- A reserved historical/live SKU must never switch to another item ID.
  select i.sku into persisted_sku from app.items i where i.id=p_item.id;
  if persisted_sku is not null and regexp_replace(persisted_sku,'-[0-9]+$','')=regexp_replace(normalized,'-[0-9]+$','')
   and (exists(select 1 from app.items i where i.sku=normalized and i.id<>p_item.id)
-   or exists(select 1 from app.item_sku_aliases a where a.sku=normalized and a.item_id<>p_item.id)) then
+   or exists(select 1 from app.item_sku_aliases a where a.sku=normalized and a.item_id<>p_item.id)
+   or exists(select 1 from app.seller_operations o where o.item_id=p_item.id
+     and o.status in ('queued','running','uncertain'))) then
   return persisted_sku;
  end if;
  return normalized;
@@ -16532,14 +21637,78 @@ revoke all on function app.refresh_family_sku_costs() from public,anon,authentic
 create trigger zz_items_refresh_family_sku_costs after insert or update or delete
  on app.items for each row execute function app.refresh_family_sku_costs();
 
+-- FBA plans and stock reports retain the SKU captured from Amazon.
+create function app.inventory_sku_matches(item_id uuid, current_sku text, reference_sku text)
+returns boolean language sql stable security invoker set search_path='' as $$
+  select current_sku=reference_sku or exists(
+    select 1 from app.item_sku_aliases a
+    where a.item_id=inventory_sku_matches.item_id and a.sku=reference_sku
+  );
+$$;
+revoke all on function app.inventory_sku_matches(uuid,text,text) from public,anon;
+grant execute on function app.inventory_sku_matches(uuid,text,text) to authenticated,service_role;
+
+do $fba$
+declare
+  source text;
+  patched text;
+  target regprocedure;
+  anchor text;
+begin
+ for target,anchor in select * from (values
+  ('app.publish_fba_inbound_items(uuid,uuid[])'::regprocedure, 'i.sku=f.sku'),
+  ('app.record_fba_completion_dispatch_date()'::regprocedure, 'i.sku = f.sku'),
+  ('workload_private.delivery_fba_confirmed(uuid)'::regprocedure, 'f.sku = i.sku')
+ ) as guards(fn, expression) loop
+  source:=pg_get_functiondef(target);
+  patched:=replace(source,anchor,'app.inventory_sku_matches(i.id,i.sku,f.sku)');
+  if source=patched then raise exception 'FBA SKU guard changed: %',target;end if;
+  execute patched;
+ end loop;
+
+ source:=pg_get_viewdef('workload_private.fba_stock_evidence'::regclass,true);
+ patched:=replace(source,'item.item_id, item.sku, plan.account','item.item_id, inventory.sku AS sku, plan.account');
+ patched:=replace(patched,'GROUP BY item.item_id, inventory.sku AS sku, plan.account','GROUP BY item.item_id, inventory.sku, plan.account');
+ patched:=replace(patched,'FROM app.fba_inbound_items item','FROM app.fba_inbound_items item
+  JOIN app.items inventory ON inventory.id=item.item_id
+   AND app.inventory_sku_matches(inventory.id,inventory.sku,item.sku)');
+ if source=patched or position('inventory.sku AS sku' in patched)=0 or position('JOIN app.items inventory' in patched)=0 then
+  raise exception 'FBA stock evidence SKU anchor changed';
+ end if;
+ execute 'create or replace view workload_private.fba_stock_evidence with (security_barrier=true) as '||patched;
+
+ source:=pg_get_functiondef('app.create_fba_inbound_draft(uuid,uuid[])'::regprocedure);
+ patched:=replace(source,'values(v_plan,v_item.id,v_item.sku,btrim(v_item.asin::text)',
+ $sku$values(v_plan,v_item.id,coalesce(
+   (select s.sku from app.amazon_listing_submissions s
+    where s.item_id=v_item.id and s.asin=btrim(v_item.asin::text) and s.item_condition=v_item.condition::text
+     and s.account_id=case when v_account='FBA2' then 'amazon-2' else 'amazon-1' end
+     and s.sales_channel::text in (v_account,case when v_account='FBA1' then 'FBA' else v_account end)
+     and (s.state='verified' or (s.state='accepted' and s.submission_id is not null))
+     and app.inventory_sku_matches(v_item.id,v_item.sku,s.sku)
+    order by s.created_at desc,s.request_id limit 1),
+   (select prior.sku from app.fba_inbound_items prior join app.fba_inbound_plans previous on previous.id=prior.plan_id
+    where prior.item_id=v_item.id and previous.account=v_account and previous.amazon_id is not null
+     and prior.asin=btrim(v_item.asin::text) and prior.condition=v_item.condition::text
+     and app.inventory_sku_matches(v_item.id,v_item.sku,prior.sku)
+    order by previous.created_at desc,previous.id limit 1),
+   v_item.sku),btrim(v_item.asin::text)$sku$);
+ if source=patched then raise exception 'FBA draft SKU snapshot anchor changed';end if;
+ execute patched;
+end $fba$;
+
 -- Existing records follow the same rule. The normal alias/audit triggers keep
 -- all old SKUs resolvable; no prices, costs, state, or external listings change.
 do $backfill$
 declare before_hash text;after_hash text;
 begin
  select md5(string_agg((to_jsonb(i)-'sku'-'updated_at')::text,'|' order by i.id)) into before_hash from app.items i;
- update app.items i set sku=app.sku_with_total_cost(i)
- where i.sku is distinct from app.sku_with_total_cost(i);
+ with proposed as materialized (
+  select i.id, i.sku, app.sku_with_total_cost(i) as target from app.items i
+ ), unambiguous as (
+  select id,target,count(*) over(partition by target) as target_count from proposed where sku is distinct from target
+ )
+ update app.items i set sku=p.target from unambiguous p where i.id=p.id and p.target_count=1;
  select md5(string_agg((to_jsonb(i)-'sku'-'updated_at')::text,'|' order by i.id)) into after_hash from app.items i;
  if before_hash is distinct from after_hash then
   raise exception 'SKU補正で他の在庫情報が変更されたため処理を取り消しました';end if;

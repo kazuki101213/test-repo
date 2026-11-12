@@ -1,35 +1,48 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-const constants={exports:{}};vm.runInNewContext(compile('packages/shared/src/constants.ts'),constants);
-const shared={exports:{},require:()=>constants.exports};vm.runInNewContext(compile('packages/shared/src/stateSearch.ts'),shared);
+const shared={exports:require('./marketplace-account-modules.cjs')};
 const match=shared.exports.matchesInventoryFilters;
 assert(match({marketplace:'Amazon返品',sales_channel:'FBA',status:'受取前'},{marketplace:['Amazon返品','ヤフオク'],sales_channel:['FBA','自己発送'],status:['受取前','販売済']}));
 assert(!match({marketplace:'動作品Amazon返品',sales_channel:'FBA'},{marketplace:['Amazon返品']}));
 assert(!match({marketplace:'Amazon返品',sales_channel:'メルカリ'},{marketplace:['Amazon返品'],sales_channel:['FBA']}));
 assert(match({marketplace:null},{marketplace:[]}));
+assert(match({marketplace:'ヤフオク',purchase_account_label:'ヤフオク2',sales_channel:'メルカリ',sales_account_label:'メルカリ1'},{marketplace:['ヤフオク2'],sales_channel:['メルカリ1']}));
+assert(!match({sales_channel:'メルカリ',sales_account_label:'メルカリ1'},{sales_channel:['メルカリ2']}));
 function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)){n.forEach(v=>all(v,out));return out;}out.push(n);all(n.props?.children,out);return out;}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
 for(const app of ['admin','delivery']){
  let value={},cleanup,focused=false;const listeners={};const ref={current:{open:true,contains:target=>target==='inside',querySelector:()=>({focus(){focused=true;}})}};
  const jsx=(type,props)=>({type,props});const context={exports:{},require:name=>name==='react'?{useRef:()=>ref,useEffect:fn=>{cleanup=fn();}}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:shared.exports,document:{addEventListener:(name,fn)=>listeners[name]=fn,removeEventListener:(name,fn)=>{assert.equal(listeners[name],fn);delete listeners[name];}}};
  vm.runInNewContext(compile(`apps/${app}/src/components/InventoryStateFilter.tsx`),context);
- let assignee;let tree;const render=()=>tree=context.exports.default({value,assignee,onChange:next=>value=next});render();
+ let assignee,purchaser;let tree;const render=()=>tree=context.exports.default({value,assignee,purchaser,onChange:next=>value=next});render();
  assert.equal(all(tree).filter(n=>n.type==='details').length,1);assert.equal(all(tree).filter(n=>n.type==='select').length,0);
  assert.deepEqual(all(tree).filter(n=>n.type==='legend').map(text),['仕入先','販売先','販売状態']);
  const toggle=(group,option,checked)=>{const fieldset=all(tree).find(n=>n.type==='fieldset'&&all(n).some(v=>v.type==='legend'&&text(v)===group));const label=all(fieldset).find(n=>n.type==='label'&&text(n)===option);assert(label);all(label).find(n=>n.type==='input').props.onChange({target:{checked}});render();};
- toggle('仕入先','Amazon返品',true);toggle('仕入先','ヤフオク',true);toggle('販売先','FBA',true);toggle('販売先','自己発送',true);toggle('販売状態','受取前',true);toggle('販売状態','販売済',true);
+ toggle('仕入先','Amazon返品',true);toggle('仕入先','ヤフオク',true);toggle('販売先','FBA1',true);toggle('販売先','自己発送1',true);toggle('販売状態','受取前',true);toggle('販売状態','販売済',true);
  assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（6）');assert.equal(value.marketplace.length,2);assert.equal(value.sales_channel.length,2);assert.equal(value.status.length,2);
  toggle('仕入先','Amazon返品',false);assert.equal(value.marketplace.join(','),'ヤフオク');assert.equal(value.status.length,2);
  listeners.pointerdown({target:'inside'});assert(ref.current.open);listeners.pointerdown({target:'outside'});assert(!ref.current.open);
  ref.current.open=true;listeners.keydown({key:'Escape'});assert(!ref.current.open);assert(focused);
- all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除').props.onClick();render();assert.equal(Object.keys(value).length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
+ const clearButton=()=>all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除');
+ if(app==='admin'){
+  clearButton().props.onClick();render();assert.equal(Object.keys(value).length,0);
+ }else{
+  assert.equal(clearButton(),undefined);
+  toggle('仕入先','ヤフオク',false);toggle('販売先','FBA1',false);toggle('販売先','自己発送1',false);
+  toggle('販売状態','受取前',false);toggle('販売状態','販売済',false);
+ }
+ assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
  assignee={value:[],options:[{id:'II',name:'II 久保田 真由'},{id:'LL',name:'LL 土井 花菜'}],onChange:ids=>{assignee.value=ids;}};render();
+ purchaser={value:[],options:[{id:'AA',name:'AA 長部 一輝'},{id:'EE',name:'EE 石川 秀樹'}],onChange:ids=>{purchaser.value=ids;}};render();
+ assert.deepEqual(all(tree).filter(n=>n.type==='legend').map(text),['仕入担当者','納品担当者','仕入先','販売先','販売状態']);
  toggle('納品担当者','II 久保田 真由',true);toggle('納品担当者','LL 土井 花菜',true);
  assert.deepEqual(Array.from(assignee.value),['II','LL']);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（2）');
  toggle('納品担当者','II 久保田 真由',false);assert.deepEqual(Array.from(assignee.value),['LL']);
+ toggle('仕入担当者','AA 長部 一輝',true);toggle('仕入担当者','EE 石川 秀樹',true);
+ assert.deepEqual(Array.from(purchaser.value),['AA','EE']);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター（3）');
  toggle('仕入先','ヤフオク',true);ref.current.open=true;listeners.pointerdown({target:'outside'});render();
  assert(!ref.current.open);assert.deepEqual(Array.from(assignee.value),['LL']);assert.equal(value.marketplace.join(','),'ヤフオク','Closing preserves the selected filters');
- all(tree).find(n=>n.type==='button'&&text(n)==='すべて解除').props.onClick();render();assert.equal(assignee.value.length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');
+ if(app==='admin'){clearButton().props.onClick();render();assert.equal(assignee.value.length,0);assert.equal(purchaser.value.length,0);assert.equal(text(all(tree).find(n=>n.type==='summary')),'フィルター');}
  cleanup();assert.equal(Object.keys(listeners).length,0);
 }
 console.log('Both real filter components: one menu, multi-select OR/AND, exact return matching, clear, keyboard, outside click and cleanup passed');

@@ -1,5 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const estimates={exports:{}};
+vm.runInNewContext(compile('apps/admin/src/productEstimates.ts'),estimates);
 const jsx=(type,props)=>({type,props});
 const all=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(n.props?.children)];
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
@@ -7,10 +9,11 @@ let hooks=[],cursor=0,effects=[],dirty=true,tree,request=null,release,fail=true,
 let rows=[1,2,3].map(n=>({id:'p'+n,asin:'B00000000'+n,model_no:'MODEL'+n,amazon_url:'https://www.amazon.co.jp/dp/B00000000'+n}));
 const react={useState(initial){const i=cursor++;hooks[i]??={value:typeof initial==='function'?initial():initial};return[hooks[i].value,v=>{hooks[i].value=typeof v==='function'?v(hooks[i].value):v;dirty=true;}];},useRef(v){return hooks[cursor++]??={current:v};},useEffect(fn,deps){const i=cursor++;if(!hooks[i]||deps.some((v,j)=>v!==hooks[i].deps[j])){hooks[i]?.cleanup?.();const h=hooks[i]={deps};effects.push(()=>h.cleanup=fn());}}};
 const confirmation={useTaskConfirmation:()=>({pending:!!request,confirmation:null,ask(label,action,notice){request={label,action,notice};dirty=true;}})};
-const api={fetchProducts:async query=>rows.filter(row=>!query||row.model_no.includes(query)),fetchProductSaleSummaries:async()=>[],deleteProducts:async ids=>{calls.push([...ids]);await new Promise(r=>release=r);if(fail)throw Error('通信エラー');rows=rows.filter(row=>!ids.includes(row.id));return ids;}};
-const ctx={exports:{},Error,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='../api'?api:id==='../components/TaskConfirmation'?confirmation:id==='@bussan/shared'?{yen:n=>String(n??'—')}:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
+const me={id:'admin-a',name:'管理者'};
+const api={fetchProductCatalogOwners:async()=>[me],fetchProducts:async query=>rows.filter(row=>!query||row.model_no.includes(query)),fetchProductSaleSummaries:async()=>[],deleteProducts:async ids=>{calls.push([...ids]);await new Promise(r=>release=r);if(fail)throw Error('通信エラー');rows=rows.filter(row=>!ids.includes(row.id));return ids;}};
+const ctx={exports:{},Error,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='../api'?api:id==='../components/TaskConfirmation'?confirmation:id==='../productEstimates'?estimates.exports:id==='@bussan/shared'?{yen:n=>String(n??'—'),staffDisplayName:staff=>staff.name}:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
 vm.runInNewContext(compile('apps/admin/src/pages/Products.tsx'),ctx);
-async function settle(){for(let i=0;i<30;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default();effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
+async function settle(){for(let i=0;i<30;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me});effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
 const checks=()=>all(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox');
 const remove=()=>all(tree).find(n=>n.type==='button'&&text(n)==='削除');
 (async()=>{

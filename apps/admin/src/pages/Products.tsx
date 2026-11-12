@@ -1,14 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { yen } from '@bussan/shared';
-import type { Product } from '@bussan/shared';
-import { createProduct, deleteProducts, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductSaleHistory } from '../api';
+import { staffDisplayName, yen } from '@bussan/shared';
+import type { Product, Staff } from '@bussan/shared';
+import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchFurimaWatchStock, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
+import { furimaWatchCsvRows } from '../furimaWatchCsv';
+import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from '../productEstimates';
 import ColoredLabel from '../components/ColoredLabel';
 import { useTaskConfirmation } from '../components/TaskConfirmation';
 import '../components/ExpenseSelection.css';
 import './ProductSelection.css';
 
-export default function Products() {
+const emptyProduct: ProductRegistrationInput = {
+  asin: '', model_no: '', maker: '', genre: '', turnover: '', list_price: '',
+  shipping_category: '', shipping_size: '',
+};
+const shippingSizeLabel = (size: string) => /^\d+$/.test(size) ? `${size}サイズ` : size;
+
+export default function Products({ me }: { me: Staff }) {
   const confirmation = useTaskConfirmation();
   const [rows, setRows] = useState<Product[]>([]);
   const [salesByProduct, setSalesByProduct] = useState<Record<string, ProductSaleHistory[]>>({});
@@ -17,9 +25,12 @@ export default function Products() {
   const [historyError,setHistoryError]=useState('');
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
   const [query, setQuery] = useState('');
+  const [owners, setOwners] = useState<ProductCatalogOwner[]>([me]);
+  const [ownerFilter, setOwnerFilter] = useState(me.id);
+  const [ownerError, setOwnerError] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
-  const [newProduct, setNewProduct] = useState({ asin: '', model_no: '', maker: '', product_no: '' });
+  const [newProduct, setNewProduct] = useState(emptyProduct);
   const [editing, setEditing] = useState<{ product: Product; field: ProductField; value: string } | null>(null);
   const [fullEditProduct, setFullEditProduct] = useState<Product | null>(null);
   const [fullEditDraft, setFullEditDraft] = useState<ProductDetailsInput | null>(null);
@@ -31,12 +42,24 @@ export default function Products() {
   const [deleting, setDeleting] = useState(false);
   const deleteLock = useRef(false);
   const [message, setMessage] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    void fetchProductCatalogOwners().then(result => {
+      if (active) setOwners(result);
+    }).catch(() => {
+      if (active) setOwnerError('管理者一覧を読み込めませんでした。画面を再読み込みしてください。');
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     const id = setTimeout(() => {
-      fetchProducts(query || undefined)
+      fetchProducts(query || undefined, ownerFilter || undefined)
         .then(async products => {
           if (cancelled) return;
           setRows(products);
@@ -49,7 +72,7 @@ export default function Products() {
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(id); };
-  }, [query, revision]);
+  }, [query, ownerFilter, revision]);
 
   useEffect(()=>{
     if(!historyProduct)return;
@@ -71,7 +94,12 @@ export default function Products() {
 
   async function addProduct() {
     setBusy(true); setError(null);
-    try { await createProduct(newProduct); setNewProduct({ asin: '', model_no: '', maker: '', product_no: '' }); setRevision(n => n + 1); }
+    try {
+      await createProduct(newProduct);
+      setNewProduct(emptyProduct);
+      if (ownerFilter && ownerFilter !== me.id) showOwner(me.id);
+      setRevision(n => n + 1);
+    }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -109,7 +137,36 @@ export default function Products() {
     finally { setBusy(false); }
   }
 
+  async function exportFurimaWatchCsv() {
+    setExporting(true);
+    setExportError('');
+    setMessage('');
+    try {
+      const csvRows = furimaWatchCsvRows(rows, await fetchFurimaWatchStock());
+      if (!csvRows.length) throw new Error('型番と仕入れ目標金額が設定された商品がありません。');
+      downloadCsv('furimawatch.csv', csvRows);
+      const skipped = rows.length - csvRows.length;
+      if (skipped) setMessage(`型番または仕入れ目標金額が未設定の商品${skipped}件を除いて出力しました。`);
+    } catch (cause) {
+      setExportError('フリマウォッチCSVを出力できませんでした。' + (cause instanceof Error ? cause.message : String(cause)));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function showOwner(id: string) {
+    setLoading(true);
+    setRows([]);
+    setSelected(new Set());
+    setError(null);
+    setMessage('');
+    setOwnerFilter(id);
+  }
+
+  const ownerNames = new Map(owners.map(owner => [owner.id, staffDisplayName(owner)]));
+  const ownerOption = (owner: ProductCatalogOwner) => <option key={owner.id} value={owner.id}>{ownerNames.get(owner.id)}</option>;
   const selectedRows = rows.filter(row => selected.has(row.id));
+  const newProductEstimates = estimateProductAmounts(newProduct.genre, newProduct.list_price ? Number(newProduct.list_price) : null);
   function askDelete() {
     if (!selectedRows.length || loading || busy || deleting) return;
     let remaining = selectedRows.map(row => row.id);
@@ -144,18 +201,21 @@ export default function Products() {
     <>
       {confirmation.confirmation}
       <div className="dashboard-workspace with-expense product-workspace registration-workspace"><section className="card dashboard-content product-list">
-      <p className="sub">総合管理表の「商品リスト」。仕入れ目標金額を下回る値段で買えるかの判断に使います。</p>
 
       <div className="toolbar product-search-toolbar">
+        <select aria-label="商品リストの表示対象" value={ownerFilter} disabled={busy || deleting || confirmation.pending} onChange={event => showOwner(event.target.value)}>
+          <option value="">全員</option>
+          {owners.map(ownerOption)}
+        </select>
         <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} disabled={deleting || confirmation.pending} onChange={event => { setSelected(new Set()); setQuery(event.target.value); }} />
-        <button className="btn" onClick={() => downloadCsv('products.csv', rows as unknown as Record<string, unknown>[])}>CSV</button>
+        <button type="button" className="btn" title="フリマウォッチ用CSV" disabled={loading || exporting || deleting || !rows.length} onClick={() => void exportFurimaWatchCsv()}>{exporting ? '出力中…' : 'CSV'}</button>
         <button type="button" className="btn" disabled={loading || busy || deleting || confirmation.pending || !selectedRows.length} onClick={askDelete}>削除</button>
+        <span className="sub product-result-count">{rows.length} 件</span>
       </div>
-      <p className="sub">{rows.length} 件</p>
-
-
 
       {error && <div className="error">{error}</div>}
+      {exportError && <div className="error" role="alert">{exportError}</div>}
+      {ownerError && <div className="error" role="alert">{ownerError}</div>}
       {message && <p role="status">{message}</p>}
 
       <div className="scroll">
@@ -163,7 +223,7 @@ export default function Products() {
           <thead>
             <tr>
               <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th>
-              <th>ジャンル</th><th>回転</th><th>Amazon販売金額（直近3件平均）</th>
+              {!ownerFilter && <th>管理者</th>}<th>ジャンル</th><th>回転</th><th>Amazon販売金額</th>
               <th className="num">販売想定金額</th><th className="num">振込想定金額</th>
               <th className="num">仕入れ目標金額</th><th>実績</th><th>サイズ</th><th aria-label="選択" />
             </tr>
@@ -172,9 +232,10 @@ export default function Products() {
             {rows.map((p) => (
               <tr key={p.id}>
                 <td className="num"><button type="button" className="inventory-cell-edit" title="クリックして商品情報全体を編集" onClick={() => startFullEdit(p)}>{String(p.product_no ?? '—')}</button></td>
-                <td><span className="reference-value">{cell(p, 'asin', p.asin)}<a className="inline-reference-link" href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}>↗</a></span></td>
+                <td><span className="reference-value">{cell(p, 'asin', p.asin)}<a className="inline-reference-link" href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}><span className="external-link-arrow" aria-hidden="true" /></a></span></td>
                 <td>{cell(p, 'model_no', p.model_no ?? '—')}</td>
                 <td>{cell(p, 'maker', p.maker ?? '—')}</td>
+                {!ownerFilter && <td>{ownerNames.get(p.owner_staff_id ?? '') ?? '—'}</td>}
                 <td>{cell(p, 'genre', p.genre ?? '—')}</td>
                 <td>{cell(p, 'turnover', p.turnover ?? '—')}</td>
                 <td>{(() => {
@@ -190,7 +251,7 @@ export default function Products() {
                 <td className="num">{cell(p, 'payout_estimate', yen(p.payout_estimate))}</td>
                 <td className="num" style={{ color: 'var(--accent)' }}>{cell(p, 'target_cost', yen(p.target_cost))}</td>
                 <td>{cell(p, 'has_sold_before', p.has_sold_before ? '有' : '無')}</td>
-                <td><button type="button" className="inventory-cell-edit" title="クリックしてサイズ区分・配送サイズを変更" onClick={() => startSizeEdit(p)}>{p.shipping_category ? `${p.shipping_category} ${p.shipping_size ? `${p.shipping_size}サイズ` : '未設定'}` : '未設定'}</button></td>
+                <td><button type="button" className="inventory-cell-edit" title="クリックしてサイズ区分・配送サイズを変更" onClick={() => startSizeEdit(p)}>{p.shipping_category ? `${p.shipping_category} ${p.shipping_size ? shippingSizeLabel(p.shipping_size) : '未設定'}` : p.shipping_size ? shippingSizeLabel(p.shipping_size) : '未設定'}</button></td>
                 <td><label className="expense-selection"><input type="checkbox" aria-label={`${p.model_no || p.asin}（${p.asin}）を選択`} checked={selected.has(p.id)} disabled={loading || busy || deleting || confirmation.pending} onChange={event => { const checked = event.target.checked; setSelected(current => { const next = new Set(current); if (checked) next.add(p.id); else next.delete(p.id); return next; }); }} /></label></td>
               </tr>
             ))}
@@ -201,7 +262,26 @@ export default function Products() {
       <form className="card product-entry registration-sidebar registration-form" aria-label="商品登録" onSubmit={event => { event.preventDefault(); if (!busy) void addProduct(); }}>
         <div className="toolbar"><h2>商品登録</h2></div>
         <fieldset className="product-registration-fields registration-fields" disabled={busy}>
-          {(['asin', 'model_no', 'maker', 'product_no'] as const).map(field => <label className="field" key={field}><span>{{ asin: 'ASIN', model_no: '型番', maker: 'メーカー', product_no: '品番' }[field]}</span><input value={newProduct[field]} onChange={e => setNewProduct(current => ({ ...current, [field]: e.target.value }))} /></label>)}
+          {([['asin', 'ASIN'], ['model_no', '型番'], ['maker', 'メーカー']] as const).map(([field, label]) =>
+            <label className="field" key={field}><span>{label}</span><input value={newProduct[field]} onChange={e => setNewProduct(current => ({ ...current, [field]: e.target.value }))} /></label>)}
+          <label className="field"><span>ジャンル</span><select value={newProduct.genre} onChange={e => setNewProduct(current => ({ ...current, genre: e.target.value }))}>
+            <option value="">未設定</option>{PRODUCT_GENRES.map(genre => <option key={genre}>{genre}</option>)}
+          </select></label>
+          <label className="field"><span>回転</span><select value={newProduct.turnover} onChange={e => setNewProduct(current => ({ ...current, turnover: e.target.value }))}>
+            <option value="">未設定</option>{PRODUCT_TURNOVER.map(turnover => <option key={turnover}>{turnover}</option>)}
+          </select></label>
+          <label className="field"><span>販売想定金額</span><input type="number" min={0} step={1} value={newProduct.list_price} onChange={e => setNewProduct(current => ({ ...current, list_price: e.target.value }))} /></label>
+          <label className="field"><span>サイズ区分</span><select value={newProduct.shipping_category} onChange={e => {
+            const category = e.target.value;
+            setNewProduct(current => ({ ...current, shipping_category: category, shipping_size: PRODUCT_SHIPPING_CATEGORIES.find(option => option.value === category)?.defaultSize ?? current.shipping_size }));
+          }}>
+            <option value="">未設定</option>{PRODUCT_SHIPPING_CATEGORIES.map(({ value, label }) => <option value={value} key={value}>{label}</option>)}
+          </select></label>
+          <label className="field"><span>配送サイズ</span><select value={newProduct.shipping_size} onChange={e => setNewProduct(current => ({ ...current, shipping_size: e.target.value }))}>
+            <option value="">未設定</option>{PRODUCT_SHIPPING_SIZES.map(size => <option value={size} key={size}>{shippingSizeLabel(size)}</option>)}
+          </select></label>
+          <div className="field"><span>振込想定金額</span><output aria-label="振込想定金額">{yen(newProductEstimates.payout_estimate)}</output></div>
+          <div className="field"><span>仕入れ目標金額</span><output aria-label="仕入れ目標金額">{yen(newProductEstimates.target_cost)}</output></div>
         </fieldset>
         <div className="toolbar registration-actions"><button type="submit" className="btn primary" disabled={busy}>{busy ? '登録中…' : '商品登録'}</button></div>
         {error && <div className="error" role="alert">{error}</div>}

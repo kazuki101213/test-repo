@@ -1,6 +1,6 @@
 import type { Staff } from './types';
 export const STAFF_DISPLAY_NAMES: Record<string, string> = {
-  AA: 'AA 長部 一輝', DD: 'DD 久保田 ゆかり', EE: 'EE 石川 秀櫢', HH: 'HH 新川 水紀',
+  AA: 'AA 長部 一輝', DD: 'DD 久保田 ゆかり', EE: 'EE 石川 秀樹', HH: 'HH 新川 水紀',
   II: 'II 久保田 真由', KK: 'KK 株式会社 コエル', LL: 'LL 土井 花菜', MM: 'MM 株式会社吉光',
 };
 const labelsByName = new Map([
@@ -11,10 +11,24 @@ const labelsByName = new Map([
   ['株式会社吉光', STAFF_DISPLAY_NAMES.MM],
 ]);
 export const DELIVERY_STAFF_CODES = ['AA', 'DD', 'EE', 'HH', 'II', 'KK', 'LL', 'MM'] as const;
-/** One ordered list for delivery assignee selectors in both apps. */
-export function deliveryStaffOptions<T extends { name: string; code?: string; is_active?: boolean }>(rows: T[]): T[] {
+const EXCLUDED_DELIVERY_ASSIGNEE_CODES = new Set(['AA', 'EE', 'KK', 'OO']);
+const INVENTORY_PURCHASER_CODES = ['AA', 'EE', 'OO'] as const;
+/** The same purchaser choices in the management and delivery inventory filters. */
+export function inventoryPurchaserOptions(rows: readonly (Pick<Staff, 'id' | 'code' | 'name' | 'display_name'> & Partial<Pick<Staff, 'is_active'>>)[]) {
+  return INVENTORY_PURCHASER_CODES.flatMap(code => {
+    const person = rows.find(row => row.code === code && row.is_active !== false);
+    return person ? [{ id: person.id, name: staffDisplayName(person) }] : [];
+  });
+}
+/** Keep assignment choices and the full roster in the same display order. */
+export function deliveryStaffOptions<T extends { name: string; code?: string; is_active?: boolean; role?: Staff['role'] }>(
+  rows: T[], purpose: 'roster' | 'assignee' = 'roster',
+): T[] {
   const codeOf = (row: T) => row.code || DELIVERY_STAFF_CODES.find(code => STAFF_DISPLAY_NAMES[code] === staffDisplayName(row.name));
-  return DELIVERY_STAFF_CODES.flatMap(code => rows.filter(row => row.is_active !== false && codeOf(row) === code));
+  const active = rows.filter(row => row.is_active !== false);
+  const roster = DELIVERY_STAFF_CODES.flatMap(code => active.filter(row => codeOf(row) === code));
+  const staff = [...roster, ...active.filter(row => row.role === 'admin' && !roster.includes(row))];
+  return purpose === 'assignee' ? staff.filter(row => !EXCLUDED_DELIVERY_ASSIGNEE_CODES.has(codeOf(row) ?? '')) : staff;
 }
 /** Format labels without changing identity fields or saved business names. */
 export function staffDisplayName(value: string | Pick<Staff, 'name'> & Partial<Pick<Staff, 'code' | 'display_name'>> | null | undefined): string {

@@ -7,7 +7,7 @@ export const MARKETPLACES: Marketplace[] = [
 ];
 
 export const SALES_CHANNELS: SalesChannel[] = [
-  'FBA', '自己発送', 'メルカリ', 'ヤフオク', 'ヤフフリ', 'その他',
+  'FBA1', 'FBA2', '自己発送1', '自己発送2', 'メルカリ', 'ヤフオク', 'ヤフフリ', 'その他',
 ];
 
 export const CONDITIONS: ItemCondition[] = [
@@ -19,6 +19,7 @@ export const WORK_STREAMS: WorkStream[] = ['テレビ', 'ブルーレイ', '付�
 export const STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","出品中","取引中","販売済","返品処理","動作不良"];
 
 export const HELD_STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","動作不良"];
+
 
 export const STATUS_COLORS: Record<ItemStatus,string> = {
   '受取前': '#cbd5e1',
@@ -35,7 +36,7 @@ export const STATUS_COLORS: Record<ItemStatus,string> = {
 
 /** 納品担当者の作業フロー。この順番でアプリに並べる。 */
 export const WORK_STEPS: { key: WorkStep; label: string; hint: string }[] = [
-  { key: 'inspection_cleaning', label: '検品・清掃', hint: '' },
+  { key: 'inspection', label: '検品', hint: '' },
   { key: 'listing', label: '商品登録・写真登録', hint: '' },
   { key: 'packed', label: '梱包', hint: '' },
   { key: 'shipped', label: '出荷', hint: '' },

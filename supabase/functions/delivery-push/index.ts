@@ -38,7 +38,7 @@ Deno.serve(async req => {
       const token = req.headers.get('x-delivery-dispatch');
       if (!token || !settings.delivery_push_dispatch_token || token !== settings.delivery_push_dispatch_token) return respond(401, { error: 'Unauthorized' }, origin);
       const server = await sender(settings);
-      const delivery = await admin.rpc('claim_delivery_push');
+      const delivery = await admin.rpc('claim_delivery_push_with_listing_title');
       if (delivery.error) throw delivery.error;
       const management = await admin.rpc('claim_admin_push');
       if (management.error) throw management.error;
@@ -85,7 +85,7 @@ Deno.serve(async req => {
     if (profileError) throw profileError;
     const { data: staff, error: staffError } = await admin.from('staff').select('id,role,is_active').eq('id', profile?.staff_id || '').maybeSingle();
     if (staffError) throw staffError;
-    if (!staff?.is_active || !(app === 'admin' ? ['admin','purchaser'] : ['admin','deliverer']).includes(staff.role)) return respond(403, { error: 'Active app staff required' }, origin);
+    if (!staff?.is_active || !(app === 'admin' ? ['admin','purchaser'] : ['admin','purchaser','deliverer']).includes(staff.role)) return respond(403, { error: 'Active app staff required' }, origin);
     if (payload.action === 'setup') {
       if (staff.role !== 'admin') return respond(403, { error: 'Admin required' }, origin);
       const keys = await generateVapidKeys({ extractable: true });

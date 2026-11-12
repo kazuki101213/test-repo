@@ -6,6 +6,7 @@ export const inventorySearchFields = [
   { value: 'serial', label: '通番号' },
   { value: 'sku', label: 'SKU' },
   { value: 'model', label: '型番' },
+  { value: 'accessory_name', label: '付属品名' },
   { value: 'asin', label: 'ASIN' },
   { value: 'marketplace_item_id', label: '商品ID' },
   { value: 'tracking_no', label: '追跡番号' },
@@ -34,6 +35,7 @@ export function matchesInventorySearch(item: InventoryItem, field: InventorySear
   if (!needle) return true;
   const value = field === 'serial' ? productSerial(item.sku, item.lot_seq)
     : field === 'model' ? (item.is_accessory ? item.title : productModelText(item))
+    : field === 'accessory_name' ? (item.is_accessory ? item.title : '')
     : item[field];
   const candidate = String(value ?? '').toLocaleLowerCase();
   return field === 'serial' ? matchesSerialFamily(candidate, query) : candidate.includes(needle);

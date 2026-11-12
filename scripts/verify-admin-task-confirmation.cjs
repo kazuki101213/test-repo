@@ -33,9 +33,11 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
  const conversationRuntime=runtime();const conversation={exports:{},require:id=>id==='react'?conversationRuntime.react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){throw Error('Unexpected send');},pending:false,confirmation:null})}:id==='../inventory'?inventory.exports:{}};
  vm.runInNewContext(compile('apps/admin/src/components/MalfunctionTasks.tsx','\nexport { MalfunctionConversation };'),conversation);
  for(const status of ['Amazon補填申請中','動作不良']){
-  conversationRuntime.reset();const tree=conversation.exports.MalfunctionConversation({item:{...item,status},staff:{id:'AA',role:'admin'},onReplied:async()=>{},actions:jsx('button',{'data-action':'complete_compensation_report',children:'完了'})});
-  assert.equal(all(tree).filter(n=>n.type==='button'&&n.props['data-action']==='yahoo_instruction').length,status==='動作不良'?1:0,'Only malfunction reports retain the Yahoo instruction shortcut');
-  assert(all(tree).some(n=>n.props?.['data-action']==='complete_compensation_report'),'Removing the shortcut preserves the supplied completion actions');
+  const controls=status==='動作不良'?['supplier_check','send_back']:['complete_compensation_report','send_back'];
+  const actions=controls.map(key=>jsx('button',{'data-action':key}));
+  conversationRuntime.reset();const tree=conversation.exports.MalfunctionConversation({item:{...item,status},staff:{id:'AA',role:'admin'},onReplied:async()=>{},actions});
+  const shown=all(tree).filter(n=>n.type==='button'&&n.props['data-action']).map(n=>n.props['data-action']);
+  assert.deepEqual(shown,status==='動作不良'?['yahoo_instruction',...controls]:controls,'Action order follows the report status');
  }
  console.log('PASS: cancel/Escape write nothing, confirmation executes once, busy/error handling; all 10 templates use the actual suffixed serial, item ID and model');
 })().catch(e=>{console.error(e);process.exitCode=1;});
@@ -44,7 +46,7 @@ async function spareDeleteConfirmation() {
  let hooks=[],cursor=0,effects=[],dirty=true,tree,deletes=0,release,fail=true;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useRef:v=>hooks[cursor++]??={current:v},useCallback(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i]))hooks[n]={deps,fn};return hooks[n].fn;},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};effects.push(fn);}}};
  const confirm={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react-dom'?{createPortal:n=>n}:{jsx,jsxs:jsx},document:{body:{}}};vm.runInNewContext(compile('apps/admin/src/components/TaskConfirmation.tsx'),confirm);
- const shared={staffDisplayName:()=>'',deliveryStaffOptions:x=>x,MARKETPLACES:[],spareSearchFields:[],matchesSpareSearch:()=>true,spareState:()=>'予備',yen:v=>String(v),fetchSpareAccessories:async()=>[1,2,3].map(n=>({id:'spare-'+n,title:'確認用リモコン'+n,source_sku:'2508-test'+n})),deleteSpareAccessories:async ids=>{assert.equal(ids.join(','),'spare-1,spare-2');deletes++;await new Promise(r=>release=r);if(fail)throw Error('通信エラー');return ids;}};
+ const shared={...require('./marketplace-account-modules.cjs'),staffDisplayName:()=>'',deliveryStaffOptions:x=>x,inventorySiteStyle:()=>({}),MARKETPLACES:[],spareSearchFields:[],matchesSpareSearch:()=>true,spareState:()=>'予備',yen:v=>String(v),fetchSpareAccessories:async()=>[1,2,3].map(n=>({id:'spare-'+n,title:'確認用リモコン'+n,source_sku:'2508-test'+n})),deleteSpareAccessories:async ids=>{assert.equal(ids.join(','),'spare-1,spare-2');deletes++;await new Promise(r=>release=r);if(fail)throw Error('通信エラー');return ids;}};
  const ctx={exports:{},require:id=>id==='../components/entryWidth'?require('./entry-width-module.cjs'):id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../components/TaskConfirmation'?confirm.exports:id==='../api'?{fetchStaff:async()=>[]}: {default:'input'},window:{setInterval(){},clearInterval(){},addEventListener(){},removeEventListener(){}},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}}};
  vm.runInNewContext(compile('apps/admin/src/pages/Spares.tsx'),ctx);
  async function settle(){for(let n=0;n<20;n++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me:{id:'AA',role:'admin'}});effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}

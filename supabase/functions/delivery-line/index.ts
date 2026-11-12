@@ -1,9 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { deliveryOrigin, friendUrl, hashCode, linkCode, validSignature, shippingMessages, dispatchState } from './validation.ts';
+import { deliveryOrigins, friendUrl, hashCode, linkCode, validSignature, shippingMessages, dispatchState, invoiceApprovalMessages } from './validation.ts';
 import type { ShippingPayload } from './validation.ts';
 import QRCode from 'npm:qrcode@1.5.4';
 import { prepareShippingMedia } from './media.ts';
 import { recoverListingPhotoFiles } from './photo-recovery.ts';
+import { selectLinePhotos } from './photo-selection.ts';
 
 const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
   db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false },
@@ -31,7 +32,7 @@ const shippingEnabled = async () => {
 function response(status: number, value: unknown, origin: string | null = null) {
   return new Response(status === 204 ? null : JSON.stringify(value), { status, headers: {
     'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Origin',
-    'Access-Control-Allow-Origin': origin === deliveryOrigin ? origin : 'null',
+    'Access-Control-Allow-Origin': origin && deliveryOrigins.has(origin) ? origin : 'null',
     'Access-Control-Allow-Headers': 'authorization, apikey, x-client-info, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   } });
@@ -40,6 +41,35 @@ async function rpc(name: string, params: Record<string, unknown> = {}) {
   const result = await admin.rpc(name, params);
   if (result.error) throw result.error;
   return result.data;
+}
+async function pushLineMessage(recipient: string, messages: ReturnType<typeof shippingMessages>, retryKey: string) {
+  const result = await fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'POST', signal: AbortSignal.timeout(8000), headers: {
+      Authorization: `Bearer ${accessToken()}`, 'Content-Type': 'application/json', 'X-Line-Retry-Key': retryKey,
+    }, body: JSON.stringify({ to: recipient, messages }),
+  });
+  return result.status;
+}
+async function dispatchInvoiceApprovals() {
+  if (!ready()) return response(503, { processed: 0 });
+  const rows = await rpc('claim_invoice_approval_line');
+  let sent = 0;
+  for (const row of rows) {
+    const key = { p_invoice: row.invoice_id, p_lease: row.lease };
+    let status: number | null = null;
+    let state = 'pending';
+    try {
+      const messages = invoiceApprovalMessages(row);
+      const recipient = await rpc('invoice_approval_line_recipient', key);
+      if (typeof recipient === 'string' && /^U[0-9a-f]{32}$/.test(recipient)) {
+        status = await pushLineMessage(recipient, messages, row.retry_key);
+        state = dispatchState(status);
+      }
+    } catch { /* Leave the same retry key for network or database failures. */ }
+    await rpc('finish_invoice_approval_line', { ...key, p_state: state, p_status: status });
+    if (state === 'sent') sent++;
+  }
+  return response(200, { processed: rows.length, sent });
 }
 async function cleanupCodeImages() {
   // Event-based, bounded cleanup. Product photos and deduplication IDs remain.
@@ -78,18 +108,24 @@ async function webhook(req: Request) {
 }
 Deno.serve(async req => {
   const origin = req.headers.get('Origin');
-  if (req.method === 'OPTIONS') return response(origin === deliveryOrigin ? 204 : 403, {}, origin);
+  if (req.method === 'OPTIONS') return response(origin && deliveryOrigins.has(origin) ? 204 : 403, {}, origin);
   if (req.method !== 'POST') return response(405, {});
   try {
     // This public route is authenticated using LINE's signature, not user JWTs.
     if (new URL(req.url).pathname.endsWith('/webhook')) return await webhook(req);
     const body = await req.json();
-    if (body.action === 'dispatch' || body.action === 'connection' || body.action === 'recover-listing-photo-files') {
+    if (body.action === 'dispatch' || body.action === 'dispatch-invoice-approvals' || body.action === 'connection' || body.action === 'recover-listing-photo-files' || body.action === 'select-line-photos') {
       const config = await rpc('delivery_push_config');
       if (!req.headers.get('x-delivery-dispatch') || req.headers.get('x-delivery-dispatch') !== config.delivery_push_dispatch_token) return response(401, {});
+      if (body.action === 'dispatch-invoice-approvals') return await dispatchInvoiceApprovals();
       if (body.action === 'recover-listing-photo-files') return response(200, await recoverListingPhotoFiles({admin,itemId:body.itemId,sources:body.sources}));
       if (body.action === 'connection') return response(200, await botConnection());
+      const selectPhotos = (itemId?:string) => selectLinePhotos({admin,itemId,apiKey:Deno.env.get('GEMINI_API_KEY'),model:Deno.env.get('GEMINI_PHOTO_MODEL')||Deno.env.get('GEMINI_KEYWORDS_MODEL')||'gemini-3.5-flash-lite'});
+      if (body.action === 'select-line-photos') return response(200, await selectPhotos(body.itemId));
       if (!await shippingEnabled()) return response(200, { configured: false, processed: 0 });
+      // Save automatic roles before claiming fresh message payloads. Failure is
+      // retried independently and never blocks the existing LINE fallback.
+      await selectPhotos().catch(()=>{});
       const rows = await rpc('claim_delivery_line');
       let sent = 0;
       for (const row of rows || []) {
@@ -113,11 +149,13 @@ Deno.serve(async req => {
               await rpc('finish_delivery_line', { p_id: row.id, p_lease: row.lease, p_state: 'cancelled', p_status: null });
               continue;
             }
+            // A deliberate resend gets a new key; transport retries of that
+            // resend keep the same key from the outbox row.
+            const retryKey = row.payload.lineRetryKey;
+            if (typeof retryKey !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(retryKey)) throw new Error('Missing LINE retry key');
             try {
-              const result = await fetch('https://api.line.me/v2/bot/message/push', { method: 'POST', signal: AbortSignal.timeout(8000), headers: {
-                Authorization: `Bearer ${accessToken()}`, 'Content-Type': 'application/json', 'X-Line-Retry-Key': row.id,
-              }, body: JSON.stringify({ to: row.recipient, messages }) });
-              status = result.status; state = dispatchState(status);
+              status = await pushLineMessage(row.recipient, messages, retryKey);
+              state = dispatchState(status);
             } catch { state = 'pending'; }
           } catch { state = 'failed'; }
         }
@@ -128,7 +166,7 @@ Deno.serve(async req => {
       await cleanupCodeImages().catch(() => {});
       return response(200, { processed: rows.length, sent });
     }
-    if (origin !== deliveryOrigin) return response(403, {});
+    if (!origin || !deliveryOrigins.has(origin)) return response(403, {});
     const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
     if (!token) return response(401, {}, origin);
     const { data: user, error: authError } = await admin.auth.getUser(token);
@@ -137,7 +175,7 @@ Deno.serve(async req => {
     if (profile.error) throw profile.error;
     const staff = await admin.from('staff').select('id,role,is_active').eq('id', profile.data?.staff_id || '').maybeSingle();
     if (staff.error) throw staff.error;
-    if (!staff.data?.is_active || !['admin','deliverer'].includes(staff.data.role)) return response(403, {}, origin);
+    if (!staff.data?.is_active || !['admin','purchaser','deliverer'].includes(staff.data.role)) return response(403, {}, origin);
     const staffId = staff.data.id;
     if (body.action === 'status') {
       const connection = await botConnection();

@@ -16,11 +16,15 @@ type Page = 'dashboard' | 'inventory' | 'spares' | 'expenses' | 'products' | 'le
 const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
   { key: 'inventory', label: '在庫' },
-  { key: 'spares', label: '予備' },
   { key: 'expenses', label: '経費' },
   { key: 'products',  label: '商品リスト' },
   { key: 'ledger',    label: '古物台帳' },
 ];
+
+const INVENTORY_NAV = [
+  { key: 'inventory', label: '在庫' },
+  { key: 'spares', label: '予備' },
+] as const;
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -28,6 +32,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState<Page>('dashboard');
   const visiblePage: Page = session && canOpenManagementPage(session.staff, page) ? page : 'inventory';
+  const inventoryPage = INVENTORY_NAV.some(({ key }) => key === visiblePage);
+  const activeMainPage = inventoryPage ? 'inventory' : visiblePage;
   async function logout() {
     try { await disableDevicePush(); await signOut(); await refresh(); }
     catch { setError('通知の停止またはログアウトに失敗しました。再度お試しください。'); }
@@ -78,7 +84,7 @@ export default function App() {
         <div className="management-header-actions"><button type="button" className="btn ghost" onClick={() => switchApplication('delivery')}>納品アプリへ</button><button type="button" className="btn ghost" onClick={() => void logout()}>ログアウト</button></div>
         <nav className="management-navigation" aria-label="管理アプリのメニュー">
         {NAV.filter(n => canOpenManagementPage(session.staff, n.key)).map((n) => (
-          <button key={n.key} className="nav" aria-current={visiblePage === n.key ? 'page' : undefined} data-active={visiblePage === n.key} onClick={() => setPage(n.key)}>
+          <button key={n.key} className="nav" aria-current={activeMainPage === n.key ? 'page' : undefined} data-active={activeMainPage === n.key} onClick={() => setPage(n.key)}>
             {n.label}
           </button>
         ))}
@@ -87,11 +93,20 @@ export default function App() {
 
       <main>
         {error && <p className="error" role="alert">{error}</p>}
+        {inventoryPage && (
+          <nav className="management-navigation management-inventory-navigation" aria-label="在庫の切り替え">
+            {INVENTORY_NAV.filter(({ key }) => canOpenManagementPage(session.staff, key)).map(({ key, label }) => (
+              <button key={key} type="button" className="nav" aria-current={visiblePage === key ? 'page' : undefined} onClick={() => setPage(key)}>
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
         {visiblePage === 'dashboard' && <Dashboard staff={session.staff} userId={session.user.id} />}
         {visiblePage === 'inventory' && <Inventory me={session.staff} />}
         {visiblePage === 'spares' && <Spares me={session.staff} />}
         {visiblePage === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
-        {visiblePage === 'products'  && <Products />}
+        {visiblePage === 'products'  && <Products key={session.staff.id} me={session.staff} />}
         {visiblePage === 'ledger'    && <Ledger />}
       </main>
     </div>

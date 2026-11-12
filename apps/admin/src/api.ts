@@ -1,13 +1,14 @@
+import { askulExpenseBatchSize, type AskulExpenseInput } from '@bussan/shared';
 import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
-import { workloadPeriod } from './workloadPeriod';
-import { getSupabase, usageRecordText, HELD_STATUSES } from '@bussan/shared';
+import { getSupabase, STATUSES, usageRecordText, purchaseSourceFields, salesDestinationFields } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
-import { normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
+import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
+import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
-  DelivererWorkload, ItemInsert, ItemView, LedgerRow,
+  InventoryMarketplaceLabels, ItemInsert, ItemStatus, ItemView, LedgerRow,
   MonthlySummary, Product, PurchaseDraft, SpareAccessory, Staff, StockSummary,
 } from '@bussan/shared';
 
@@ -22,7 +23,7 @@ export async function fetchStaff(): Promise<Staff[]> {
 
 export type SpareAccessoryInput = Pick<SpareAccessory,
   'source_sku' | 'owner_staff_id' | 'owner_name' | 'purchased_at' | 'title' | 'manufacturer' | 'model_no' | 'asin' | 'cost_amount' |
-  'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note'
+  'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note' | 'purchase_account_id'
 >;
 export type SpareAccessoryField = keyof Pick<SpareAccessory,
   'source_sku' | 'owner_name' | 'purchased_at' | 'title' | 'manufacturer' | 'model_no' | 'asin' | 'cost_amount' |
@@ -55,7 +56,7 @@ export async function findInventoryForSpare(serial: string): Promise<(Pick<ItemV
 export type AmazonReturnSource = Pick<ItemInsert,
   'purchaser_id' | 'deliverer_id' | 'work_stream' | 'purchased_at' | 'title' | 'cost_amount' |
   'product_id' | 'asin' | 'condition' | 'planned_price' | 'planned_payout' | 'sales_channel' | 'marketplace_item_id' | 'marketplace_url'
-> & { original_sku: string; sku: string; model_no: string | null };
+> & { original_sku: string; sku: string; model_no: string | null; sales_account_label?: string | null };
 
 export async function findInventoryForAmazonReturn(serial: string | number): Promise<AmazonReturnSource | null> {
   const key = String(serial).trim().toLowerCase();
@@ -84,6 +85,7 @@ export async function findInventoryForAmazonReturn(serial: string | number): Pro
   })) + 1;
   return {
     ...source,
+    ...(await fetchInventoryMarketplaceLabels(source.id)),
     marketplace_item_id: reference?.marketplace_item_id ?? null,
     marketplace_url: purchaseItemUrl(reference?.marketplace ?? null, reference?.marketplace_item_id ?? null, reference?.marketplace_url ?? null),
     original_sku: source.sku,
@@ -92,7 +94,10 @@ export async function findInventoryForAmazonReturn(serial: string | number): Pro
 }
 
 export async function updateSpareAccessory(id: string, field: SpareAccessoryField, value: string | number | null): Promise<void> {
-  const { data, error } = await getSupabase().from('spare_accessories').update({ [field]: field === 'usage_note' ? usageRecordText(value == null ? null : String(value)) : value }).eq('id', id).select('id').maybeSingle();
+  const patch = field === 'marketplace'
+    ? value ? purchaseSourceFields(String(value)) : { marketplace: null, purchase_account_id: null }
+    : { [field]: field === 'usage_note' ? usageRecordText(value == null ? null : String(value)) : value };
+  const { data, error } = await getSupabase().from('spare_accessories').update(patch).eq('id', id).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('予備付属品が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
@@ -123,8 +128,23 @@ export async function fetchMonthly(): Promise<MonthlySummary[]> {
   return (data ?? []) as MonthlySummary[];
 }
 
+export const workloadMetrics = [
+  { key: 'on_hand', label: '手元にある在庫', bucket: null },
+  { key: 'awaiting_receipt', label: '受取前', bucket: '受取前' },
+  { key: 'inspecting', label: '検品中', bucket: '検品中' },
+  { key: 'amazon_returns', label: 'Amazon返品', bucket: 'Amazon返品' },
+  { key: 'awaiting_registration', label: '商品登録前', bucket: '登録前' },
+  { key: 'listed_on_hand', label: '出品中・手元', bucket: '手元出品' },
+  { key: 'listed_in_fba', label: '出品中・FBA倉庫', bucket: 'FBA出品' },
+  { key: 'trading_unshipped', label: '取引中・発送前', bucket: '発送前' },
+  { key: 'trading_shipped', label: '取引中・発送済み', bucket: '発送済み' },
+  { key: 'defective_on_hand', label: '動作不良・手元', bucket: '手元不良' },
+] as const;
+export type WorkloadMetric = typeof workloadMetrics[number];
+export type DelivererWorkload = { deliverer_id: string; deliverer_name: string } & Record<WorkloadMetric['key'], number>;
+
 export async function fetchWorkload(): Promise<DelivererWorkload[]> {
-  const { data, error } = await getSupabase().from('v_deliverer_workload').select('*');
+  const { data, error } = await getSupabase().from('v_deliverer_stock_workload').select('*').order('deliverer_name');
   if (error) throw error;
   return (data ?? []) as DelivererWorkload[];
 }
@@ -139,22 +159,15 @@ export interface ItemFilter {
   purchasedTo?: string;
 }
 
-export type WorkloadMetric = '作業在庫' | '保有在庫' | '平均作業日数';
-const WORKING_STATUSES = ['検品中', 'Amazon返送依頼', '商品登録前'] as const;
-const SELF_SHIPPING_CHANNELS = '自己発送,メルカリ,ヤフオク';
-const workloadHeldFilter = () => 'status.in.(' + HELD_STATUSES.join(',') + '),and(sales_channel.in.(' + SELF_SHIPPING_CHANNELS + '),or(status.eq.出品中,and(status.eq.取引中,shipped_on.is.null)))';
-export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'status' | 'marketplace' | 'purchased_at' | 'packed_on' | 'shipped_on'>;
+export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'model_no' | 'status' | 'marketplace' | 'sales_channel' | 'purchased_at' | 'packed_on' | 'shipped_on'>;
 
 export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric): Promise<WorkloadItem[]> {
-  const { today, averageStart } = workloadPeriod();
   return readAllRows<WorkloadItem>(async (from, to) => {
-    let query = getSupabase().from('items')
-      .select('id,lot_seq,sku,title,status,marketplace,purchased_at,packed_on,shipped_on')
-      .eq('deliverer_id', delivererId).eq('is_accessory', false);
-    if (metric === '作業在庫') query = query.in('status', WORKING_STATUSES);
-    else if (metric === '保有在庫') query = query.or(workloadHeldFilter());
-    else query = query.gte('packed_on', averageStart).lte('packed_on', today).not('purchased_at', 'is', null);
-    const { data, error } = await query.order('lot_seq', { ascending: false }).order('id').range(from, to);
+    const query = getSupabase().from('v_deliverer_stock_workload_items')
+      .select('id,lot_seq,sku,title,model_no,status,marketplace,sales_channel,purchased_at,packed_on,shipped_on')
+      .eq('deliverer_id', delivererId);
+    const filtered = metric.bucket === null ? query.eq('on_hand', true) : query.eq('bucket', metric.bucket);
+    const { data, error } = await filtered.order('lot_seq', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as WorkloadItem[];
   });
@@ -192,6 +205,18 @@ export async function saveExpenses(inputs: ExpenseInput[]): Promise<void> {
     throw new Error('前回の保存内容と異なります。保存済みの可能性があるため、再登録を中止しました。');
   }
   throw new Error(error.message);
+}
+
+export async function importAskulExpenses(rows: readonly AskulExpenseInput[]) {
+  let inserted = 0;
+  for (let start = 0; start < rows.length; start += askulExpenseBatchSize) {
+    const batch = rows.slice(start, start + askulExpenseBatchSize);
+    const { data, error } = await getSupabase().from('expenses')
+      .upsert(batch, { onConflict: 'id', ignoreDuplicates: true }).select('id');
+    if (error) throw new Error(error.message);
+    inserted += data?.length ?? 0;
+  }
+  return { inserted, skipped: rows.length - inserted };
 }
 
 export async function fetchExpenses(): Promise<ExpenseInput[]> {
@@ -247,7 +272,10 @@ export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale
   return { items: itemRows, expenses: expenseRows };
 }
 
-export type InventoryItem = ItemView & {
+export type InventoryItem = ItemView & InventoryMarketplaceLabels & {
+  inventory_parent_serial?:string|null;
+  inventory_parent_status?:string|null;
+  inventory_parent_purchased_at?:string|null;
   product_row_count: number; product_cost: number; sale_row_count: number;
   product_sale_conflict: boolean; product_sold_on: string | null;
   product_sold_price: number | null; product_payout_amount: number | null;
@@ -357,10 +385,19 @@ function inventoryResult(items: InventoryItem[], filter: ItemFilter): { items: I
   };
 }
 
-export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
-  const { data, error } = await getSupabase().from('v_inventory_display').select('*').eq('id', id).single();
+async function fetchInventoryMarketplaceLabels(id: string): Promise<InventoryMarketplaceLabels> {
+  const { data, error } = await getSupabase().rpc('inventory_marketplace_accounts', { p_item_id: id });
   if (error) throw error;
-  return data as InventoryItem;
+  return data ?? {};
+}
+
+export async function fetchInventoryItem(id: string): Promise<InventoryItem> {
+  const [{ data, error }, accounts] = await Promise.all([
+    getSupabase().from('v_inventory_display').select('*').eq('id', id).single(),
+    fetchInventoryMarketplaceLabels(id),
+  ]);
+  if (error) throw error;
+  return { ...data, ...accounts } as InventoryItem;
 }
 
 export async function fetchInventoryPaymentCard(id: string): Promise<string | null> {
@@ -431,7 +468,17 @@ export type InventoryEdit = Pick<ItemView,
   'sales_channel' | 'sold_on' | 'sold_price' | 'payout_amount' | 'refund_amount'
 > & Pick<InventoryItem, 'amazon_refund_amount' | 'non_amazon_refund_amount' | 'inventory_refund_amount' | 'marketplace_item_id'>;
 
-export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit & { card_id?: string | null }): Promise<void> {
+function normalizeInventoryAsin(value: string | null, productId: string | null): string | null {
+  const asin = value?.trim().toUpperCase();
+  if (!asin) {
+    if (productId) throw new Error('商品リストに紐づく商品にはASINを入力してください。');
+    return null;
+  }
+  if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは半角英数字10文字で入力してください。');
+  return asin;
+}
+
+export async function updateInventoryItem(item: InventoryItem, fields: InventoryEdit & Pick<ItemInsert, 'sales_account_id' | 'purchase_account_id'> & { card_id?: string | null }): Promise<void> {
   const title = fields.title.trim();
   if (!title || title.length > 500) throw new Error('商品名を入力してください。');
   if (!Number.isSafeInteger(fields.cost_amount) || fields.cost_amount < 0 ||
@@ -446,6 +493,11 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
     throw new Error('Amazon返金金額と返金合計は整数で入力してください。それ以外の金額は0円以上で入力してください。');
   }
   if (!!fields.sold_on !== (fields.sold_price !== null)) throw new Error('販売日と販売金額は両方入力してください。');
+  if (fields.status !== item.status) {
+    if (!STATUSES.includes(fields.status)) throw new Error('販売状態を選択してください。');
+    if (fields.status === '販売済' && !fields.sold_on) throw new Error('販売日と販売金額を入力してください。');
+    if (fields.status !== '販売済' && fields.sold_on) throw new Error('販売済から変更するには、販売日と販売金額を空欄にしてください。');
+  }
   if (fields.is_accessory && !item.is_accessory) {
     const { data: possibleParents, error: parentError } = await getSupabase().from('items')
       .select('id,sku,lot_seq').eq('lot_seq', item.lot_seq).eq('is_accessory', false);
@@ -454,13 +506,14 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
       throw new Error('付属品にするには、同じ商品番号の本体を先に登録してください。');
     }
   }
-  const { data, error } = await getSupabase().from('items').update({ ...fields, title })
-    .eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
+  const { asin, ...otherFields } = fields;
+  const asinChange = asin !== item.asin ? { asin: normalizeInventoryAsin(asin, item.product_id) } : {};
+  const { data, error } = await getSupabase().from('items').update({ ...otherFields, ...asinChange, title })
+    .eq('id', item.id).eq('updated_at', item.updated_at).select('status').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
-  if (item.product_id && fields.asin !== item.asin) {
-    const { error: productError } = await getSupabase().from('products').update({ asin: fields.asin }).eq('id', item.product_id);
-    if (productError) throw productError;
+  if (fields.status !== item.status && data.status !== fields.status) {
+    throw new Error(`販売状態は「${data.status}」のままです。在庫を読み直して、販売日・追跡番号などの記録を確認してください。`);
   }
 }
 
@@ -485,28 +538,33 @@ export async function moveInventoryAccessoryToSpares(itemId: string, input: Spar
   if (error) throw error;
 }
 
-export async function findInventoryAccessoryForSpare(serial: string): Promise<(Pick<ItemView,
+export type SpareInventoryAccessory = Pick<ItemView,
   'id' | 'sku' | 'lot_seq' | 'is_accessory' | 'title' | 'purchaser_id' | 'purchaser_name' | 'deliverer_id' | 'deliverer_name' | 'purchased_at' | 'cost_amount' | 'marketplace' | 'tracking_no' | 'asin' | 'model_no' | 'maker'
-> & { marketplace_item_id: string | null }) | null> {
+> & { marketplace_item_id: string | null };
+
+export async function findInventoryAccessoriesForSpare(serial: string): Promise<SpareInventoryAccessory[]> {
   const match = serial.trim().match(/^(\d+)[a-z]*$/i);
-  if (!match) return null;
+  if (!match) return [];
   const lotSeq = Number(match[1]);
-  if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return null;
+  if (!Number.isSafeInteger(lotSeq) || lotSeq <= 0) return [];
   const { data, error } = await getSupabase().from('v_items')
     .select('id,sku,lot_seq,is_accessory,title,purchaser_id,purchaser_name,deliverer_id,deliverer_name,purchased_at,cost_amount,marketplace,tracking_no,asin,model_no,maker')
     .eq('lot_seq', lotSeq).eq('is_accessory', true);
   if (error) throw error;
   const remotes = (data ?? []).filter(row => row.title.toLocaleLowerCase().includes('リモコン') && productSerial(row.sku,row.lot_seq) === serial.trim().toLowerCase());
-  if (remotes.length > 1) throw new Error(`通番号 ${lotSeq} にリモコン行が複数あります。対象を1件に特定できないため、在庫を確認してください。`);
-  const item = remotes[0];
-  if (!item) return null;
-  const { data: reference, error: refError } = await getSupabase().from('items').select('marketplace_item_id').eq('id', item.id).single();
+  if (!remotes.length) return [];
+  const [{ data: references, error: refError }, body] = await Promise.all([
+    getSupabase().from('items').select('id,marketplace_item_id').in('id', remotes.map(item => item.id)),
+    findInventoryForSpare(serial),
+  ]);
   if (refError) throw refError;
-  const body = await findInventoryForSpare(serial);
-  return { ...item, maker: item.maker?.trim() || body?.maker || null,
+  const byId = new Map((references ?? []).map(reference => [reference.id, reference.marketplace_item_id]));
+  if (remotes.some(item => !byId.has(item.id))) throw new Error('付属品の在庫が変わりました。通番号を確認して再読み込みしてください。');
+  return remotes.map(item => ({ ...item, maker: item.maker?.trim() || body?.maker || null,
     deliverer_id: body?.deliverer_id ?? item.deliverer_id,
     deliverer_name: body?.deliverer_name ?? item.deliverer_name,
-    marketplace_item_id: reference.marketplace_item_id };
+    marketplace_item_id: byId.get(item.id) ?? null,
+  })).sort((a, b) => a.sku.localeCompare(b.sku) || a.id.localeCompare(b.id));
 }
 
 export async function deleteInventoryItem(item: InventoryItem): Promise<void> {
@@ -529,9 +587,41 @@ export async function updateProductNumber(item: InventoryItem, productNo: number
 
 export type InventoryField = keyof InventoryEdit | 'product_no' | 'model_no' | 'sku' | 'lot_seq';
 
+export async function updateInventoryStatus(
+  item: InventoryItem,
+  status: ItemStatus,
+  sale?: { date: string; price: string; payout: string },
+): Promise<void> {
+  if (!STATUSES.includes(status)) throw new Error('販売状態を選択してください。');
+  if (status === item.status) return;
+  if (status !== '販売済' && item.sold_on) {
+    throw new Error('販売日が登録されています。商品情報編集で販売日と販売金額を確認し、販売状態と一緒に変更してください。');
+  }
+  const fields: Partial<Pick<InventoryEdit, 'status' | 'sold_on' | 'sold_price' | 'payout_amount'>> = { status };
+  if (status === '販売済') {
+    const price = Number(sale?.price);
+    const payout = sale?.payout.trim() ? Number(sale.payout) : null;
+    if (!sale || !/^\d{4}-\d{2}-\d{2}$/.test(sale.date) || !sale.price.trim() || !Number.isSafeInteger(price) || price < 0) {
+      throw new Error('販売日と販売金額を入力してください。');
+    }
+    if (payout !== null && (!Number.isSafeInteger(payout) || payout < 0)) {
+      throw new Error('振込金額は0円以上の整数を入力してください。');
+    }
+    Object.assign(fields, { sold_on: sale.date, sold_price: price, payout_amount: payout });
+  }
+  const { data, error } = await getSupabase().from('items').update(fields)
+    .eq('id', item.id).eq('updated_at', item.updated_at).select('status').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
+  if (data.status !== status) {
+    throw new Error(`現在の商品情報では「${status}」に変更できません。商品情報編集で販売日・追跡番号などの記録を確認してください。`);
+  }
+}
+
 /** A cell edit writes only the selected column so another cell cannot be overwritten. */
 export async function updateInventoryField(item: InventoryItem, field: InventoryField, value: string): Promise<void> {
   const text = value.trim();
+  if (field === 'status') return updateInventoryStatus(item, text as ItemStatus);
   if (field === 'sku' || field === 'lot_seq') {
     const { error } = await getSupabase().rpc('update_item_identity', {
       p_item_id: item.id,
@@ -559,11 +649,6 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
     if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
     return;
   }
-  if (field === 'asin' && item.product_id) {
-    const { error } = await getSupabase().from('products').update({ asin: text || null }).eq('id', item.product_id);
-    if (error) throw error;
-    return;
-  }
   if (field === 'model_no') {
     if (!item.product_id && !item.asin) throw new Error('商品リストに紐付いていないため型番を編集できません。');
     let query = getSupabase().from('products').update({ model_no: text || null });
@@ -581,8 +666,9 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
   }
   if (field === 'cost_amount' && !text) throw new Error('仕入金額を入力してください。');
   const requiredText = new Set<InventoryField>(['title', 'status', 'marketplace']);
-  const next = numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
-  const { data, error } = await getSupabase().from('items').update({ [field]: next }).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
+  const next = field === 'asin' ? normalizeInventoryAsin(text, item.product_id) : numbers.has(field) ? (text ? Number(text) : field === 'refund_amount' || field === 'inventory_refund_amount' || field === 'amazon_refund_amount' || field === 'non_amazon_refund_amount' ? 0 : null) : requiredText.has(field) ? text : text || null;
+  const patch = field === 'sales_channel' ? salesDestinationFields(text) : field === 'marketplace' ? purchaseSourceFields(text) : { [field]: next };
+  const { data, error } = await getSupabase().from('items').update(patch).eq('id', item.id).eq('updated_at', item.updated_at).select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
 }
@@ -622,10 +708,21 @@ export type ProductDetailsInput = {
   list_price: string; payout_estimate: string; target_cost: string; has_sold_before: string;
 };
 
+export type ProductRegistrationInput = Pick<ProductDetailsInput,
+  'asin' | 'model_no' | 'maker' | 'genre' | 'turnover' | 'list_price' | 'shipping_category' | 'shipping_size'>;
+
+export type ProductCatalogOwner = Pick<Staff, 'id' | 'code' | 'name' | 'display_name'>;
+
+export async function fetchProductCatalogOwners(): Promise<ProductCatalogOwner[]> {
+  const { data, error } = await getSupabase().from('staff')
+    .select('id,code,name,display_name').eq('role', 'admin').order('code');
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function updateProductShippingSettings(product: Product, input: { shipping_category: string; shipping_size: string }): Promise<void> {
-  if (input.shipping_category && !['モ', 'ブ', '小'].includes(input.shipping_category)) throw new Error('サイズ区分を選択してください。');
-  const sizes = ['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'];
-  if (input.shipping_size && !sizes.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+  if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
+  if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
   const next = { shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null };
   let query = getSupabase().from('products').update(next).eq('id', product.id);
   query = product.shipping_category === null ? query.is('shipping_category', null) : query.eq('shipping_category', product.shipping_category);
@@ -646,10 +743,9 @@ export async function updateProductDetails(product: Product, input: ProductDetai
   const listPrice = parseNumber('list_price', 0);
   const payout = parseNumber('payout_estimate', 0);
   const targetCost = parseNumber('target_cost', 0);
-  if (input.turnover && !['高','中','低'].includes(input.turnover)) throw new Error('回転を選択してください。');
-  if (input.shipping_category && !['モ','ブ','小'].includes(input.shipping_category)) throw new Error('サイズ区分を選択してください。');
-  const sizes = ['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'];
-  if (input.shipping_size && !sizes.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+  if (input.turnover && !PRODUCT_TURNOVER.includes(input.turnover)) throw new Error('回転を選択してください。');
+  if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
+  if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
   const next = {
     product_no: productNo, asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
     genre: input.genre.trim() || null, turnover: input.turnover || null,
@@ -667,12 +763,22 @@ export async function updateProductDetails(product: Product, input: ProductDetai
   if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
 }
 
-export async function createProduct(input: { asin: string; model_no: string; maker: string; product_no: string }): Promise<void> {
+export async function createProduct(input: ProductRegistrationInput): Promise<void> {
   const asin = input.asin.trim().toUpperCase();
   if (!/^[A-Z0-9]{10}$/.test(asin)) throw new Error('ASINは英数字10文字で入力してください。');
-  const productNo = input.product_no.trim() ? Number(input.product_no) : null;
-  if (productNo !== null && (!Number.isSafeInteger(productNo) || productNo <= 0)) throw new Error('品番は1以上の整数にしてください。');
-  const { error } = await getSupabase().from('products').insert({ asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null, product_no: productNo });
+  const listPrice = input.list_price.trim() ? Number(input.list_price) : null;
+  if (listPrice !== null && (!Number.isSafeInteger(listPrice) || listPrice < 0)) throw new Error('販売想定金額は0円以上の整数で入力してください。');
+  if (input.genre && !PRODUCT_GENRES.includes(input.genre)) throw new Error('ジャンルを選択してください。');
+  if (input.turnover && !PRODUCT_TURNOVER.includes(input.turnover)) throw new Error('回転を選択してください。');
+  if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
+  if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+
+  const { error } = await getSupabase().from('products').insert({
+    asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
+    genre: input.genre || null, turnover: input.turnover || null, list_price: listPrice,
+    shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null,
+    ...estimateProductAmounts(input.genre, listPrice),
+  });
   if (error) throw error;
 }
 
@@ -688,9 +794,10 @@ export async function fetchDailySalesSummary(from:string,to:string):Promise<Dail
  if(error)throw error;return data as DailySalesSummary;
 }
 
-export async function fetchProducts(query?: string): Promise<Product[]> {
+export async function fetchProducts(query?: string, ownerStaffId?: string): Promise<Product[]> {
   return readAllRows<Product>(async (from, to) => {
     let q = getSupabase().from('products').select('*').eq('is_active', true).order('product_no').order('id').range(from, to);
+    if (ownerStaffId) q = q.eq('owner_staff_id', ownerStaffId);
     if (query) {
       const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;
       q = q.or(`product_no_search.ilike.${term},asin.ilike.${term},model_no.ilike.${term},maker.ilike.${term},genre.ilike.${term}`);
@@ -699,6 +806,27 @@ export async function fetchProducts(query?: string): Promise<Product[]> {
     if (error) throw error;
     return (data ?? []) as Product[];
   });
+}
+
+export async function fetchFurimaWatchStock(): Promise<Map<string, number>> {
+  const rows = await readAllRows<Pick<ItemView, 'id' | 'asin' | 'sku' | 'lot_seq'>>(async (from, to) => {
+    const { data, error } = await getSupabase().from('items')
+      .select('id,asin,sku,lot_seq').eq('is_accessory', false)
+      .is('sold_on', null).not('asin', 'is', null)
+      .in('status', ['受取前', '検品中', '商品登録前', '動作不良', '出品中', '取引中'])
+      .or('status.neq.取引中,shipped_on.is.null').order('id').range(from, to);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+  const stock = new Map<string, Set<string>>();
+  for (const item of rows) {
+    const asin = item.asin?.trim().toUpperCase();
+    if (!asin) continue;
+    const serials = stock.get(asin) ?? new Set<string>();
+    serials.add(financialProductSerial(item.sku, item.lot_seq) || item.id);
+    stock.set(asin, serials);
+  }
+  return new Map([...stock].map(([asin, serials]) => [asin, serials.size]));
 }
 
 export type ProductSaleHistory = {

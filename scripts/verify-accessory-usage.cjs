@@ -11,11 +11,12 @@ function all(n,out=[]){if(!n||typeof n!=='object')return out;if(Array.isArray(n)
  assert.deepEqual(JSON.parse(JSON.stringify(rpc[0])),{name:'reassign_accessory_usage',args:{p_item_id:'remote',p_serial:'2448b',p_expected_revision:'rev'}});
  let cursor,hooks,effects,tree,dirty,writes,revision,finish,saved;
  const react={useState(v){const n=cursor++;if(!hooks[n])hooks[n]={value:typeof v==='function'?v():v};return[hooks[n].value,x=>{hooks[n].value=typeof x==='function'?x(hooks[n].value):x;dirty=true;}];},useRef(v){const n=cursor++;return hooks[n]??(hooks[n]={current:v});},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]={deps};effects.push(fn);}}};
- const shared={CONDITIONS:[],MARKETPLACES:[],SALES_CHANNELS:[],STATUSES:[],deliveryStaffOptions:s=>s,
+ const shared={...require('./marketplace-account-modules.cjs'),CONDITIONS:[],MARKETPLACES:[],SALES_CHANNELS:[],STATUSES:[],deliveryStaffOptions:s=>s,
   fetchAccessoryUsage:async()=>({serial:'2447',sku:'2447-AAHH-date-161',revision}),
   reassignAccessoryUsage:(...args)=>{writes.push({type:'usage',args});return new Promise(resolve=>{finish=()=>resolve({serial:'2448'});});}
  };
  const api={fetchCards:async()=>[],fetchInventoryPaymentCard:async()=>null,updateInventoryItem:async(item,fields)=>{writes.push({type:'fields',fields});revision='after-edit';}};
+ const channelLabels={exports:{}};vm.runInNewContext(compile(fs.readFileSync(path.join(root,'packages/shared/src/salesChannels.ts'),'utf8')),channelLabels);Object.assign(shared,channelLabels.exports);
  const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared:id==='../api'?api:id==='../inventory'?{productSerial:()=> '2447'}:{default:'component'}};
  const source=fs.readFileSync(path.join(root,'apps/admin/src/pages/Inventory.tsx'),'utf8')+'\nexport {InventoryFullEditDialog};';
  vm.runInNewContext(compile(source),ctx);

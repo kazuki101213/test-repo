@@ -1,4 +1,5 @@
 export const deliveryOrigin = 'https://test-repo-delivery.vercel.app';
+export const deliveryOrigins = new Set([deliveryOrigin, 'https://bussan-delivery.vercel.app']);
 export function friendUrl(value: string | undefined): string | null {
   try {
     const url = new URL(value || '');
@@ -34,4 +35,20 @@ export function shippingMessages(payload: ShippingPayload) {
 export function dispatchState(status: number): 'sent' | 'pending' | 'failed' {
   // 409 means this retry key was already accepted; never create a new key.
   return status === 200 || status === 409 ? 'sent' : status === 429 || status >= 500 ? 'pending' : 'failed';
+}
+
+export function invoiceApprovalMessages(row: { invoice_id: string; billing_month: string; total: number; staff_name: string }) {
+  if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(row.invoice_id) ||
+      !/^\d{4}-(0[1-9]|1[0-2])$/.test(row.billing_month) ||
+      !Number.isSafeInteger(row.total) || row.total <= 0 || !row.staff_name.trim()) {
+    throw new Error('Invalid approved invoice');
+  }
+  const [year, month] = row.billing_month.split('-');
+  const url = new URL(deliveryOrigin);
+  url.searchParams.set('invoiceMonth', row.billing_month);
+  url.searchParams.set('invoiceId', row.invoice_id);
+  return [{
+    type: 'text',
+    text: `${row.staff_name} 様\n${year}年${Number(month)}月分の請求書を承認しました。\n承認金額 ¥${row.total.toLocaleString('ja-JP')}\n［請求書を確認］${url.href}`,
+  }];
 }

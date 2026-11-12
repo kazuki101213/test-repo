@@ -72,6 +72,21 @@ jobs:
           printf '<!doctype html><html lang="ja"><meta charset="utf-8"><title>管理・納品アプリ</title><a href="./admin/">管理アプリ</a><br><a href="./delivery/">納品アプリ</a></html>' > _site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: _site
+      - name: Recover the timed-out Pages deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # This exact deployment belongs to failed run 42095560169.
+          # Do not cancel another run or a newer deployment.
+          deployment=3e81fd3522da61b0b7a2e673540f07f7678a8faf
+          endpoint="repos/$GITHUB_REPOSITORY/pages/deployments/$deployment"
+          state=$(gh api "$endpoint" --jq '.status')
+          if [[ "$state" == "updating_pages" || "$state" == "deployment_in_progress" || "$state" == "queued" ]]; then
+            gh api --method POST "$endpoint/cancel"
+          fi
       - uses: actions/deploy-pages@v4
         id: deploy
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
