@@ -63,9 +63,9 @@ async function recordTrackingAccess(account,kind){
  if(!trackingAccess||trackingAccess.runId!==job.id)return;
  await STORE.set({trackingAccess:incrementAccess(trackingAccess,account,kind)});
 }
-async function content(tabId,type,args={}){
+async function content(tabId,type,args={},keepVerifiedTab=false){
   const account=args.account;
-  if(account?.identity?.pageUrl&&type!=='identity'){
+  if(account?.identity?.pageUrl&&type!=='identity'&&!keepVerifiedTab){
     assertSiteUrl(account.site,account.identity.pageUrl);if(!['rakuma','mercari','flea','auctions'].includes(account.site))throw new Error('アカウント確認ページが不正です');
     if(!['list','detail','preflight','submit','success','messageDetail','sendMessage','purchaseDetail','purchaseMore'].includes(type))throw new Error('アカウント確認の処理種別が不正です');
     const target=await chrome.tabs.get(tabId);assertSiteUrl(account.site,target.url);
