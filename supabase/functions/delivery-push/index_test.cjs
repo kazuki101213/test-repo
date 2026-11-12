@@ -34,6 +34,8 @@ test('fault messages produce one distinct notification per message on either app
  const delivery = { ...item, app_kind: 'delivery', kind: 'reply' };
  const first = notificationPayload({ ...delivery, delivery_id: 'first' });
  assert.equal(first.itemId, 'item');
+ assert.equal(notificationPayload({ ...delivery, reply_task_kind: '仕入先確認' }).body, '【2433】仕入先確認のメッセージが届きました。');
+ assert.equal(first.body, '【2433】動作不良への返信があります。');
  assert.notEqual(first.tag, notificationPayload({ ...delivery, delivery_id: 'second' }).tag);
  assert.equal(first.tag, notificationPayload({ ...delivery, delivery_id: 'first' }).tag);
  const admin = { ...item, app_kind: 'admin', kind: 'malfunction_message' };

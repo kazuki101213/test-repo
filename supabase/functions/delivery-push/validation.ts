@@ -21,11 +21,14 @@ export const appBaseUrls: Record<'admin' | 'delivery', readonly string[]> = {
   delivery: [...deliveryHosts, 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/'],
 };
 
-export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; delivery_id?: string; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string; listing_request_title?: string | null }) {
+export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; delivery_id?: string; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string; listing_request_title?: string | null; reply_task_kind?: string }) {
   if (row.app_kind === 'delivery') {
     const isMessage = row.kind === 'reply' || row.kind === 'malfunction_return';
     const tag = isMessage && row.delivery_id ? `delivery-message-${row.delivery_id}` : `delivery-${row.item_id}-${row.kind}`;
-    return { body: notificationBody(row.kind, row.lot_seq, row.listing_request_title), itemId: row.item_id, tag };
+    const body = row.kind === 'reply' && row.reply_task_kind === '仕入先確認'
+      ? `【${row.lot_seq}】仕入先確認のメッセージが届きました。`
+      : notificationBody(row.kind, row.lot_seq, row.listing_request_title);
+    return { body, itemId: row.item_id, tag };
   }
   if (row.kind === 'malfunction_message') {
     return {
