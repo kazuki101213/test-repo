@@ -22,6 +22,17 @@ import InventoryColumnFilter from '../components/InventoryColumnFilter';
 import { fetchAccessoryUsage, reassignAccessoryUsage, type AccessoryUsageContext } from '@bussan/shared';
 import { inventorySearchFields, type InventorySearchField } from '../inventorySearch';
 
+type EditOption = { value: string; label: string; disabled?: boolean };
+
+function deliveryAssignmentOptions(staff: Staff[], item: InventoryItem): EditOption[] {
+  const options: EditOption[] = deliveryStaffOptions(staff, 'assignee')
+    .map(person => ({ value: person.id, label: staffDisplayName(person) }));
+  if (item.deliverer_id && !options.some(option => option.value === item.deliverer_id)) {
+    options.unshift({ value: item.deliverer_id, label: staffDisplayName(item.deliverer_name) || '現在の納品担当者', disabled: true });
+  }
+  return options;
+}
+
 function inventoryError(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
   if (cause && typeof cause === 'object') {
@@ -142,7 +153,7 @@ export default function Inventory({ me }: { me: Staff }) {
         </div>
         <InventoryStateFilter value={inventoryFilters} onChange={setInventoryFilters}
           purchaser={{ value: purchaserIds, options: inventoryPurchaserOptions(staff), onChange: setPurchaserIds }}
-          assignee={{ value: assigneeFilterIds, options: deliveryStaffOptions(staff).map(person => ({ id: person.id, name: staffDisplayName(person) })), onChange: setAssigneeFilterIds }} />
+          assignee={{ value: assigneeFilterIds, options: deliveryStaffOptions(staff, 'assignee').map(person => ({ id: person.id, name: staffDisplayName(person) })), onChange: setAssigneeFilterIds }} />
         <div className="inventory-date-range" role="group" aria-label="仕入日の期間">
           <label className="inventory-date-field">
             <DateInput aria-label="仕入日・開始日" placeholder="YY-MM-DD" value={purchasedFrom} max={purchasedTo || undefined} onChange={e => setPurchasedFrom(e.target.value)} />
@@ -279,14 +290,14 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
   const [error, setError] = useState('');
   const dateFields = new Set<keyof InventoryEdit>(['purchased_at','packed_on','shipped_on','sold_on']);
   const numberFields = new Set<keyof InventoryEdit>(['cost_amount','planned_price','planned_payout','sold_price','payout_amount','refund_amount','inventory_refund_amount','amazon_refund_amount','non_amazon_refund_amount']);
-  function optionsFor(field: keyof InventoryEdit) {
+  function optionsFor(field: keyof InventoryEdit): EditOption[] | null {
     if (field === 'is_accessory') return [{ value: 'false', label: '本体' }, { value: 'true', label: '付属品' }];
     if (field === 'status') return STATUSES.map(value => ({ value, label: value }));
     if (field === 'marketplace') return marketplaceSelectOptions(PURCHASE_SOURCES, purchaseSource).map(value => ({ value, label: value }));
     if (field === 'sales_channel') return marketplaceSelectOptions(SALES_DESTINATIONS, salesDestination).map(value => ({ value, label: value }));
     if (field === 'condition') return CONDITIONS.map(value => ({ value, label: value }));
     if (field === 'purchaser_id') return staff.filter(person => person.role !== 'deliverer').map(person => ({ value: person.id, label: staffDisplayName(person) }));
-    if (field === 'deliverer_id') return deliveryStaffOptions(staff).map(person => ({ value: person.id, label: staffDisplayName(person) }));
+    if (field === 'deliverer_id') return deliveryAssignmentOptions(staff, item);
     return null;
   }
   function set(field: keyof InventoryEdit, text: string) {
@@ -360,7 +371,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
         {fullEditFields.map(field => {
         const options = optionsFor(field), current = values[field] ?? '';
         return <label className={`field${field === 'memo' ? ' inventory-full-edit-memo' : ''}`} key={field}><span>{fieldLabels[field]}</span>
-          {options ? <ColoredSelect value={field === 'sales_channel' ? salesDestination : field === 'marketplace' ? purchaseSource : String(current)} onChange={event => set(field, event.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
+          {options ? <ColoredSelect value={field === 'sales_channel' ? salesDestination : field === 'marketplace' ? purchaseSource : String(current)} onChange={event => set(field, event.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value} disabled={option.disabled} hidden={option.disabled}>{option.label}</option>)}</ColoredSelect>
             : field === 'memo' ? <textarea value={String(current)} onChange={event => set(field, event.target.value)} />
             : dateFields.has(field)
               ? <DateInput value={String(current)} onChange={event => set(field, event.target.value)} />
@@ -400,13 +411,13 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved, onFullEdit
     && (!recordingSale || (!!sale.date && !!sale.price));
   const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
   const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'inventory_refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
-  const options = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
+  const options: EditOption[] | null = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
     : field === 'is_accessory' ? [{ value: 'false', label: '本体' }, { value: 'true', label: '付属品' }]
     : field === 'marketplace' ? marketplaceSelectOptions(PURCHASE_SOURCES, String(initial)).map(v => ({ value: v, label: v }))
     : field === 'sales_channel' ? marketplaceSelectOptions(SALES_DESTINATIONS, String(initial)).map(v => ({ value: v, label: v }))
     : field === 'condition' ? CONDITIONS.map(v => ({ value: v, label: v }))
     : field === 'purchaser_id' ? staff.filter(s => s.role !== 'deliverer').map(s => ({ value: s.id, label: staffDisplayName(s) }))
-    : field === 'deliverer_id' ? deliveryStaffOptions(staff).map(s => ({ value: s.id, label: staffDisplayName(s) })) : null;
+    : field === 'deliverer_id' ? deliveryAssignmentOptions(staff, item) : null;
   async function save() {
     if (!canSave || saving.current) return;
     saving.current = true;
@@ -423,7 +434,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved, onFullEdit
     <div className="card inventory-comment-panel">
       <h3>{fieldLabels[field]}を編集</h3><p className="sku">{item.lot_seq} / {item.sku}</p>
       <label className="field"><span>{fieldLabels[field]}</span>
-        {options ? <ColoredSelect value={value} autoFocus={field === 'status'} disabled={busy} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</ColoredSelect>
+        {options ? <ColoredSelect value={value} autoFocus={field === 'status'} disabled={busy} onChange={e => setValue(e.target.value)}>{!['status', 'marketplace'].includes(field) && <option value="">未設定</option>}{options.map(option => <option key={option.value} value={option.value} disabled={option.disabled} hidden={option.disabled}>{option.label}</option>)}</ColoredSelect>
           : field === 'memo' ? <textarea value={value} onChange={e => setValue(e.target.value)} />
             : dateFields.has(field)
               ? <DateInput autoFocus value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void save(); }} />

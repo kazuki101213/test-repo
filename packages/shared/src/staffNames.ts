@@ -11,6 +11,7 @@ const labelsByName = new Map([
   ['株式会社吉光', STAFF_DISPLAY_NAMES.MM],
 ]);
 export const DELIVERY_STAFF_CODES = ['AA', 'DD', 'EE', 'HH', 'II', 'KK', 'LL', 'MM'] as const;
+const EXCLUDED_DELIVERY_ASSIGNEE_CODES = new Set(['AA', 'EE', 'KK', 'OO']);
 const INVENTORY_PURCHASER_CODES = ['AA', 'EE', 'OO'] as const;
 /** The same purchaser choices in the management and delivery inventory filters. */
 export function inventoryPurchaserOptions(rows: readonly (Pick<Staff, 'id' | 'code' | 'name' | 'display_name'> & Partial<Pick<Staff, 'is_active'>>)[]) {
@@ -19,12 +20,15 @@ export function inventoryPurchaserOptions(rows: readonly (Pick<Staff, 'id' | 'co
     return person ? [{ id: person.id, name: staffDisplayName(person) }] : [];
   });
 }
-/** One ordered list for delivery assignee selectors in both apps. */
-export function deliveryStaffOptions<T extends { name: string; code?: string; is_active?: boolean; role?: Staff['role'] }>(rows: T[]): T[] {
+/** Keep assignment choices and the full roster in the same display order. */
+export function deliveryStaffOptions<T extends { name: string; code?: string; is_active?: boolean; role?: Staff['role'] }>(
+  rows: T[], purpose: 'roster' | 'assignee' = 'roster',
+): T[] {
   const codeOf = (row: T) => row.code || DELIVERY_STAFF_CODES.find(code => STAFF_DISPLAY_NAMES[code] === staffDisplayName(row.name));
   const active = rows.filter(row => row.is_active !== false);
   const roster = DELIVERY_STAFF_CODES.flatMap(code => active.filter(row => codeOf(row) === code));
-  return [...roster, ...active.filter(row => row.role === 'admin' && !roster.includes(row))];
+  const staff = [...roster, ...active.filter(row => row.role === 'admin' && !roster.includes(row))];
+  return purpose === 'assignee' ? staff.filter(row => !EXCLUDED_DELIVERY_ASSIGNEE_CODES.has(codeOf(row) ?? '')) : staff;
 }
 /** Format labels without changing identity fields or saved business names. */
 export function staffDisplayName(value: string | Pick<Staff, 'name'> & Partial<Pick<Staff, 'code' | 'display_name'>> | null | undefined): string {

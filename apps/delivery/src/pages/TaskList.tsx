@@ -44,7 +44,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
   const { sectionRef, shippingRef, viewportHeight } = useTaskViewport();
 
   const [filterStaff, setFilterStaff] = useState<InventoryStaff[]>([]);
-  const deliverers = deliveryStaffOptions(filterStaff);
+  const deliverers = deliveryStaffOptions(filterStaff, 'assignee');
   const [allProducts, setAllProducts] = useState(false);
   const [delivererId, setDelivererId] = useState('');
   const [assigneeFilterIds, setAssigneeFilterIds] = useState<string[]>([]);
