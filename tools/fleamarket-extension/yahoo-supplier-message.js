@@ -1,5 +1,5 @@
 // The function is injected into an existing, account-verified Yahoo buyer tab.
-export function inspectYahooSupplierPage({expectedId, openMessages = false}) {
+export function inspectYahooSupplierPage({expectedId, openMessages = false, waitForComposer = false}) {
   const origin = 'https://contact.auctions.yahoo.co.jp';
   const idPattern = /^(?:[a-zA-Z]\d+|\d{10})$/;
   const text = element => (element.innerText || element.getAttribute('aria-label') || '').replace(/\s+/g, '').trim();
@@ -17,6 +17,9 @@ export function inspectYahooSupplierPage({expectedId, openMessages = false}) {
   const mains = [...document.querySelectorAll('main')].filter(visible);
   if (mains.length !== 1) return {error:'ヤフオク取引ナビの表示領域を確認できません'};
   const main = mains[0];
+  const composerVisible = () => [...document.querySelectorAll('button,input[type=submit],input[type=button],[role=button]')]
+    .some(element=>visible(element)&&/^(送信|送信する)$/.test(text(element)||element.value||''));
+  if(waitForComposer)return {ready:composerVisible(),page:new URL(current.url).pathname};
   const links = [...main.querySelectorAll('a[href]')].filter(visible);
   const dialogLinks = [...document.querySelectorAll('[role=dialog] a[href],dialog[open] a[href]')].filter(visible);
   const unique = entries => [...new Map(entries.map(entry => [entry.id,entry])).values()];
@@ -35,17 +38,15 @@ export function inspectYahooSupplierPage({expectedId, openMessages = false}) {
     if (parent.length || /この商品を含めたまとめて取引に同意|まとめて取引に含まれている商品/.test(text(main))) {
       return {error:'代表の取引ナビを開いてからメッセージを確認してください'};
     }
+    if(composerVisible())return {ready:true};
     const controls=[...main.querySelectorAll('a,button,[role=tab]')]
-      .filter(el=>visible(el)&&['メッセージ','取引メッセージ'].includes(text(el)));
-    const urls=[...new Set(controls.filter(el=>el.matches('a[href]'))
-      .map(el=>trade(el.href,messagePaths)).filter(entry=>entry?.id===expectedId).map(entry=>entry.url))];
-    if(urls.length===1 && urls[0]!==current.url) return {messageUrl:urls[0]};
-    if(controls.length!==1 || urls.length>1) return {error:'取引メッセージのタブを確認できません'};
+      .filter(el=>visible(el)&&['メッセージ','取引メッセージ'].includes(text(el)))
+      .filter(el=>!el.matches('a[href]')||trade(el.href,messagePaths)?.id===expectedId);
+    if(controls.length!==1)return {error:'取引メッセージのタブを確認できません'};
     const control=controls[0];
-    if(control.matches('a[href]') && urls.length!==1) return {error:'取引メッセージのリンク先が一致しません'};
     if(control.matches('button[type=submit]')||control.closest('form')||control.disabled) return {error:'取引メッセージの閲覧ボタンを確認できません'};
-    if(!control.matches('a[href]')) { setTimeout(()=>control.click(),0); return {changing:true}; }
-    return {};
+    setTimeout(()=>control.click(),0);
+    return {changing:true};
   }
   const isBundleList=/\/(?:trade|buyer)\/bundle$/.test(location.pathname);
   return {parent:parent[0]||null,bundleUrl:bundle.length===1?bundle[0]:null,itemIds:isBundleList?itemIds:[],
@@ -71,7 +72,6 @@ export async function openYahooSupplierMessages({itemId,navigate,inspect,settle}
     await navigate(child.parent.url);
   }
   const message=await inspect(destination,true);
-  if (message.messageUrl) await navigate(message.messageUrl);
-  else if (message.changing) await settle(destination);
+  if (message.changing) await settle(destination);
   return destination;
 }
