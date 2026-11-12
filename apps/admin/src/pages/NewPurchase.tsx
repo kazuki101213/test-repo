@@ -65,7 +65,10 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   const selectedSpare = availableSpares.find(row => row.id === spareId);
 
   const [purchaserId, setPurchaserId] = useState(me.id);
-  const [delivererId, setDelivererId] = useState('');
+  const [selectedDelivererId, setDelivererId] = useState('');
+  const deliverers = deliveryStaffOptions(staff, 'assignee');
+  const assignedDeliverer = deliverers.find(person => person.id === selectedDelivererId);
+  const delivererId = assignedDeliverer?.id ?? '';
   const [workStream, setWorkStream] = useState<WorkStream | ''>('ブルーレイ');
   const [lotSeq, setLotSeq] = useState<string>('');
   const [purchasedAt, setPurchasedAt] = useState(today());
@@ -290,7 +293,6 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       }
       let assignedReturnSku = returnSku;
       if (isWorkingAmazonReturn && returnSku) {
-        const assignedDeliverer = deliveryStaffOptions(staff).find(row => row.id === delivererId);
         if (!assignedDeliverer || !purchaser?.code || !assignedDeliverer.code) throw new Error('動作品Amazon返品は納品担当者を選択してください。');
         const parts = returnSku.split('-');
         if (parts.length !== 4) throw new Error('動作品Amazon返品のSKU形式を確認してください。');
@@ -301,7 +303,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       const payload: ItemInsert = {
         ...(!isAmazonReturn && !isWorkingAmazonReturn && workStream === '付属品' && /[a-z]/.test(accessorySerial) ? {
           sku: buildSku({ lotSeq: accessorySerial, purchaserCode: purchaser.code,
-            delivererCode: staff.find(person => person.id === delivererId)?.code ?? '', purchasedAt, costAmount: Number(cost) }),
+            delivererCode: assignedDeliverer?.code ?? '', purchasedAt, costAmount: Number(cost) }),
         } : {}),
         ...((isAmazonReturn || isWorkingAmazonReturn) && assignedReturnSku ? { sku: assignedReturnSku } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq.match(/^\d+/)?.[0] ?? ''),
@@ -450,7 +452,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
               <label className="field"><span>納品担当者</span>
                 <select value={delivererId} onChange={(e) => setDelivererId(e.target.value)} required={workStream !== '付属品'}>
                   <option value="">— 未定 —</option>
-                  {deliveryStaffOptions(staff).map(s => <option key={s.id} value={s.id}>{staffDisplayName(s)}</option>)}
+                  {deliverers.map(s => <option key={s.id} value={s.id}>{staffDisplayName(s)}</option>)}
                 </select>
               </label>
               <label className="field"><span>作業ライン</span>
@@ -503,7 +505,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
       </form>
       {registeringSpare&&<PurchaseDraftToSpare
         draft={{id:draft?.id??'',title:title||draft?.title||'',marketplace,marketplace_item_id:generatedReference?.itemId??marketplaceItemId.trim(),purchased_at:purchasedAt,cost_amount:cost===''?null:Number(cost)}}
-        staff={staff} initialOwnerId={delivererId} initialManufacturer={product?.maker??undefined}
+        staff={staff} initialOwnerId={selectedDelivererId} initialManufacturer={product?.maker??undefined}
         onClose={()=>setRegisteringSpare(false)}
         save={async input=>{
           const metadata={model_no:product?.model_no||title.trim()||null,asin:asin.trim().toUpperCase()||null,tracking_no:trackingNo.trim()||null};
