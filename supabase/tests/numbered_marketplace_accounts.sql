@@ -115,4 +115,71 @@ begin
     raise exception 'Relisting did not use the selected next account';
   end if;
 end $$;
+
+set local role postgres;
+update app.seller_operations set status='failed'
+where item_id in (select id from app.items where lot_seq in (993112,993113));
+insert into app.seller_listings(item_id,channel,account_id,external_id,url,observed_status,trade_key,observed_at)
+select i.id,i.sales_channel,i.sales_account_id,fixture.external_id,fixture.url,'取引中',fixture.external_id,now()-interval '1 hour'
+from (values
+  (993112,'m99311200000','https://jp.mercari.com/item/m99311200000'),
+  (993113,'g9931130000','https://page.auctions.yahoo.co.jp/jp/auction/g9931130000')
+) fixture(lot,external_id,url) join app.items i on i.lot_seq=fixture.lot;
+update app.items i set status='取引中',seller_trade_key=l.trade_key
+from app.seller_listings l where l.item_id=i.id and i.lot_seq in (993112,993113);
+
+set local role authenticated;
+do $$
+declare
+  i app.items;
+  l app.seller_listings;
+  event_id uuid;
+  op uuid;
+  result text;
+  next_account text;
+  confirmation_note constant text := '販売サイトで取引の中止と旧出品の終了を確認しましたか？ アプリに中止の履歴を残し、商品登録前へ戻します。';
+begin
+  for i in select * from app.items where lot_seq in (993112,993113) order by lot_seq loop
+    event_id:=gen_random_uuid();
+    select * into strict l from app.seller_listings where item_id=i.id and active;
+    next_account:=case l.account_id when 'mercari-2' then 'mercari-1' else 'auctions-2' end;
+    perform app.perform_inventory_action(i.id,'resell','取引中',confirmation_note,event_id);
+    perform app.perform_inventory_action(i.id,'resell','取引中',confirmation_note,event_id);
+
+    if not exists(select 1 from app.inventory_workflow_events where id=event_id and item_id=i.id
+         and action='resell' and from_status='取引中' and to_status='商品登録前'
+         and actor_id=app.current_staff_id() and created_at is not null and note=confirmation_note)
+       or not exists(select 1 from app.seller_listings where id=l.id and not active and relist_event_id=event_id
+         and account_id=l.account_id and trade_key=l.trade_key and observed_status='取引中' and observed_at=l.observed_at) then
+      raise exception 'Resell did not archive the exact link with its operator confirmation';
+    end if;
+
+    update app.items set sales_account_id=next_account where id=i.id returning * into i;
+    if i.status<>'商品登録前' or i.seller_cancelled_trade_key is distinct from l.trade_key then
+      raise exception 'Resell did not reopen listing preparation';
+    end if;
+    op:=app.queue_seller_operation(i.id,'listing',jsonb_build_object('expected_revision',i.updated_at,
+      'title','test','description','description','price',1000,'condition','目立った傷や汚れなし',
+      'origin','千葉県','shippingMethod','test','photos',jsonb_build_array('https://drive.google.com/test')),gen_random_uuid());
+    if (select account_id from app.seller_operations where id=op) is distinct from next_account then
+      raise exception 'Resell waited for marketplace sync before using the new account';
+    end if;
+
+    result:=app.sync_seller_observation(l.account_id,jsonb_build_object(
+      'external_id',l.external_id,'trade_key','another-trade','status','キャンセル','observed_at',clock_timestamp()));
+    if result is distinct from 'protected' then raise exception 'Cancellation from a different trade was accepted'; end if;
+    result:=app.sync_seller_observation(l.account_id,jsonb_build_object(
+      'external_id',l.external_id,'trade_key',l.trade_key,'status','キャンセル','observed_at',clock_timestamp()));
+    if result is distinct from 'updated' or not exists(select 1 from app.seller_listings where id=l.id
+          and not active and relist_event_id=event_id and observed_status='キャンセル' and observed_at>l.observed_at) then
+      raise exception 'Late marketplace confirmation did not update the archived link';
+    end if;
+    result:=app.sync_seller_observation(l.account_id,jsonb_build_object(
+      'external_id',l.external_id,'trade_key',l.trade_key,'status','取引中','observed_at',clock_timestamp()));
+    if result is distinct from 'protected' or not exists(select 1 from app.items
+        where id=i.id and status='商品登録前' and sales_account_id=next_account and updated_at=i.updated_at) then
+      raise exception 'Late observation changed the new listing preparation';
+    end if;
+  end loop;
+end $$;
 rollback;
