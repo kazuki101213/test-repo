@@ -23,10 +23,10 @@ function fixture({ admin = true, auth = true, output = { summary: '購入数が�
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
   } }).outputText, context);
-  const call = (extra = {}, authorization = 'Bearer fixture') => context.exports.handler(new Request('https://fixture.invalid', {
+  const call = (extra = {}, authorization = 'Bearer fixture', bubbleWrap) => context.exports.handler(new Request('https://fixture.invalid', {
     method: 'POST', headers: { authorization }, body: JSON.stringify({ rows: [{
       row: 1, quantity: 8, amount: 1600, averageQuantity: 4, comparisonMonths: 2, increased: true, ...extra,
-    }] }),
+    }], bubbleWrap }),
   }));
   return { sent, call };
 }
@@ -45,10 +45,23 @@ test('requires an authenticated administrator and rejects inconsistent compariso
 test('sends only allowlisted aggregates and checks output row references', async () => {
   const { sent, call } = fixture();
   assert.equal((await call({ address: 'private-address', staffName: 'private-staff', item: 'private-item' })).status, 200);
-  assert.deepEqual(JSON.parse(sent[0].contents[0].parts[0].text), [{
+  assert.deepEqual(JSON.parse(sent[0].contents[0].parts[0].text), {purchases:[{
     row: 1, quantity: 8, amount: 1600, averageQuantity: 4, comparisonMonths: 2, increased: true,
-  }]);
+  }], bubbleWrap:[]});
   assert(!JSON.stringify(sent).includes('private-'));
   const invalid = fixture({ output: { summary: '結果', notes: [{ row: 2, reason: '範囲外' }] } });
   assert.equal((await invalid.call()).status, 502);
+});
+
+test('checks the per-item calculation and forwards anonymous workload and length totals', async () => {
+  const { sent, call } = fixture();
+  const workload = { completedItems: 4, quantityPerItem: 2, peerQuantityPerItem: 1, peerCount: 1, abovePeers: true };
+  const wrap = { recorderItems: 3, estimatedMetres: 12, purchasedMetres: 42 };
+  assert.equal((await call({ ...workload, quantityPerItem: 3 })).status, 400);
+  assert.equal((await call(workload, 'Bearer fixture', [{ ...wrap, estimatedMetres: 20 }])).status, 400);
+  assert.equal(sent.length, 0);
+  assert.equal((await call(workload, 'Bearer fixture', [{ ...wrap, staffName: 'private-staff' }])).status, 200);
+  const input = JSON.parse(sent[0].contents[0].parts[0].text);
+  assert.equal(input.purchases[0].abovePeers, true);
+  assert.deepEqual(input.bubbleWrap, [wrap]);
 });
