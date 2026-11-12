@@ -427,6 +427,7 @@ async function runSellerWork({patrol=false,checkQueues=true}={}){
  if(records.authProblem||!records.session?.access_token||!PRODUCTION_PLAN.profiles[records.diagnosticInstance])return;
  const settings=await getSettings();if(settings.mode==='diagnostic')return;if(receiptAccounts(settings).length&&(!settings.receiptStartDay||jstDay()>=settings.receiptStartDay)&&scheduleDue('receipt',settings.receiptHour,records)){if(patrol)await chrome.alarms.create('fm:seller-patrol-retry',{when:Date.now()+5*60000});return;}
  sellerBusy=true;try{
+  if(checkQueues)await runOperationQueue({scope:'supplier',storage:STORE,log,run:()=>supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log,scripting:chrome.scripting,prepareAccount})});
   const dependencies={settings,storage:STORE,rpc,log,feedbackSites:PRODUCTION_PLAN.sellerFeedbackSites||[],openSession:account=>openSellerSession(prepareAccount(account),{tabs:chrome.tabs,scripting:chrome.scripting,windows:chrome.windows,identity:(tabId,account)=>content(tabId,'identity',{account})})};
   if(await runDailyPriceReduction({...dependencies,records,profileId:records.diagnosticInstance,continueWork:async active=>{const old=await chrome.alarms.get('fm:price-work');if(active&&!old)await chrome.alarms.create('fm:price-work',{when:Date.now()+60000});if(!active&&old)await chrome.alarms.clear('fm:price-work');},fetchInspection:async()=>{try{const response=await fetch(chrome.runtime.getURL('price-inspection-request.json'),{cache:'no-store'});return response.ok?await response.json():null;}catch{return null;}}}))return;
   if(checkQueues){
@@ -436,7 +437,6 @@ async function runSellerWork({patrol=false,checkQueues=true}={}){
    if(await runSellerReadOnlyInspection({...dependencies,profileId:records.diagnosticInstance,fetchRequest,reportDiagnostic:()=>navigationTabs.create({url:chrome.runtime.getURL('report.html'),active:false})}))return;
    if(await runSellerSaleRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;
    if(await runSellerFeedbackRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;
-   await runOperationQueue({scope:'supplier',storage:STORE,log,run:()=>supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log,scripting:chrome.scripting,prepareAccount})});
    await runOperationQueue({scope:'seller',storage:STORE,log,run:()=>drainRequestedListingBatch(listingBatchId=>drainConfirmedShippingQueue(()=>sellerQueuedOperations({...dependencies,listingBatchId})))});
   }
   const daily=await sellerDaily({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,automaticShipping:true});
