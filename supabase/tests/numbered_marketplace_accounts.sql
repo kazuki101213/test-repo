@@ -48,4 +48,71 @@ begin
     raise exception 'Changing the platform kept an incompatible account';
   end if;
 end $$;
+
+set local role postgres;
+update app.seller_operations set status='failed'
+where item_id=(select id from app.items where lot_seq=993114);
+insert into app.seller_listings(item_id,channel,account_id,external_id,url,observed_status,trade_key)
+select id,'ヤフオク','auctions-2','g9931140000','https://page.auctions.yahoo.co.jp/jp/auction/g9931140000',
+  '取引中','g9931140000' from app.items where lot_seq=993114;
+update app.items set status='取引中' where lot_seq=993114;
+
+set local role authenticated;
+do $$
+declare i app.items; labels jsonb;
+begin
+  begin
+    update app.items set sales_account_id='auctions-1' where lot_seq=993114;
+    raise exception 'An active transaction account was editable';
+  exception when invalid_parameter_value then
+    if sqlerrm not like 'この商品の出品は別のアカウント%' then raise; end if;
+  end;
+
+  update app.items set status='商品登録前',sales_account_id='auctions-1' where lot_seq=993114 returning * into i;
+  labels:=app.inventory_marketplace_accounts(i.id);
+  if labels->>'sales_account_label' is distinct from 'ヤフオク1'
+    or labels->>'flea_listing_account_label' is distinct from 'ヤフオク2'
+    or app.seller_operation_context(i.id)->>'listing_account_id' is distinct from 'auctions-1' then
+    raise exception 'The next account and previous transaction were not kept distinct';
+  end if;
+  if not exists(select 1 from app.seller_listings where item_id=i.id and active
+      and account_id='auctions-2' and trade_key='g9931140000') then
+    raise exception 'Saving the next account changed the previous transaction';
+  end if;
+
+  begin
+    perform app.queue_seller_operation(i.id,'listing',jsonb_build_object('expected_revision',i.updated_at),gen_random_uuid());
+    raise exception 'A second account was allowed to publish over an active listing';
+  exception when invalid_parameter_value then
+    if sqlerrm not like '元のアカウントに出品・取引が残っています%' then raise; end if;
+  end;
+end $$;
+
+do $$
+declare i app.items; op uuid; result text;
+begin
+  result:=app.sync_seller_observation('auctions-2',jsonb_build_object(
+    'external_id','g9931140000','trade_key','other-trade','status','キャンセル','observed_at',clock_timestamp()));
+  if result is distinct from 'protected' then raise exception 'Cancellation accepted for a different trade'; end if;
+
+  result:=app.sync_seller_observation('auctions-2',jsonb_build_object(
+    'external_id','g9931140000','trade_key','g9931140000','status','キャンセル','observed_at',clock_timestamp()));
+  if result is distinct from 'updated' or not exists(
+    select 1 from app.seller_listings where external_id='g9931140000' and not active and observed_status='キャンセル'
+  ) then raise exception 'Cancellation was not recorded as history'; end if;
+  result:=app.sync_seller_observation('auctions-2',jsonb_build_object(
+    'external_id','g9931140000','trade_key','g9931140000','status','取引中','observed_at',clock_timestamp()));
+  if result is distinct from 'protected' then raise exception 'A cancelled trade was reactivated'; end if;
+
+  select * into i from app.items where lot_seq=993114;
+  if i.status <> '商品登録前' or i.sales_account_id is distinct from 'auctions-1' then
+    raise exception 'Cancellation changed the relisting state or account';
+  end if;
+  op:=app.queue_seller_operation(i.id,'listing',jsonb_build_object('expected_revision',i.updated_at,
+    'title','test','description','description','price',1000,'condition','目立った傷や汚れなし',
+    'origin','千葉県','shippingMethod','test','photos',jsonb_build_array('https://drive.google.com/test')),gen_random_uuid());
+  if (select account_id from app.seller_operations where id=op) is distinct from 'auctions-1' then
+    raise exception 'Relisting did not use the selected next account';
+  end if;
+end $$;
 rollback;
