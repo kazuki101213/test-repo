@@ -21036,6 +21036,15 @@ create table app.malfunction_task_completions (
 );
 alter table app.malfunction_task_completions enable row level security;
 revoke all on app.malfunction_task_completions from public,anon,authenticated;
+grant select on app.malfunction_task_completions to authenticated;
+create policy malfunction_task_completions_management_read on app.malfunction_task_completions
+for select to authenticated
+using (
+  (select app.is_admin())
+  or ((select app.current_role())='purchaser' and exists (
+    select 1 from app.items i where i.id=item_id and i.purchaser_id=(select app.current_staff_id())
+  ))
+);
 
 create function app.complete_malfunction_task(p_item_id uuid, p_reported_at timestamptz) returns void
 language plpgsql security definer set search_path=pg_catalog,app as $$
