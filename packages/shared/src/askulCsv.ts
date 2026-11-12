@@ -8,7 +8,7 @@ export type AskulExpenseInput = {
   name: string;
   amount: number;
   card_id: null;
-  staff_id: null;
+  staff_id: string | null;
   memo: string;
 };
 
@@ -19,6 +19,22 @@ const requiredColumns = {
   order: '出荷オーダーNo',
   line: '出荷オーダー行No',
 };
+const addressColumns = ['注文時お届け先住所1', '注文時お届け先住所2', '注文時お届け先住所3'];
+
+export function normalizeAskulDeliveryAddress(value: string) {
+  return value.normalize('NFKC').replace(/^\s*〒\s*\d{3}[-‐–−]?\d{4}\s*/, '')
+    .replace(/\s+/g, '').replace(/[‐‑‒–—―−]/g, '-')
+    .replace(/(\d)(?:丁目|番地|番|号)(?=\d)/g, '$1-')
+    .replace(/(\d)(?:番地|番|号)(?=\D|$)/g, '$1');
+}
+
+export function findAskulDeliveryAssignee(address: string, profiles: readonly { staff_id: string; address: string }[]) {
+  const key = normalizeAskulDeliveryAddress(address);
+  if (!key) return null;
+  const ids = new Set(profiles.filter(profile => normalizeAskulDeliveryAddress(profile.address) === key)
+    .map(profile => profile.staff_id));
+  return ids.size === 1 ? ids.values().next().value ?? null : null;
+}
 
 function decodeCsv(bytes: ArrayBuffer) {
   try {
@@ -87,10 +103,16 @@ async function expenseId(order: string, line: string) {
   return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
 }
 
-export async function parseAskulExpenseCsv(bytes: ArrayBuffer): Promise<AskulExpenseInput[]> {
+export async function parseAskulExpenseReport(bytes: ArrayBuffer) {
   if (bytes.byteLength === 0 || bytes.byteLength > askulCsvMaxBytes) throw new Error('12 MB以内のCSVを選択してください。');
   const [headers, ...body] = parseCsv(decodeCsv(bytes));
   const names = headers?.map(value => normalize(value).replace(/^\uFEFF/, '')) ?? [];
+  const addressIndices = addressColumns.map(name => names.indexOf(name));
+  const hasDeliveryAddresses = addressIndices.some(index => index >= 0);
+  if (hasDeliveryAddresses && addressIndices.some((index, column) => index < 0
+      || names.lastIndexOf(addressColumns[column] ?? '') !== index)) {
+    throw new Error('注文時お届け先住所1・2・3の列を確認してください。');
+  }
   const indices = Object.fromEntries(Object.entries(requiredColumns).map(([key, name]) => {
     const first = names.indexOf(name);
     if (first === -1 || names.lastIndexOf(name) !== first) throw new Error('CSVの列「' + name + '」を確認してください。');
@@ -115,9 +137,11 @@ export async function parseAskulExpenseCsv(bytes: ArrayBuffer): Promise<AskulExp
     const key = order + '/' + canonicalLine;
     if (seen.has(key)) throw new Error('CSV内で同じ出荷オーダー番号・行番号が重複しています。明細' + (index + 1) + '行目を確認してください。');
     seen.add(key);
-    return { date, name, amount, order, line: canonicalLine };
+    const address = hasDeliveryAddresses ? addressIndices.map(column => row[column]?.trim() ?? '')
+      .map(value => value.replace(/^'/, '')).join('') : '';
+    return { date, name, amount, order, line: canonicalLine, address };
   });
-  return Promise.all(expenses.map(async row => ({
+  const inputs = await Promise.all(expenses.map(async (row): Promise<AskulExpenseInput> => ({
     id: await expenseId(row.order, row.line),
     incurred_on: row.date,
     category: '変動費',
@@ -127,4 +151,9 @@ export async function parseAskulExpenseCsv(bytes: ArrayBuffer): Promise<AskulExp
     staff_id: null,
     memo: 'アスクル ' + row.order + '/' + row.line,
   })));
+  return { rows: inputs, deliveryAddresses: hasDeliveryAddresses ? expenses.map(row => row.address) : null };
+}
+
+export async function parseAskulExpenseCsv(bytes: ArrayBuffer): Promise<AskulExpenseInput[]> {
+  return (await parseAskulExpenseReport(bytes)).rows;
 }

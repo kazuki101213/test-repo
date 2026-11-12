@@ -1,4 +1,4 @@
-import { askulExpenseBatchSize, type AskulExpenseInput } from '@bussan/shared';
+import { askulExpenseBatchSize, staffDisplayName, type AskulExpenseInput } from '@bussan/shared';
 import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
 import { getSupabase, STATUSES, usageRecordText, purchaseSourceFields, salesDestinationFields } from '@bussan/shared';
@@ -209,14 +209,46 @@ export async function saveExpenses(inputs: ExpenseInput[]): Promise<void> {
 
 export async function importAskulExpenses(rows: readonly AskulExpenseInput[]) {
   let inserted = 0;
+  let assignedExisting = 0;
   for (let start = 0; start < rows.length; start += askulExpenseBatchSize) {
     const batch = rows.slice(start, start + askulExpenseBatchSize);
     const { data, error } = await getSupabase().from('expenses')
       .upsert(batch, { onConflict: 'id', ignoreDuplicates: true }).select('id');
     if (error) throw new Error(error.message);
     inserted += data?.length ?? 0;
+    const added = new Set(data?.map(row => row.id));
+    const assignments = new Map<string, string[]>();
+    for (const row of batch) {
+      if (!row.staff_id || added.has(row.id)) continue;
+      const ids = assignments.get(row.staff_id) ?? [];
+      ids.push(row.id);
+      assignments.set(row.staff_id, ids);
+    }
+    for (const [staffId, ids] of assignments) {
+      const { data: updated, error: updateError } = await getSupabase().from('expenses')
+        .update({ staff_id: staffId }).in('id', ids).is('staff_id', null).is('deleted_at', null)
+        .like('memo', 'アスクル %').select('id');
+      if (updateError) throw new Error(updateError.message);
+      assignedExisting += updated?.length ?? 0;
+    }
   }
-  return { inserted, skipped: rows.length - inserted };
+  return { inserted, skipped: rows.length - inserted, assignedExisting };
+}
+
+export async function fetchAskulDeliveryProfiles(): Promise<{ staff_id: string; address: string }[]> {
+  const { data, error } = await getSupabase().from('delivery_invoice_profiles')
+    .select('staff_id,address:details->>address').not('details->>address', 'is', null);
+  if (error) throw new Error(error.message);
+  return (data ?? []).flatMap(row => typeof row.address === 'string' && row.address.trim()
+    ? [{ staff_id: row.staff_id as string, address: row.address }] : []);
+}
+
+export async function fetchExpenseStaffNames(): Promise<Record<string, string>> {
+  return sessionRead('master:expense-staff-names', 30000, async () => {
+    const { data, error } = await getSupabase().from('staff').select('id,code,name,display_name');
+    if (error) throw new Error(error.message);
+    return Object.fromEntries((data ?? []).map(person => [person.id, staffDisplayName(person)]));
+  });
 }
 
 export async function fetchExpenses(): Promise<ExpenseInput[]> {
