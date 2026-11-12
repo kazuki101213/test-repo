@@ -307,7 +307,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       const { error } = await getSupabase().rpc('complete_malfunction_task', {
         p_item_id: row.id, p_reported_at: row.malfunction_reported_at,
       });
-      if (error) throw error;
+      if (error) throw new Error(error.message);
       // Finish any older refresh before removing the saved task from the list.
       await pendingRefresh.current?.catch(() => {});
       setRows(current => current.filter(task =>
