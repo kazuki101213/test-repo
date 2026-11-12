@@ -10,8 +10,11 @@ set local role authenticated;
 do $$
 declare payload jsonb; request uuid:=gen_random_uuid(); failed boolean; worker_login text:=current_setting('expense_test.worker_login');
 begin
- select jsonb_agg(to_jsonb(e)-'created_at'-'updated_at'-'deleted_at'-'deletion_batch' order by id) into payload
- from app.expenses e where id in ('99000100-0000-0000-0000-000000000001','99000100-0000-0000-0000-000000000002');
+ select jsonb_agg(to_jsonb(e) order by id) into payload
+ from (
+  select id,incurred_on,category,name,amount,card_id,staff_id,memo from app.expenses
+  where id in ('99000100-0000-0000-0000-000000000001','99000100-0000-0000-0000-000000000002')
+ ) e;
  if (select "経費" from app.v_monthly_summary where month='2099-11-01')<>1200 then raise exception 'Initial accounting mismatch';end if;
  update app.expenses set amount=201 where id='99000100-0000-0000-0000-000000000002';
  failed:=false;
@@ -51,7 +54,9 @@ begin
  invoice:=(documents->'invoice'->>'id')::uuid;
  expense:=app.approve_delivery_invoice(invoice,1,'2099-12-31');
  if (select incurred_on from app.expenses where id=expense) is distinct from date '2100-01-10' then raise exception 'Invoice expense not posted on the tenth of the next month';end if;
- select jsonb_build_array(to_jsonb(e)-'created_at'-'updated_at'-'deleted_at'-'deletion_batch') into payload from app.expenses e where id=expense;
+ select jsonb_build_array(to_jsonb(e)) into payload from (
+  select id,incurred_on,category,name,amount,card_id,staff_id,memo from app.expenses where id=expense
+ ) e;
  perform app.delete_expenses(payload,gen_random_uuid());
  if not exists(select 1 from app.delivery_invoice_approvals where invoice_id=invoice and expense_id=expense) then raise exception 'Approval link lost';end if;
  result:=app.approve_delivery_invoice(invoice,1,'2099-12-31');
