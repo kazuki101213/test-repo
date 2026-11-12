@@ -4,6 +4,7 @@ import { deleteExpenses, fetchExpenses, fetchExpenseDrafts, updateExpenseField, 
 import type { ExpenseInput, ExpenseDraft } from '../expenses';
 import { expenseCategories, expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
+import AskulExpenseImport from './AskulExpenseImport';
 import './ExpenseSelection.css';
 
 type ExpenseCategory = typeof expenseCategories[number];
@@ -34,6 +35,8 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [message, setMessage] = useState('');
+  const [askulImportOpen, setAskulImportOpen] = useState(false);
+  const [askulResult, setAskulResult] = useState<{ inserted: number; skipped: number } | null>(null);
   useEffect(() => {
     const screen = window.matchMedia(compactExpenseLayout);
     const update = (event: MediaQueryListEvent) => {
@@ -83,6 +86,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   return <div className="dashboard-workspace with-expense registration-workspace">
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費">
     <div className="toolbar expense-search-toolbar">
+      <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => { setAskulResult(null); setAskulImportOpen(true); }}>アスクルCSV取り込み</button>
       {compact && <select aria-label="経費区分で絞り込む" value={categoryFilter} disabled={!!deletion} onChange={e => {
         setCategoryFilter(e.currentTarget.value as ExpenseCategory | '');
         setSelected(new Set());
@@ -94,6 +98,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
       <button type="button" className="btn" disabled={loading || expenseBusy || !!deletion || !selected.size} onClick={() => { setDeleteError(''); setMessage(''); setDeletion({ rows: filtered.filter(row => selected.has(row.id)).map(row => ({...row})), requestId: crypto.randomUUID() }); }}>削除</button>
     </div>
     {message && <p className="ok" role="status">{message}</p>}
+    {askulResult && <p className="ok" role="status" data-askul-inserted={askulResult.inserted} data-askul-skipped={askulResult.skipped}>アスクルCSVから{askulResult.inserted}件を登録しました。登録済み{askulResult.skipped}件。</p>}
     {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
       <div className="expense-columns-scroll"><div className="expense-columns">{visibleCategories.map(category => {
         const entries = filtered.filter(row => displayCategory(row) === category);
@@ -122,6 +127,13 @@ export default function ExpenseList({ revision }: { revision: number }) {
     {error && <div className="error" role="alert">{error}</div>}
     <div className="toolbar"><button className="btn primary" disabled={expenseBusy} onClick={() => void saveField()}>保存</button><button className="btn" disabled={expenseBusy} onClick={() => setFieldEdit(null)}>閉じる</button></div>
   </div></div>}
+  {askulImportOpen && <AskulExpenseImport onClose={() => setAskulImportOpen(false)} onSaved={({ inserted, skipped }) => {
+    setAskulImportOpen(false);
+    setQuery('');
+    setCategoryFilter('');
+    setAskulResult({ inserted, skipped });
+    setSavedRevision(value => value + 1);
+  }} />}
   {deletion && <ExpenseDeleteConfirmation rows={deletion.rows} busy={deleting} error={deleteError} onDelete={() => void removeSelected()} onClose={() => { if (!deleteLock.current) setDeletion(null); }} />}
   </div>;
 }
