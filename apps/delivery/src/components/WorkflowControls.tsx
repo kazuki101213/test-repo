@@ -1,5 +1,5 @@
 import {useRef,useState} from 'react';
-import {deliveryWorkflowButtons,workflowButtonDirection} from '@bussan/shared';
+import {deliveryWorkflowButtons,sendsSupplierReturnMessage,workflowButtonDirection} from '@bussan/shared';
 import type {DeliveryTask,InventoryAction,ProductPanel,WorkflowButton} from '@bussan/shared';
 import {performInventoryAction,submitMalfunctionReport,completeSupplierReturn,completeDeliveryWork,completeDeliveryCompensation} from '../api';
 import type {ReportAttachment} from '../api';
@@ -68,6 +68,7 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
    {form.key==='report'&&photos.length>0&&<ul className="workflow-report-photo-list">{photos.map((photo,index)=><li key={photo.id}>写真{index+1}：{photo.file.name}<button type="button" className="btn ghost" disabled={busy} aria-label={`写真${index+1}を外す`} onClick={()=>{request.current=crypto.randomUUID();setPhotos(current=>current.filter(entry=>entry.id!==photo.id).map(entry=>({...entry,id:crypto.randomUUID()})));}}>外す</button></li>)}</ul>}
   </div>}
   {confirming?.key==='supplier_return_complete'&&<WorkDateConfirmation title="返品完了" purchasedAt={task.purchased_at}
+   sendsReturnMessage={sendsSupplierReturnMessage(task.marketplace)}
    savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onReturnConfirm={async(date,trackingNumber)=>{
     await completeSupplierReturn(task.id,date,trackingNumber,request.current);
     await onChanged();

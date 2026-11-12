@@ -83,6 +83,7 @@ export default function TaskDetail({
     try {
       const current = await fetchSupplierConversation(itemId); setMarketplaceConversation(current);
       if (current.expired) { setMarketplaceError('作業完了から7日を過ぎたため、取引メッセージは保存期間終了です。'); return; }
+      if (task.status === '返品処理') return;
 
       const accountId=current.account_id||supplierAccount;
       if(!accountId){setMarketplaceError('購入アカウントを選択してください。');return;}
@@ -337,10 +338,10 @@ export default function TaskDetail({
       {mode === 'messages' && <div className="card marketplace-conversation" aria-label="フリマサイト取引メッセージ">
         <div className="marketplace-conversation-heading"><strong>取引メッセージ</strong><span className="muted"><ColoredLabel value={task.marketplace} /> · {task.marketplace_item_id || '取引IDなし'}</span></div>
         <label>購入アカウント<select aria-label="仕入先の購入アカウント" value={selectedSupplierAccount}
-          disabled={marketplaceLoading||!!marketplaceConversation.account_id}
+          disabled={marketplaceLoading||!!marketplaceConversation.account_id||task.status==='返品処理'}
           onChange={event=>setSupplierAccount(event.target.value)}><option value="">選択</option>{supplierAccounts.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
         {!task.marketplace_item_id ? <p className="muted">商品IDが登録されていないため、取引メッセージを連携できません。</p> : <>
-          <button type="button" className="btn" disabled={marketplaceLoading} onClick={() => void displayMarketplaceMessages()}>{marketplaceLoading ? '確認中…' : 'メッセージを取得'}</button>
+          <button type="button" className="btn" disabled={marketplaceLoading} onClick={() => void displayMarketplaceMessages()}>{marketplaceLoading ? '確認中…' : task.status==='返品処理' ? '送信状況を更新' : 'メッセージを取得'}</button>
           {marketplaceError && <p className="error" role="alert">{marketplaceError}</p>}
           {marketplaceVisible && <>
             <div className="marketplace-message-list" aria-live="polite">
@@ -352,7 +353,7 @@ export default function TaskDetail({
                 <div className="meta">{({ queued: '拡張機能の送信待ち', sending: 'サイトへ送信中', sent: '送信済み', failed: '送信失敗', uncertain: '送信結果を要確認' } as const)[request.status]}{request.sent_at ? ' · ' + new Date(request.sent_at).toLocaleString('ja-JP') : ''}</div><p>{request.body}</p>{request.result_note && <small>{request.result_note}</small>}
               </article>)}
             </div>
-            {marketplaceConversation.expired ? <p className="muted">作業完了から7日を経過したため、会話の保存期間は終了しました。</p> : <div className="marketplace-message-composer">
+            {marketplaceConversation.expired ? <p className="muted">作業完了から7日を経過したため、会話の保存期間は終了しました。</p> : task.status!=='返品処理' && <div className="marketplace-message-composer">
               <textarea aria-label="フリマ取引相手へのメッセージ" value={marketplaceDraft} onChange={event => setMarketplaceDraft(event.target.value)} maxLength={2000} placeholder="取引相手へのメッセージ" />
               <button type="button" className="btn primary" disabled={!selectedSupplierAccount || !marketplaceDraft.trim() || marketplaceSending} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信結果を確認中…' : '取引メッセージを送信'}</button>
               <small className="muted">送信後は、ログイン済みChromeの拡張機能が取引画面へ反映します。</small>

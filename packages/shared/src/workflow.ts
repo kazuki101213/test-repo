@@ -7,6 +7,7 @@ export function workflowButtonDirection(key:WorkflowButton['key']):'forward'|'ba
  return key.endsWith('_cancel')||key==='resell'||key==='send_back'?'back':forwardActions.has(key)?'forward':undefined;
 }
 export const isAmazonReturn=(task:Pick<DeliveryTask,'marketplace'>)=>task.marketplace==='Amazon返品'||task.marketplace==='動作品Amazon返品';
+export const sendsSupplierReturnMessage=(marketplace:DeliveryTask['marketplace'])=>marketplace==='ヤフオク'||marketplace==='メルカリ';
 export const canAddPackingPhotos=(task:Pick<DeliveryTask,'status'|'sales_channel'>)=>/^FBA(?:[12１２])?$/.test(task.sales_channel??'') ? task.status==='商品登録前' : (/^自己発送(?:[12１２])?$/.test(task.sales_channel??'')||['ヤフオク','メルカリ'].includes(task.sales_channel??''))&&task.status==='出品中';
 /** The selected inventory tab never controls an individual product's commands. */
 export function deliveryWorkflowButtons(task:DeliveryTask):WorkflowButton[]{
@@ -24,7 +25,10 @@ export function deliveryWorkflowButtons(task:DeliveryTask):WorkflowButton[]{
  case '取引中':return [...(task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク'?[{key:'shipping' as const,label:'発送'},{key:'messages' as const,label:task.seller_message_attention?'取引メッセージを確認':'取引メッセージ'}]:[]),{key:'trade_cancel',label:'出品中へ',note:true,confirmation:'アプリ内だけを出品中へ戻します。サイトのキャンセル手続きは行いません。'},{key:'resell',label:'商品登録前へ',note:true,confirmation:'購入者からの返品を確認し、商品登録前へ戻します。'}];
  case '動作不良':return [{key:'comments',label:'仕入担当者へメッセージ'},{key:'messages',label:'取引メッセージ'},{key:'supplier_return_complete',label:'返品完了',disabled:!task.supplier_contact_requested_at},{key:'return_impossible',label:'返品不可',disabled:!task.supplier_contact_requested_at},{key:'report_cancel',label:'動作不良取消'}];
  case 'Amazon補填申請中':return [{key:'compensation_complete',label:'補填完了'},...(!task.packed_on?[{key:'work_complete' as const,label:'作業完了'}]:[])];
- case '返品処理':return amazon?[]:[{key:'supplier_return_cancel',label:'返品完了取消'}];
+ case '返品処理':return amazon?[]:[
+  ...(task.return_tracking_no&&sendsSupplierReturnMessage(task.marketplace)?[{key:'messages' as const,label:'取引メッセージ'}]:[]),
+  {key:'supplier_return_cancel',label:'返品完了取消'},
+ ];
  default:return [];
  }
 }
