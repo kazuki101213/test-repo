@@ -10,6 +10,8 @@ export type AskulExpenseInput = {
   card_id: null;
   staff_id: string | null;
   memo: string;
+  askul_item: string | null;
+  askul_quantity: number | null;
 };
 
 const requiredColumns = {
@@ -108,6 +110,8 @@ export async function parseAskulExpenseReport(bytes: ArrayBuffer) {
   const [headers, ...body] = parseCsv(decodeCsv(bytes));
   const names = headers?.map(value => normalize(value).replace(/^\uFEFF/, '')) ?? [];
   const addressIndices = addressColumns.map(name => names.indexOf(name));
+  const quantityIndex = names.indexOf('出荷数量');
+  const expenseKindIndex = names.indexOf('経費区分');
   const hasDeliveryAddresses = addressIndices.some(index => index >= 0);
   if (hasDeliveryAddresses && addressIndices.some((index, column) => index < 0
       || names.lastIndexOf(addressColumns[column] ?? '') !== index)) {
@@ -134,12 +138,20 @@ export async function parseAskulExpenseReport(bytes: ArrayBuffer) {
     if (!date || !name || name.length > 200 || !/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(rawAmount)
         || !Number.isSafeInteger(amount) || !/^[A-Z0-9-]{1,48}$/.test(order) || !/^\d{1,12}$/.test(line)) throw invalid();
     const canonicalLine = String(Number(line));
+    const isMaterial = quantityIndex >= 0 && expenseKindIndex >= 0
+      && normalize(row[expenseKindIndex] ?? '') === '1';
+    const quantityText = normalize(row[quantityIndex] ?? '');
+    const quantity = isMaterial ? Number(quantityText) : null;
+    if (quantity !== null && (!/^[+-]?\d+$/.test(quantityText) || !Number.isInteger(quantity)
+        || quantity < -2147483648 || quantity > 2147483647)) {
+      throw new Error('明細' + (index + 1) + '行目の出荷数量を確認してください。');
+    }
     const key = order + '/' + canonicalLine;
     if (seen.has(key)) throw new Error('CSV内で同じ出荷オーダー番号・行番号が重複しています。明細' + (index + 1) + '行目を確認してください。');
     seen.add(key);
     const address = hasDeliveryAddresses ? addressIndices.map(column => row[column]?.trim() ?? '')
       .map(value => value.replace(/^'/, '')).join('') : '';
-    return { date, name, amount, order, line: canonicalLine, address };
+    return { date, name, amount, order, line: canonicalLine, address, quantity };
   });
   const inputs = await Promise.all(expenses.map(async (row): Promise<AskulExpenseInput> => ({
     id: await expenseId(row.order, row.line),
@@ -150,6 +162,8 @@ export async function parseAskulExpenseReport(bytes: ArrayBuffer) {
     card_id: null,
     staff_id: null,
     memo: 'アスクル ' + row.order + '/' + row.line,
+    askul_item: row.quantity === null ? null : row.name,
+    askul_quantity: row.quantity,
   })));
   return { rows: inputs, deliveryAddresses: hasDeliveryAddresses ? expenses.map(row => row.address) : null };
 }

@@ -11,6 +11,8 @@ const parse = rows => parseAskulExpenseCsv(new TextEncoder().encode([headers, ..
 test('preserves ASKUL subtotals, distinct fees and signed returns across repeat downloads', async () => {
   const rows = await parse([purchase, fee, refund]);
   assert.deepEqual(rows.map(row => row.amount), [1020, 220, -1020]);
+  assert.deepEqual(rows.map(row => row.askul_quantity), [1, null, -1]);
+  assert.deepEqual(rows.map(row => row.askul_item), ['梱包材, "透明"', null, '返品']);
   assert.equal(rows[0].name, '梱包材, "透明"');
   assert.equal(rows[0].incurred_on, '2026-11-10');
   assert.equal(rows[0].category, '変動費');
