@@ -26,10 +26,19 @@ export async function supplierQueuedOperations({settings,rpc,tabs,content,log,sc
     if(!response?.result||response.result.error)throw Error(response?.result?.error||'取引画面を読み取れません');
     return response.result;
    },settle:async expectedId=>{
-    await new Promise(resolve=>setTimeout(resolve,1000));
-    const current=await tabs.get(borrowed.id);
-    if(siteFor(current.url)!=='auctions'||itemId('auctions',current.url)!==expectedId)throw Error('メッセージを開いた後の取引IDが一致しません');
-    last=borrowed.lastUrl=current.url;
+    let page='';
+    for(let attempt=0;attempt<24;attempt++){
+     await new Promise(resolve=>setTimeout(resolve,500));
+     const current=await tabs.get(borrowed.id);
+     if(siteFor(current.url)!=='auctions'||itemId('auctions',current.url)!==expectedId)throw Error('メッセージを開いた後の取引IDが一致しません');
+     last=borrowed.lastUrl=current.url;
+     if(current.status!=='complete')continue;
+     const [response]=await scripting.executeScript({target:{tabId:borrowed.id},func:inspectYahooSupplierPage,args:[{expectedId,waitForComposer:true}]});
+     if(response?.result?.error)throw Error(response.result.error);
+     page=response?.result?.page||page;
+     if(response?.result?.ready)return;
+    }
+    throw Error('取引メッセージの入力欄が開きません'+(page?'（'+page+'）':''));
    }});
   }else{
    let url=account.listUrl,target=null;const seen=new Set();

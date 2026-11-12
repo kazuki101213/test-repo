@@ -129,8 +129,8 @@
   function messageComposer(a,recipe,expected){
     const d=messageContext(a,recipe);
     if(d.auth||d.itemId!==expected)throw Error('送信する取引IDが一致しません');
+    if(a.site==='auctions'&&location.origin==='https://contact.auctions.yahoo.co.jp')return yahooMessageComposer(document);
     const root=one(recipe.messageScope||'main');
-    if(a.site==='auctions'&&location.origin==='https://contact.auctions.yahoo.co.jp')return yahooMessageComposer(root);
     const buttonsIn=scope=>[...scope.querySelectorAll('button,input[type="submit"]')]
       .filter(element=>visible(element)&&/^(送信|送信する|送る|投稿)$/.test(controlText(element)));
     const fields=[...root.querySelectorAll('textarea,[contenteditable="true"]')].filter(visible);

@@ -4,11 +4,11 @@ import {openYahooSupplierMessages} from '../../tools/fleamarket-extension/yahoo-
 
 const original='x123', representative='p456';
 const parent={id:representative,url:'parent'};
-const message={messageUrl:'messages'};
+const message={changing:true};
 const fixture=(proof=[original,representative])=>{
   const visited=[];
   let page='item';
-  return {visited,navigate:async next=>{visited.push(next);page=next;},inspect:async(id,open)=>{
+  return {visited,settle:async id=>{assert.equal(id,representative);visited.push('messages');},navigate:async next=>{visited.push(next);page=next;},inspect:async(id,open)=>{
     if(open){assert.equal(id,representative);assert.equal(page,'parent');return message;}
     if(page==='item'){assert.equal(id,original);return {isChild:true,parent,bundleUrl:'bundle'};}
     if(page==='bundle'){assert.equal(id,original);return {itemIds:proof};}
@@ -33,7 +33,7 @@ test('an ordinary transaction stays on the same auction',async()=>{
   const id=await openYahooSupplierMessages({itemId:original,inspect:async(id,open)=>{
     assert.equal(id,original);
     return open?message:{isChild:false,parent:null};
-  },navigate:async url=>visited.push(url)});
+  },settle:async id=>{assert.equal(id,original);visited.push('messages');},navigate:async url=>visited.push(url)});
   assert.equal(id,original);
   assert.deepEqual(visited,['messages']);
 });
