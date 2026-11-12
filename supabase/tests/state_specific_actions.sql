@@ -22,7 +22,7 @@ insert into app.item_comments(item_id,author_id,body) select id,app.current_staf
 select app.perform_inventory_action(id,'supplier_check',status) from app.items where lot_seq=992001 and not is_accessory;
 do $$begin if exists(select 1 from app.items where lot_seq=992001 and status<>'動作不良') then raise exception 'Supplier check resolved report prematurely';end if;end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
-select app.perform_inventory_action(id,'supplier_return_complete',status) from app.items where lot_seq=992001 and not is_accessory;
+select app.complete_supplier_return(id,current_date,'1234-5678-9012',gen_random_uuid()) from app.items where lot_seq=992001 and not is_accessory;
 select app.perform_inventory_action(id,'supplier_return_cancel',status) from app.items where lot_seq=992001 and not is_accessory;
 select app.perform_inventory_action(id,'return_impossible',status) from app.items where lot_seq=992001 and not is_accessory;
 do $$begin if exists(select 1 from app.items where lot_seq=992001 and (status<>'商品登録前' or sales_channel<>'ヤフオク')) then raise exception 'Yahoo instruction/accessory mismatch';end if;end $$;

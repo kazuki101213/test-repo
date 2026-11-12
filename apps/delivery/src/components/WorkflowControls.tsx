@@ -1,7 +1,7 @@
 import {useRef,useState} from 'react';
 import {deliveryWorkflowButtons,workflowButtonDirection} from '@bussan/shared';
 import type {DeliveryTask,InventoryAction,ProductPanel,WorkflowButton} from '@bussan/shared';
-import {performInventoryAction,submitMalfunctionReport,performDatedInventoryAction,completeDeliveryWork,completeDeliveryCompensation} from '../api';
+import {performInventoryAction,submitMalfunctionReport,completeSupplierReturn,completeDeliveryWork,completeDeliveryCompensation} from '../api';
 import type {ReportAttachment} from '../api';
 import WorkflowConfirmation from './WorkflowConfirmation';
 import WorkDateConfirmation from './WorkDateConfirmation';
@@ -18,7 +18,7 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
  const buttons=deliveryWorkflowButtons(task);
  const photoActions:Record<string,string[]>={
   'Amazon返送依頼':['return_request_complete'],
-  '動作不良':['comments','messages','supplier_return_complete','return_impossible','work_complete','report_cancel'],
+  '動作不良':['comments','messages','supplier_return_complete','return_impossible','report_cancel'],
   'Amazon補填申請中':['compensation_complete','work_complete'],
   '出品中':['packingPhotos','listing_cancel'],
   '商品登録前':['photos','listing','listing_complete','inspection_cancel','yahoo_instruction_cancel','comments'],
@@ -67,6 +67,17 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
    <button type="button" className="btn ghost" disabled={busy} onClick={()=>{setForm(null);setNote('');setPhotos([]);setHasPhysicalDamage(false);}}>閉じる</button>
    {form.key==='report'&&photos.length>0&&<ul className="workflow-report-photo-list">{photos.map((photo,index)=><li key={photo.id}>写真{index+1}：{photo.file.name}<button type="button" className="btn ghost" disabled={busy} aria-label={`写真${index+1}を外す`} onClick={()=>{request.current=crypto.randomUUID();setPhotos(current=>current.filter(entry=>entry.id!==photo.id).map(entry=>({...entry,id:crypto.randomUUID()})));}}>外す</button></li>)}</ul>}
   </div>}
-  {confirming&&(['supplier_return_complete','work_complete'].includes(confirming.key)?<WorkDateConfirmation title={confirming.key==='work_complete'?'作業完了しますか。':'返品完了しますか。'} purchasedAt={task.purchased_at} savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onConfirm={async date=>{if(confirming.key==='work_complete')await completeDeliveryWork(task.id,date);else await performDatedInventoryAction(task,'supplier_return_complete',date,request.current);request.current=crypto.randomUUID();await onChanged();}}/>:<WorkflowConfirmation button={confirming} busy={busy} onConfirm={()=>void run(confirming,true)} onCancel={()=>setConfirming(null)}/>)}
+  {confirming?.key==='supplier_return_complete'&&<WorkDateConfirmation title="返品完了" purchasedAt={task.purchased_at}
+   savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onReturnConfirm={async(date,trackingNumber)=>{
+    await completeSupplierReturn(task.id,date,trackingNumber,request.current);
+    await onChanged();
+   }}/>}
+  {confirming?.key==='work_complete'&&<WorkDateConfirmation title="作業完了しますか。" purchasedAt={task.purchased_at}
+   savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onConfirm={async date=>{
+    await completeDeliveryWork(task.id,date);
+    await onChanged();
+   }}/>}
+  {confirming&&confirming.key!=='supplier_return_complete'&&confirming.key!=='work_complete'&&
+   <WorkflowConfirmation button={confirming} busy={busy} onConfirm={()=>void run(confirming,true)} onCancel={()=>setConfirming(null)}/>}
  </div>;
 }

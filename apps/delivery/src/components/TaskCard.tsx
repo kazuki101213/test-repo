@@ -68,7 +68,11 @@ function CopyableText({ label, value, displayValue }: { label: string; value: st
 }
 
 export default function TaskCard({ readOnly = false, showAssignee = false, task, amazonImageUrl, members, originalMarketplaceIds, staff, unreadItemIds, onDetailOpened, detailRevision, expandedId, onOpenMember, onOpen, onClose, onTaskChange,selection }: { readOnly?: boolean; showAssignee?: boolean; task: DeliveryInventoryRow; amazonImageUrl: string | null; members: DeliveryInventoryRow[]; originalMarketplaceIds: Map<string, string>; staff: Staff; unreadItemIds: Set<string>; onDetailOpened: (itemId: string) => void; detailRevision: number; expandedId: string | null; onOpenMember: (id: string) => void; onOpen: () => void; onClose: () => void; onTaskChange: (task: DeliveryTask) => void;selection?:{ids:string[];onChange:(ids:string[])=>void} }) {
- const [panel,setPanel]=useState<ProductPanel>(()=>new URLSearchParams(window.location.search).get('openMessages')==='1'?'messages':'photos');
+ const [panel,setPanel]=useState<ProductPanel>(()=>{
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('openComments')==='1')return 'comments';
+  return params.get('openMessages')==='1'?'messages':'photos';
+ });
  const [actionError,setActionError]=useState<string|null>(null);
  const productIdFor=(item:DeliveryTask)=>(item.is_accessory||item.marketplace==='動作品Amazon返品'?item.marketplace_item_id:originalMarketplaceIds.get(item.id)||item.marketplace_item_id)||'—';
  const modelFor=productModelText;
@@ -103,6 +107,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   <div className={`delivery-accessory-details${compact?' compact':''}`}>
    {source(item)}<CopyableText label={trackingLabel(item)} value={item.tracking_no||'—'}/>
    {field('仕入日',jpDate(item.purchased_at))}
+   {item.status==='返品処理'&&item.return_tracking_no&&field('返送の追跡番号',item.return_tracking_no)}
    {item.is_accessory&&field('利用記録',item.accessory_usage_note?.trim()||'—','delivery-accessory-usage')}
    {item.memo?.trim()&&item.memo.trim()!==item.accessory_usage_note&&comments(item)}
   </div>
@@ -116,7 +121,8 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
      <div className="delivery-identity-text"><div className="delivery-serial-line">{selectItem(task)}{status(task)}<strong>{inventorySerial(task)}</strong>{badge(bundled.length?'付属品'+bundled.length+'点':'付属品同梱')}</div><div className="delivery-model-line"><b>{modelFor(task)}</b><span>{task.asin||'—'}{task.asin&&<a className="inventory-inline-link" href={`https://www.amazon.co.jp/dp/${encodeURIComponent(task.asin)}`} target="_blank" rel="noopener noreferrer" aria-label={`${task.asin}をAmazonで開く`}><span className="external-link-arrow" aria-hidden="true" /></a>}</span></div><div className="delivery-main-sku"><CopyableText label="SKU" value={task.sku}/></div><div className="delivery-tracking-id"><CopyableText label={trackingLabel(task)} value={task.tracking_no||'—'}/>{source(task)}</div></div>
     </div>
     {people(task)}
-    <div className="delivery-main-dates">{field('コンディション',task.condition||'—')}{field('仕入日',jpDate(task.purchased_at))}{field('作業完了日',task.packed_on?jpDate(task.packed_on):'未登録')}{comments(task)}</div>
+    <div className="delivery-main-dates">{field('コンディション',task.condition||'—')}{field('仕入日',jpDate(task.purchased_at))}{field('作業完了日',task.packed_on?jpDate(task.packed_on):'未登録')}
+     {task.status==='返品処理'&&task.return_tracking_no&&field('返送の追跡番号',task.return_tracking_no)}{comments(task)}</div>
    </div>
    <div className="delivery-bundled">{bundled.map(item=><section key={item.id} className="delivery-bundled-record" data-item-id={item.id} style={{backgroundColor:inventoryBoxColor(task.status,task.purchased_at)}}>{accessoryInfo(item,true)}</section>)}</div>
    {controls(task)}

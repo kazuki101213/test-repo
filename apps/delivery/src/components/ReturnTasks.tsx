@@ -29,7 +29,7 @@ export default function ReturnTasks({staffId}:{staffId:string}){
    await completeDeliveryNotice(row.id,row.item_id);
    completed.current.add(row.id);
    setRows(current=>current.filter(entry=>entry.id!==row.id));
-   if(row.kind==='reply')window.location.assign('?itemId='+encodeURIComponent(row.item_id)+'&openMessages=1');
+   if(row.kind==='reply')window.location.assign('?itemId='+encodeURIComponent(row.item_id)+'&openComments=1');
   }catch(cause){setError((cause as {message?:string})?.message||'案内を完了できませんでした。');}
   finally{locks.current.delete(row.id);setPending(current=>current.filter(id=>id!==row.id));}
  }
