@@ -20,8 +20,16 @@ not is_accessory and coalesce(channel in ('自己発送','メルカリ','ヤフ�
 from unnest(array['出品中','取引中','販売済','返品処理']) status
 cross join unnest(array['自己発送','メルカリ','ヤフオク','FBA','ヤフフリ',null]) channel
 cross join unnest(array[null::date,current_date]) shipped_on cross join unnest(array[false,true]) is_accessory;
-insert into app.items(id,lot_seq,sku,purchaser_id,deliverer_id,title,cost_amount,marketplace,sales_channel,tracking_no,is_accessory)
-select id,996650+n,(996650+n)::text||case when is_accessory then 'c' else '' end||'-AAQW-20261019-100',(select id from app.staff where code='AA'),'99665000-0000-0000-0000-000000000001','workload metric fixture',100,'ヤフオク',channel,case when status='受取前' then null else 'tracking' end,is_accessory from workload_cases;
+insert into app.products(asin,model_no) values ('B0WORK2084','WORKLOAD-MODEL');
+insert into app.items(id,lot_seq,sku,purchaser_id,deliverer_id,title,cost_amount,marketplace,sales_channel,tracking_no,is_accessory,asin)
+select id,996650+n,(996650+n)::text||case when is_accessory then 'c' else '' end||'-AAQW-20261019-100',
+  (select id from app.staff where code='AA'),'99665000-0000-0000-0000-000000000001',
+  case when legacy_return then 'X001E8Z9QH' else 'workload metric fixture' end,100,
+  (case when legacy_return then '動作品Amazon返品' else 'ヤフオク' end)::app.marketplace,
+  channel,case when status='受取前' then null else 'tracking' end,is_accessory,
+  case when legacy_return then 'B0WORK2084' end
+from workload_cases
+cross join lateral (select not is_accessory and status='商品登録前' and channel='FBA' and shipped_on is null as legacy_return) fixture;
 update app.items i set status=c.status,shipped_on=c.shipped_on from workload_cases c where i.id=c.id;
 do $$begin if exists(select 1 from app.items i join workload_cases c using(id) where i.status<>c.status) then raise exception 'Fixture status changed by workflow validation';end if;end $$;
 
@@ -71,6 +79,12 @@ do $$ declare summary record; bad integer; begin
    or (c.status='商品登録前' and c.channel='FBA' and c.shipped_on is null and not i.on_hand)
    or (c.status='出品中' and c.channel='FBA' and c.shipped_on is not null and i.bucket is not null);
  if bad <> 0 then raise exception 'Incorrect receipt or split shipment classification'; end if;
+ if not exists (select 1 from app.v_deliverer_stock_workload_items detail
+     join app.items i using(id)
+     where i.asin='B0WORK2084' and i.product_id is null and detail.on_hand
+       and detail.model_no='WORKLOAD-MODEL' and detail.title='X001E8Z9QH') then
+   raise exception 'Legacy Amazon return model was not read from its ASIN';
+ end if;
  select * into strict summary from app.v_deliverer_stock_workload where deliverer_id='99665000-0000-0000-0000-000000000002';
  if to_jsonb(summary) - 'deliverer_id' - 'deliverer_name' <> jsonb_build_object(
    'on_hand',0,'awaiting_receipt',0,'inspecting',0,'awaiting_registration',0,'listed_on_hand',0,
