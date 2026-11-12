@@ -436,7 +436,7 @@ async function runSellerWork({patrol=false,checkQueues=true}={}){
    if(await runSellerReadOnlyInspection({...dependencies,profileId:records.diagnosticInstance,fetchRequest,reportDiagnostic:()=>navigationTabs.create({url:chrome.runtime.getURL('report.html'),active:false})}))return;
    if(await runSellerSaleRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;
    if(await runSellerFeedbackRepair({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,fetchRequest}))return;
-   await runOperationQueue({scope:'supplier',storage:STORE,log,run:()=>supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log})});
+   await runOperationQueue({scope:'supplier',storage:STORE,log,run:()=>supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log,scripting:chrome.scripting,prepareAccount})});
    await runOperationQueue({scope:'seller',storage:STORE,log,run:()=>drainRequestedListingBatch(listingBatchId=>drainConfirmedShippingQueue(()=>sellerQueuedOperations({...dependencies,listingBatchId})))});
   }
   const daily=await sellerDaily({...dependencies,records,day:jstDay(),profileId:records.diagnosticInstance,automaticShipping:true});

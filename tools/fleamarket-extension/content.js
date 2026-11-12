@@ -66,8 +66,18 @@
     }
     return {itemId:id,role:seller?'seller':buyer?'buyer':'unknown',state:completed?'completed':buyer?'pending':'unknown',trackingNo:nums.size===1?[...nums][0]:null,trackingAmbiguous:nums.size>1,receiptControls:buttons.filter(t=>RECEIPT.test(t))};
   }
+  function messageContext(a,recipe){
+    const problem=authProblem();if(problem)return {auth:problem};
+    if(a.site==='auctions'&&location.origin==='https://contact.auctions.yahoo.co.jp'&&/^\/(?:buyer|trade)\/(?:top|message|messages)\/?$/.test(location.pathname)){
+      identity(a);
+      const id=getId(a.site,location.href);
+      if(!id)throw Error('取引ナビの商品IDを確認できません');
+      return {itemId:id};
+    }
+    return detail(a,recipe);
+  }
   function conversation(a,recipe){
-    const d=detail(a,recipe);if(d.auth)return d;
+    const d=messageContext(a,recipe);if(d.auth)return d;
     const root=one(recipe.messageScope||'main');
     const marked=[...root.querySelectorAll('[data-testid*="message" i],[class*="message" i],[aria-label*="メッセージ"]')].filter(visible);
     const nodes=marked.filter(e=>{
@@ -82,7 +92,7 @@
       const authorNode=e.querySelector('[data-testid*="author" i],[class*="author" i],[aria-label*="さん"]');
       const author=norm(authorNode?.getAttribute('aria-label')||authorNode?.innerText||e.getAttribute('data-author')||'').slice(0,200)||null;
       const ownName=(a.identity?.text||'').replace(/さんのマイページ$/,'');
-      const own=author===ownName||!!author&&!!ownName&&author.includes(ownName);
+      const own=(a.site==='auctions'&&author==='あなた')||author===ownName||!!author&&!!ownName&&author.includes(ownName);
       const time=e.querySelector('time[datetime]');
       const timeText=norm(time?.getAttribute('datetime')||'');
       const signature=[author||'',timeText,body].join('|');
@@ -95,31 +105,47 @@
     return {...d,messages};
   }
   function messageComposer(a,recipe,expected){
-    const d=detail(a,recipe);
-    if(d.auth||d.itemId!==expected)throw new Error('送信する取引IDが一致しません');
+    const d=messageContext(a,recipe);
+    if(d.auth||d.itemId!==expected)throw Error('送信する取引IDが一致しません');
     const root=one(recipe.messageScope||'main');
-    const forms=[...root.querySelectorAll('form')].filter(visible).map(form=>({form,fields:[...form.querySelectorAll('textarea,[contenteditable="true"]')].filter(visible),buttons:[...form.querySelectorAll('button,input[type="submit"]')].filter(visible)})).filter(x=>x.fields.length===1&&x.buttons.length===1);
-    if(forms.length!==1)throw new Error('取引メッセージの入力欄と送信ボタンを一組に特定できません');
-    const {form,fields:[field],buttons:[button]}=forms[0];
-    const label=norm(field.getAttribute('aria-label')||field.getAttribute('placeholder')||field.getAttribute('data-placeholder'));
-    const buttonLabel=controlText(button);
-    if(!/メッセージ|取引連絡|コメント/.test(label+' '+buttonLabel)||!/送信|送る|投稿/.test(buttonLabel))throw new Error('取引メッセージ用の送信フォームと確認できません');
-    if(field.disabled||button.disabled||!visible(form))throw new Error('取引メッセージのフォームが利用できません');
-    return {field,button,form};
+    const buttonsIn=scope=>[...scope.querySelectorAll('button,input[type="submit"]')]
+      .filter(element=>visible(element)&&/^(送信|送信する|送る|投稿)$/.test(controlText(element)));
+    const fields=[...root.querySelectorAll('textarea,[contenteditable="true"]')].filter(visible);
+    const candidates=fields.map(field=>{
+      const label=norm(field.getAttribute('aria-label')||field.getAttribute('placeholder')||field.getAttribute('data-placeholder'));
+      if(!/メッセージ|取引連絡|コメント/.test(label)&&!(a.site==='auctions'&&label==='入力してください'))return null;
+      let scope=field.closest('form');
+      if(!scope&&a.site==='auctions'){
+        scope=field.parentElement;
+        while(scope&&scope!==root&&!buttonsIn(scope).length)scope=scope.parentElement;
+      }
+      if(!scope||scope===root||!root.contains(scope))return null;
+      const [button,extra]=buttonsIn(scope);
+      return button&&!extra?{field,button}:null;
+    }).filter(Boolean);
+    if(candidates.length!==1||candidates[0].field.disabled)throw Error('取引メッセージの入力欄と送信ボタンを一組に特定できません');
+    return candidates[0];
   }
   function setMessageValue(field,value){
     if(field.isContentEditable){field.textContent=value;field.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));return;}
     setValue(field,value);
   }
   async function sendMarketplaceMessage(a,recipe,expected,body){
-    if(typeof body!=='string'||!body.trim()||body.length>2000)throw new Error('メッセージは1〜2000文字で入力してください');
-    identity(a);const {field,button}=messageComposer(a,recipe,expected);
-    if(field.isContentEditable?norm(field.innerText):field.value)throw new Error('入力欄に既存の文章があるため送信を中止しました');
-    setMessageValue(field,body.trim());
-    if(norm(field.isContentEditable?field.innerText:field.value)!==body.trim())throw new Error('送信文を入力欄で確認できません');
-    if(!visible(button)||button.disabled)throw new Error('送信ボタンが利用できません');
-    identity(a);if(getId(a.site,location.href)!==expected)throw new Error('送信直前に取引画面が変わりました');
-    button.click();return {clicked:true,itemId:expected};
+    let button;
+    try{
+      if(typeof body!=='string'||!body.trim()||body.length>2000)throw Error('メッセージは1〜2000文字で入力してください');
+      const {field,button:sendButton}=messageComposer(a,recipe,expected);
+      if(field.isContentEditable?norm(field.innerText):field.value)throw Error('入力欄に既存の文章があります');
+      setMessageValue(field,body.trim());
+      await new Promise(resolve=>setTimeout(resolve,200));
+      const value=field.isContentEditable?field.innerText:field.value;
+      if(norm(value)!==norm(body))throw Error('送信文を入力欄で確認できません');
+      if(!visible(sendButton)||sendButton.disabled||sendButton.getAttribute('aria-disabled')==='true')throw Error('送信ボタンが利用できません');
+      if(messageContext(a,recipe).itemId!==expected)throw Error('送信直前に取引画面が変わりました');
+      button=sendButton;
+    }catch(error){return {clicked:false,reason:error.message};}
+    button.click();
+    return {clicked:true,itemId:expected};
   }
 
   function purchaseDate(row,site,referenceDay){
