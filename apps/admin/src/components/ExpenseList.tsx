@@ -5,11 +5,19 @@ import type { ExpenseInput, ExpenseDraft } from '../expenses';
 import { expenseCategories, expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
 import AskulExpenseImport from './AskulExpenseImport';
+import AskulMaterialAnalysis from './AskulMaterialAnalysis';
 import './ExpenseSelection.css';
 
 type ExpenseCategory = typeof expenseCategories[number];
 const compactExpenseLayout = 'screen and (max-width: 1023px)';
 const displayCategory = (row: ExpenseInput) => row.category === '固定費' ? '固定費' : row.category === '給与' || row.category === '外注費' ? '外注費' : '変動費';
+const isAskulExpense = (row: ExpenseInput) => row.memo?.startsWith('アスクル ') === true;
+
+function expenseContentLabel(row: ExpenseInput, staffNames: Record<string, string>) {
+  const assignee = row.staff_id && staffNames[row.staff_id];
+  return isAskulExpense(row) && assignee && row.name !== assignee && !row.name.startsWith(`${assignee} `)
+    ? `${assignee} ${row.name}` : row.name;
+}
 
 function useExpenseStaffNames(rows: ExpenseInput[]) {
   const [names, setNames] = useState<Record<string, string>>({});
@@ -25,9 +33,10 @@ function useExpenseStaffNames(rows: ExpenseInput[]) {
 
 export function ExpenseTable({ rows }: { rows: ExpenseInput[] }) {
   const staffNames = useExpenseStaffNames(rows);
+  const showStaffColumn = rows.some(row => !isAskulExpense(row) && row.staff_id);
   return rows.length === 0 ? <p className="sub">該当する経費はありません。</p> : <div className="scroll expense-table"><table>
-    <thead><tr><th>日付</th><th>区分</th><th>内容</th><th>担当者</th><th className="num">金額</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.id}><td>{row.incurred_on}</td><td>{expenseCategoryLabel(row.category)}</td><td className="detail-description">{row.name}</td><td>{row.staff_id ? staffNames[row.staff_id] || '—' : '—'}</td><td className="num">{yen(row.amount)}</td></tr>)}</tbody>
+    <thead><tr><th>日付</th><th>区分</th><th>内容</th>{showStaffColumn && <th>担当者</th>}<th className="num">金額</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.id}><td>{row.incurred_on}</td><td>{expenseCategoryLabel(row.category)}</td><td className="detail-description">{expenseContentLabel(row, staffNames)}</td>{showStaffColumn && <td>{!isAskulExpense(row) && row.staff_id ? staffNames[row.staff_id] || '—' : '—'}</td>}<td className="num">{yen(row.amount)}</td></tr>)}</tbody>
   </table></div>;
 }
 
@@ -50,6 +59,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const [deleteError, setDeleteError] = useState('');
   const [message, setMessage] = useState('');
   const [askulImportOpen, setAskulImportOpen] = useState(false);
+  const [materialAnalysisOpen, setMaterialAnalysisOpen] = useState(false);
   const [askulResult, setAskulResult] = useState<Awaited<ReturnType<typeof importAskulExpenses>> | null>(null);
   useEffect(() => {
     const screen = window.matchMedia(compactExpenseLayout);
@@ -94,13 +104,14 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const visibleCategories = compact && categoryFilter ? [categoryFilter] : expenseCategories;
   const search = query.trim().toLowerCase();
   const matchesSearch = (name: string) => name.toLowerCase().includes(search);
-  const filtered = rows.filter(row => visibleCategories.includes(displayCategory(row)) && matchesSearch(row.name));
+  const filtered = rows.filter(row => visibleCategories.includes(displayCategory(row)) && matchesSearch(expenseContentLabel(row, staffNames)));
   const pending = drafts.filter(d => !rows.some(row => row.id === d.id || (expenseCategoryLabel(row.category) === d.category && row.incurred_on.slice(0, 7) === d.target_month.slice(0, 7) && row.name === d.name))
     && matchesSearch(d.name));
   return <div className="dashboard-workspace with-expense registration-workspace">
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費">
     <div className="toolbar expense-search-toolbar">
       <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => { setAskulResult(null); setAskulImportOpen(true); }}>アスクルCSV取り込み</button>
+      <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => setMaterialAnalysisOpen(true)}>資材の購入分析</button>
       {compact && <select aria-label="経費区分で絞り込む" value={categoryFilter} disabled={!!deletion} onChange={e => {
         setCategoryFilter(e.currentTarget.value as ExpenseCategory | '');
         setSelected(new Set());
@@ -112,7 +123,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
       <button type="button" className="btn" disabled={loading || expenseBusy || !!deletion || !selected.size} onClick={() => { setDeleteError(''); setMessage(''); setDeletion({ rows: filtered.filter(row => selected.has(row.id)).map(row => ({...row})), requestId: crypto.randomUUID() }); }}>削除</button>
     </div>
     {message && <p className="ok" role="status">{message}</p>}
-    {askulResult && <p className="ok" role="status" data-askul-inserted={askulResult.inserted} data-askul-skipped={askulResult.skipped}>アスクルCSVから{askulResult.inserted}件を登録しました。登録済み{askulResult.skipped}件。{askulResult.assignedExisting > 0 && `登録済みの${askulResult.assignedExisting}件に担当者を設定しました。`}</p>}
+    {askulResult && <p className="ok" role="status" data-askul-inserted={askulResult.inserted} data-askul-skipped={askulResult.skipped}>アスクルCSVから{askulResult.inserted}件を登録しました。登録済み{askulResult.skipped}件。{askulResult.assignedExisting > 0 && `登録済みの${askulResult.assignedExisting}件に担当者を設定しました。`}{askulResult.quantitiesAdded > 0 && `登録済みの${askulResult.quantitiesAdded}件に資材の購入数量を追加しました。`}</p>}
     {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
       <div className="expense-columns-scroll"><div className="expense-columns">{visibleCategories.map(category => {
         const entries = filtered.filter(row => displayCategory(row) === category);
@@ -122,8 +133,8 @@ export default function ExpenseList({ revision }: { revision: number }) {
           <header><h3>{category}</h3><p>{entries.length}件 · <strong>{yen(entries.reduce((sum, row) => sum + row.amount, 0))}</strong></p></header>
           {months.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{months.map(month => <li key={month} className="expense-month-group"><h4>{month.replace('-', '年')}月 · {yen(entries.filter(row => row.incurred_on.startsWith(month)).reduce((sum, row) => sum + row.amount, 0))}</h4><ul className="expense-entries">{entries.filter(row => row.incurred_on.startsWith(month)).map(row => <li key={row.id}>
             <div className="expense-entry-top"><time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time><label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!deletion} onChange={e => { const checked=e.target.checked; setSelected(current => { const next=new Set(current); checked ? next.add(row.id) : next.delete(row.id); return next; }); }} /></label></div>
-            <div>{editCell(row, 'name', row.name)}</div>
-            {row.staff_id && staffNames[row.staff_id] && <div className="expense-hint">担当者 {staffNames[row.staff_id]}</div>}
+            <div>{editCell(row, 'name', expenseContentLabel(row, staffNames))}</div>
+            {!isAskulExpense(row) && row.staff_id && staffNames[row.staff_id] && <div className="expense-hint">担当者 {staffNames[row.staff_id]}</div>}
             <div className="expense-entry-bottom"><span className="expense-hint">{editCell(row, 'category', expenseCategoryLabel(row.category))}</span><strong>{editCell(row, 'amount', yen(row.amount))}</strong></div>
           </li>)}{categoryDrafts.filter(row => row.target_month.startsWith(month)).map(row => <li key={row.id}>
             <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.name}の金額と日付を入力`} onClick={() => { setEditing(undefined); setDraft(row); }}>
@@ -149,6 +160,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
     setAskulResult(result);
     setSavedRevision(value => value + 1);
   }} />}
+  {materialAnalysisOpen && <AskulMaterialAnalysis onClose={() => setMaterialAnalysisOpen(false)} />}
   {deletion && <ExpenseDeleteConfirmation rows={deletion.rows} busy={deleting} error={deleteError} onDelete={() => void removeSelected()} onClose={() => { if (!deleteLock.current) setDeletion(null); }} />}
   </div>;
 }

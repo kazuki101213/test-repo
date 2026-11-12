@@ -6,6 +6,7 @@ import { matchesInventorySearch, type InventorySearchField } from './inventorySe
 import type { SaleRow } from './sales';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
+import { materialPurchaseWindow, type MaterialPurchase, type MaterialAnalysisInput, type MaterialAnalysis } from './materialPurchases';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
   InventoryMarketplaceLabels, ItemInsert, ItemStatus, ItemView, LedgerRow,
@@ -210,6 +211,7 @@ export async function saveExpenses(inputs: ExpenseInput[]): Promise<void> {
 export async function importAskulExpenses(rows: readonly AskulExpenseInput[]) {
   let inserted = 0;
   let assignedExisting = 0;
+  let quantitiesAdded = 0;
   for (let start = 0; start < rows.length; start += askulExpenseBatchSize) {
     const batch = rows.slice(start, start + askulExpenseBatchSize);
     const { data, error } = await getSupabase().from('expenses')
@@ -217,6 +219,14 @@ export async function importAskulExpenses(rows: readonly AskulExpenseInput[]) {
     if (error) throw new Error(error.message);
     inserted += data?.length ?? 0;
     const added = new Set(data?.map(row => row.id));
+    const metadata = batch.flatMap(row => !added.has(row.id) && row.askul_item !== null && row.askul_quantity !== null
+      ? [{ id: row.id, item: row.askul_item, quantity: row.askul_quantity }] : []);
+    if (metadata.length) {
+      const { data: filled, error: metadataError } = await getSupabase()
+        .rpc('fill_askul_material_quantities', { p_rows: metadata });
+      if (metadataError) throw new Error(metadataError.message);
+      quantitiesAdded += Number(filled ?? 0);
+    }
     const assignments = new Map<string, string[]>();
     for (const row of batch) {
       if (!row.staff_id || added.has(row.id)) continue;
@@ -232,7 +242,30 @@ export async function importAskulExpenses(rows: readonly AskulExpenseInput[]) {
       assignedExisting += updated?.length ?? 0;
     }
   }
-  return { inserted, skipped: rows.length - inserted, assignedExisting };
+  return { inserted, skipped: rows.length - inserted, assignedExisting, quantitiesAdded };
+}
+
+export async function fetchMaterialPurchases(month: string): Promise<MaterialPurchase[]> {
+  const { from, until } = materialPurchaseWindow(month);
+  return readAllRows<MaterialPurchase & { id: string }>(async (start, end) => {
+    const { data, error } = await getSupabase().from('expenses')
+      .select('id,incurred_on,name,staff_id,amount,askul_item,askul_quantity')
+      .is('deleted_at', null).not('askul_quantity', 'is', null)
+      .gte('incurred_on', from).lt('incurred_on', until)
+      .order('incurred_on').order('id').range(start, end);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as (MaterialPurchase & { id: string })[];
+  });
+}
+
+export async function analyzeMaterialPurchases(rows: MaterialAnalysisInput[]): Promise<MaterialAnalysis> {
+  const { data, error } = await getSupabase().functions.invoke<MaterialAnalysis>('askul-material-analysis', { body: { rows } });
+  if (error) {
+    const response = error.context instanceof Response ? await error.context.json().catch(() => null) : null;
+    throw new Error(typeof response?.error === 'string' ? response.error : 'Geminiの分析を取得できませんでした。');
+  }
+  if (!data) throw new Error('Geminiの分析結果を取得できませんでした。');
+  return data;
 }
 
 export async function fetchAskulDeliveryProfiles(): Promise<{ staff_id: string; address: string }[]> {
