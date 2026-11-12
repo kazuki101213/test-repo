@@ -1,4 +1,4 @@
-import { askulExpenseBatchSize, staffDisplayName, type AskulExpenseInput } from '@bussan/shared';
+import { askulExpenseBatchSize, catalogProductCategory, staffDisplayName, type AskulExpenseInput } from '@bussan/shared';
 import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
 import { getSupabase, STATUSES, usageRecordText, purchaseSourceFields, salesDestinationFields } from '@bussan/shared';
@@ -6,7 +6,7 @@ import { matchesInventorySearch, type InventorySearchField } from './inventorySe
 import type { SaleRow } from './sales';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
-import { materialPurchaseWindow, type MaterialPurchase, type MaterialAnalysisInput, type MaterialAnalysis } from './materialPurchases';
+import { materialPurchaseWindow, type BubbleWrapEstimate, type MaterialPurchase, type MaterialWorkload, type MaterialAnalysisInput, type MaterialAnalysis } from './materialPurchases';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
   InventoryMarketplaceLabels, ItemInsert, ItemStatus, ItemView, LedgerRow,
@@ -258,8 +258,29 @@ export async function fetchMaterialPurchases(month: string): Promise<MaterialPur
   });
 }
 
-export async function analyzeMaterialPurchases(rows: MaterialAnalysisInput[]): Promise<MaterialAnalysis> {
-  const { data, error } = await getSupabase().functions.invoke<MaterialAnalysis>('askul-material-analysis', { body: { rows } });
+export async function fetchMaterialWorkload(month: string): Promise<Map<string, MaterialWorkload>> {
+  const { until } = materialPurchaseWindow(month);
+  type WorkItem = Pick<ItemView, 'id' | 'deliverer_id' | 'title' | 'model_no'>;
+  const items = await readAllRows<WorkItem>(async (start, end) => {
+    const { data, error } = await getSupabase().from('v_items')
+      .select('id,deliverer_id,title,model_no').eq('is_accessory', false).not('deliverer_id', 'is', null)
+      .gte('packed_on', month + '-01').lt('packed_on', until).order('id').range(start, end);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as WorkItem[];
+  });
+  const workload = new Map<string, MaterialWorkload>();
+  for (const item of items) {
+    if (!item.deliverer_id) continue;
+    const counts = workload.get(item.deliverer_id) ?? { completedItems: 0, recorderItems: 0 };
+    counts.completedItems++;
+    if (catalogProductCategory(item) === 'ブルーレイレコーダー') counts.recorderItems++;
+    workload.set(item.deliverer_id, counts);
+  }
+  return workload;
+}
+
+export async function analyzeMaterialPurchases(rows: MaterialAnalysisInput[], bubbleWrap: BubbleWrapEstimate[]): Promise<MaterialAnalysis> {
+  const { data, error } = await getSupabase().functions.invoke<MaterialAnalysis>('askul-material-analysis', { body: { rows, bubbleWrap } });
   if (error) {
     const response = error.context instanceof Response ? await error.context.json().catch(() => null) : null;
     throw new Error(typeof response?.error === 'string' ? response.error : 'Geminiの分析を取得できませんでした。');
