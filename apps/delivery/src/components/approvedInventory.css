@@ -203,6 +203,19 @@
  .delivery-independent-record .delivery-accessory-identity:has(.delivery-fba-select) { padding-right:38px; }
 }
 
+@media(max-width:1279px) {
+ .app .task-card.approved-delivery-card .delivery-record-actions .workflow-buttons:has([data-action="supplier_return_complete"]) {
+  display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); width:100%;
+ }
+ .workflow-buttons:has([data-action="supplier_return_complete"]) :is([data-action="comments"],[data-action="messages"]) {
+  grid-column:span 3;
+ }
+ .workflow-buttons:has([data-action="supplier_return_complete"]) :is([data-action="supplier_return_complete"],[data-action="return_impossible"],[data-action="report_cancel"]) {
+  grid-column:span 2;
+ }
+ .delivery-record-actions:has([data-action="supplier_return_complete"]) { width:100%; }
+}
+
 /* Match every expanded inventory panel to its workflow action controls. */
 .app .task-card.approved-delivery-card .task-detail-inline .btn {
  width:auto!important; height:auto!important; min-height:28px!important; min-width:0; margin:0;

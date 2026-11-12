@@ -3,12 +3,12 @@ import DateInput from './DateInput';
 import WorkflowConfirmation from './WorkflowConfirmation';
 const todayInJapan=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 type WorkDateProps = {
- title: string; purchasedAt: string | null; savedDate?: string | null; onCancel: () => void;
+ title: string; purchasedAt: string | null; savedDate?: string | null; onCancel: () => void; sendsReturnMessage?: boolean;
 } & (
  { onConfirm: (date: string) => Promise<void>; onReturnConfirm?: never } |
  { onConfirm?: never; onReturnConfirm: (date: string, trackingNumber: string) => Promise<void> }
 );
-export default function WorkDateConfirmation({title,purchasedAt,savedDate,onConfirm,onReturnConfirm,onCancel}:WorkDateProps){
+export default function WorkDateConfirmation({title,purchasedAt,savedDate,onConfirm,onReturnConfirm,onCancel,sendsReturnMessage}:WorkDateProps){
  const [date,setDate]=useState(()=>savedDate||todayInJapan()),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [trackingNumber,setTrackingNumber]=useState('');
  const lock=useRef(false);
@@ -31,6 +31,7 @@ export default function WorkDateConfirmation({title,purchasedAt,savedDate,onConf
   {onReturnConfirm&&<label className="work-date-field">追跡番号<input type="text" value={trackingNumber}
     required maxLength={100} autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={busy}
     placeholder="例：1234-5678-9012" onChange={event=>setTrackingNumber(event.target.value)} /></label>}
+  {sendsReturnMessage&&<p className="muted">返品完了を押すと、仕入先に取引メッセージで追跡番号を送信します。</p>}
   {error&&<p className="error" role="alert">{error}</p>}
  </WorkflowConfirmation>;
 }
