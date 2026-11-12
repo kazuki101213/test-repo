@@ -20,7 +20,7 @@ from app.items where lot_seq=997861;
 reset role;
 
 do $$begin
-  if (select array_agg(s.code order by s.code)
+  if (select array_agg(s.code::text order by s.code)
       from app.admin_push_events e join app.staff s on s.id=e.staff_id
       where e.kind='malfunction_message' and e.source_id='99786100-0000-4000-8000-000000000001')
     is distinct from array['AA','EE']::text[] then
