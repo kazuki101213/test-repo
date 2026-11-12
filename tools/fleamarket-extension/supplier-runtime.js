@@ -43,7 +43,7 @@ export async function supplierQueuedOperations({settings,rpc,tabs,content,log,sc
   }
   const recipe=settings.recipes[account.site]||{};
   const read=async()=>{
-   const result=await content(borrowed.id,'messageDetail',{account,recipe});
+   const result=await content(borrowed.id,'messageDetail',{account,recipe,expectedBody:job.kind==='send'?job.body:null});
    if(result.auth||result.itemId!==destination)throw Error('取引の商品IDが一致しません');
    return result.messages||[];
   };
