@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseAskulExpenseCsv } from '../packages/shared/src/askulCsv.ts';
+import { findAskulDeliveryAssignee, parseAskulExpenseCsv, parseAskulExpenseReport } from '../packages/shared/src/askulCsv.ts';
 
 const headers = '注文先サプライヤ名,出荷日,出荷オーダーNo,出荷オーダー行No,注文時商品名,出荷数量,小計金額（税込）,値引額（税込）,税率,経費区分';
 const purchase = `アスクル,2026/11/10,'74439335,'1,"梱包材, ""透明""",1,"1,020",100,0.1,1`;
@@ -22,4 +22,20 @@ test('preserves ASKUL subtotals, distinct fees and signed returns across repeat 
 test('fails the whole CSV before import for duplicate source rows or an invalid date', async () => {
   await assert.rejects(parse([purchase, purchase]), /重複/);
   await assert.rejects(parse([fee.replace('11/10', '11/31')]), /出荷日/);
+});
+
+test('uses all three address columns for an unambiguous match without adding the address to the expense', async () => {
+  const addressColumns = '注文時お届け先住所1,注文時お届け先住所2,注文時お届け先住所3';
+  const bytes = new TextEncoder().encode(headers + ',' + addressColumns + '\r\n'
+    + purchase + ",東京都千代田区,'丸の内１丁目２番３号,見本ビル\r\n").buffer;
+  const report = await parseAskulExpenseReport(bytes);
+  const address = report.deliveryAddresses[0];
+  const profile = { staff_id: 'staff-a', address: '〒100-0000 東京都千代田区丸の内1-2-3 見本ビル' };
+  assert.equal(findAskulDeliveryAssignee(address, [profile]), 'staff-a');
+  assert.equal(findAskulDeliveryAssignee(address, [profile, { ...profile, staff_id: 'staff-b' }]), null);
+  assert.equal(findAskulDeliveryAssignee(address, [{ ...profile, address: '東京都千代田区丸の内1-2-3 別ビル' }]), null);
+  assert.equal(report.rows[0].staff_id, null);
+  assert.equal(report.rows[0].id, (await parse([purchase]))[0].id);
+  assert.ok(!JSON.stringify(report.rows).includes('千代田区'));
+  await assert.rejects(parseAskulExpenseReport(new TextEncoder().encode(headers + ',注文時お届け先住所1\n' + purchase + ',東京都').buffer), /住所1・2・3/);
 });
