@@ -31,6 +31,13 @@ export function exactFbaLabel(rows: Summary[], sku: string, asin: string) {
   return {fnsku: codes[0]!, title: matches.find(row => row.productName?.trim())?.productName?.trim()};
 }
 
+export function matchingAliasSku(rows: Summary[], aliases: string[], asin: string) {
+  const matches = [...new Set(rows.flatMap(row =>
+    row.sellerSku && row.asin === asin && aliases.includes(row.sellerSku) ? [row.sellerSku] : []
+  ))];
+  return matches.length === 1 ? matches[0] : null;
+}
+
 type ImageGroup = {marketplaceId?: string; images?: {variant?: string; link?: string}[]};
 export function catalogPhoto(groups: ImageGroup[]) {
   return groups.find(group => group.marketplaceId === marketplace)?.images?.find(image =>
@@ -87,15 +94,36 @@ export async function handler(req: Request): Promise<Response> {
       headers: {'x-amz-access-token': accessToken, 'x-amz-date': new Date().toISOString().replace(/[:-]|\.\d{3}/g, ''), 'User-Agent': 'BussanDelivery/1.0 (Language=TypeScript; Platform=Supabase)'},
       signal: AbortSignal.timeout(10000),
     });
-    const result = await get('/fba/inventory/v1/summaries', new URLSearchParams({
-      granularityType: 'Marketplace', granularityId: marketplace, marketplaceIds: marketplace, sellerSkus: item.sku,
-    }));
-    if (!result.ok) throw new LabelError(502, result.status === 403
-      ? 'AmazonのFBA在庫へのアクセス権限を確認してください。'
-      : 'AmazonからFNSKUを取得できません。時間をおいて再試行してください。');
-    const summaries = (await result.json()).payload?.inventorySummaries;
-    if (!Array.isArray(summaries)) throw new LabelError(502, 'AmazonのFBA在庫応答が不正です。');
-    const {fnsku, title} = exactFbaLabel(summaries, item.sku, item.asin!);
+    const readSummaries = async (skus: string[]): Promise<Summary[]> => {
+      const result = await get('/fba/inventory/v1/summaries', new URLSearchParams({
+        granularityType: 'Marketplace', granularityId: marketplace, marketplaceIds: marketplace, sellerSkus: skus.join(','),
+      }));
+      if (!result.ok) throw new LabelError(502, result.status === 403
+        ? 'AmazonのFBA在庫へのアクセス権限を確認してください。'
+        : 'AmazonからFNSKUを取得できません。時間をおいて再試行してください。');
+      const summaries = (await result.json()).payload?.inventorySummaries;
+      if (!Array.isArray(summaries)) throw new LabelError(502, 'AmazonのFBA在庫応答が不正です。');
+      return summaries;
+    };
+    let sku = item.sku;
+    let summaries = await readSummaries([sku]);
+    if (!summaries.some(row => row.sellerSku === sku && row.asin === item.asin)) {
+      const aliases = await sb.from('item_sku_aliases').select('sku').eq('item_id', input.itemId).neq('sku', sku);
+      if (aliases.error) throw new LabelError(502, '商品のSKU履歴を確認できません。');
+      const historicalSkus = (aliases.data ?? []).map(row => row.sku);
+      if (historicalSkus.length) {
+        const historical: Summary[] = [];
+        for (let offset = 0; offset < historicalSkus.length; offset += 50) {
+          historical.push(...await readSummaries(historicalSkus.slice(offset, offset + 50)));
+        }
+        const matchedSku = matchingAliasSku(historical, historicalSkus, item.asin!);
+        if (matchedSku) {
+          sku = matchedSku;
+          summaries = historical;
+        }
+      }
+    }
+    const {fnsku, title} = exactFbaLabel(summaries, sku, item.asin!);
     let image: string | null = null;
     if (input.includePhoto === true) {
       const catalog = await get('/catalog/2022-04-01/items/' + encodeURIComponent(item.asin!), new URLSearchParams({

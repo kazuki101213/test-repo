@@ -10,7 +10,7 @@ const asin = 'B0006NL5SM';
 const image = 'https://m.media-amazon.com/images/P/B0006NL5SM.01.LZZZZZZZ.jpg';
 const market = 'A1VC38T7YXB528';
 
-for (const scenario of ['anonymous', 'other-worker', 'changed-channel', 'wrong-sku', 'unknown-fnsku', 'catalog-missing', 'with-photo', 'without-photo']) {
+for (const scenario of ['anonymous', 'other-worker', 'changed-channel', 'wrong-sku', 'unknown-fnsku', 'catalog-missing', 'with-photo', 'without-photo', 'historical-sku']) {
   Deno.test('FBA labels: ' + scenario, async () => {
     const originalFetch = globalThis.fetch;
     const values: Record<string, string> = {
@@ -34,6 +34,10 @@ for (const scenario of ['anonymous', 'other-worker', 'changed-channel', 'wrong-s
           is_accessory: true, deliverer_id: scenario === 'other-worker' ? 'different-worker' : worker,
         }]);
         if (url.pathname.endsWith('/staff')) return json([{is_active: true}]);
+        if (url.pathname.endsWith('/item_sku_aliases')) {
+          assert(url.searchParams.get('item_id') === 'eq.' + itemId, 'Alias lookup must be scoped to this item');
+          return json(scenario === 'historical-sku' ? [{sku: sku.replace(/-400$/,'-350')}] : []);
+        }
         if (url.pathname === '/auth/o2/token') {
           assert((init?.body as URLSearchParams).get('refresh_token') === 'test-refresh', 'Wrong Amazon account');
           return json({access_token: 'test-access'});
@@ -41,9 +45,12 @@ for (const scenario of ['anonymous', 'other-worker', 'changed-channel', 'wrong-s
         assert(url.hostname === 'sellingpartnerapi-fe.amazon.com' && (init?.method ?? 'GET') === 'GET', 'Unexpected Amazon write or host');
         assert(url.searchParams.get('marketplaceIds') === market, 'Wrong marketplace');
         if (url.pathname === '/fba/inventory/v1/summaries') {
-          assert(url.searchParams.get('sellerSkus') === sku, 'Unmodified seller SKU required for Amazon');
+          const requestedSku = url.searchParams.get('sellerSkus');
+          const formerSku = sku.replace(/-400$/,'-350');
+          assert(requestedSku === sku || (scenario === 'historical-sku' && requestedSku === formerSku), 'Unmodified seller SKU required for Amazon');
+          if (scenario === 'historical-sku' && requestedSku === sku) return json({payload: {inventorySummaries: []}});
           return json({payload: {inventorySummaries: [{
-            sellerSku: scenario === 'wrong-sku' ? 'other-sku' : sku,
+            sellerSku: scenario === 'wrong-sku' ? 'other-sku' : requestedSku,
             asin, fnSku: scenario === 'unknown-fnsku' ? asin : 'X001234567', productName: 'DT 770 PRO',
           }]}});
         }
@@ -63,7 +70,7 @@ for (const scenario of ['anonymous', 'other-worker', 'changed-channel', 'wrong-s
       if (response.ok) {
         assert(body.fnsku === 'X001234567' && body.condition === '非常に良い', 'Incorrect label');
         assert(body.modelNo === 'DT 770 PRO', 'Inventory model number missing');
-        assert(body.image === (scenario === 'with-photo' ? image : null), 'Incorrect image');
+        assert(body.image === (['with-photo','historical-sku'].includes(scenario) ? image : null), 'Incorrect image');
       }
       if (['anonymous','other-worker','changed-channel'].includes(scenario)) assert(!calls.some(url => url.includes('amazon.com')), 'Amazon contacted before access checks');
       if (scenario === 'without-photo') assert(!calls.some(url => url.includes('/catalog/')), 'Unrequested photo lookup');

@@ -55,6 +55,10 @@ with chosen as (
 )
 insert into app.fba_inbound_items(plan_id,item_id,sku,asin,title,condition,sales_channel)
 select plan.id,chosen.id,chosen.sku,'B000000001',chosen.title,'良い',chosen.sales_channel from plan cross join chosen;
+-- Amazon receipts keep the original SKU while inventory follows the cost.
+update app.items i set cost_amount=130
+from workload_cases c where i.id=c.id and not c.is_accessory and c.status='出品中'
+  and c.channel='FBA' and c.shipped_on is null;
 
 grant select on workload_cases to authenticated;
 set local role authenticated;

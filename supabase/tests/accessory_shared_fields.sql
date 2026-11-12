@@ -8,13 +8,15 @@ begin
  select id into strict worker from app.staff where code='DD';
  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,tracking_no,condition,shipped_on,sold_on)
  values(n,buyer,worker,'2026-10-01','shared-field body',9000,'ヤフオク','body-purchase-tracking','良い','2026-10-15','2026-10-16') returning * into body;
- before_parent:=to_jsonb(body);
+ before_parent:=to_jsonb(body)-'sku'-'updated_at';
  insert into app.items(lot_seq,parent_item_id,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,marketplace_item_id,tracking_no,condition,shipped_on,sold_on)
  values(n,body.id,true,buyer,worker,'2026-10-05','separately purchased remote',600,'メルカリ','remote-order','remote-purchase-tracking','非常に良い',null,null) returning * into child;
  if (child.condition,child.shipped_on,child.sold_on) is distinct from (body.condition,body.shipped_on,body.sold_on)
  then raise exception 'Late accessory did not inherit all three body fields';end if;
- if (select to_jsonb(i) from app.items i where id=body.id) is distinct from before_parent
+ if (select to_jsonb(i)-'sku'-'updated_at' from app.items i where id=body.id) is distinct from before_parent
  then raise exception 'Accessory registration changed its body';end if;
+ if (select split_part(i.sku,'-',4) from app.items i where id=body.id)<>'960'
+ then raise exception 'Accessory registration did not refresh its body SKU';end if;
  if child.marketplace<>'メルカリ' or child.marketplace_item_id<>'remote-order' or child.tracking_no<>'remote-purchase-tracking'
   or child.purchased_at::date<>'2026-10-05'::date or child.cost_amount<>600
  then raise exception 'Accessory purchase identity overwritten';end if;

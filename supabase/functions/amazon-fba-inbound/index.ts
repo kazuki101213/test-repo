@@ -291,7 +291,15 @@ export async function handler(req:Request):Promise<Response>{
    eligiblePhase(plan,'draft');validateBoxes(plan.work.boxes,items);
    const current=await db.from('items').select('id,sku,asin,condition,status,deliverer_id,sales_channel').in('id',items.map(i=>i.item_id));
    if(current.error)throw new WorkflowError(502,'納品商品の最新情報を取得できませんでした。');
-   if(!items.every(i=>current.data?.some(x=>x.id===i.item_id&&x.sku===i.sku&&x.asin===i.asin&&x.condition===i.condition&&
+   const currentById=new Map(current.data?.map(row=>[row.id,row]));
+   const formerSkus=items.filter(item=>currentById.get(item.item_id)?.sku!==item.sku).map(item=>item.sku);
+   const aliases=new Map<string,string>();
+   if(formerSkus.length){
+    const result=await db.from('item_sku_aliases').select('sku,item_id').in('sku',formerSkus);
+    if(result.error)throw new WorkflowError(502,'納品商品のSKU履歴を確認できませんでした。');
+    for(const row of result.data??[])aliases.set(row.sku,row.item_id);
+   }
+   if(!items.every(i=>current.data?.some(x=>x.id===i.item_id&&(x.sku===i.sku||aliases.get(i.sku)===x.id)&&x.asin===i.asin&&x.condition===i.condition&&
      x.status==='商品登録前'&&x.deliverer_id===plan.staff_id&&(x.sales_channel===plan.account||(x.sales_channel==='FBA'&&plan.account==='FBA1')))))
     return invalid('商品の情報が変更されました。下書きを取り消し、在庫で選び直してください。');
    return prep(api,items);

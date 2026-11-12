@@ -42,8 +42,10 @@ begin
  r:=app.reassign_accessory_usage(p.child,'995102',p.revision);
  if r->>'serial'<>'995102' or r->>'item_id'<>p.child::text then raise exception 'Transfer changed identity';end if;
  if not exists(select 1 from app.items where id=p.child and parent_item_id=p.target and lot_seq=995102 and lower(app.product_serial(sku,lot_seq))='995102a') then raise exception 'Usage did not move safely past SKU collision';end if;
- if (select to_jsonb(i) from app.items i where id=p.source) is distinct from p.source_before
-  or (select to_jsonb(i) from app.items i where id=p.target) is distinct from p.target_before then raise exception 'Transfer corrupted a parent';end if;
+ if (select to_jsonb(i)-'sku'-'updated_at' from app.items i where id=p.source) is distinct from p.source_before-'sku'-'updated_at'
+  or (select to_jsonb(i)-'sku'-'updated_at' from app.items i where id=p.target) is distinct from p.target_before-'sku'-'updated_at' then raise exception 'Transfer corrupted a parent';end if;
+ if (select split_part(sku,'-',4) from app.items where id=p.source)<>'725'
+  or (select split_part(sku,'-',4) from app.items where id=p.target)<>'822' then raise exception 'Transfer did not refresh parent SKU total costs';end if;
  if (select to_jsonb(i)-array['parent_item_id','lot_seq','sku','status','packed_on','shipped_on','returned_on','sales_channel','condition','sold_on','sold_price','payout_amount','updated_at'] from app.items i where id=p.child)
   is distinct from p.child_before-array['parent_item_id','lot_seq','sku','status','packed_on','shipped_on','returned_on','sales_channel','condition','sold_on','sold_price','payout_amount','updated_at'] then raise exception 'Purchase identity/history changed';end if;
  if not exists(select 1 from app.item_photos where item_id=p.child and storage_path='usage-test/remote.jpg') then raise exception 'Photo lost';end if;

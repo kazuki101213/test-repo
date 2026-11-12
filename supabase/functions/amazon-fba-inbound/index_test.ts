@@ -16,6 +16,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   fba_inbound_items:[{item_id:itemId,sku,asin,title:'商品',condition:'非常に良い',sales_channel:'FBA2'}]};
  let received=0,available=0,buyable=false,published=0,remoteCalls=0,failAfterCreate=false,ambiguousPacking=false,staff='own';
  let prepCategory='NONE',inventoryChanged=false,prepRejected=false,labelRequired=false,packingReadRejected=false;
+ let liveSku=sku,aliasOwner=itemId;
  let packingFees:unknown=[],extraPackingChoice=false,packingAccepted=false;
  const box={length:40,width:30,height:20,weight:4,items:[itemId]};
  const editedBox={...box,length:42.5,weight:5.25};
@@ -32,7 +33,8 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
    if(path.endsWith('/current_staff_id'))return json(staff);
    if(path.endsWith('/verify_amazon_cron_token'))return json(body.p_token==='valid-cron-token');
    if(path.endsWith('/staff'))return json({id:staff,is_active:true,role:'deliverer'});
-   if(path.endsWith('/items'))return json([{id:itemId,sku,asin,condition:'非常に良い',sales_channel:'FBA2',status:inventoryChanged?'販売済':'商品登録前',deliverer_id:'own'}]);
+   if(path.endsWith('/items'))return json([{id:itemId,sku:liveSku,asin,condition:'非常に良い',sales_channel:'FBA2',status:inventoryChanged?'販売済':'商品登録前',deliverer_id:'own'}]);
+   if(path.endsWith('/item_sku_aliases'))return json([{sku,item_id:aliasOwner}]);
    if(path.endsWith('/fba_inbound_plans')){
     if(method==='PATCH'){equal(url.searchParams.get('revision'),'eq.'+plan.revision);plan={...plan,...body};}
     return json(plan);
@@ -152,6 +154,9 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   plan={...plan,pending:null};failAfterCreate=false;
   const writes=()=>requests.filter(r=>r.method==='POST').length;
   const before=writes();
+  liveSku=sku.replace(/-400$/,'-450');aliasOwner='another-item';
+  await send('create',{},422);equal(writes(),before);
+  aliasOwner=itemId;
   prepCategory='FRAGILE';
   const review=await (await send('create',{autoPrep:true})).json();
   equal(review.prepReview.requirements[itemId],['FRAGILE','ITEM_BUBBLEWRAP']);

@@ -20,6 +20,7 @@ from app.items i join app.fba_inbound_plans p
 where i.lot_seq between 998671 and 998676;
 update app.items set shipped_on=current_date-4 where lot_seq=998672;
 update app.items set sales_channel='自己発送2' where lot_seq=998673;
+update app.items set cost_amount=130 where lot_seq in (998671,998674);
 
 set local role service_role;
 update app.fba_inbound_plans set pending=jsonb_build_object('action','confirmTransport','at',(current_date-1)::text||'T15:01:00Z')
@@ -52,4 +53,14 @@ do $$begin
    raise exception 'Separate transport confirmation did not use its JST date';
  end if;
 end$$;
+do $$
+declare i app.items; draft_id uuid;
+begin
+ select * into strict i from app.items where lot_seq=998674;
+ draft_id:=app.create_fba_inbound_draft('11111111-1111-1111-1111-111111111111',array[i.id]);
+ if not exists(select 1 from app.fba_inbound_items f where f.plan_id=draft_id and f.item_id=i.id
+   and f.sku<>i.sku and app.inventory_sku_matches(i.id,i.sku,f.sku)) then
+  raise exception 'New FBA draft discarded the prior Amazon SKU';
+ end if;
+end $$;
 rollback;
