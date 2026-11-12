@@ -51,8 +51,17 @@ export async function supplierQueuedOperations({settings,rpc,tabs,content,log,sc
    await go(target);
   }
   const recipe=settings.recipes[account.site]||{};
+  const messageContent=async (type,args)=>{
+   const keepVerifiedTab=account.site==='auctions';
+   if(keepVerifiedTab){
+    const current=await tabs.get(borrowed.id);
+    if(current.url!==last||itemId('auctions',current.url)!==destination)throw Error('ヤフオクの取引タブが変更されました');
+   }
+   const messageAccount=keepVerifiedTab?{...account,_identityConfirmed:true}:account;
+   return content(borrowed.id,type,{account:messageAccount,recipe,...args},keepVerifiedTab);
+  };
   const read=async()=>{
-   const result=await content(borrowed.id,'messageDetail',{account,recipe,expectedBody:job.kind==='send'?job.body:null});
+   const result=await messageContent('messageDetail',{expectedBody:job.kind==='send'?job.body:null});
    if(result.auth||result.itemId!==destination)throw Error('取引の商品IDが一致しません');
    return result.messages||[];
   };
@@ -60,7 +69,7 @@ export async function supplierQueuedOperations({settings,rpc,tabs,content,log,sc
   const isSent=message=>message.author_role==='self'&&normalizeMessage(message.body)===normalizeMessage(job.body);
   if(job.kind==='send'&&!messages.some(isSent)){
    sending=true;
-   const sent=await content(borrowed.id,'sendMessage',{account,recipe,itemId:destination,body:job.body});
+   const sent=await messageContent('sendMessage',{itemId:destination,body:job.body});
    if(sent.clicked===false){sending=false;throw Error(sent.reason);}
    if(sent.clicked!==true)throw Error('送信結果を確認できません');
    await new Promise(resolve=>setTimeout(resolve,1800));
