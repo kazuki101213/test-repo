@@ -35,10 +35,21 @@ do $$declare i uuid;r uuid;d date:=current_date-2;begin
  end loop;
  if (select packed_on from app.items where lot_seq=998301 and is_accessory) is distinct from d then raise exception 'Linked accessory date not shared';end if;
  i:=(select id from work_probe where lot_seq=998305);
- perform app.perform_dated_inventory_action(i,'supplier_return_complete','動作不良',d,gen_random_uuid());
- if not exists(select 1 from app.items where id=i and status='返品処理' and packed_on=d) then raise exception 'Return date not atomic';end if;
+ begin
+  perform app.complete_supplier_return(i,d,'   ',gen_random_uuid());
+  raise exception 'Return accepted without a tracking number';
+ exception when invalid_parameter_value then null; end;
+ r:=gen_random_uuid();
+ perform app.complete_supplier_return(i,d,' 1234-5678-9012 ',r);
+ perform app.complete_supplier_return(i,d,'1234-5678-9012',r);
+ if not exists(select 1 from app.items where id=i and status='返品処理' and packed_on=d
+    and return_tracking_no='1234-5678-9012' and tracking_no='fixture')
+ then raise exception 'Return date and tracking number were not saved together';end if;
+ if not exists(select 1 from app.v_delivery_tasks where id=i and return_tracking_no='1234-5678-9012')
+ then raise exception 'Return tracking number is missing from the delivery card';end if;
  perform app.perform_inventory_action(i,'supplier_return_cancel','返品処理');
- perform app.perform_dated_inventory_action(i,'supplier_return_complete','動作不良',current_date,gen_random_uuid());
+ if exists(select 1 from app.items where id=i and return_tracking_no is not null) then raise exception 'Cancelled return kept tracking number';end if;
+ perform app.complete_supplier_return(i,current_date,'9012-5678-1234',gen_random_uuid());
  if (select packed_on from app.items where id=i) is distinct from d then raise exception 'Repeated return overwrote work date';end if;
  i:=(select id from work_probe where lot_seq=998306);
  begin perform app.complete_delivery_work(i,(clock_timestamp() at time zone 'Asia/Tokyo')::date+1);raise exception 'Future date accepted';exception when invalid_parameter_value then null;end;

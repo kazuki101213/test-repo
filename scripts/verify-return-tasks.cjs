@@ -40,7 +40,7 @@ const flush=async()=>{for(let n=0;n<30;n++)await Promise.resolve();};
  completionError=true;action(tree,'動作不良への返信があります。').props.onClick();await flush();tree=list();assert(card(tree,'動作不良への返信があります。'),'Failed acknowledgement retains reply');assert(all(tree).some(n=>n.props?.role==='alert'));
  completionError=false;const readReply=action(tree,'動作不良への返信があります。').props.onClick;
  readReply();readReply();assert.equal(completionCalls.length,2,'Double click is locked');tree=list();assert.equal(action(tree,'動作不良への返信があります。').props.disabled,true);
- assert.equal(navigations.length,0,'Navigate only after saved acknowledgement');completionRelease();await flush();tree=list();assert(!card(tree,'動作不良への返信があります。'));assert.equal(navigations[0],'?itemId=item&openMessages=1');
+ assert.equal(navigations.length,0,'Navigate only after saved acknowledgement');completionRelease();await flush();tree=list();assert(!card(tree,'動作不良への返信があります。'));assert.equal(navigations[0],'?itemId=item&openComments=1');
  assert(card(tree,reason));assert(card(tree,'出品お願いします。'));assert(card(tree,'発送お願いします。'),'Opening a request keeps unfinished work visible');
  listeners['delivery-item-workflow-changed']({detail:{id:'item',status:'取引中',shipped_on:'2026-10-20'}});tree=list();assert(!card(tree,'発送お願いします。'),'Actual shipment dismisses the shipping request');
  const start=new Clock(instant).toISOString();

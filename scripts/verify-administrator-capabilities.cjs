@@ -2,17 +2,25 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),asser
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const names={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNames.ts'),names);
 const jsx=(type,props)=>({type,props});
+const nodes=n=>!n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(nodes):[n,...nodes(n.props?.children)];
 async function verify(staff,search,expectedAutoRead){
- let hooks=[],cursor=0,pending=[],dirty=true,reads=0,includes=[],timers=new Map(),sequence=0;
+ let hooks=[],cursor=0,pending=[],dirty=true,reads=0,internalReads=0,queues=0,includes=[],timers=new Map(),sequence=0,tree;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true}]},useRef(value){return hooks[cursor++]??={current:value}},useCallback(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i]))hooks[n]={deps,value:fn};return hooks[n].value},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]?.cleanup?.();const h=hooks[n]={deps};pending.push(()=>h.cleanup=fn())}}};
- const item={id:'item',sku:'fixture',title:'fixture',status:'検品中',deliverer_id:'worker'};
- const api={fetchTask:async(_id,include)=>{includes.push(include);return item},fetchComments:async()=>[],fetchSupplierConversation:async()=>{reads++;return{messages:[],outbox:[],expired:true}}};
+ const item={id:'item',sku:'fixture',title:'fixture',status:'動作不良',marketplace:'ヤフオク',marketplace_item_id:'fixture-auction',deliverer_id:'worker'};
+ const api={fetchTask:async(_id,include)=>{includes.push(include);return item},fetchComments:async()=>{internalReads++;return[];},
+  fetchSupplierConversation:async()=>{reads++;return{messages:[],outbox:[],account_id:'auctions-1'}},
+  queueSupplierOperation:async(_item,kind,account)=>{assert.equal(kind,'read');assert.equal(account,'auctions-1');queues++;return 'request';},
+  fetchSupplierOperation:async()=>({status:'succeeded'})};
  const props={itemId:'item',staff,listingSkus:[],mode:'messages',onChanged(){},onOpened(){},onClose(){}};
  const ctx={exports:{},URLSearchParams,crypto:{randomUUID:()=> 'fixture-request'},window:{location:{search},setTimeout(fn){const id=++sequence;timers.set(id,fn);return id},clearTimeout(id){timers.delete(id)}},document:{visibilityState:'visible'},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{...names.exports,jpDate:v=>v,canAddPackingPhotos:()=>false}:id==='../api'?api:{default:'placeholder'}};
  vm.runInNewContext(compile('apps/delivery/src/pages/TaskDetail.tsx'),ctx);
- for(let i=0;i<40;i++){if(dirty){dirty=false;cursor=0;ctx.exports.default(props);pending.splice(0).forEach(fn=>fn())}for(const[id,fn]of [...timers]){timers.delete(id);fn()}await Promise.resolve()}
+ for(let i=0;i<40;i++){if(dirty){dirty=false;cursor=0;tree=ctx.exports.default(props);pending.splice(0).forEach(fn=>fn())}for(const[id,fn]of [...timers]){timers.delete(id);fn()}await Promise.resolve()}
  assert.equal(includes[0],staff.role==='admin','Detail hydration follows the administrator role');
- assert.equal(reads,expectedAutoRead,'Notification links auto-open messages once only for administrators and the matching item');
+ assert.equal(queues,expectedAutoRead,'Notification links refresh from the site only for administrators and the matching item');
+ assert.equal(reads,1+expectedAutoRead,'Opening transaction messages reads the saved conversation');
+ assert.equal(internalReads,0,'Transaction messages never load internal comments');
+ const select=nodes(tree).find(n=>n.props?.['aria-label']==='仕入先の購入アカウント');
+ assert.equal(select.props.value,'auctions-1','Uses the purchase account recorded on the transaction');
 }
 (async()=>{
  for(const code of ['AA','XX','']){

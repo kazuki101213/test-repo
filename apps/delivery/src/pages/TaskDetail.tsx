@@ -36,17 +36,18 @@ export default function TaskDetail({
   const [savingPhotoId, setSavingPhotoId] = useState<string | null>(null);
   const [photoSaveMessage, setPhotoSaveMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [marketplaceConversation, setMarketplaceConversation] = useState<MarketplaceConversation>({ messages: [], outbox: [] });
+  const [marketplaceConversation, setMarketplaceConversation] = useState<MarketplaceConversation & {account_id?: string | null}>({ messages: [], outbox: [] });
   const [marketplaceVisible, setMarketplaceVisible] = useState(false);
   const [marketplaceLoading, setMarketplaceLoading] = useState(false);
   const [marketplaceDraft, setMarketplaceDraft] = useState('');
   const [marketplaceSending, setMarketplaceSending] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState('');
+  const selectedSupplierAccount = marketplaceConversation.account_id || supplierAccount;
 
   const reload = useCallback(async () => {
     try {
       const [t, c, p, review] = await Promise.all([
-        fetchTask(itemId, canViewDeliveryAssignee(staff)), mode === 'messages'||mode === 'comments' ? fetchComments(itemId) : Promise.resolve([]), photoMode ? fetchPhotoUrls(itemId,purpose) : Promise.resolve([]), mode === 'photos' ? fetchPhotoReview(itemId) : Promise.resolve(null),
+        fetchTask(itemId, canViewDeliveryAssignee(staff)), mode === 'comments' ? fetchComments(itemId) : Promise.resolve([]), photoMode ? fetchPhotoUrls(itemId,purpose) : Promise.resolve([]), mode === 'photos' ? fetchPhotoReview(itemId) : Promise.resolve(null),
       ]);
       if (!t) throw new Error('商品が見つかりません。');
       setTask(t);
@@ -81,10 +82,11 @@ export default function TaskDetail({
     setMarketplaceVisible(true); setMarketplaceLoading(true); setMarketplaceError('');
     try {
       const current = await fetchSupplierConversation(itemId); setMarketplaceConversation(current);
-      if (current.account_id) setSupplierAccount(current.account_id);
       if (current.expired) { setMarketplaceError('作業完了から7日を過ぎたため、取引メッセージは保存期間終了です。'); return; }
 
-      const supplierRequestId=await queueSupplierOperation(itemId,'read',current.account_id || supplierAccount,supplierRequest.current);supplierRequest.current=crypto.randomUUID();
+      const accountId=current.account_id||supplierAccount;
+      if(!accountId){setMarketplaceError('購入アカウントを選択してください。');return;}
+      const supplierRequestId=await queueSupplierOperation(itemId,'read',accountId,supplierRequest.current);supplierRequest.current=crypto.randomUUID();
       const deadline = Date.now() + 120000;
       while (Date.now() < deadline) {
        await new Promise(resolve=>window.setTimeout(resolve,4000));
@@ -99,13 +101,30 @@ export default function TaskDetail({
     } catch (cause) { setMarketplaceError(cause instanceof Error ? cause.message : String(cause)); } finally { setMarketplaceLoading(false); }
   }
   useEffect(() => {
+    if (mode !== 'messages' || !task?.marketplace_item_id) return;
     const params = new URLSearchParams(window.location.search);
-    if (!task || autoOpenedMessages.current || params.get('itemId') !== itemId || params.get('openMessages') !== '1'
-      || !canViewDeliveryAssignee(staff)) return;
-    autoOpenedMessages.current = true;
-    const timer = window.setTimeout(() => { void displayMarketplaceMessages(); }, 0);
-    return () => window.clearTimeout(timer);
-  }, [task, itemId, staff.id, staff.role]);
+    if (params.get('itemId') === itemId && params.get('openMessages') === '1' && canViewDeliveryAssignee(staff)) {
+      if (autoOpenedMessages.current) return;
+      const timer = window.setTimeout(() => {
+        autoOpenedMessages.current = true;
+        void displayMarketplaceMessages();
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+
+    let active = true;
+    setMarketplaceLoading(true);
+    void fetchSupplierConversation(itemId).then(conversation => {
+      if (!active) return;
+      setMarketplaceConversation(conversation);
+      setMarketplaceVisible(true);
+    }).catch(cause => {
+      if (active) setMarketplaceError(cause instanceof Error ? cause.message : String(cause?.message ?? cause));
+    }).finally(() => {
+      if (active) setMarketplaceLoading(false);
+    });
+    return () => { active = false; };
+  }, [mode, task?.marketplace_item_id, itemId, staff.id, staff.role]);
   async function onPhotoPick(files: FileList | null) {
     if (!files?.length || !task || photoOperation.current) return;
     photoOperation.current = true;
@@ -223,11 +242,11 @@ export default function TaskDetail({
   }
 
   async function sendMarketplaceMessage() {
-    if (!task || !marketplaceDraft.trim() || marketplaceSending) return;
+    if (!task || !selectedSupplierAccount || !marketplaceDraft.trim() || marketplaceSending) return;
     setMarketplaceSending(true);
     setMarketplaceError('');
     try {
-      const requestId = await queueSupplierOperation(task.id,'send',supplierAccount,supplierRequest.current,marketplaceDraft.trim());
+      const requestId = await queueSupplierOperation(task.id,'send',selectedSupplierAccount,supplierRequest.current,marketplaceDraft.trim());
       setMarketplaceDraft('');supplierRequest.current=crypto.randomUUID();
       const deadline = Date.now() + 120000;
       while(Date.now()<deadline){
@@ -294,9 +313,7 @@ export default function TaskDetail({
 
       </>}
       {mode === 'description' && task.status==='商品登録前' && <DescriptionEditor key={task.id} task={task} listingSkus={listingSkus} onSaved={reload} />}
-      {(mode === 'messages'||mode === 'comments') && <>
-      {/* ── 仕入担当者とのやり取り ───────────────── */}
-      <div className="card">
+      {mode === 'comments' && <div className="card">
         <strong>コメント</strong>
         {comments.length === 0 && <p className="muted">まだやり取りはありません。</p>}
         {comments.map((c) => (
@@ -315,11 +332,13 @@ export default function TaskDetail({
         <button className="btn primary" style={{ marginTop: 8 }} disabled={!draft.trim()} onClick={() => void send()}>
           送信
         </button>
-      </div>
+      </div>}
 
       {mode === 'messages' && <div className="card marketplace-conversation" aria-label="フリマサイト取引メッセージ">
         <div className="marketplace-conversation-heading"><strong>取引メッセージ</strong><span className="muted"><ColoredLabel value={task.marketplace} /> · {task.marketplace_item_id || '取引IDなし'}</span></div>
-        <label>購入アカウント<select aria-label="仕入先の購入アカウント" value={supplierAccount} onChange={event=>setSupplierAccount(event.target.value)}><option value="">選択</option>{supplierAccounts.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
+        <label>購入アカウント<select aria-label="仕入先の購入アカウント" value={selectedSupplierAccount}
+          disabled={marketplaceLoading||!!marketplaceConversation.account_id}
+          onChange={event=>setSupplierAccount(event.target.value)}><option value="">選択</option>{supplierAccounts.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
         {!task.marketplace_item_id ? <p className="muted">商品IDが登録されていないため、取引メッセージを連携できません。</p> : <>
           <button type="button" className="btn" disabled={marketplaceLoading} onClick={() => void displayMarketplaceMessages()}>{marketplaceLoading ? '確認中…' : 'メッセージを取得'}</button>
           {marketplaceError && <p className="error" role="alert">{marketplaceError}</p>}
@@ -335,13 +354,12 @@ export default function TaskDetail({
             </div>
             {marketplaceConversation.expired ? <p className="muted">作業完了から7日を経過したため、会話の保存期間は終了しました。</p> : <div className="marketplace-message-composer">
               <textarea aria-label="フリマ取引相手へのメッセージ" value={marketplaceDraft} onChange={event => setMarketplaceDraft(event.target.value)} maxLength={2000} placeholder="取引相手へのメッセージ" />
-              <button type="button" className="btn primary" disabled={!marketplaceDraft.trim() || marketplaceSending} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信結果を確認中…' : '取引メッセージを送信'}</button>
+              <button type="button" className="btn primary" disabled={!selectedSupplierAccount || !marketplaceDraft.trim() || marketplaceSending} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信結果を確認中…' : '取引メッセージを送信'}</button>
               <small className="muted">送信後は、ログイン済みChromeの拡張機能が取引画面へ反映します。</small>
             </div>}
           </>}
         </>}
       </div>}
-      </>}
     </section>
   );
 }

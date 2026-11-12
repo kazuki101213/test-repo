@@ -416,9 +416,12 @@ export async function submitAmazonListing(itemId:string,date:string,requestId:st
  if(!data||typeof data.verified!=='boolean')throw new Error('Amazonの登録結果が不正です。');return data;
 }
 
-export async function performDatedInventoryAction(task:Pick<DeliveryTask,'id'|'status'>,action:'listing_complete'|'supplier_return_complete',date:string,requestId:string):Promise<void>{
- const {error}=await getSupabase().rpc('perform_dated_inventory_action',{p_item_id:task.id,p_action:action,p_expected_status:task.status,p_on:date,p_request_id:requestId});
- if(error)throw error;announceReturnTaskChange();
+export async function completeSupplierReturn(itemId: string, date: string, trackingNumber: string, requestId: string): Promise<void> {
+ const { error } = await getSupabase().rpc('complete_supplier_return', {
+  p_item_id: itemId, p_work_completed_on: date, p_tracking_no: trackingNumber, p_request_id: requestId,
+ });
+ if(error)throw error;
+ announceReturnTaskChange();
 }
 export async function completeDeliveryCompensation(itemId:string,requestId:string):Promise<void>{
  const {error}=await getSupabase().rpc('complete_delivery_compensation',{p_item_id:itemId,p_request_id:requestId});

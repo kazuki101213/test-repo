@@ -4,9 +4,12 @@ import type {WorkflowButton} from '@bussan/shared';
 export default function WorkflowConfirmation({button,busy,onConfirm,onCancel,children,confirmDisabled=false,title}:{button:WorkflowButton;busy:boolean;onConfirm:()=>void;onCancel:()=>void;children?:ReactNode;confirmDisabled?:boolean;title?:string}){
  const dialog=useRef<HTMLDialogElement>(null),cancel=useRef<HTMLButtonElement>(null);
  useEffect(()=>{const element=dialog.current;element?.showModal();cancel.current?.focus();return()=>element?.close();},[]);
+ const isSupplierReturn=button.key==='supplier_return_complete';
+ const confirmButton=<button type="button" className="btn primary" disabled={busy||confirmDisabled} onClick={onConfirm}>{busy?'実行中…':isSupplierReturn?'返品完了':'はい'}</button>;
+ const cancelButton=<button ref={cancel} type="button" className="btn" disabled={busy} onClick={onCancel}>キャンセル</button>;
  return <dialog ref={dialog} className="workflow-confirmation" aria-label="操作の確認" onCancel={event=>{event.preventDefault();if(!busy)onCancel();}}>
   <h3>{title??'実行しますか'}</h3>{!title&&<><p>{button.label}</p>{button.confirmation&&<p>{button.confirmation}</p>}</>}
   {children}
-  <div className="workflow-confirmation-buttons"><button type="button" className="btn primary" disabled={busy||confirmDisabled} onClick={onConfirm}>{busy?'実行中…':'はい'}</button><button ref={cancel} type="button" className="btn" disabled={busy} onClick={onCancel}>キャンセル</button></div>
+  <div className="workflow-confirmation-buttons">{isSupplierReturn?<>{cancelButton}{confirmButton}</>:<>{confirmButton}{cancelButton}</>}</div>
  </dialog>;
 }
