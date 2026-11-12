@@ -1,3 +1,4 @@
+import { askulExpenseBatchSize, type AskulExpenseInput } from '@bussan/shared';
 import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
 import { getSupabase, STATUSES, usageRecordText, purchaseSourceFields, salesDestinationFields } from '@bussan/shared';
@@ -204,6 +205,18 @@ export async function saveExpenses(inputs: ExpenseInput[]): Promise<void> {
     throw new Error('前回の保存内容と異なります。保存済みの可能性があるため、再登録を中止しました。');
   }
   throw new Error(error.message);
+}
+
+export async function importAskulExpenses(rows: readonly AskulExpenseInput[]) {
+  let inserted = 0;
+  for (let start = 0; start < rows.length; start += askulExpenseBatchSize) {
+    const batch = rows.slice(start, start + askulExpenseBatchSize);
+    const { data, error } = await getSupabase().from('expenses')
+      .upsert(batch, { onConflict: 'id', ignoreDuplicates: true }).select('id');
+    if (error) throw new Error(error.message);
+    inserted += data?.length ?? 0;
+  }
+  return { inserted, skipped: rows.length - inserted };
 }
 
 export async function fetchExpenses(): Promise<ExpenseInput[]> {
