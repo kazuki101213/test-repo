@@ -76,7 +76,7 @@
     }
     return detail(a,recipe);
   }
-  function conversation(a,recipe){
+  function conversation(a,recipe,expectedBody){
     const d=messageContext(a,recipe);if(d.auth)return d;
     const root=one(recipe.messageScope||'main');
     const marked=[...root.querySelectorAll('[data-testid*="message" i],[class*="message" i],[aria-label*="メッセージ"]')].filter(visible);
@@ -102,23 +102,42 @@
       messages.push({external_id:externalId,author,author_role:own?'self':author?'other':'unknown',body,sent_at:instant});
       if(messages.length>=500)break;
     }
+    if(a.site==='auctions'&&expectedBody&&!messages.some(message=>message.author_role==='self'&&norm(message.body)===norm(expectedBody))){
+      const matches=[...root.querySelectorAll('p,span,div')].filter(element=>visible(element)&&norm(element.innerText)===norm(expectedBody));
+      const own=matches.some(element=>{
+        let row=element.parentElement;
+        for(let depth=0;row&&row!==root&&depth<4;depth++,row=row.parentElement){
+          if([...row.querySelectorAll('p,span,div,small')].some(label=>!label.children.length&&visible(label)&&norm(label.innerText)==='あなた'))return true;
+        }
+        return false;
+      });
+      if(own)messages.push({external_id:messageHash([a.site,d.itemId,'あなた',norm(expectedBody)].join('|')),author:'あなた',author_role:'self',body:expectedBody,sent_at:null});
+    }
     return {...d,messages};
+  }
+  function yahooMessageComposer(root){
+    const fields=[...root.querySelectorAll('textarea,[contenteditable="true"],input[type="text"],input:not([type])')].filter(element=>{
+      if(!visible(element)||element.disabled||element.readOnly)return false;
+      if(element.tagName!=='INPUT')return true;
+      return /^(?:入力してください|.*(?:メッセージ|取引連絡).*)$/.test(norm(element.getAttribute('placeholder')||element.getAttribute('aria-label')));
+    });
+    const buttons=[...root.querySelectorAll('button,input[type="submit"],input[type="button"],[role="button"]')]
+      .filter(element=>visible(element)&&/^(送信|送信する)$/.test(controlText(element).replace(/\s/g,'')));
+    if(fields.length!==1||buttons.length!==1)throw Error('取引メッセージの入力欄・送信ボタンを確認できません（入力欄 '+fields.length+' 件、送信 '+buttons.length+' 件）');
+    return {field:fields[0],button:buttons[0]};
   }
   function messageComposer(a,recipe,expected){
     const d=messageContext(a,recipe);
     if(d.auth||d.itemId!==expected)throw Error('送信する取引IDが一致しません');
     const root=one(recipe.messageScope||'main');
+    if(a.site==='auctions'&&location.origin==='https://contact.auctions.yahoo.co.jp')return yahooMessageComposer(root);
     const buttonsIn=scope=>[...scope.querySelectorAll('button,input[type="submit"]')]
       .filter(element=>visible(element)&&/^(送信|送信する|送る|投稿)$/.test(controlText(element)));
     const fields=[...root.querySelectorAll('textarea,[contenteditable="true"]')].filter(visible);
     const candidates=fields.map(field=>{
       const label=norm(field.getAttribute('aria-label')||field.getAttribute('placeholder')||field.getAttribute('data-placeholder'));
       if(!/メッセージ|取引連絡|コメント/.test(label)&&!(a.site==='auctions'&&label==='入力してください'))return null;
-      let scope=field.closest('form');
-      if(!scope&&a.site==='auctions'){
-        scope=field.parentElement;
-        while(scope&&scope!==root&&!buttonsIn(scope).length)scope=scope.parentElement;
-      }
+      const scope=field.closest('form');
       if(!scope||scope===root||!root.contains(scope))return null;
       const [button,extra]=buttonsIn(scope);
       return button&&!extra?{field,button}:null;
@@ -136,7 +155,7 @@
       if(typeof body!=='string'||!body.trim()||body.length>2000)throw Error('メッセージは1〜2000文字で入力してください');
       const {field,button:sendButton}=messageComposer(a,recipe,expected);
       if(field.isContentEditable?norm(field.innerText):field.value)throw Error('入力欄に既存の文章があります');
-      setMessageValue(field,body.trim());
+      setMessageValue(field,field.tagName==='INPUT'?norm(body):body.trim());
       await new Promise(resolve=>setTimeout(resolve,200));
       const value=field.isContentEditable?field.innerText:field.value;
       if(norm(value)!==norm(body))throw Error('送信文を入力欄で確認できません');
@@ -391,7 +410,7 @@
       if(m.type==='fm:pick')return pickIdentity();
       if(m.type==='fm:list')return readList(m.account,m.recipe||{});
       if(m.type==='fm:purchaseMore')return purchaseMore(m.account,m.recipe||{},m.seenIds||[]);if(m.type==='fm:purchaseDetail')return purchaseDetail(m.account,m.recipe||{},m.itemId);if(m.type==='fm:detail')return readDetail(m.account,m.recipe||{});
-      if(m.type==='fm:messageDetail')return conversation(m.account,m.recipe||{});
+      if(m.type==='fm:messageDetail')return conversation(m.account,m.recipe||{},m.expectedBody);
       if(m.type==='fm:sendMessage')return sendMarketplaceMessage(m.account,m.recipe||{},m.itemId,m.body);
 
 
