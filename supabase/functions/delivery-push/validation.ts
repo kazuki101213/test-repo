@@ -21,8 +21,20 @@ export const appBaseUrls: Record<'admin' | 'delivery', readonly string[]> = {
   delivery: [...deliveryHosts, 'https://kazuki101213.github.io/test-repo/delivery/', 'http://localhost:5174/'],
 };
 
-export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string; listing_request_title?: string | null }) {
-  if (row.app_kind === 'delivery') return { body: notificationBody(row.kind, row.lot_seq, row.listing_request_title), itemId: row.item_id, tag: `delivery-${row.item_id}-${row.kind}` };
+export function notificationPayload(row: { app_kind: string; kind: string; lot_seq: number; delivery_id?: string; item_id?: string; task_id?: string; invoice_staff_id?: string; billing_month?: string; owner_name?: string; task_name?: string; listing_request_title?: string | null }) {
+  if (row.app_kind === 'delivery') {
+    const isMessage = row.kind === 'reply' || row.kind === 'malfunction_return';
+    const tag = isMessage && row.delivery_id ? `delivery-message-${row.delivery_id}` : `delivery-${row.item_id}-${row.kind}`;
+    return { body: notificationBody(row.kind, row.lot_seq, row.listing_request_title), itemId: row.item_id, tag };
+  }
+  if (row.kind === 'malfunction_message') {
+    return {
+      body: `【${row.lot_seq}】動作不良への返信があります。`,
+      kind: 'malfunction',
+      itemId: row.item_id,
+      tag: `admin-malfunction-message-${row.task_id || row.item_id}`,
+    };
+  }
   const docs = ['invoice','receipts'].includes(row.kind);
   const body = row.kind === 'malfunction' ? `【${row.lot_seq}】動作不良の報告が届きました。`
     : row.kind === 'packing_photo' ? `【${row.lot_seq}】梱包が追加されました。`

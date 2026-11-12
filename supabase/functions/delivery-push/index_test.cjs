@@ -25,3 +25,21 @@ test('management push allows the two delivery hosts and still requires authentic
  }
  assert.equal((await config('https://unrelated.invalid')).status, 403);
 });
+test('fault messages produce one distinct notification per message on either app', () => {
+ const source = fs.readFileSync(__dirname + '/validation.ts', 'utf8');
+ const module = { exports: {} };
+ vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, module);
+ const { notificationPayload } = module.exports;
+ const item = { lot_seq: 2433, item_id: 'item' };
+ const delivery = { ...item, app_kind: 'delivery', kind: 'reply' };
+ const first = notificationPayload({ ...delivery, delivery_id: 'first' });
+ assert.equal(first.itemId, 'item');
+ assert.notEqual(first.tag, notificationPayload({ ...delivery, delivery_id: 'second' }).tag);
+ assert.equal(first.tag, notificationPayload({ ...delivery, delivery_id: 'first' }).tag);
+ const admin = { ...item, app_kind: 'admin', kind: 'malfunction_message' };
+ const received = notificationPayload({ ...admin, task_id: 'first' });
+ assert.equal(received.kind, 'malfunction');
+ assert.equal(received.itemId, 'item');
+ assert.equal(received.body, '【2433】動作不良への返信があります。');
+ assert.notEqual(received.tag, notificationPayload({ ...admin, task_id: 'second' }).tag);
+});
