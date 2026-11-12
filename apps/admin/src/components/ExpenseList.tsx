@@ -10,6 +10,13 @@ import './ExpenseSelection.css';
 type ExpenseCategory = typeof expenseCategories[number];
 const compactExpenseLayout = 'screen and (max-width: 1023px)';
 const displayCategory = (row: ExpenseInput) => row.category === '固定費' ? '固定費' : row.category === '給与' || row.category === '外注費' ? '外注費' : '変動費';
+const isAskulExpense = (row: ExpenseInput) => row.memo?.startsWith('アスクル ') === true;
+
+function expenseContentLabel(row: ExpenseInput, staffNames: Record<string, string>) {
+  const assignee = row.staff_id && staffNames[row.staff_id];
+  return isAskulExpense(row) && assignee && row.name !== assignee && !row.name.startsWith(`${assignee} `)
+    ? `${assignee} ${row.name}` : row.name;
+}
 
 function useExpenseStaffNames(rows: ExpenseInput[]) {
   const [names, setNames] = useState<Record<string, string>>({});
@@ -25,9 +32,10 @@ function useExpenseStaffNames(rows: ExpenseInput[]) {
 
 export function ExpenseTable({ rows }: { rows: ExpenseInput[] }) {
   const staffNames = useExpenseStaffNames(rows);
+  const showStaffColumn = rows.some(row => !isAskulExpense(row) && row.staff_id);
   return rows.length === 0 ? <p className="sub">該当する経費はありません。</p> : <div className="scroll expense-table"><table>
-    <thead><tr><th>日付</th><th>区分</th><th>内容</th><th>担当者</th><th className="num">金額</th></tr></thead>
-    <tbody>{rows.map(row => <tr key={row.id}><td>{row.incurred_on}</td><td>{expenseCategoryLabel(row.category)}</td><td className="detail-description">{row.name}</td><td>{row.staff_id ? staffNames[row.staff_id] || '—' : '—'}</td><td className="num">{yen(row.amount)}</td></tr>)}</tbody>
+    <thead><tr><th>日付</th><th>区分</th><th>内容</th>{showStaffColumn && <th>担当者</th>}<th className="num">金額</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.id}><td>{row.incurred_on}</td><td>{expenseCategoryLabel(row.category)}</td><td className="detail-description">{expenseContentLabel(row, staffNames)}</td>{showStaffColumn && <td>{!isAskulExpense(row) && row.staff_id ? staffNames[row.staff_id] || '—' : '—'}</td>}<td className="num">{yen(row.amount)}</td></tr>)}</tbody>
   </table></div>;
 }
 
@@ -94,7 +102,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const visibleCategories = compact && categoryFilter ? [categoryFilter] : expenseCategories;
   const search = query.trim().toLowerCase();
   const matchesSearch = (name: string) => name.toLowerCase().includes(search);
-  const filtered = rows.filter(row => visibleCategories.includes(displayCategory(row)) && matchesSearch(row.name));
+  const filtered = rows.filter(row => visibleCategories.includes(displayCategory(row)) && matchesSearch(expenseContentLabel(row, staffNames)));
   const pending = drafts.filter(d => !rows.some(row => row.id === d.id || (expenseCategoryLabel(row.category) === d.category && row.incurred_on.slice(0, 7) === d.target_month.slice(0, 7) && row.name === d.name))
     && matchesSearch(d.name));
   return <div className="dashboard-workspace with-expense registration-workspace">
@@ -122,8 +130,8 @@ export default function ExpenseList({ revision }: { revision: number }) {
           <header><h3>{category}</h3><p>{entries.length}件 · <strong>{yen(entries.reduce((sum, row) => sum + row.amount, 0))}</strong></p></header>
           {months.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{months.map(month => <li key={month} className="expense-month-group"><h4>{month.replace('-', '年')}月 · {yen(entries.filter(row => row.incurred_on.startsWith(month)).reduce((sum, row) => sum + row.amount, 0))}</h4><ul className="expense-entries">{entries.filter(row => row.incurred_on.startsWith(month)).map(row => <li key={row.id}>
             <div className="expense-entry-top"><time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time><label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!deletion} onChange={e => { const checked=e.target.checked; setSelected(current => { const next=new Set(current); checked ? next.add(row.id) : next.delete(row.id); return next; }); }} /></label></div>
-            <div>{editCell(row, 'name', row.name)}</div>
-            {row.staff_id && staffNames[row.staff_id] && <div className="expense-hint">担当者 {staffNames[row.staff_id]}</div>}
+            <div>{editCell(row, 'name', expenseContentLabel(row, staffNames))}</div>
+            {!isAskulExpense(row) && row.staff_id && staffNames[row.staff_id] && <div className="expense-hint">担当者 {staffNames[row.staff_id]}</div>}
             <div className="expense-entry-bottom"><span className="expense-hint">{editCell(row, 'category', expenseCategoryLabel(row.category))}</span><strong>{editCell(row, 'amount', yen(row.amount))}</strong></div>
           </li>)}{categoryDrafts.filter(row => row.target_month.startsWith(month)).map(row => <li key={row.id}>
             <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.name}の金額と日付を入力`} onClick={() => { setEditing(undefined); setDraft(row); }}>

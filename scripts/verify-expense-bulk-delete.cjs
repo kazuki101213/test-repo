@@ -4,9 +4,11 @@ const jsx=(type,props)=>({type,props});
 function all(n,out=[]){if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}
 let rows=[1,2,3].map((id,i)=>({id:String(id),incurred_on:'2099-11-01',category:['固定費','変動費','外注費'][i],name:'経費'+id,amount:id*100,card_id:null,staff_id:null,memo:null}));
+const askulRow={...rows[1],staff_id:'staff-2',memo:'アスクル order-2/1'};
+rows[1]=askulRow;
 let cursor=0,hooks=[],pending=[],dirty=true,tree,calls=[],fail=true,release;
 const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]?.cleanup?.();const h=hooks[n]={deps};pending.push(()=>h.cleanup=fn())}}};
-const context={exports:{},Error,window:{matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}})},crypto:{randomUUID:()=> 'request'},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>'¥'+n}:id==='../expenses'?{expenseCategories:['固定費','変動費','外注費'],expenseCategoryLabel:x=>x}:id==='../api'?{fetchExpenses:async()=>[...rows],fetchExpenseDrafts:async()=>[],deleteExpenses:async(selected,request)=>{calls.push({selected,request});await new Promise(r=>release=r);if(fail)throw Error('通信エラー');rows=rows.filter(row=>!selected.some(s=>s.id===row.id));return selected.length}}:{default:'placeholder'}};
+const context={exports:{},Error,window:{matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}})},crypto:{randomUUID:()=> 'request'},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>'¥'+n}:id==='../expenses'?{expenseCategories:['固定費','変動費','外注費'],expenseCategoryLabel:x=>x}:id==='../api'?{fetchExpenses:async()=>[...rows],fetchExpenseDrafts:async()=>[],fetchExpenseStaffNames:async()=>({'staff-2':'II 久保田 真由'}),deleteExpenses:async(selected,request)=>{calls.push({selected,request});await new Promise(r=>release=r);if(fail)throw Error('通信エラー');rows=rows.filter(row=>!selected.some(s=>s.id===row.id));return selected.length}}:{default:'placeholder'}};
 vm.runInNewContext(compile('apps/admin/src/components/ExpenseList.tsx'),context);
 async function settle(){for(let i=0;i<20;i++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({revision:0});pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
 const checks=()=>all(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox');
@@ -14,6 +16,10 @@ const remove=()=>all(tree).find(n=>n.type==='button'&&text(n)==='削除');
 const confirmation=()=>all(tree).find(n=>n.props?.onDelete&&n.props?.rows);
 (async()=>{
  await settle();assert(remove().props.disabled);assert.equal(checks().length,3);assert.equal(calls.length,0);
+ const searchBox=()=>all(tree).find(n=>n.props?.['aria-label']==='経費を検索');
+ assert(all(tree).some(n=>n.type==='button'&&text(n)==='II 久保田 真由 経費2'));
+ searchBox().props.onChange({target:{value:'久保田'}});await settle();assert.equal(checks().length,1);
+ searchBox().props.onChange({target:{value:''}});await settle();
  checks()[0].props.onChange({target:{checked:true}});checks()[1].props.onChange({target:{checked:true}});await settle();assert(!remove().props.disabled);
  const top=all(tree).find(n=>n.props?.className==='expense-entry-top');assert(!text(top).includes('¥'));assert(all(top).some(n=>n.type==='input'&&n.props.type==='checkbox'));
  const bottom=all(tree).find(n=>n.props?.className==='expense-entry-bottom');assert(text(bottom).includes('固定費'));assert(text(bottom).includes('¥100'));
@@ -30,5 +36,9 @@ const confirmation=()=>all(tree).find(n=>n.props?.onDelete&&n.props?.rows);
  assert.equal(filters.length,3);assert(filters.every(([field,value])=>field==='deleted_at'&&value===null),'Lists, drafts and monthly details exclude deleted rows');
  assert.equal(await apiModule.exports.deleteExpenses(calls[0].selected,'request'),2);assert.equal(rpcCalls[0].name,'delete_expenses');assert.equal(rpcCalls[0].args.p_request_id,'request');
  rpcResult={data:0,error:null};await assert.rejects(apiModule.exports.deleteExpenses(calls[0].selected,'request'),/削除結果/);
+ cursor=0;hooks=[];context.exports.ExpenseTable({rows:[askulRow]});pending.splice(0).forEach(fn=>fn());await Promise.resolve();
+ cursor=0;const monthly=context.exports.ExpenseTable({rows:[askulRow]});
+ assert(all(monthly).some(n=>n.type==='td'&&text(n)==='II 久保田 真由 経費2'));
+ assert(!all(monthly).some(n=>n.type==='th'&&text(n)==='担当者'));
  console.log('Expense selection placement, confirmation/cancel, atomic request, double-click guard, failed retry and list/count refresh passed');
 })().catch(e=>{console.error(e);process.exitCode=1});
