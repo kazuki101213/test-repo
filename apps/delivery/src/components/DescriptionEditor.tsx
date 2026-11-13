@@ -78,7 +78,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
       if (result !== null) {
         setYear(String(result));
         setSaved(false);
-        setYearStatus('写真から読み取りました。必要に応じて修正できます。');
+        setYearStatus('');
       } else setYearStatus('写真で製造年を確認できませんでした。');
     }).catch(() => {
       if (active && !yearEdited.current) setYearStatus('写真で製造年を確認できませんでした。');
