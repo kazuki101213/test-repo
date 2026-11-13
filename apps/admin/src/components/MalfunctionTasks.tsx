@@ -18,8 +18,14 @@ const PHOTO_AUCTION_TEMPLATES = [
   'SHARP◯ヤフオク', 'SHARP×ヤフオク',
   'TOSHIBA◯ヤフオク', 'TOSHIBA×ヤフオク',
 ] as const;
-const TASK_TEMPLATES = ['仕入先確認', ...PHOTO_AUCTION_TEMPLATES, 'ヤフオク その他'] as const;
+const AUCTION_TEMPLATES = [...PHOTO_AUCTION_TEMPLATES, 'ヤフオク その他'] as const;
+const TASK_TEMPLATES = ['仕入先確認', ...AUCTION_TEMPLATES] as const;
+const RETURN_TEMPLATES = {
+  '返送依頼(ヤフオク)': '着払いでお願いします。',
+  '返送依頼(メルカリ)': '返品くんで返品お願いします。',
+} as const;
 type TaskKind = typeof TASK_TEMPLATES[number];
+type ReplyTemplate = TaskKind | keyof typeof RETURN_TEMPLATES;
 interface MalfunctionTask {
   status: ItemStatus; id: string; sku: string; lot_seq: number; title: string; asin: string | null; marketplace_item_id: string | null;
   purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
@@ -39,9 +45,10 @@ interface ActionTask {
 const PHOTO_BUCKET = 'item-photos';
 const messageOf = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
 
-function templateBody(kind: TaskKind, row: MalfunctionTask): string {
+function templateBody(kind: ReplyTemplate, row: MalfunctionTask): string {
   const model = row.products?.find(product => product.model_no)?.model_no || '型番未登録';
   const header = '【' + productSerial(row.sku, row.lot_seq) + '】【' + (row.marketplace_item_id || '商品ID未登録') + '】【' + model + '】';
+  if (kind in RETURN_TEMPLATES) return header + '\n' + RETURN_TEMPLATES[kind as keyof typeof RETURN_TEMPLATES];
   if (kind === '仕入先確認') return header + '\n取引メッセージより仕入先へ連絡お願いします。';
   if (kind === 'ヤフオク その他') return header + '\nヤフオク販売お願いします。\n【写真に関して】\n付属品はすべてつけてください。\n撮影ボックスではなくて、床やテーブル等で撮ってください。\n電源が確認できるものであれば、確認できるような写真お願いします。';
   return header + '\nヤフオク販売お願いします。\nリモコンやB-CASカードや電源ケーブルは予備としてください。\n【写真に関して】\n見本の写真に付属品が写っていれば付属させてください。\n撮影ボックスで撮っていますが、床やテーブル等で撮ってください。\nランプや表示は写真の通りお願いします。\nトレイは開かない場合は開かなくて大丈夫です。\n写真は以下の通りです。';
@@ -89,7 +96,7 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [authors, setAuthors] = useState<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
-  const [kind, setKind] = useState<TaskKind | ''>('');
+  const [kind, setKind] = useState<ReplyTemplate | ''>('');
   const [photos, setPhotos] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [loadingTemplatePhotos, setLoadingTemplatePhotos] = useState(false);
@@ -120,12 +127,12 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
     return () => { active = false; };
   }, [item.id]);
 
-  async function chooseTemplate(value: string) {
-    setKind(value as TaskKind | '');
+  async function chooseTemplate(value: ReplyTemplate | '') {
+    setKind(value);
     setPhotos([]);
     setError('');
     if (!value) return;
-    setDraft(templateBody(value as TaskKind, item));
+    setDraft(templateBody(value, item));
     if (!(PHOTO_AUCTION_TEMPLATES as readonly string[]).includes(value)) return;
     setLoadingTemplatePhotos(true);
     try {
@@ -162,7 +169,8 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
         paths.push(path);
       }
       const { error: insertError } = await sb.rpc('send_malfunction_reply', {
-        p_comment_id: commentId, p_item_id: item.id, p_body: body || '写真を送信しました。', p_task_kind: kind || null,
+        p_comment_id: commentId, p_item_id: item.id, p_body: body || '写真を送信しました。',
+        p_task_kind: kind && !(kind in RETURN_TEMPLATES) ? kind : null,
         p_photo_paths: paths,
       });
       if (insertError) throw insertError;
@@ -199,8 +207,8 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
         <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={'返信写真 ' + (index + 1)} loading="lazy" /></a>)}</div> : null}
     </div>)}
     </div>
-    <div className="task-template-row"><select aria-label="返信の定型文" value={kind} disabled={busy || pending || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value)}>
-      <option value="">定型文選択</option>{TASK_TEMPLATES.filter(value => item.status === '動作不良' || value.includes('ヤフオク')).map(value => <option key={value} value={value}>{value}</option>)}
+    <div className="task-template-row"><select aria-label="返信の定型文" value={kind} disabled={busy || pending || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value as ReplyTemplate | '')}>
+      <option value="">定型文選択</option>{(item.status === '動作不良' ? [...TASK_TEMPLATES, ...Object.keys(RETURN_TEMPLATES)] : AUCTION_TEMPLATES).map(value => <option key={value} value={value}>{value}</option>)}
     </select><button type="button" className="btn task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy || pending || loadingTemplatePhotos}
       onClick={() => ask('納品担当者とのメッセージ：送信', sendReply)}>{busy ? '送信中…' : '送信'}</button></div>
     <div className="task-reply-editor"><textarea ref={replyEditor} aria-label="納品担当者への返信" value={draft} disabled={busy || pending} onChange={event => setDraft(event.target.value)}
@@ -223,11 +231,11 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
         const value = event.target.value;
         if (!value) return;
         setChoosingYahooInstruction(false);
-        void chooseTemplate(value).then(() => {
+        void chooseTemplate(value as typeof AUCTION_TEMPLATES[number]).then(() => {
           replyEditor.current?.scrollIntoView({ block: 'center' });
           replyEditor.current?.focus();
         });
-      }}><option value="">種類を選択</option>{TASK_TEMPLATES.filter(value => value.includes('ヤフオク')).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+      }}><option value="">種類を選択</option>{AUCTION_TEMPLATES.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
       <button type="button" className="btn" onClick={() => setChoosingYahooInstruction(false)}>閉じる</button>
     </dialog>
     {confirmation}

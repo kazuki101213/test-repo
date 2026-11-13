@@ -30,6 +30,8 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
  const makers=['Panasonic◯','Panasonic×','SONY◯','SONY×','SHARP◯','SHARP×','TOSHIBA◯','TOSHIBA×'];
  const bodies=makers.map(m=>template.exports.templateBody(m+'ヤフオク',item));assert(bodies.every(b=>b===bodies[0]&&b.startsWith(prefix)));assert(bodies[0].includes('リモコンやB-CASカードや電源ケーブルは予備としてください。'));
  const other=template.exports.templateBody('ヤフオク その他',item);assert(other.startsWith(prefix));assert(other.includes('付属品はすべてつけてください。'));assert(!other.includes('予備としてください'));
+ const returnTemplates=[['返送依頼(ヤフオク)','着払いでお願いします。'],['返送依頼(メルカリ)','返品くんで返品お願いします。']];
+ for(const [name,body] of returnTemplates) assert.equal(template.exports.templateBody(name,item),prefix+body);
  const conversationRuntime=runtime();const conversation={exports:{},require:id=>id==='react'?conversationRuntime.react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){throw Error('Unexpected send');},pending:false,confirmation:null})}:id==='../inventory'?inventory.exports:{}};
  vm.runInNewContext(compile('apps/admin/src/components/MalfunctionTasks.tsx','\nexport { MalfunctionConversation };'),conversation);
  for(const status of ['Amazon補填申請中','動作不良']){
@@ -38,8 +40,19 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
   conversationRuntime.reset();const tree=conversation.exports.MalfunctionConversation({item:{...item,status},staff:{id:'AA',role:'admin'},onReplied:async()=>{},actions});
   const shown=all(tree).filter(n=>n.type==='button'&&n.props['data-action']).map(n=>n.props['data-action']);
   assert.deepEqual(shown,status==='動作不良'?['yahoo_instruction',...controls]:controls,'Action order follows the report status');
+  const select=name=>all(tree).find(n=>n.type==='select'&&n.props['aria-label']===name);
+  const names=name=>all(select(name)).filter(n=>n.type==='option').map(n=>n.props.value);
+  for(const [name,body] of returnTemplates){
+   assert.equal(names('返信の定型文').includes(name),status==='動作不良');
+   assert(!names('ヤフオク販売指示の種類').includes(name));
+   if(status!=='動作不良')continue;
+   select('返信の定型文').props.onChange({target:{value:name}});
+   conversationRuntime.reset();
+   const changed=conversation.exports.MalfunctionConversation({item:{...item,status},staff:{id:'AA',role:'admin'},onReplied:async()=>{},actions});
+   assert.equal(all(changed).find(n=>n.type==='textarea').props.value,prefix+body);
+  }
  }
- console.log('PASS: cancel/Escape write nothing, confirmation executes once, busy/error handling; all 10 templates use the actual suffixed serial, item ID and model');
+ console.log('PASS: confirmation and reply templates use the actual serial, item ID and model; returns stay separate from auction instructions');
 })().catch(e=>{console.error(e);process.exitCode=1;});
 
 async function spareDeleteConfirmation() {

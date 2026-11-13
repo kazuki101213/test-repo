@@ -36,6 +36,26 @@ do $$begin
  then raise exception 'A return instruction did not enable the delivery return actions';end if;
 end $$;
 rollback to return_instruction;
+do $$declare body text; v_item uuid:=(select id from app.items where lot_seq=992001 and not is_accessory);begin
+ perform app.send_malfunction_reply(gen_random_uuid(),v_item,'着払いでお願いします。',null);
+ if exists(select 1 from app.items where id=v_item and supplier_contact_requested_at is not null) then
+  raise exception 'Unrelated cash-on-delivery reply enabled the return workflow';
+ end if;
+ foreach body in array array[
+  E'【992001】【x1200000001】【DMR-2CX200】\n着払いでお願いします。',
+  E'【992001】【x1200000001】【DMR-2CX200】\n返品くんで返品お願いします。'
+ ] loop
+  begin
+   perform app.send_malfunction_reply(gen_random_uuid(),v_item,body,null);
+   if not exists(select 1 from app.v_delivery_tasks where id=v_item and supplier_contact_requested_at is not null
+    and status='動作不良' and sales_channel='メルカリ') then
+    raise exception 'Return template changed sales or did not enable returns: %',body;
+   end if;
+   raise sqlstate 'P0002' using message='Roll back return template fixture';
+  exception when no_data_found then null;
+  end;
+ end loop;
+end $$;
 select app.perform_inventory_action(id,'supplier_check',status) from app.items where lot_seq=992001 and not is_accessory;
 do $$begin if exists(select 1 from app.items where lot_seq=992001 and status<>'動作不良') then raise exception 'Supplier check resolved report prematurely';end if;end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
