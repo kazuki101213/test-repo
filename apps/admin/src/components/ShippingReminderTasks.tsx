@@ -24,7 +24,7 @@ export default function ShippingReminderTasks({kind='shipping'}:{kind?:'shipping
   const inventory=deliveryAppUrl+'?itemId='+encodeURIComponent(row.item_id);
   const product=purchaseItemUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   const supplier=row.purchase_account_label || row.marketplace || '仕入先未登録';
-  const model=productModelText({model_no:row.model_no??null,title:row.title??'',marketplace:row.marketplace??''});
+  const model=inspection?productModelText({model_no:row.model_no??null,title:row.title??'',marketplace:row.marketplace??''}):'';
   const pendingParts=inspection&&row.waiting_for_parts;
   return <li key={row.id} className="admin-task-card admin-simple-task admin-shipping-reminder admin-task-overdue">
   <div className="task-action-details listing-task-details">
