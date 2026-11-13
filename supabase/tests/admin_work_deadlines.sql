@@ -114,6 +114,26 @@ do $$ declare payload jsonb; begin
     then raise exception 'Accessory without a tracking number did not mark its body'; end if;
 end $$;
 
+reset role;
+update app.items
+set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 2)
+where lot_seq=997613;
+set local role authenticated;
+do $$begin
+  if exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
+    then raise exception 'Linked accessory still requires inspection after the body work was completed'; end if;
+end $$;
+
+reset role;
+update app.items
+set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 3)
+where lot_seq=997613;
+set local role authenticated;
+do $$begin
+  if not exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
+    then raise exception 'Same-day work date hid an accessory without evidence that work followed tracking'; end if;
+end $$;
+
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare resource text; payload jsonb; begin
   if (select count(*) from app.v_delivery_work_tasks where lot_seq between 997610 and 997613 and kind='listing_due')<>4
