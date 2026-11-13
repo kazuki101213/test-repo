@@ -115,10 +115,19 @@ do $$ declare payload jsonb; begin
 end $$;
 
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
-do $$declare resource text; begin
+do $$declare resource text; payload jsonb; begin
   if (select count(*) from app.v_delivery_work_tasks where lot_seq between 997610 and 997613 and kind='listing_due')<>4
     or (select count(*) from app.v_delivery_work_tasks where lot_seq between 997620 and 997623 and kind='shipping')<>4
     then raise exception 'Delivery does not include both Mercari and both Yahoo accounts'; end if;
+  payload := app.read_resource_snapshot('delivery_work_tasks');
+  if (select array_agg(r->>'sales_account_label' order by (r->>'lot_seq')::int)
+    from jsonb_array_elements(payload->'rows') r where r->>'kind'='shipping'
+      and (r->>'lot_seq')::int between 997620 and 997623)
+    is distinct from array['メルカリ1','メルカリ2','ヤフオク1','ヤフオク2']
+    then raise exception 'Delivery shipping tasks lack the active sales account'; end if;
+  if not exists(select 1 from jsonb_array_elements(payload->'rows') r
+    where r->>'kind'='inspection' and r->>'lot_seq'='997617' and r->>'model_no'='TEST-MODEL-617')
+    then raise exception 'Delivery inspection task lacks the inventory model'; end if;
   if exists(select 1 from app.v_admin_work_deadlines) then raise exception 'Management tasks visible to deliverer'; end if;
   foreach resource in array array['listing_tasks','admin_inspection_tasks','admin_shipping_tasks'] loop
     begin perform app.read_resource_snapshot(resource); raise exception 'Deliverer accessed %',resource;

@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
-import {readResourceSnapshot,noticeProductUrl} from '@bussan/shared';
+import {readResourceSnapshot,noticeProductUrl,productModelText,salesChannelLabel} from '@bussan/shared';
 import {completeDeliveryNotice} from '../api';
-type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due';created_at?:string;tracking_recorded_at?:string|null;listing_request_title?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null};
+type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due';created_at?:string;tracking_recorded_at?:string|null;listing_request_title?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null;model_no?:string|null;title?:string|null;sales_channel?:string|null;sales_account_label?:string|null};
 const taskOrder={inspection:0,photo_approved:1,listing_due:1,shipping:2,photo_return:3,reply:4};
 const orderedTasks=(rows:ReturnTask[])=>[...rows].sort((a,b)=>taskOrder[a.kind]-taskOrder[b.kind]||(a.created_at??'').localeCompare(b.created_at??'')||a.id.localeCompare(b.id));
 const hour=3_600_000;
@@ -15,6 +15,15 @@ function taskDeadlineTone(row:ReturnTask,now:number){
  return now>=overdue?'overdue':now>=warning?'warning':undefined;
 }
 const taskTitle={inspection:'動作確認お願いします。',photo_approved:'出品お願いします。',listing_due:'出品お願いします。',shipping:'発送お願いします。',reply:'動作不良への返信があります。',photo_return:'商品写真の修正お願いします。'};
+function displayTaskTitle(row:ReturnTask){
+ switch(row.kind){
+  case 'photo_approved':
+  case 'listing_due':return row.listing_request_title||taskTitle[row.kind];
+  case 'photo_return':return row.reason?.trim()||taskTitle[row.kind];
+  case 'shipping':return (row.sales_account_label||salesChannelLabel(row.sales_channel))+taskTitle.shipping;
+  default:return taskTitle[row.kind];
+ }
+}
 const pendingWorkStatuses=['受取前','検品中','商品登録前'];
 
 export default function ReturnTasks({staffId}:{staffId:string}){
@@ -73,16 +82,16 @@ export default function ReturnTasks({staffId}:{staffId:string}){
  },[rows,now]);
  return <>{error&&<li className="error" role="alert">{error}</li>}{orderedTasks(rows).map(row=>{
   const tone=taskDeadlineTone(row,now);
-  const title=row.kind==='photo_approved'||row.kind==='listing_due'
-    ? row.listing_request_title||taskTitle[row.kind]
-    : row.kind==='photo_return'&&row.reason?.trim()||taskTitle[row.kind];
   if(row.kind==='listing_due'&&!tone)return null;
   const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);
+  const model=row.kind==='inspection'
+   ? productModelText({model_no:row.model_no??null,title:row.title??'',marketplace:row.marketplace??''})
+   : '';
   return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')} data-deadline={tone}>
-  <div className="delivery-return-content"><strong>{title}</strong>
+  <div className="delivery-return-content"><strong>{displayTaskTitle(row)}</strong>
    <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
-    {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{row.sku}</span></div>
+    {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{model&&model!=='—'?`${model}、${row.sku}`:row.sku}</span></div>
   </div>
   {row.kind==='reply'?<button type="button" className="btn" disabled={pending.includes(row.id)} onClick={()=>void complete(row)}>{pending.includes(row.id)?'更新中…':'確認'}</button>:<a className="btn" href={inventoryUrl}>確認</a>}
  </li>;})}</>;
