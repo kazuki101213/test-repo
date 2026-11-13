@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { readManufactureYear } from './manufacture-year.ts';
+import { analyzeListingPhotos } from './listing-photos.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -115,9 +116,9 @@ export async function handler(req: Request): Promise<Response> {
     const authorization = req.headers.get('authorization') ?? '';
     if (!/^Bearer\s+\S+$/i.test(authorization)) throw new RequestError(401, 'ログインが必要です。');
     const token = authorization.replace(/^Bearer\s+/i, '');
-    const { itemId, action = 'save', purpose = 'product' } = await req.json().catch(() => ({}));
+    const { itemId, action = 'save', purpose = 'product', accessoryChoices } = await req.json().catch(() => ({}));
     if (purpose !== 'product' && purpose !== 'packing') throw new RequestError(400, '写真の種類が不正です。');
-    if (!['list', 'save', 'reflect', 'manufacture-year'].includes(action)) throw new RequestError(400, '写真の操作が不正です。');
+    if (!['list', 'save', 'reflect', 'manufacture-year', 'listing-analysis'].includes(action)) throw new RequestError(400, '写真の操作が不正です。');
     if (typeof itemId !== 'string' || !/^[\da-f-]{36}$/i.test(itemId)) throw new RequestError(400, '商品の指定が不正です。');
     const url = Deno.env.get('SUPABASE_URL')!;
     const userClient = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, {
@@ -200,6 +201,25 @@ export async function handler(req: Request): Promise<Response> {
       // Reflected copies belong only to their target; do not duplicate/save them through the original lot.
       && (photo.item_id===itemId || !photo.storage_path.includes('/reflected-')));
     photos.splice(0,photos.length,...selectedPhotos);
+    if (action === 'listing-analysis') {
+      if (purpose!=='product'||item.status!=='商品登録前'||!/^(?:FBA[12]?|自己発送[12]?|メルカリ|ヤフオク)$/.test(item.sales_channel??'')) {
+        throw new RequestError(409,'出品する商品の写真で利用できます。');
+      }
+      if (!Array.isArray(accessoryChoices)||accessoryChoices.length>24||
+          !accessoryChoices.every(choice=>typeof choice==='string'&&choice.length>0&&choice.length<=32)) {
+        throw new RequestError(400,'付属品の候補を確認してください。');
+      }
+      const apiKey=Deno.env.get('GEMINI_API_KEY');
+      const model=Deno.env.get('GEMINI_PHOTO_MODEL')||Deno.env.get('GEMINI_KEYWORDS_MODEL')||'gemini-3.5-flash-lite';
+      if (!apiKey||!/^gemini-[a-z0-9.-]+$/.test(model)) throw new RequestError(503,'商品写真の自動判定を利用できません。');
+      const bucket=service.storage.from('item-photos');
+      const candidates=photos.filter(photo=>photo.item_id===itemId).map(photo=>({id:photo.id,path:photo.storage_path}));
+      const analysis=await analyzeListingPhotos(candidates,async path=>{
+        const {data,error}=await bucket.download(path);
+        return error?null:data;
+      },apiKey,model,accessoryChoices).catch(()=>{throw new RequestError(502,'商品写真を自動判定できませんでした。');});
+      return json(200,analysis);
+    }
     if (action === 'list') {
       const urls: Array<{ id: string; url: string; canDelete: boolean }> = [];
       for (let start = 0; start < photos.length; start += 100) {

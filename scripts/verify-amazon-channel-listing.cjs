@@ -3,6 +3,17 @@ const jsx=(type,props)=>({type,props});
 function load(file,imports={}){const c={exports:{},require:n=>imports[n]??{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);return c.exports;}
 const channels=load('packages/shared/src/salesChannels.ts'),palette=load('packages/shared/src/inventoryPresentation.ts'),workflow=load('packages/shared/src/workflow.ts');
 const seller=load('packages/shared/src/seller.ts',{'./productCategory':load('packages/shared/src/productCategory.ts')});
+const {listingPhotoOrder}=load('apps/delivery/src/listingPhotoOrder.ts');
+const photoIds=['remoteBattery','rearRight','frontRight','overview','remoteBack','bottom','rearLeft','frontLeft','remoteFront'];
+const photoAnalysis={roles:Object.fromEntries(photoIds.map(id=>[id,id])),accessories:['本体']};
+assert.deepEqual(Array.from(listingPhotoOrder(photoIds,photoAnalysis,'amazon',true)),
+ ['overview','frontLeft','frontRight','rearLeft','rearRight','remoteBack']);
+assert.deepEqual(Array.from(listingPhotoOrder(photoIds,photoAnalysis,'mercari',true)),
+ ['overview','frontLeft','frontRight','rearLeft','rearRight','remoteFront','remoteBack','remoteBattery','bottom']);
+assert.deepEqual(Array.from(listingPhotoOrder(photoIds,photoAnalysis,'yahoo',true)),
+ ['overview','frontLeft','frontRight','rearLeft','rearRight','bottom','remoteFront','remoteBack','remoteBattery']);
+assert.deepEqual(Array.from(listingPhotoOrder(['unknown','overview','remoteBattery'],photoAnalysis,'amazon',true)),['overview']);
+assert.deepEqual(Array.from(listingPhotoOrder(['unknown','overview','remoteBattery'],photoAnalysis,'amazon',false)),['overview','unknown','remoteBattery']);
 const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);const actions=n.props?.embedded?.actions;all(typeof actions==='function'?actions(async()=>{},false):actions,out);all(n.props?.embedded?.beforeActions,out);all(n.props?.embedded?.afterActions,out)}return out};
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
 async function confirm(channel,approved=true,verified=true,scenario='normal'){

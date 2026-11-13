@@ -327,6 +327,16 @@ export async function fetchPhotoManufactureYear(itemId: string, photoKey: string
   });
 }
 
+export async function fetchListingPhotoAnalysis(itemId:string, photoKey:string, accessoryChoices:string[]) {
+  return sessionRead('listing-photo-analysis:'+itemId+':'+photoKey+':'+accessoryChoices.join(','),300000,async () => {
+    const {data,error}=await getSupabase().functions.invoke('delivery-photo-drive',{
+      body:{itemId,action:'listing-analysis',accessoryChoices},
+    });
+    if(error)throw error;
+    return data as import('./listingPhotoOrder').ListingPhotoAnalysis;
+  });
+}
+
 export async function deletePhoto(photoId: string): Promise<void> {
   invalidatePhotoReads();
   try {
