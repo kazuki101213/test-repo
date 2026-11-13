@@ -170,9 +170,10 @@
  .delivery-tracking-id { gap:6px; }
  .delivery-tracking-id > .task-item-id-line { font-size:11px; }
  .delivery-main-info > .delivery-people { order:2; }
- .delivery-people { width:100%; grid-template-columns:1.25fr 1.25fr .9fr .9fr; gap:5px; margin:8px 0 9px; }
+ .delivery-people { width:100%; grid-template-columns:minmax(0,1.25fr) minmax(0,1.25fr) minmax(max-content,.9fr) minmax(0,.9fr); gap:5px; margin:8px 0 9px; }
  .delivery-people small { display:block; color:var(--muted); font-size:10px; line-height:15px; margin-bottom:3px; }
  .delivery-people .inventory-label { font-size:10px; padding:2px 3px; line-height:16px; }
+ .delivery-people > :nth-child(3) > .inventory-label { white-space:nowrap; }
  .delivery-main-dates { width:100%; order:3; }
  .approved-delivery-card .task-detail-field,.approved-delivery-card .delivery-accessory-details > .copyable-text,.approved-delivery-card .delivery-accessory-details > .task-item-id-line { display:grid; grid-template-columns:125px minmax(0,1fr); gap:8px; align-items:center; min-height:25px; font-size:12px; line-height:18px; }
  .approved-delivery-card .task-detail-field > span:first-child,.approved-delivery-card .delivery-accessory-details > .copyable-text > span:first-child { display:block; color:var(--muted); font-size:11px; }

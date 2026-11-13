@@ -49,32 +49,56 @@ const flush=async()=>{for(let n=0;n<30;n++)await Promise.resolve();};
  listeners['delivery-item-workflow-changed']({detail:{id:'item',status:'取引中',shipped_on:'2026-10-20'}});tree=list();assert(!card(tree,shippingTitle),'Actual shipment dismisses the shipping request');
  const start=new Clock(instant).toISOString();
  const checkHours=3_600_000;
- for(const [kind,warning,overdue] of [['inspection',48,72],['photo_approved',120,168],['listing_due',120,168],['shipping',12,24]]){
+ for(const [kind,checks] of [
+  ['inspection',[[48,'warning',1],[72,'overdue',2],[96,'overdue',3]]],
+  ['photo_approved',[[120,'warning',3],[144,'warning',4],[168,'overdue',5],[192,'overdue',6]]],
+  ['listing_due',[[120,'warning',3],[144,'warning',4],[168,'overdue',5],[192,'overdue',6]]],
+  ['shipping',[[12,'warning',0],[24,'overdue',1],[48,'overdue',2],[72,'overdue',3]]],
+ ]){
   listContext.deadlineFixture={kind,tracking_recorded_at:start,created_at:start};
-  for(const [offset,expected] of [[warning*checkHours-1,undefined],[warning*checkHours,'warning'],[overdue*checkHours-1,'warning'],[overdue*checkHours,'overdue']]){
-   listContext.at=instant+offset;
-   assert.equal(vm.runInNewContext('taskDeadlineTone(deadlineFixture,at)',listContext),expected,kind);
+  let previous=[undefined,0];
+  for(const [hours,tone,days] of checks){
+   const boundary=instant+hours*checkHours;
+   const timingAt=at=>{listContext.at=at;return vm.runInNewContext('taskTiming(deadlineFixture,at)',listContext);};
+   const before=timingAt(boundary-1);
+   assert.deepEqual([before.tone,before.days,before.nextAt],[...previous,boundary],kind+' before '+hours+'h');
+   const at=timingAt(boundary);
+   assert.deepEqual([at.tone,at.days],[tone,days],kind+' at '+hours+'h');
+   previous=[tone,days];
   }
  }
  source=[
   {...common,id:'inspection',kind:'inspection',tracking_recorded_at:start,model_no:'2B-C20EW1',title:'Older product title'},
-  {...common,id:'listing_due',kind:'listing_due',tracking_recorded_at:start},
+  {...common,id:'listing_due',kind:'listing_due',tracking_recorded_at:start,listing_request_title:'FBA納品お願いします。'},
+  {...common,id:'photo_approved',kind:'photo_approved',tracking_recorded_at:start,listing_request_title:'メルカリ出品お願いします。'},
   {...common,id:'deadline-shipping',kind:'shipping',created_at:start,sales_channel:'自己発送2'},
  ];
  listeners['delivery-return-tasks-changed']();await flush();tree=list();listRuntime.effects();
- assert(card(tree,'動作確認お願いします。'));assert(!card(tree,'出品お願いします。'));
+ assert(card(tree,'動作確認お願いします。'));assert(!card(tree,'FBA納品お願いします。'));assert(card(tree,'メルカリ出品お願いします。'));
  assert(all(card(tree,'動作確認お願いします。')).some(n=>n.type==='span'&&n.props.children==='2B-C20EW1、2503b-SKU'));
  assert.equal(all(card(tree,'動作確認お願いします。')).find(n=>n.type==='a'&&n.props.className==='btn').props.href,'?itemId=item');
- const timer=[...timers.values()][0];assert.equal(timer.delay,12*checkHours);
  const beforeTimerReads=reads;
- instant+=12*checkHours;timer.fn();tree=list();listRuntime.effects();
- assert.equal(card(tree,'自己発送2発送お願いします。').props['data-deadline'],'warning');
- assert.equal(reads,beforeTimerReads,'Deadline colors update without another request');
- instant+=108*checkHours;[...timers.values()][0].fn();tree=list();listRuntime.effects();
- assert.equal(card(tree,'動作確認お願いします。').props['data-deadline'],'overdue');
- assert.equal(card(tree,'出品お願いします。').props['data-deadline'],'warning');
+ let previousHour=0;
+ for(const [hours,expectedCards] of [
+  [12,[['自己発送2発送お願いします。','warning']]],
+  [24,[['自己発送2発送お願いします。(1日経過)','overdue']]],
+  [48,[['自己発送2発送お願いします。(2日経過)','overdue'],['動作確認お願いします。(1日経過)','warning']]],
+  [72,[['動作確認お願いします。(2日経過)','overdue']]],
+  [96,[['動作確認お願いします。(3日経過)','overdue']]],
+  [120,[['FBA納品お願いします。(3日経過)','warning'],['メルカリ出品お願いします。(3日経過)','warning']]],
+  [144,[['FBA納品お願いします。(4日経過)','warning']]],
+  [168,[['FBA納品お願いします。(5日経過)','overdue']]],
+  [192,[['FBA納品お願いします。(6日経過)','overdue']]],
+ ]){
+  const timer=[...timers.values()][0];
+  assert.equal(timer.delay,(hours-previousHour)*checkHours);
+  instant+=timer.delay;previousHour=hours;timer.fn();tree=list();listRuntime.effects();
+  for(const [title,tone] of expectedCards)assert.equal(card(tree,title)?.props['data-deadline'],tone,title);
+  assert.equal(reads,beforeTimerReads,'Deadline colors and text update without another request');
+ }
  listeners['delivery-item-workflow-changed']({detail:{id:'item',status:'検品中',inspected:true}});tree=list();
- assert(!card(tree,'動作確認お願いします。'));assert(card(tree,'出品お願いします。'));
+ assert(!all(tree).some(n=>n.type==='strong'&&n.props.children.startsWith('動作確認お願いします。')));
+ assert(card(tree,'FBA納品お願いします。(6日経過)'));
  listRuntime.cleanup();assert.equal(timers.size,0);assert.equal(Object.keys(listeners).length,0);
  console.log('PASS: reason required, cancel/Escape no write, double-submit once, failure retains reason; return push deep links; delivery task reasons and bounded event-driven reads');
 })().catch(e=>{console.error(e);process.exitCode=1;});
