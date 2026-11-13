@@ -15,6 +15,12 @@ import type { SpareAccessoryField, SpareAccessoryInput, SpareInventoryAccessory 
 type SpareReferenceMode = 'remote' | 'body';
 type SpareReferenceItem = NonNullable<Awaited<ReturnType<typeof findInventoryForSpare>>>;
 const referenceSerial = (value: string) => value.trim().toLowerCase();
+function spareErrorMessage(cause: unknown): string {
+  if (typeof cause === 'string' && cause.trim()) return cause;
+  if (cause && typeof cause === 'object' && 'message' in cause &&
+    typeof cause.message === 'string' && cause.message.trim()) return cause.message;
+  return '予備の情報を更新できませんでした。';
+}
 
 const emptyForm = (owner: Staff | null): SpareAccessoryInput => ({
   source_sku: null, owner_staff_id: owner?.id ?? null, owner_name: owner?.name ?? '',
@@ -53,7 +59,7 @@ export default function Spares({ me }: { me: Staff }) {
     fetching.current = true;
     setError('');
     try { setRows(await fetchSpareAccessories()); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    catch (cause) { setError(spareErrorMessage(cause)); }
     finally { fetching.current = false; setLoading(false); }
   }, []);
   useEffect(() => {
@@ -139,7 +145,7 @@ export default function Spares({ me }: { me: Staff }) {
       if (referenceLookup.current === lookup) {
         referenceLookup.current = null;
         setAutofillBusy(false);
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(spareErrorMessage(cause));
       }
     } finally {
       if (referenceLookup.current === lookup) setAutofillBusy(false);
@@ -177,7 +183,7 @@ export default function Spares({ me }: { me: Staff }) {
       resetReference();
       setForm(emptyForm(me.role === 'purchaser' ? me : null));
       await reload();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    } catch (cause) { setError(spareErrorMessage(cause)); }
     finally { saveLock.current = false; setSaving(false); }
   }
 
@@ -306,7 +312,7 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
       const nextValue = numeric ? Number(value) : value.trim() || null;
       await updateSpareAccessory(row.id, field, nextValue);
       await onSaved();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setBusy(false); }
+    } catch (cause) { setError(spareErrorMessage(cause)); setBusy(false); }
   }
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label={`${labels[field]}を編集`}>
     <div className="card inventory-comment-panel"><h3>{labels[field]}を編集</h3>
