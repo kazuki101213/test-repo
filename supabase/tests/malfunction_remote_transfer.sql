@@ -82,5 +82,23 @@ begin
    or not exists(select 1 from app.spare_accessories where id=attached_spare and used_for_item_id=body) then
   raise exception 'Earlier remote allocation was lost or became available again';
  end if;
+
+ -- Manual registration must also work when the original spare references the inventory accessory.
+ seq:=seq+1;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace)
+ values(seq,buyer,holder,current_date,'manual transfer fixture',1000,'ヤフオク') returning id into body;
+ insert into app.items(lot_seq,parent_item_id,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,marketplace_item_id)
+ values(seq,body,true,buyer,holder,current_date,'リモコン',1577,'ヤフオク','mfixture') returning id into remote;
+ insert into app.spare_accessories(title,usage_note,owner_staff_id,marketplace_item_id)
+ values('リモコン','997699',holder,'mfixture') returning id into attached_spare;
+ perform app.allocate_spare_accessory(attached_spare,remote);
+ perform app.move_inventory_accessory_to_spares(remote,jsonb_build_object(
+   'title','リモコン','marketplace','ヤフオク','marketplace_item_id','mfixture','usage_note',seq::text));
+ if exists(select 1 from app.items where id=remote)
+   or not exists(select 1 from app.spare_accessories where id=attached_spare and used_for_item_id=body and usage_note='997699')
+   or (select count(*) from app.spare_accessories
+       where marketplace_item_id='mfixture' and used_for_item_id is null and usage_note=seq::text and cost_amount=1577)<>1 then
+  raise exception 'Manual move did not preserve history and create one available spare';
+ end if;
 end $$;
 rollback;
