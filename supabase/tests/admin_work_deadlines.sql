@@ -54,6 +54,13 @@ update app.item_tracking_recordings t set recorded_at=now()-interval '3 days'
   +case when i.lot_seq=997633 then interval '1 second' else interval '0 seconds' end
 from app.items i where i.id=t.item_id and i.lot_seq between 997630 and 997634;
 
+insert into app.products(asin,model_no) values('B0TASK7617','TEST-MODEL-617');
+update app.items set purchase_account_id='mercari-2',
+  product_id=(select id from app.products where asin='B0TASK7617')
+where lot_seq=997617;
+update app.items set marketplace_item_id='m' || lot_seq
+where lot_seq in (997617,997630,997633);
+
 set local role authenticated;
 do $$declare payload jsonb; begin
   payload := app.read_resource_snapshot('listing_tasks');
@@ -72,11 +79,39 @@ do $$declare payload jsonb; begin
   if not exists(select 1 from jsonb_array_elements(payload->'rows') r
     where r->>'lot_seq'='997630' and r->>'action_item_id'=(select id::text from app.items where lot_seq=997617))
     then raise exception 'Accessory confirmation does not open the body'; end if;
+  if (select count(*) from jsonb_array_elements(payload->'rows') r
+    where r->>'lot_seq' in ('997617','997630') and r->'waiting_for_parts'='true'::jsonb) <> 2
+    or not exists(select 1 from jsonb_array_elements(payload->'rows') r where r->>'lot_seq'='997617'
+      and r->>'model_no'='TEST-MODEL-617' and r->>'purchase_account_label'='メルカリ2')
+    or not exists(select 1 from jsonb_array_elements(payload->'rows') r where r->>'lot_seq'='997634'
+      and r->'waiting_for_parts'='false'::jsonb)
+    then raise exception 'Inspection reminder purchase details or pending accessories incorrect'; end if;
   payload := app.read_resource_snapshot('admin_shipping_tasks');
   if (select count(*) from jsonb_array_elements(payload->'rows') r
     where (r->>'lot_seq')::int between 997620 and 997624)<>4
     or exists(select 1 from jsonb_array_elements(payload->'rows') r where r->>'lot_seq'='997624')
     then raise exception 'Twenty-four-hour shipping rule or shipping account coverage incorrect'; end if;
+end $$;
+
+reset role;
+insert into app.marketplace_extension_receipts(marketplace,marketplace_item_id,account_label,state,reserved_by)
+select 'メルカリ',marketplace_item_id,'メルカリ2','succeeded','11111111-1111-1111-1111-111111111111'
+from app.items where lot_seq in (997617,997630,997633);
+set local role authenticated;
+do $$ declare payload jsonb; begin
+  payload:=app.read_resource_snapshot('admin_inspection_tasks');
+  if (select count(*) from jsonb_array_elements(payload->'rows') r
+    where r->>'lot_seq' in ('997617','997630') and r->'waiting_for_parts'='false'::jsonb) <> 2
+    then raise exception 'Fully received inspection family still marked as waiting'; end if;
+end $$;
+reset role;
+update app.items set tracking_no=null where lot_seq=997633;
+set local role authenticated;
+do $$ declare payload jsonb; begin
+  payload:=app.read_resource_snapshot('admin_inspection_tasks');
+  if not exists(select 1 from jsonb_array_elements(payload->'rows') r
+    where r->>'lot_seq'='997617' and r->'waiting_for_parts'='true'::jsonb)
+    then raise exception 'Accessory without a tracking number did not mark its body'; end if;
 end $$;
 
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
