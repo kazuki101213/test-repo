@@ -59,7 +59,7 @@ update app.items set purchase_account_id='mercari-2',
   product_id=(select id from app.products where asin='B0TASK7617')
 where lot_seq=997617;
 update app.items set marketplace_item_id='m' || lot_seq
-where lot_seq in (997617,997630,997633);
+where lot_seq in (997617,997630,997631,997633);
 
 set local role authenticated;
 do $$declare payload jsonb; begin
@@ -121,7 +121,7 @@ set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 3)
 where lot_seq=997613 and not is_accessory;
 set local role authenticated;
 do $$begin
-  if not exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
+  if not exists (select 1 from app.v_admin_work_deadlines where marketplace_item_id='m997631' and kind='inspection')
     then raise exception 'Same-day work date hid an accessory without evidence that work followed tracking'; end if;
 end $$;
 rollback to accessory_work_completion;
@@ -131,7 +131,7 @@ set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 2)
 where lot_seq=997613 and not is_accessory;
 set local role authenticated;
 do $$begin
-  if exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
+  if exists (select 1 from app.v_admin_work_deadlines where marketplace_item_id='m997631' and kind='inspection')
     then raise exception 'Linked accessory still requires inspection after the body work was completed'; end if;
 end $$;
 rollback to accessory_work_completion;
