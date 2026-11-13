@@ -99,7 +99,21 @@ Deno.test('private receipt actions reject missing or wrong dispatcher credential
  }finally{globalThis.fetch=original;keys.forEach((k,i)=>saved[i]===undefined?Deno.env.delete(k):Deno.env.set(k,saved[i]!));}
 });
 Deno.test('offer uses selected seller/ASIN/price/condition and FBA has no invented quantity',()=>{const fba=listingBody(item());assert(fba.attributes.fulfillment_availability[0].fulfillment_channel_code==='AMAZON_JP');assert(!('quantity'in fba.attributes.fulfillment_availability[0]));assert(fba.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax===400);assert(fba.attributes.condition_note[0].value==='説明\n本文');const self=listingBody({...item(),sales_channel:'自己発送2'});assert(self.attributes.fulfillment_availability[0].quantity===1);assert(self.attributes.fulfillment_availability[0].fulfillment_channel_code==='DEFAULT')});
-Deno.test('ASIN safety values are copied without inventing missing declarations',()=>{const empty=listingBody(item(),{attributes:{}}).attributes;assert(!('batteries_required'in empty));assert(!('supplier_declared_dg_hz_regulation'in empty));const known=listingBody(item(),{attributes:{batteries_required:[{value:false}],supplier_declared_dg_hz_regulation:[{value:'not_applicable'}]}}).attributes;assert(known.batteries_required[0].value===false);assert(known.supplier_declared_dg_hz_regulation[0].value==='not_applicable')});
+Deno.test('battery inclusion defaults to false on all channels and preserves Japanese catalog data',()=>{
+ for(const sales_channel of ['FBA1','FBA2','自己発送1','自己発送2']){
+  const fields=listingBody({...item(),sales_channel},{attributes:{batteries_included:[{value:true,marketplace_id:'ATVPDKIKX0DER'}]}}).attributes;
+  assert(fields.batteries_included.length===1&&fields.batteries_included[0].value===false);
+  assert(fields.batteries_included[0].marketplace_id===market);
+  assert(!('batteries_required' in fields)&&!('supplier_declared_dg_hz_regulation' in fields));
+ }
+ const known=listingBody(item(),{attributes:{
+  batteries_included:[{value:'false',marketplace_id:market},{value:true,marketplace_id:market}],
+  batteries_required:[{value:false}],supplier_declared_dg_hz_regulation:[{value:'not_applicable'}],
+ }}).attributes;
+ assert(known.batteries_included[0].value===true);
+ assert(known.batteries_required[0].value===false);
+ assert(known.supplier_declared_dg_hz_regulation[0].value==='not_applicable');
+});
 Deno.test('verification checks SKU, ASIN, price, condition, channel and asynchronous issues',()=>{for(const change of ['sku','asin','price','condition','fulfillment','error']){const x=listing();if(change==='sku')x.sku='wrong';if(change==='asin')x.summaries[0].asin='B000WRONG1';if(change==='price')x.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax=401;if(change==='condition')x.summaries[0].conditionType='new_new';if(change==='fulfillment')x.attributes.fulfillment_availability=[{fulfillment_channel_code:'DEFAULT'}];if(change==='error')(x.issues as any[]).push({severity:'ERROR',code:'123',message:'missing data'});assert(!verifiedListing(x,item()),change)}assert(verifiedListing(listing(),item()))});
 for(const mode of ['anonymous','inactive','other','photo','invalidPrice','invalidDate','wrongSeller','previewRejected','getForbidden','conflict','pending','timeout','putRejected','asynchronousError','summaryPending','registered','verified','stale','completeFailed','changedSku','changedSkuPending','changedDetails','photoMissing','photoRejected','photoWaiting','foreignPhoto','packingPhoto','expectedPrice','expectedSku','resumeSummary','resumePhotos','resumeLivePrice','resumeReady','resumeMissing','resumeChanged','resumeVerified'])Deno.test(mode,async()=>{
  const savedFetch=globalThis.fetch,keys=['SUPABASE_URL','SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY',...['AMAZON_','AMAZON_2_'].flatMap(p=>['LWA_CLIENT_ID','LWA_CLIENT_SECRET','LWA_REFRESH_TOKEN','SELLER_ID'].map(k=>p+k))],saved=keys.map(k=>Deno.env.get(k));
@@ -130,8 +144,11 @@ for(const mode of ['anonymous','inactive','other','photo','invalidPrice','invali
  assert(url.includes('/items/A3E7BXJWH9TP11/'),'must use Amazon2');
  if(method==='PATCH'){const data=JSON.parse(String(init?.body));assert(data.productType==='HVAC_AIR_FILTER','photo patches use the actual SKU product type');assert(data.patches.every((p:any)=>/^\/attributes\/(main|other)_offer_image_locator/.test(p.path)),'patch photos only');if(url.includes('VALIDATION_PREVIEW'))return json({status:'VALID'});patches++;return json(mode==='photoRejected'?{status:'INVALID',issues:[{severity:'ERROR',code:'IMAGE',message:'写真確認'}]}:{status:'ACCEPTED'});}
  if(method==='PUT'){
+  const submitted=JSON.parse(String(init?.body));
+  assert(submitted.attributes.batteries_included[0].value===false,'battery inclusion must be sent in both the preview and live PUT');
+  assert(submitted.attributes.batteries_included[0].marketplace_id===market);
   if(url.includes('VALIDATION_PREVIEW')){preview++;return json(mode==='previewRejected'?{status:'INVALID',issues:[{severity:'ERROR',code:'8541',message:'ASIN確認'}]}:{status:'VALID',issues:[]})}
-  const submitted=JSON.parse(String(init?.body));assert(submitted.attributes.batteries_required[0].value===false);assert(submitted.attributes.supplier_declared_dg_hz_regulation[0].value==='not_applicable');
+  assert(submitted.attributes.batteries_required[0].value===false);assert(submitted.attributes.supplier_declared_dg_hz_regulation[0].value==='not_applicable');
   puts++; if(mode==='timeout')throw new DOMException('Timeout','TimeoutError');return json(mode==='putRejected'?{status:'INVALID',issues:[{severity:'ERROR',code:'X',message:'内容確認'}]}:{status:'ACCEPTED',submissionId:'submission-1',issues:[]});
  }
  if(['resumeSummary','resumePhotos','resumeLivePrice','resumeReady','resumeVerified'].includes(mode)){const x=listing(current);if(mode==='resumeSummary')x.summaries=[];if(mode==='resumePhotos')delete x.attributes.main_offer_image_locator;if(mode==='resumeLivePrice')x.offers=[];return json(x)}
