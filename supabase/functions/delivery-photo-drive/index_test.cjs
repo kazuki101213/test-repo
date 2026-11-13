@@ -54,7 +54,7 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
   };
   const fetch = async (url, init={}) => {
     state.google.push({url:String(url),...init});
-    if(String(url).includes('generativelanguage.googleapis.com'))return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({year:state.detectedYear??null})}]}}]});
+    if(String(url).includes('generativelanguage.googleapis.com'))return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(state.listingAnalysis??{year:state.detectedYear??null})}]}}]});
     if(String(url).includes('oauth2')) return Response.json({access_token:'test-token'});
     if(String(url).includes('alt=media')) return String(url).includes(state.mediaFailure??'NEVER') ? new Response('',{status:404}) : new Response(new Blob(['image'],{type:'image/jpeg'}));
     if(String(url).includes('/upload/drive/')) return new Response('{}',{headers:{Location:'https://www.googleapis.com/upload/session'}});
@@ -67,9 +67,11 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     throw new Error('Unexpected Google operation '+url);
   };
   const compile=file=>ts.transpileModule(fs.readFileSync(__dirname+'/'+file,'utf8').replace('if (import.meta.main) Deno.serve(handler);',''),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  const module={exports:{}},yearModule={exports:{}};
+  const module={exports:{}},yearModule={exports:{}},listingModule={exports:{}};
   new Function('exports','fetch',compile('manufacture-year.ts'))(yearModule.exports,fetch);
-  new Function('require','module','exports','Deno','fetch',compile('index.ts'))(name=>name==='./manufacture-year.ts'?yearModule.exports:{createClient:()=>service},module,module.exports,{env:{get:name=>name.includes('_MODEL')?undefined:name}},fetch);
+  new Function('require','exports',compile('listing-photos.ts'))(()=>yearModule.exports,listingModule.exports);
+  const imports={'./manufacture-year.ts':yearModule.exports,'./listing-photos.ts':listingModule.exports,'npm:@supabase/supabase-js@2.45.4':{createClient:()=>service}};
+  new Function('require','module','exports','Deno','fetch',compile('index.ts'))(name=>imports[name],module,module.exports,{env:{get:name=>name.includes('_MODEL')?undefined:name}},fetch);
   service.from=new Proxy(service.from,{apply(fn,receiver,args){const query=Reflect.apply(fn,receiver,args);query.limit=n=>query.range(0,n-1);return query;}});
   const call=(action,body={})=>module.exports.handler(new Request('https://function.invalid/',{method:'POST',headers:{authorization:'Bearer test','Content-Type':'application/json'},body:JSON.stringify({itemId,action,...body})}));
   return {state,call};
@@ -84,7 +86,7 @@ test('Amazon year uses only its own product photos, keeps saved values, and leav
   assert.deepEqual(await (await call('manufacture-year')).json(),{year:2020});
   assert.deepEqual(state.downloads,['photos/new.jpg']);
   const request=JSON.parse(state.google[0].body);
-  assert.deepEqual(request.contents[0].parts,[{inlineData:{mimeType:'image/jpeg',data:btoa('image')}}]);
+  assert.deepEqual(request.contents[0].parts,[{text:'写真番号 0'},{inlineData:{mimeType:'image/jpeg',data:btoa('image')}}]);
   state.detectedYear='2020';
   assert.deepEqual(await (await call('manufacture-year')).json(),{year:null});
   item.manufacture_year=2018;
@@ -95,6 +97,19 @@ test('Amazon year uses only its own product photos, keeps saved values, and leav
   const other=setup({assigned:false});
   assert.equal((await other.call('manufacture-year')).status,403);
   assert.equal(other.state.google.length,0);
+});
+test('Listing analysis maps photo indices and accepts only visible, allowed accessories',async()=>{
+  const {state,call}=setup();
+  Object.assign(state.items.find(item=>item.id===itemId),{status:'商品登録前',sales_channel:'メルカリ'});
+  state.item_photos.push({id:'p4',item_id:itemId,storage_path:'photos/overview.jpg',photo_kind:'product'});
+  const choices=['本体','電源ケーブル'];
+  state.listingAnalysis={roles:{overview:1,frontLeft:0,frontRight:0,rearLeft:12},accessories:['本体','不明な付属品']};
+  assert.deepEqual(await (await call('listing-analysis',{accessoryChoices:choices})).json(),{
+    roles:{overview:'p4',frontLeft:'p2'},accessories:['本体'],
+  });
+  assert.deepEqual(state.downloads,['photos/new.jpg','photos/overview.jpg']);
+  state.listingAnalysis.roles.overview=null;
+  assert.deepEqual((await (await call('listing-analysis',{accessoryChoices:choices})).json()).accessories,[]);
 });
 test('return lists all original and return photos in its lot, without Drive writes',async()=>{
   const {state,call}=setup(); const response=await call('list');

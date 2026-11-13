@@ -1,9 +1,11 @@
 import {useEffect,useRef,useState} from 'react';
 import {sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel,marketplaceAccountLabel} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
-import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,retryUncertainShippingCode,requestListingResultCheck,submitAmazonListing,fetchAmazonListingPending} from '../api';
+import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,retryUncertainShippingCode,requestListingResultCheck,submitAmazonListing,fetchAmazonListingPending,fetchListingPhotoAnalysis} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
 import {listingDraft} from '../listingDraft';
+import {accessoryOptions} from '../description';
+import {listingPhotoOrder} from '../listingPhotoOrder';
 import {deliveryErrorMessage} from '../errors';
 import DescriptionEditor from './DescriptionEditor';
 import WorkDateConfirmation from './WorkDateConfirmation';
@@ -26,6 +28,9 @@ function statusText(op:SellerOperation){if(checking(op))return '出品済み商�
 export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onChanged}:{mode:'listing'|'shipping'|'messages';task:DeliveryTask;staff:Staff;listingSkus?:string[];onClose:()=>void;onChanged:(task:DeliveryTask)=>void}){
  const [draft,setDraft]=useState<SellerDraft|null>(null),[photos,setPhotos]=useState<ItemPhoto[]>([]),[selected,setSelected]=useState<string[]>([]),[context,setContext]=useState<SellerContext|null>(null);
  const [descriptionSource,setDescriptionSource]=useState<{task:DeliveryTask;maker:string}|null>(null);
+ const [photoAnalysis,setPhotoAnalysis]=useState<{message:string;accessories:string[];overview?:string;reading?:boolean}>({message:'',accessories:[]});
+ const photosEdited=useRef(false);
+ const receiptPhotos=useRef(false);
  const [listingUrl,setListingUrl]=useState('');
  const [confirming,setConfirming]=useState<'listing'|'listing_complete'|null>(null);
  const [amazonConfirmation,setAmazonConfirmation]=useState<{sku:string;price:number;persistYear:()=>Promise<void>}|null>(null);
@@ -35,8 +40,56 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  readCode.current=value=>{setCode(value);setCamera(false);};
  const listingSkuKey=listingSkus.join('\n');
  const onRead=useRef((value:string)=>readCode.current(value)).current;
- useEffect(()=>{let active=true;setAmazonAwaiting(null);void Promise.all([fetchTask(task.id,canViewDeliveryAssignee(staff)),fetchSellerContext(task.id),mode==='listing'?fetchPhotoUrls(task.id):Promise.resolve([]),mode==='listing'&&isAmazonSalesChannel(task.sales_channel)?fetchAmazonListingPending(task.id):Promise.resolve(null)]).then(async([full,info,images,receipt])=>{if(!active)return;if(!full||!info)throw new Error('商品が見つかりません');const maker=mode==='listing'?await fetchProductMaker(full.asin).catch(()=>''):'';if(!active)return;const prepared={...full,deliverer_name:info.assignee||full.deliverer_name||(full.deliverer_id===staff.id?staff.name:'')};const defaults=mode==='listing'?listingDraft(prepared,maker,listingSkuKey?listingSkuKey.split('\n'):[]):sellerDefaults(prepared);setDraft(mode==='shipping'?sellerShippingDraft(defaults,info.shipping_defaults):defaults);setDescriptionSource({task:prepared,maker});setContext(info);setPhotos(images);const selection=receipt?.photoIds.length?receipt.photoIds:images.slice(0,isAmazonSalesChannel(full.sales_channel)?6:10).map(photo=>photo.id);setSelected(selection);if(receipt&&full.status==='商品登録前'&&full.planned_price){setAmazonAwaiting({date:receipt.date,requestId:receipt.requestId,photoIds:selection,expected:{sku:full.sku,price:full.planned_price}});setAmazonNotice('Amazonに送信済みです。商品情報・写真の反映を自動確認しています。');}}).catch(cause=>{if(active)setError(deliveryErrorMessage(cause));});return()=>{active=false;};},[task.id,mode,staff.id,staff.name,staff.role,listingSkuKey,task.sales_channel]);
+ useEffect(()=>{
+  let active=true;
+  photosEdited.current=false;
+  receiptPhotos.current=false;
+  setPhotoAnalysis({message:'',accessories:[]});
+  setAmazonAwaiting(null);
+  void Promise.all([
+   fetchTask(task.id,canViewDeliveryAssignee(staff)),fetchSellerContext(task.id),
+   mode==='listing'?fetchPhotoUrls(task.id):Promise.resolve([]),
+   mode==='listing'&&isAmazonSalesChannel(task.sales_channel)?fetchAmazonListingPending(task.id):Promise.resolve(null),
+  ]).then(async([full,info,images,receipt])=>{
+   if(!active)return;
+   if(!full||!info)throw new Error('商品が見つかりません');
+   const maker=mode==='listing'?await fetchProductMaker(full.asin).catch(()=>''):'';
+   if(!active)return;
+   const prepared={...full,deliverer_name:info.assignee||full.deliverer_name||(full.deliverer_id===staff.id?staff.name:'')};
+   const defaults=mode==='listing'?listingDraft(prepared,maker,listingSkuKey?listingSkuKey.split('\n'):[]):sellerDefaults(prepared);
+   receiptPhotos.current=!!receipt;
+   const selection=receipt?.photoIds.length?receipt.photoIds:images.slice(0,isAmazonSalesChannel(full.sales_channel)?6:10).map(photo=>photo.id);
+   setDraft(mode==='shipping'?sellerShippingDraft(defaults,info.shipping_defaults):defaults);
+   setDescriptionSource({task:prepared,maker});setContext(info);setPhotos(images);setSelected(selection);
+   if(receipt&&full.status==='商品登録前'&&full.planned_price){
+    setAmazonAwaiting({date:receipt.date,requestId:receipt.requestId,photoIds:selection,expected:{sku:full.sku,price:full.planned_price}});
+    setAmazonNotice('Amazonに送信済みです。商品情報・写真の反映を自動確認しています。');
+   }
+  }).catch(cause=>{if(active)setError(deliveryErrorMessage(cause));});
+  return()=>{active=false;};
+ },[task.id,mode,staff.id,staff.name,staff.role,listingSkuKey,task.sales_channel]);
  const pending=context?.operations.some(op=>['queued','running','uncertain'].includes(op.status))??false;
+ const photoKey=photos.map(photo=>photo.id).join(',');
+ const category=draft?.category??'';
+ const photoChannel=isAmazonSalesChannel(task.sales_channel)?'amazon':task.sales_channel==='メルカリ'?'mercari':task.sales_channel==='ヤフオク'?'yahoo':null;
+ useEffect(()=>{
+  if(mode!=='listing'||descriptionSource?.task.id!==task.id||task.status!=='商品登録前'||!photoChannel||!photoKey||receiptPhotos.current||pending) return;
+  let active=true;
+  const ids=photoKey.split(',');
+  setPhotoAnalysis({message:'写真の並び順と付属品を確認中…',accessories:[],reading:true});
+  void Promise.resolve().then(()=>fetchListingPhotoAnalysis(task.id,photoKey,accessoryOptions(category))).then(analysis=>{
+   if(!active)return;
+   if(!photosEdited.current&&!lock.current)setSelected(listingPhotoOrder(ids,analysis,photoChannel,category==='ブルーレイレコーダー'));
+   setPhotoAnalysis({
+    message:analysis.roles.overview?'1枚目と付属品を確認してください。':'全体写真を確認できませんでした。1枚目を選んでください。',
+    overview:analysis.roles.overview,
+    accessories:analysis.accessories,
+   });
+  }).catch(()=>{
+   if(active)setPhotoAnalysis({message:'写真を自動判定できませんでした。並び順と付属品を確認してください。',accessories:[]});
+  });
+  return()=>{active=false;};
+ },[task.id,task.status,descriptionSource?.task.id,mode,category,photoChannel,photoKey,pending]);
  const watching=context?.operations.find(op=>op.status==='queued'||op.status==='running'||checking(op));
  useEffect(()=>{if(!watching)return;let active=true,inFlight=false;
   async function refresh(){if(!active||inFlight||document.visibilityState!=='visible')return;if(Date.now()-Date.parse(checking(watching!)?String(watching!.result.read_check_requested_at):watching!.created_at)>600000){setError('実行結果の確認が必要です。自動再実行はしません。');return;}inFlight=true;
@@ -52,7 +105,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  async function submit(kind:string,payload:Record<string,unknown>){if(lock.current||pending)return;lock.current=true;setBusy(true);setError('');try{await queueSellerOperation(task.id,kind,{...payload,expected_revision:context?.revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));setMessage('');}catch(cause){setError(deliveryErrorMessage(cause));}finally{lock.current=false;setBusy(false);}}
  async function retryShipping(payload:Record<string,unknown>){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await retryUncertainShippingCode(task.id,{...payload,expected_revision:context?.revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));setMessage('');}catch(cause){setError(deliveryErrorMessage(cause));}finally{lock.current=false;setBusy(false);}}
  async function checkListing(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await requestListingResultCheck(task.id,listingUrl);setContext(await fetchSellerContext(task.id));}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
- function movePhoto(id:string,offset:number){setSelected(current=>{const from=current.indexOf(id),to=from+offset;if(from<0||to<0||to>=current.length)return current;const next=[...current];[next[from],next[to]]=[next[to]!,next[from]!];return next;});request.current=crypto.randomUUID();}
+ function movePhoto(id:string,offset:number){photosEdited.current=true;setSelected(current=>{const from=current.indexOf(id),to=from+offset;if(from<0||to<0||to>=current.length)return current;const next=[...current];[next[from],next[to]]=[next[to]!,next[from]!];return next;});request.current=crypto.randomUUID();}
  function change<K extends keyof SellerDraft>(field:K,value:SellerDraft[K]){setDraft(current=>current?{...current,[field]:value}:current);request.current=crypto.randomUUID();}
  const amazonListing=mode==='listing'&&isAmazonSalesChannel(task.sales_channel);
  const categoryError=draft?sellerListingCategoryError(draft,task.sales_channel):'';
@@ -67,10 +120,10 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  },[amazonAwaiting,task.id,staff.role,staff.id]);
  const disabled=busy||pending||!!amazonAwaiting||(mode==='listing'&&(task.photo_review_approved!==true||context?.photo_review_approved!==true)),trade=context?.listing?.trade_key;
  const tradePayload={trade_key:trade,size:draft?.size,dropoff:draft?.dropoff,shippingMethod:draft?.shippingMethod,category:draft?.category};
- const photoChooser=<div className="seller-photos" aria-label="出品写真の掲載順">{[...selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo]:[];}),...photos.filter(photo=>!selected.includes(photo.id))].map(photo=>{const order=selected.indexOf(photo.id);return <div key={photo.id} className="seller-photo" role="group" aria-label={order<0?'出品しない写真':`写真${order+1}`}>
-    <label><span>{order<0?'出品しない':`${order+1}枚目`}</span><img src={photo.url} alt="出品写真" loading="lazy"/><input type="checkbox" aria-label={order<0?'この写真を出品に含める':`${order+1}枚目を出品に含める`} checked={order>=0} disabled={disabled||order<0&&selected.length>=(amazonListing?6:10)} onChange={event=>{setSelected(current=>event.target.checked?[...current,photo.id]:current.filter(id=>id!==photo.id));request.current=crypto.randomUUID();}}/></label>
+ const photoChooser=<>{photoAnalysis.message&&<p className="muted" role="status">{photoAnalysis.message}</p>}<div className="seller-photos" aria-label="出品写真の掲載順">{[...selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo]:[];}),...photos.filter(photo=>!selected.includes(photo.id))].map(photo=>{const order=selected.indexOf(photo.id);return <div key={photo.id} className="seller-photo" role="group" aria-label={order<0?'出品しない写真':`写真${order+1}`}>
+    <label><span>{order<0?'出品しない':`${order+1}枚目`}</span><img src={photo.url} alt="出品写真" loading="lazy"/><input type="checkbox" aria-label={order<0?'この写真を出品に含める':`${order+1}枚目を出品に含める`} checked={order>=0} disabled={disabled||order<0&&selected.length>=(amazonListing?6:10)} onChange={event=>{photosEdited.current=true;setSelected(current=>event.target.checked?[...current,photo.id]:current.filter(id=>id!==photo.id));request.current=crypto.randomUUID();}}/></label>
     {order>=0&&<div className="seller-photo-order"><button type="button" className="btn" aria-label={`写真${order+1}を前へ`} title="前へ" disabled={disabled||order===0} onClick={()=>movePhoto(photo.id,-1)}>←</button><button type="button" className="btn" aria-label={`写真${order+1}を後へ`} title="後へ" disabled={disabled||order===selected.length-1} onClick={()=>movePhoto(photo.id,1)}>→</button></div>}
-   </div>;})}</div>;
+   </div>;})}</div></>;
  const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key)?.result.messages;
  if(mode==='listing'&&task.status!=='商品登録前')return <section className="task-detail-inline seller-panel"><p>現在の状態：{task.status}</p>{context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}</section>;
  return <section className={`task-detail-inline seller-panel${mode==='listing'&&!amazonListing?' seller-listing-layout':''}`} aria-label={`${task.sku}の${mode==='listing'?'出品':mode==='shipping'?'発送':'取引メッセージ'}`}>
@@ -81,8 +134,9 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    {descriptionSource&&<DescriptionEditor key={task.id} task={descriptionSource.task} listingSkus={listingSkus} onSaved={descriptionSaved} embedded={{
     value:draft,manufacturer:descriptionSource.maker,disabled,onSaving:setBusy,onChange:updateDescription,
     yearPhotoKey:amazonListing&&!amazonAwaiting&&photos.length?photos.map(photo=>photo.id).join(','):undefined,
+    suggestedAccessories:photoAnalysis.overview&&selected[0]===photoAnalysis.overview?photoAnalysis.accessories:undefined,
     beforeActions:amazonListing?photoChooser:undefined,
-    actions:amazonListing?(persistYear,readingYear)=><button type="button" className="btn primary" disabled={disabled||readingYear||selected.length<1||selected.length>6} onClick={()=>void beginAmazonListing(persistYear)}>出品</button>:undefined,
+    actions:amazonListing?(persistDetails,readingYear)=><button type="button" className="btn primary" disabled={disabled||readingYear||photoAnalysis.reading||selected.length<1||selected.length>6} onClick={()=>void beginAmazonListing(persistDetails)}>出品</button>:undefined,
     afterActions:amazonListing?<>{amazonNotice&&<p className="seller-preview" role="status" aria-live="polite">{amazonNotice}</p>}{error&&<p className="error" role="alert">{error}</p>}</>:undefined,
    }}/>}
    {!amazonListing&&<>
@@ -98,7 +152,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    </div>
    {photoChooser}
    {categoryError&&<p className="error" role="alert">{categoryError}</p>}
-   <button type="button" className="btn primary" disabled={disabled||!!categoryError||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||task.sales_channel==='ヤフオク'&&(!(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).includes(draft.size)||/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&!draft.weightKg)||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
+   <button type="button" className="btn primary" disabled={disabled||photoAnalysis.reading||!!categoryError||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||task.sales_channel==='ヤフオク'&&(!(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).includes(draft.size)||/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&!draft.weightKg)||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
    </>}
    {!amazonListing&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>

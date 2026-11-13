@@ -22,6 +22,7 @@ async function check(channel,overrides={},yearScenario=''){
  const Editor=load('apps/delivery/src/components/DescriptionEditor.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':model,'../description':description,'../useListingKeywords':{useListingKeywords:()=>({busy:false,message:'',generate:async()=>{}})},'./ColoredSelect':{default:'select'},'../api':{fetchPhotoManufactureYear:()=>{yearCalls++;return new Promise(resolve=>{finishYear=resolve;});},fetchProductMaker:async()=>{throw Error('Duplicate lookup');},saveDeliveryDescription:async(id,input)=>{saved=input;saveCalls++;}}}).default;
  let persistYear;
  const embedded={value:listingDraft(task,'東芝',[task.sku]),manufacturer:'東芝',disabled:false,yearPhotoKey:yearScenario?'photo1,photo2':undefined,actions:yearScenario?(saveYear=>{persistYear=saveYear;return null;}):undefined,onSaving:v=>{saving=v;},onChange:value=>{embedded.value={...embedded.value,...value};}};
+ if(channel==='メルカリ')embedded.suggestedAccessories=['本体','電源ケーブル','候補外'];
  const props={task,listingSkus:[task.sku],embedded,onSaved:async()=>{}};
  async function render(){for(let i=0;i<8;i++){cursor=0;tree=Editor(props);effects.splice(0).forEach(fn=>fn());await Promise.resolve();}}
  await render();
@@ -42,6 +43,14 @@ async function check(channel,overrides={},yearScenario=''){
   return;
  }
  assert(body());assert.equal(all(tree).filter(n=>n.type==='textarea'&&n.props.maxLength!==2000).length,1);
+ if(channel==='メルカリ'){
+  const accessory=all(tree).find(n=>n.type==='label'&&Array.isArray(n.props.children)&&n.props.children.includes('電源ケーブル'));
+  assert.equal(accessory.props.children[0].props.checked,true);
+  accessory.props.children[0].props.onChange();
+  embedded.suggestedAccessories=['本体','電源ケーブル'];await render();
+  const checkbox=all(tree).find(n=>n.type==='label'&&Array.isArray(n.props.children)&&n.props.children.includes('電源ケーブル'));
+  assert.equal(checkbox.props.children[0].props.checked,false,'manual changes take precedence over analysis');
+ }
  body().props.onChange({target:{value:'編集した本文'}});await render();assert.equal(embedded.value.description,'編集した本文');
  if(channel==='メルカリ'||channel==='ヤフオク'){
   const maker=all(tree).find(n=>n.type==='input'&&n.props.placeholder==='商品リストから取得・必要に応じて修正');maker.props.onChange({target:{value:'メーカー修正'}});await render();assert(embedded.value.title.includes('メーカー修正'));if(overrides.title)assert(embedded.value.title.includes(overrides.title),'regeneration retains the known product name');assert(embedded.value.description.includes('【'+task.sku+'】'));

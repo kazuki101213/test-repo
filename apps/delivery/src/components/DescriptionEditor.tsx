@@ -47,11 +47,12 @@ function withManufactureYear(description: string, year: string) {
     : `${line}\n${description}`;
 }
 
-export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {beforeActions?:ReactNode;actions?:ReactNode | ((persistYear:()=>Promise<void>,readingYear:boolean)=>ReactNode);afterActions?:ReactNode;value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void;yearPhotoKey?:string} }) {
+export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {beforeActions?:ReactNode;actions?:ReactNode | ((persistDetails:()=>Promise<void>,readingYear:boolean)=>ReactNode);afterActions?:ReactNode;value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void;yearPhotoKey?:string;suggestedAccessories?:string[]} }) {
   const [product, setProduct] = useState(embedded?.value.category??task.description_template ?? (task.work_stream === 'テレビ' ? 'テレビ' : task.work_stream === 'ブルーレイ' ? 'ブルーレイレコーダー' : ''));
   const [target, setTarget] = useState<DescriptionTarget>(() => embedded?(task.sales_channel==='メルカリ'?'mercari':task.sales_channel==='ヤフオク'?'yahoo-auction':'amazon'):initialTarget(task));
   const [condition, setCondition] = useState(() => embedded?.value.condition??conditionForTarget(initialTarget(task), task.condition));
-  const [accessories, setAccessories] = useState(task.accessories ?? '');
+  const [manualAccessories, setAccessories] = useState<string|null>(null);
+  const savedAccessories = useRef(task.accessories ?? '');
   const [year, setYear] = useState(task.manufacture_year?.toString() ?? '');
   const [yearStatus, setYearStatus] = useState('');
   const [readingYear, setReadingYear] = useState(false);
@@ -94,19 +95,30 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
   }, [task.asin]);
 
   const serial = task.sku.match(/^(\d+[a-z]*)-/i)?.[1]?.toLowerCase() || String(task.lot_seq);
+  const accessoryChoices = accessoryOptions(product);
+  const savedChoices = savedAccessories.current.split(/[、,\n]+/).map(value=>value.trim()).filter(Boolean);
+  const suggested = embedded?.suggestedAccessories ?? [];
+  const accessories = manualAccessories ?? (suggested.length
+    ? [...new Set([...savedChoices,...accessoryChoices.filter(choice=>suggested.includes(choice))])].join('、')
+    : savedAccessories.current);
   const generated = buildDescription({
     product, condition, accessories, year, target, salesChannel: task.sales_channel,
     hasPhysicalDamage: task.has_physical_damage===true, inspected: task.inspected, sku: task.sku, listingSkus,
     itemNumber: serial, modelNo: productListingName(task), manufacturer,
   });
-  const draftDescription = embedded?(target==='amazon'?embedded.value.description:joinMarketplaceListing(target,embedded.value.title,embedded.value.description)):manual ?? generated;
+  const baseDescription = embedded?(target==='amazon'?embedded.value.description:joinMarketplaceListing(target,embedded.value.title,embedded.value.description)):manual ?? generated;
+  const includedLine = /(《同梱物》\s*●【)[^】]*(】になります。)/;
+  const draftDescription = target==='amazon' && accessories!==savedAccessories.current
+    ? includedLine.test(baseDescription)
+      ? baseDescription.replace(includedLine,(_match,before,after)=>`${before} ${accessories} ${after}`)
+      : baseDescription.trim() ? baseDescription : generated
+    : baseDescription;
   const description = target==='amazon' && (yearEdited.current || year!==savedYear.current) && (!year || /^\d{4}$/.test(year))
     ? withManufactureYear(draftDescription || generated,year)
     : draftDescription;
   const generatedListing = splitMarketplaceListing(generated);
   const listing = splitMarketplaceListing(description);
   const listingTitle = embedded?embedded.value.title:listing.title || generatedListing.title;
-  const accessoryChoices = accessoryOptions(product);
   const selected = accessories.split(/[、,\n]+/).map(value => value.trim()).filter(Boolean);
   const [regenerate,setRegenerate] = useState(false);
   useEffect(()=>{if(!embedded||!regenerate)return;const next=splitMarketplaceListing(generated);embedded.onChange({title:target==='amazon'?embedded.value.title:next.title,description:target==='amazon'?generated:next.body,condition,...(PRODUCT_TYPES.includes(product as typeof PRODUCT_TYPES[number])?{category:product as SellerDraft['category']}:{})});setRegenerate(false);},[generated,regenerate]);
@@ -147,7 +159,8 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
 
   function toggleAccessory(value: string) {
     const next = selected.includes(value) ? selected.filter(entry => entry !== value) : [...selected, value];
-    setAccessories(next.join('、')); updateSelection();
+    setAccessories(next.join('、'));
+    setSaved(false); setNotice('');
   }
 
   async function save(e: FormEvent) {
@@ -170,11 +183,12 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
       template: product || null, year: yearNumber,
     });
     savedYear.current=year;
+    savedAccessories.current=accessories;
     if (target==='amazon' && embedded && description!==embedded.value.description) embedded.onChange({description});
   }
 
-  async function persistYear() {
-    if (year!==savedYear.current) await persistDescription();
+  async function persistDetails() {
+    if (year!==savedYear.current||accessories!==savedAccessories.current) await persistDescription();
   }
 
   const listingLayout = !!embedded && target !== 'amazon';
@@ -197,12 +211,12 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
     {!embedded&&<h2>商品説明文</h2>}
     <fieldset disabled={busy||embedded?.disabled}>
       {!listingLayout && options}
-      {target === 'amazon' && <>
+      {(target === 'amazon' || embedded?.suggestedAccessories !== undefined || manualAccessories!==null) && <>
         <fieldset className="accessory-options" style={{ '--accessory-rows': Math.ceil(accessoryChoices.length / 2) } as CSSProperties}>
           <legend>付属品</legend>
           {accessoryChoices.map(value => <label key={value}><input type="checkbox" checked={selected.includes(value)} onChange={() => toggleAccessory(value)} />{value}</label>)}
         </fieldset>
-        <label>付属品<textarea maxLength={2000} value={accessories} onChange={e => { setAccessories(e.target.value); updateSelection(); }} placeholder="手入力" /></label>
+        <label>付属品<textarea maxLength={2000} value={accessories} onChange={e => { setAccessories(e.target.value); setSaved(false); setNotice(''); }} placeholder="手入力" /></label>
       </>}
       {target !== 'amazon' && description ? <div className="marketplace-listing-fields">
         <label><span className="marketplace-listing-heading">商品名<CopyIconButton label="商品名" copied={copiedField === 'title'} disabled={!listingTitle.trim()} onClick={() => void copyField('title', listingTitle)} /></span>
@@ -216,7 +230,7 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
       {manual !== null && description && <button type="button" className="btn" disabled={!generated} onClick={updateSelection}>選択内容から再生成</button>}
       {target !== 'amazon' && <button className="btn primary" type="button" disabled={ai.busy||!listingTitle.trim()||!product} onClick={()=>void ai.generate(true)}>{ai.busy?'生成中…':'関連キーワードを生成'}</button>}
       <button className="btn primary" type="submit" disabled={readingYear}>{busy ? '保存中…' : saved ? '上書き保存' : '説明文を保存'}</button>
-      {typeof embedded?.actions==='function'?embedded.actions(persistYear,readingYear):embedded?.actions}
+      {typeof embedded?.actions==='function'?embedded.actions(persistDetails,readingYear):embedded?.actions}
       </div>
       {embedded?.afterActions}
       {target !== 'amazon' && ai.message && <p className="description-ai-message muted" role="status">{ai.message}</p>}
