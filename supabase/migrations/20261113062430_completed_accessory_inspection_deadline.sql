@@ -8,7 +8,7 @@ with candidates as (
     i.is_accessory and not app.is_standalone_accessory_serial(i.sku, i.lot_seq) as linked_accessory,
     parent.id as parent_id,
     greatest(parent.inspected_at, parent.malfunction_reported_at) as parent_action_at,
-    greatest(i.packed_on, parent.packed_on) as work_completed_on
+    parent.packed_on as parent_work_completed_on
   from app.items i
   join app.item_tracking_recordings t on t.item_id = i.id
   left join app.items parent on parent.id = i.parent_item_id and not parent.is_accessory
@@ -35,8 +35,8 @@ where i.recorded_at <= now() - interval '3 days' and i.action_at is null
   and (i.status in ('受取前','検品中') or i.linked_accessory)
   and not (i.linked_accessory and coalesce(i.parent_action_at >= i.recorded_at, false))
   -- A date alone cannot prove completion after tracking was recorded on the same day.
-  and not (i.linked_accessory and i.parent_id is not null and i.status = '商品登録前'
-    and coalesce(i.work_completed_on > (i.recorded_at at time zone 'Asia/Tokyo')::date, false))
+  and not (i.linked_accessory and i.status = '商品登録前'
+    and coalesce(i.parent_work_completed_on > (i.recorded_at at time zone 'Asia/Tokyo')::date, false))
 union all
 select t.id, i.id, i.sku, i.lot_seq, i.sales_channel,
   i.marketplace, i.marketplace_item_id, i.marketplace_url, t.created_at, 'shipping', i.id
