@@ -85,4 +85,4 @@ Amazonの受付と登録完了は別です。GETでSKU/ASIN/価格/コンディ�
 
 公式: https://developer-docs.amazon/sp-api/reference/putlistingsitem と https://developer-docs.amazon/sp-api/docs/additional-functionality-fulfillment-inbound
 
-Amazonへの出品では、電池の内蔵・同梱（batteries_included）に同じASINの日本向けカタログ値を使い、値が未登録の場合は「内蔵・同梱されていない」を送信します。電池が必要かどうか（batteries_required）と危険物区分（supplier_declared_dg_hz_regulation）は、Catalog Items APIに値がある場合に送信します。受付後はsummariesでASINとコンディションを照合し、未取得項目があれば画面に表示して再確認します。
+Amazonへの出品では、電池の内蔵・同梱（batteries_included）の既定値に「内蔵・同梱されていない」を送信します。セル構成（battery.cell_composition）、電池が必要かどうか（batteries_required）、危険物区分（supplier_declared_dg_hz_regulation）は、同じASINの日本向けカタログに値がある場合に送信します。受付後はsummariesでASINとコンディションを照合し、未取得項目があれば画面に表示して再確認します。

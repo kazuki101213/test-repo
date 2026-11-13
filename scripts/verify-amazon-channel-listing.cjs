@@ -3,7 +3,7 @@ const jsx=(type,props)=>({type,props});
 function load(file,imports={}){const c={exports:{},require:n=>imports[n]??{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,c);return c.exports;}
 const channels=load('packages/shared/src/salesChannels.ts'),palette=load('packages/shared/src/inventoryPresentation.ts'),workflow=load('packages/shared/src/workflow.ts');
 const seller=load('packages/shared/src/seller.ts',{'./productCategory':load('packages/shared/src/productCategory.ts')});
-const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);all(n.props?.embedded?.actions,out);all(n.props?.embedded?.beforeActions,out);all(n.props?.embedded?.afterActions,out)}return out};
+const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);const actions=n.props?.embedded?.actions;all(typeof actions==='function'?actions(async()=>{},false):actions,out);all(n.props?.embedded?.beforeActions,out);all(n.props?.embedded?.afterActions,out)}return out};
 const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
 async function confirm(channel,approved=true,verified=true,scenario='normal'){
  const verifiedNote=channel.startsWith('FBA')?'Amazonへの商品登録を確認しました。FBA納品手続きが完了するまでは商品登録前です。':'Amazonへの登録を確認しました。';

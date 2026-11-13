@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { readManufactureYear } from './manufacture-year.ts';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -116,7 +117,7 @@ export async function handler(req: Request): Promise<Response> {
     const token = authorization.replace(/^Bearer\s+/i, '');
     const { itemId, action = 'save', purpose = 'product' } = await req.json().catch(() => ({}));
     if (purpose !== 'product' && purpose !== 'packing') throw new RequestError(400, '写真の種類が不正です。');
-    if (!['list', 'save', 'reflect'].includes(action)) throw new RequestError(400, '写真の操作が不正です。');
+    if (!['list', 'save', 'reflect', 'manufacture-year'].includes(action)) throw new RequestError(400, '写真の操作が不正です。');
     if (typeof itemId !== 'string' || !/^[\da-f-]{36}$/i.test(itemId)) throw new RequestError(400, '商品の指定が不正です。');
     const url = Deno.env.get('SUPABASE_URL')!;
     const userClient = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, {
@@ -131,8 +132,26 @@ export async function handler(req: Request): Promise<Response> {
     if (profileError || !profile) throw new RequestError(403, '担当者を確認できません。');
     const { data: staff, error: staffError } = await service.from('staff').select('role,is_active').eq('id', profile.staff_id).maybeSingle();
     if (staffError || !staff?.is_active) throw new RequestError(403, '担当者の権限がありません。');
-    const { data: item, error: itemError } = await service.from('items').select('id,sku,lot_seq,deliverer_id,status,sales_channel').eq('id', itemId).maybeSingle();
+    const { data: item, error: itemError } = await service.from('items').select('id,sku,lot_seq,deliverer_id,status,sales_channel,manufacture_year').eq('id', itemId).maybeSingle();
     if (itemError || !item || (staff.role !== 'admin' && item.deliverer_id !== profile.staff_id && !(action === 'list' && staff.role === 'purchaser'))) throw new RequestError(403, 'この商品の写真を扱う権限がありません。');
+    if (action === 'manufacture-year') {
+      if (purpose !== 'product' || item.status !== '商品登録前' || !/^(?:FBA|自己発送)[12]?$/.test(item.sales_channel ?? '')) {
+        throw new RequestError(409, 'Amazonに出品する商品の写真で製造年を確認できます。');
+      }
+      if (Number.isInteger(item.manufacture_year)) return json(200, { year: item.manufacture_year });
+      const apiKey = Deno.env.get('GEMINI_API_KEY');
+      const model = Deno.env.get('GEMINI_PHOTO_MODEL') || Deno.env.get('GEMINI_KEYWORDS_MODEL') || 'gemini-3.5-flash-lite';
+      if (!apiKey || !/^gemini-[a-z0-9.-]+$/.test(model)) throw new RequestError(503, '写真から製造年を読み取れません。');
+      const { data: photos, error } = await service.from('item_photos').select('storage_path')
+        .eq('item_id', itemId).eq('photo_kind', 'product').order('created_at', { ascending: false }).order('id').limit(12);
+      if (error) throw new RequestError(502, '商品写真を取得できません。');
+      const bucket = service.storage.from('item-photos');
+      const year = await readManufactureYear((photos ?? []).map(photo => photo.storage_path), async path => {
+        const { data, error } = await bucket.download(path);
+        return error ? null : data;
+      }, apiKey, model).catch(() => { throw new RequestError(502, '写真から製造年を読み取れません。'); });
+      return json(200, { year });
+    }
     if(purpose==='packing' && action==='save' && !(/^FBA(?:[12])?$/.test(item.sales_channel??'')?item.status==='商品登録前':['自己発送','自己発送1','自己発送2','メルカリ','ヤフオク'].includes(item.sales_channel)&&item.status==='出品中')) throw new RequestError(409,'現在の販売状態では梱包写真を追加できません。');
     // Authorize the requested item first, then expose only its own lot's photos.
     const aSeries = /^(\d+)a+-/i.exec(item.sku ?? '');

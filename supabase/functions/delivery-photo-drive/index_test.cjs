@@ -48,12 +48,13 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     },
     storage:{from(){return {
       async createSignedUrls(paths){state.signed.push(...paths);return {data:paths.map(path=>({signedUrl:'https://photos.invalid/'+path})),error:null}},
-      async download(path){state.downloads.push(path);return {data:new Blob(['image']),error:null}},
+      async download(path){state.downloads.push(path);return {data:new Blob(['image'],{type:'image/jpeg'}),error:null}},
       async upload(path,blob){state.copies.push({path,size:blob.size});return {error:null}},
     }}},
   };
   const fetch = async (url, init={}) => {
     state.google.push({url:String(url),...init});
+    if(String(url).includes('generativelanguage.googleapis.com'))return Response.json({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({year:state.detectedYear??null})}]}}]});
     if(String(url).includes('oauth2')) return Response.json({access_token:'test-token'});
     if(String(url).includes('alt=media')) return String(url).includes(state.mediaFailure??'NEVER') ? new Response('',{status:404}) : new Response(new Blob(['image'],{type:'image/jpeg'}));
     if(String(url).includes('/upload/drive/')) return new Response('{}',{headers:{Location:'https://www.googleapis.com/upload/session'}});
@@ -65,12 +66,36 @@ function setup({ many = false, assigned = true, role = 'deliverer' } = {}) {
     if(init.method==='PATCH') return Response.json({id:'patched'});
     throw new Error('Unexpected Google operation '+url);
   };
-  let code=ts.transpileModule(fs.readFileSync(__dirname+'/index.ts','utf8').replace('if (import.meta.main) Deno.serve(handler);',''),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  const module={exports:{}};
-  new Function('require','module','exports','Deno','fetch',code)(()=>({createClient:()=>service}),module,module.exports,{env:{get:name=>name}},fetch);
+  const compile=file=>ts.transpileModule(fs.readFileSync(__dirname+'/'+file,'utf8').replace('if (import.meta.main) Deno.serve(handler);',''),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+  const module={exports:{}},yearModule={exports:{}};
+  new Function('exports','fetch',compile('manufacture-year.ts'))(yearModule.exports,fetch);
+  new Function('require','module','exports','Deno','fetch',compile('index.ts'))(name=>name==='./manufacture-year.ts'?yearModule.exports:{createClient:()=>service},module,module.exports,{env:{get:name=>name.includes('_MODEL')?undefined:name}},fetch);
+  service.from=new Proxy(service.from,{apply(fn,receiver,args){const query=Reflect.apply(fn,receiver,args);query.limit=n=>query.range(0,n-1);return query;}});
   const call=(action,body={})=>module.exports.handler(new Request('https://function.invalid/',{method:'POST',headers:{authorization:'Bearer test','Content-Type':'application/json'},body:JSON.stringify({itemId,action,...body})}));
   return {state,call};
 }
+test('Amazon year uses only its own product photos, keeps saved values, and leaves unclear years blank',async()=>{
+  const {state,call}=setup();
+  const item=state.items.find(item=>item.id===itemId);
+  Object.assign(item,{status:'商品登録前',sales_channel:'FBA2',manufacture_year:null});
+  state.item_photos.find(photo=>photo.id==='p2').photo_kind='product';
+  state.item_photos.push({id:'packing',item_id:itemId,storage_path:'shipping.jpg',photo_kind:'packing'});
+  state.detectedYear=2020;
+  assert.deepEqual(await (await call('manufacture-year')).json(),{year:2020});
+  assert.deepEqual(state.downloads,['photos/new.jpg']);
+  const request=JSON.parse(state.google[0].body);
+  assert.deepEqual(request.contents[0].parts,[{inlineData:{mimeType:'image/jpeg',data:btoa('image')}}]);
+  state.detectedYear='2020';
+  assert.deepEqual(await (await call('manufacture-year')).json(),{year:null});
+  item.manufacture_year=2018;
+  assert.deepEqual(await (await call('manufacture-year')).json(),{year:2018});
+  assert.equal(state.google.length,2);
+  item.sales_channel='メルカリ';
+  assert.equal((await call('manufacture-year')).status,409);
+  const other=setup({assigned:false});
+  assert.equal((await other.call('manufacture-year')).status,403);
+  assert.equal(other.state.google.length,0);
+});
 test('return lists all original and return photos in its lot, without Drive writes',async()=>{
   const {state,call}=setup(); const response=await call('list');
   assert.equal(response.status,200);
