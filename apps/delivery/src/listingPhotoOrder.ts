@@ -5,7 +5,7 @@ export interface ListingPhotoAnalysis {
 
 const recorderRoles = {
   amazon: ['frontLeft', 'frontRight', 'rearLeft', 'rearRight', 'remoteBack'],
-  mercari: ['frontLeft', 'frontRight', 'rearLeft', 'rearRight', 'remoteFront', 'remoteBack', 'remoteBattery'],
+  mercari: ['frontLeft', 'frontRight', 'front', 'rearLeft', 'rearRight', 'rear', 'remoteFront', 'remoteBack', 'remoteBattery'],
   yahoo: ['frontLeft', 'frontRight', 'front', 'rearLeft', 'rearRight', 'rear', 'bottom', 'remoteFront', 'remoteBack', 'remoteBattery'],
 } as const;
 
