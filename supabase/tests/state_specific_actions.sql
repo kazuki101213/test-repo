@@ -19,6 +19,21 @@ do $$declare v_item uuid:=(select id from app.items where lot_seq=992001 and not
 end $$;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.item_comments(item_id,author_id,body) select id,app.current_staff_id(),'ordinary reply keeps fault' from app.items where lot_seq=992001 and not is_accessory;
+select app.send_malfunction_reply(gen_random_uuid(),id,'返送お願いしますか？',null)
+from app.items where lot_seq=992001 and not is_accessory;
+do $$begin
+ if exists(select 1 from app.items where lot_seq=992001 and supplier_contact_requested_at is not null)
+ then raise exception 'A question opened the supplier return workflow';end if;
+end $$;
+savepoint return_instruction;
+select app.send_malfunction_reply(gen_random_uuid(),id,E'住所\n返送お願いします。\n着払いでお願いします。',null)
+from app.items where lot_seq=992001 and not is_accessory;
+do $$begin
+ if not exists(select 1 from app.v_delivery_tasks where lot_seq=992001 and not is_accessory
+   and supplier_contact_requested_at is not null and status='動作不良')
+ then raise exception 'A return instruction did not enable the delivery return actions';end if;
+end $$;
+rollback to return_instruction;
 select app.perform_inventory_action(id,'supplier_check',status) from app.items where lot_seq=992001 and not is_accessory;
 do $$begin if exists(select 1 from app.items where lot_seq=992001 and status<>'動作不良') then raise exception 'Supplier check resolved report prematurely';end if;end $$;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
