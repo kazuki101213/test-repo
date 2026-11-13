@@ -21817,6 +21817,8 @@ end $migration$;
 notify pgrst, 'reload schema';
 
 
+-- ▼▼▼ 20261113011747_delivery_work_task_channel_and_model.sql ▼▼▼
+
 -- Enrich the existing delivery task snapshot with the inventory display fields.
 do $migration$
 declare
