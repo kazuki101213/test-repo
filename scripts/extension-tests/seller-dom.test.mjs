@@ -524,6 +524,20 @@ test('ゆうパックの100と140は取引画面の区分を区別する',async(
  }
 });
 
+test('らくらく140は宅急便180〜200だけを選び、取引画面でも別区分を拒否する',async()=>{
+ const external_id='m24285629702',shippingMethod='らくらくメルカリ便',size='宅急便180〜200';
+ const p=await page('<label><input type="radio" name="size" value="1"><span>宅急便（60～160サイズ）</span></label><label><input type="radio" name="size" value="2"><span>宅急便（180～200サイズ）</span></label><button onclick="document.body.dataset.next=1">選択して次へ</button>','https://jp.mercari.com/transaction/'+external_id+'/shipping_class');
+ const advanced=await p.evaluate(advanceMercariShippingSize,{itemId:external_id,size,shippingMethod});
+ assert.equal(advanced.__error,undefined);await p.waitForFunction(()=>document.body.dataset.next==='1');
+ assert.equal(await p.locator('input:checked').inputValue(),'2');await p.close();
+ for(const [display,matches] of [['宅急便（180〜200サイズ）',true],['宅急便60 - 160',false],['宅急便',false]]){
+  const q=await page('<h1>取引画面</h1><p>らくらくメルカリ便</p><p>サイズ<br>'+display+'</p><button>ヤマト運輸営業所からの発送方法</button><button>発送用2次元コードを発行</button>','https://jp.mercari.com/transaction/'+external_id);
+  const job={external_id,trade_key:'trade',channel:'メルカリ',payload:{shippingMethod,size,dropoff:'ヤマト営業所'}};
+  assert.equal((await q.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'})).sizeMatches,matches);
+  await q.close();
+ }
+});
+
 test('実一覧の受取評価待ちを購入者への評価待ちと混同しない',async()=>{const p=await page('<h1>出品した商品</h1><ul><li><a href="/transaction/m12345678901">【2121b】商品</a><p>受取評価待ち</p></li><li><a href="/transaction/m12345678902">【2404】商品</a><p>評価してください</p></li></ul>');const r=await p.evaluate(readSellerPage,{site:'mercari',phase:'取引中'});assert.equal(r.rows.find(r=>r.serial==='2121b').feedback_pending,undefined);assert.equal(r.rows.find(r=>r.serial==='2404').feedback_pending,true);await p.close();});
 
 test('ネコポスをらくらくメルカリ便のサイズ画面で選び、他キャリアでは停止する',async()=>{

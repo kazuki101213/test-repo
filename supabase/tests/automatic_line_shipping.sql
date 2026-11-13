@@ -34,6 +34,7 @@ do $$declare i uuid;front uuid;model uuid;foreign_photo uuid;prepared jsonb;begi
  if prepared->>'queued'<>'1' then raise exception 'Valid per-item preferences did not queue code: %',prepared;end if;
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);if prepared->>'queued'<>'0' then raise exception 'Code queued twice';end if;
  if exists(select 1 from app.seller_operations where item_id=i and kind<>'shipping_code') then raise exception 'Automatic flow queued a business action';end if;
+ if not exists(select 1 from app.seller_operations where item_id=i and payload->>'size'='宅急便60〜160' and payload->>'dropoff'='セブンイレブン') then raise exception 'Automatic code request lost the mapped size or existing drop-off';end if;
 end $$;
 -- Keep the second request for its separate lease/idempotency test.
 update app.delivery_line_outbox o set next_attempt_at=now()+interval '1 hour' from app.delivery_shipping_tasks t where o.task_id=t.id and t.item_id=(select id from line_probe where lot_seq=998742);
@@ -46,6 +47,8 @@ update app.seller_operations set status='succeeded',result='{"qr_code":"fixture-
 do $$declare result record;other_count integer;begin
  select * into result from app.claim_delivery_line() where eligible;
  if result.id is null or result.payload->'media'->>'serial'<>'998741' then raise exception 'Prepared request not claimable';end if;
+ if result.payload#>>'{media,shipping,size}' is distinct from '宅急便60〜160'
+  or result.payload#>>'{media,shipping,dropoff}' is distinct from 'セブンイレブン' then raise exception 'LINE payload lost the resolved shipping settings';end if;
  if exists(select 1 from app.claim_delivery_line()) then raise exception 'Lease claimed twice';end if;
  if app.prepare_delivery_line_message(result.id,gen_random_uuid(),'{"itemId":"wrong"}') then raise exception 'Wrong lease prepared';end if;
  if not app.prepare_delivery_line_message(result.id,result.lease,'{"itemId":"fixture","images":["a","b","c"]}') then raise exception 'Preparation failed';end if;
@@ -82,7 +85,7 @@ update app.items set asin='B0SMALL001' where lot_seq=998742;
 do $$declare target uuid;begin
  select id into target from line_probe where lot_seq=998742;
  if app.line_learned_shipping_size(target)<>'100' then raise exception 'Same-ASIN shipment was not learned';end if;
- if app.seller_operation_context(target)->'shipping_defaults'->>'size'<>'100' then raise exception 'Learned size missing in shipping panel';end if;
+ if app.seller_operation_context(target)->'shipping_defaults'->>'size'<>'宅急便60〜160' then raise exception 'Learned size missing in shipping panel';end if;
  update app.items set asin='B0OTHER001' where id=target;
  if app.line_learned_shipping_size(target) is not null then raise exception 'Different product inherited size';end if;
  update app.items set title='リモコン',asin=null where id=target;

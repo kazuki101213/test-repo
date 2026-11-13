@@ -5,7 +5,7 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/produ
 vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/seller.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:shipping,require:()=>categoryExports});
 let states=[],cursor=0,effects=[],tree,calls=[],failure;
 const react={useState(initial){const i=cursor++;states[i]??={value:initial};return[states[i].value,next=>{states[i].value=typeof next==='function'?next(states[i].value):next;}];},useRef(value){const i=cursor++;return states[i]??={current:value};},useEffect(fn,deps){const i=cursor++;if(!states[i]||deps.some((v,n)=>v!==states[i].deps[n])){states[i]={deps};effects.push(fn);}}};
-const task={id:'item',sku:'sample',status:'取引中',sales_channel:'メルカリ'},draft={size:'100',dropoff:'セブンイレブン',shippingMethod:'らくらくメルカリ便',category:'小物'},context={revision:'now',listing:{trade_key:'current'},operations:[]};
+const task={id:'item',sku:'sample',status:'取引中',sales_channel:'メルカリ'},draft={size:'宅急便60〜160',dropoff:'セブンイレブン',shippingMethod:'らくらくメルカリ便',category:'小物'},context={revision:'now',listing:{trade_key:'current'},operations:[]};
 const api={fetchTask:async()=>task,fetchSellerContext:async()=>context,queueSellerOperation:async(id,kind,payload)=>{calls.push({id,kind,payload});if(failure)throw failure;}};
 const shared={...shipping,sellerDefaults:()=>draft,sellerShippingDraft:v=>v,canViewDeliveryAssignee:()=>true};
 const channelPredicates={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('packages/shared/src/salesChannels.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,channelPredicates);Object.assign(shared,channelPredicates.exports);
@@ -17,22 +17,28 @@ const selects=()=>all(tree).filter(n=>n.type==='select');
 const options=n=>all(n).filter(o=>o.type==='option').map(o=>o.props.children);
 const button=()=>all(tree).find(n=>n.type==='button'&&n.props.children==='発送コード表示');
 async function choose(index,value){selects()[index].props.onChange({target:{value}});await render();}
-function allOptions(){for(const place of ['セブンイレブン','ヤマト営業所','ローソン','郵便局'])assert(options(selects()[2]).includes(place),place);for(const size of ['ネコポス','宅急便コンパクト','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'])assert(options(selects()[1]).includes(size),size);}
+function allOptions(){
+ const method=selects()[0].props.value;
+ const expected=method==='ゆうゆうメルカリ便'?['ゆうパケット','ゆうパケットポストmini','ゆうパケットポスト','ゆうパケットプラス','ゆうパック60〜100','ゆうパック120〜170']:['ネコポス','宅急便コンパクト','宅急便60〜160','宅急便180〜200'];
+ assert.deepEqual(options(selects()[1]),['選択',...expected]);
+ for(const place of ['セブンイレブン','ヤマト営業所','ローソン','郵便局'])assert(options(selects()[2]).includes(place),place);
+}
 (async()=>{
  await render();allOptions();assert(!button().props.disabled);
  assert(!all(tree).some(n=>n.type==='button'&&['店舗での受付を確認','発送通知'].includes(n.props?.children)));
- await choose(0,'ゆうゆうメルカリ便');allOptions();assert.equal(selects()[2].props.value,'セブンイレブン');assert(button().props.disabled);
+ await choose(0,'ゆうゆうメルカリ便');allOptions();assert.equal(selects()[1].props.value,'ゆうパック60〜100');assert.equal(selects()[2].props.value,'セブンイレブン');assert(button().props.disabled);
  await choose(1,'ゆうパケットプラス');await choose(2,'ローソン');allOptions();assert(!button().props.disabled);
  await choose(2,'ヤマト営業所');assert(button().props.disabled);assert(all(tree).some(n=>n.props?.role==='alert'));
  await choose(0,'らくらくメルカリ便');assert(button().props.disabled);
  await choose(1,'ネコポス');assert(!button().props.disabled);allOptions();
  await choose(2,'セブンイレブン');assert(!button().props.disabled);
+ await choose(1,'宅急便180〜200');assert(button().props.disabled);assert.equal(selects()[2].props.value,'セブンイレブン');await choose(1,'ネコポス');
  failure={code:'22023',message:'テスト用の発送エラー'};
  button().props.onClick();await render();
  assert(!button().props.disabled);
  assert(all(tree).some(n=>n.props?.role==='alert'&&n.props.children===failure.message));
  failure=undefined;calls=[];
  button().props.onClick();await render();assert.equal(calls.length,1);assert.equal(calls[0].kind,'shipping_code');assert.equal(calls[0].payload.dropoff,'セブンイレブン');assert.equal(calls[0].payload.size,'ネコポス');
- await choose(0,'ゆうゆうメルカリ便');await choose(1,'ゆうパケットポストmini');await choose(2,'ローソン');assert(!all(tree).some(n=>n.type==='button'&&n.props?.children==='発送通知'));assert.equal(calls.length,1);
- console.log('PASS: all small parcel sizes and four places remain visible; incompatible combinations block codes; only explicit valid code request is queued');
+ await choose(0,'ゆうゆうメルカリ便');await choose(1,'ゆうパケットポスト');await choose(2,'ローソン');assert(!button());assert(!all(tree).some(n=>n.type==='button'&&n.props?.children==='発送通知'));assert.equal(calls.length,1);
+ console.log('PASS: method-specific size choices, preserved drop-off and code safety');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -83,7 +83,12 @@ export function returnMercariListingForm(){
 export async function advanceMercariShippingSize({itemId,size,shippingMethod='らくらくメルカリ便'}){
  if(location.hostname!=='jp.mercari.com'||location.pathname!=='/transaction/'+itemId+'/shipping_class'||!/^m[0-9]{8,14}$/.test(itemId))throw Error('対象取引のサイズ選択画面ではありません');
  const norm=s=>String(s||'').replace(/\s/g,'').replace(/[〜～−–]/g,'-'),visible=e=>e.getClientRects().length>0;
- const wanted=size==='ネコポス'?(shippingMethod==='らくらくメルカリ便'?'ネコポス':null):['100','140'].includes(String(size))?shippingMethod==='らくらくメルカリ便'?'宅急便60-160':shippingMethod==='ゆうゆうメルカリ便'?'ゆうパック':null:['宅急便コンパクト','ゆうパケットプラス','ゆうパケット'].includes(size)?size:null;if(!wanted)throw Error('配送サイズを確認できません');
+ const raw=norm(size);
+ const yamato=shippingMethod==='らくらくメルカリ便',postal=shippingMethod==='ゆうゆうメルカリ便';
+ const wanted=yamato?(['60','80','100','120','160'].includes(raw)?'宅急便60-160':['140','180','200'].includes(raw)?'宅急便180-200':raw)
+  :postal?(['60','80','100'].includes(raw)?'ゆうパック60-100':['120','140','160','170'].includes(raw)?'ゆうパック120-170':raw):'';
+ const allowed=yamato?['ネコポス','宅急便コンパクト','宅急便60-160','宅急便180-200']:postal?['ゆうパケット','ゆうパケットプラス','ゆうパック60-100','ゆうパック120-170']:[];
+ if(!allowed.includes(wanted))throw Error('配送サイズを確認できません');
  // Mercari uses opaque radio values and may keep a separate parcel-group radio selected.
  // Resolve only the requested option by its own visible label, never the page's selected radio.
  if(size==='ネコポス'){
@@ -102,7 +107,14 @@ export async function advanceMercariShippingSize({itemId,size,shippingMethod='�
   }catch(error){return {__error:error.message};}
  }
 
- const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>visible(e)&&!e.disabled&&(norm(e.value)===wanted||wanted==='ゆうパック'&&/^ゆうパック60-170$/.test(norm(e.value))));
+ const sizeName=value=>norm(value).replace(/[()（）]|サイズ/g,'');
+ const radios=[...document.querySelectorAll('input[type=radio]')].filter(e=>{
+  if(!visible(e)||e.disabled)return false;
+  const labels=[e.getAttribute('aria-label'),...[...(e.labels||[])].flatMap(label=>[label.innerText,...[...label.querySelectorAll('span,p,strong,b')].map(node=>node.innerText)])].map(sizeName);
+  const recognized=labels.filter(label=>allowed.includes(label)||label==='ゆうパック60-170');
+  return recognized.length?recognized.includes(wanted):sizeName(e.value)===wanted;
+ });
+ if(postal&&wanted.startsWith('ゆうパック')&&[...document.querySelectorAll('input[type=radio]')].some(e=>visible(e)&&!e.disabled&&sizeName(e.value)==='ゆうパック60-170'))throw Error('サイズ選択の項目を1件に確認できません');
  const buttons=[...document.querySelectorAll('button')].filter(e=>visible(e)&&!e.disabled&&e.innerText.trim()==='選択して次へ');if(radios.length!==1||buttons.length!==1)throw Error('サイズ選択の項目を1件に確認できません');
  const before={url:location.href,text:document.body.innerText,controls:''};if(!radios[0].checked)radios[0].click();if(!radios[0].checked)throw Error('サイズ選択を確認できません');setTimeout(()=>buttons[0].click(),100);return before;
 }

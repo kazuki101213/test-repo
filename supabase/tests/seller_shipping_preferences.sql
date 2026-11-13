@@ -25,14 +25,14 @@ from app.items cross join generate_series(1,15) where lot_seq=994171;
 set local role authenticated;
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare c jsonb:=app.seller_operation_context((select id from app.items where lot_seq=994171));begin
- if c#>>'{shipping_defaults,size}'<>'140' or c#>>'{shipping_defaults,dropoff}'<>'郵便局' or c#>>'{shipping_defaults,shippingMethod}'<>'ゆうゆうメルカリ便' or c#>>'{shipping_defaults,weightKg}'<>'10' then raise exception 'Reviewed shipping settings were lost or stale settings replaced them';end if;
+ if c#>>'{shipping_defaults,size}'<>'ゆうパック120〜170' or c#>>'{shipping_defaults,dropoff}'<>'郵便局' or c#>>'{shipping_defaults,shippingMethod}'<>'ゆうゆうメルカリ便' or c#>>'{shipping_defaults,weightKg}'<>'10' then raise exception 'Reviewed shipping settings were lost or stale settings replaced them';end if;
  if jsonb_array_length(c->'operations')<>12 or c::text like '%PRIVATE_PHOTO%' then raise exception 'Shipping context exposes full listing payload or ignores bounded history';end if;
 end $$;
 reset role;
 update app.seller_listings set trade_key='m994171:next' where external_id='m994171';
 set local role authenticated;
 do $$declare c jsonb:=app.seller_operation_context((select id from app.items where lot_seq=994171));begin
- if c#>>'{shipping_defaults,size}'<>'100' or c#>>'{shipping_defaults,dropoff}'<>'ローソン' then raise exception 'Previous trade shipping choice carried into a new trade';end if;
+ if c#>>'{shipping_defaults,size}'<>'ゆうパック60〜100' or c#>>'{shipping_defaults,dropoff}'<>'ローソン' then raise exception 'Previous trade shipping choice carried into a new trade';end if;
 end $$;
 set local request.jwt.claim.sub='33333333-3333-3333-3333-333333333333';
 do $$begin if app.seller_operation_context('99417100-0000-4000-8000-000000000001') is not null then raise exception 'Unassigned worker can read shipping context';end if;end $$;

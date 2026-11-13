@@ -19,7 +19,8 @@ export async function validSignature(body: string, signature: string | null, sec
     return await crypto.subtle.verify('HMAC', key, Uint8Array.from(atob(signature), c => c.charCodeAt(0)), new TextEncoder().encode(body));
   } catch { return false; }
 }
-export interface ShippingPayload { itemId: string; serial: string; sku: string; supplierUrl: string | null; images: string[]; withoutBarcode?: 'size_unset'; automatic?: boolean }
+export interface ShippingDetails { method?: string; size?: string; dropoff?: string; note?: string; tradeUrl?: string }
+export interface ShippingPayload { itemId: string; serial: string; sku: string; supplierUrl: string | null; images: string[]; withoutBarcode?: 'size_unset'; automatic?: boolean; shipping?: ShippingDetails }
 export function shippingMessages(payload: ShippingPayload) {
   const imageCount = payload.withoutBarcode === 'size_unset' ? 2 : 3;
   if (!/^[0-9a-f-]{36}$/.test(payload.itemId) || !payload.serial || !payload.sku || !Array.isArray(payload.images) || (payload.automatic === true ? payload.images.length > 3 : payload.images.length !== imageCount)) throw new Error('Incomplete shipping request');
@@ -30,7 +31,11 @@ export function shippingMessages(payload: ShippingPayload) {
     if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid image URL');
     return { type: 'image', originalContentUrl: url.href, previewImageUrl: url.href };
   });
-  return [{ type: 'text', text: `発送お願いします。\n【${payload.serial}】\n${payload.sku}\n${supplier ? `［仕入れ先］${supplier.href}\n` : ''}［納品アプリ］${deliveryOrigin}/?itemId=${payload.itemId}` }, ...images];
+  const shipping = payload.shipping;
+  const trade = shipping?.tradeUrl && /^https:\/\/jp\.mercari\.com\/transaction\/m\d{8,14}$/.test(shipping.tradeUrl) ? shipping.tradeUrl : null;
+  const details = [shipping?.method && `配送方法：${shipping.method}`, shipping?.size && `配送サイズ：${shipping.size}`,
+    shipping?.dropoff && `発送場所：${shipping.dropoff}`, shipping?.note, trade && `［メルカリ取引画面］${trade}`].filter(Boolean);
+  return [{ type: 'text', text: `発送お願いします。\n【${payload.serial}】\n${payload.sku}\n${details.length ? details.join('\n') + '\n' : ''}${supplier ? `［仕入れ先］${supplier.href}\n` : ''}［納品アプリ］${deliveryOrigin}/?itemId=${payload.itemId}` }, ...images];
 }
 export function dispatchState(status: number): 'sent' | 'pending' | 'failed' {
   // 409 means this retry key was already accepted; never create a new key.

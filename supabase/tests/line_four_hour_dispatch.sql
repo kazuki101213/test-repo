@@ -23,6 +23,7 @@ insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade
 insert into app.item_photos(item_id,storage_path,photo_kind)
  select id,'patrol/998771/'||n||'.jpg','product' from app.items cross join generate_series(1,6)n where lot_seq=998771;
 select app.save_line_shipping_preferences(id,null,null,'{"shippingMethod":"らくらくメルカリ便","size":"100","dropoff":"セブンイレブン","category":"ブルーレイレコーダー"}') from app.items where lot_seq=998772;
+select app.save_line_shipping_preferences(id,null,null,'{"dropoff":""}') from app.items where lot_seq=998773;
 update app.items set status='取引中',seller_trade_key='m'||lot_seq||':current' where lot_seq between 998771 and 998773;
 update app.delivery_line_settings set enabled=true;
 
