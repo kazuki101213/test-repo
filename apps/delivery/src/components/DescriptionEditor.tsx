@@ -1,8 +1,8 @@
 import ColoredSelect from './ColoredSelect';
 import { useListingKeywords } from '../useListingKeywords';
-import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { productListingName, type DeliveryTask, type SellerDraft } from '@bussan/shared';
-import { fetchProductMaker, saveDeliveryDescription } from '../api';
+import { fetchPhotoManufactureYear, fetchProductMaker, saveDeliveryDescription } from '../api';
 import { accessoryOptions, buildDescription, CONDITIONS_BY_TARGET, conditionForTarget, PRODUCT_TYPES, storedCondition, withReportedDamage, type DescriptionTarget } from '../description';
 
 function initialTarget(task: DeliveryTask): DescriptionTarget {
@@ -36,12 +36,26 @@ function CopyIconButton({ label, copied, disabled, onClick, className = '' }: {
   </button>;
 }
 
-export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {beforeActions?:ReactNode;actions?:ReactNode;afterActions?:ReactNode;value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void} }) {
+const yearLine = /●【\s*\d{4}年製\s*】になります。/;
+function withManufactureYear(description: string, year: string) {
+  const line = year ? `●【 ${year}年製 】になります。` : '';
+  if (yearLine.test(description)) return description.replace(yearLine, line);
+  if (!line || !description.trim()) return description;
+  return description.includes('《商品状態》')
+    ? description.replace('《商品状態》', `《商品状態》\n${line}`)
+    : `${line}\n${description}`;
+}
+
+export default function DescriptionEditor({ task, listingSkus, onSaved, embedded }: { task: DeliveryTask; listingSkus: string[]; onSaved: () => Promise<void>; embedded?: {beforeActions?:ReactNode;actions?:ReactNode | ((persistYear:()=>Promise<void>,readingYear:boolean)=>ReactNode);afterActions?:ReactNode;value:SellerDraft;manufacturer:string;disabled:boolean;onSaving:(busy:boolean)=>void;onChange:(value:Partial<SellerDraft>)=>void;yearPhotoKey?:string} }) {
   const [product, setProduct] = useState(embedded?.value.category??task.description_template ?? (task.work_stream === 'テレビ' ? 'テレビ' : task.work_stream === 'ブルーレイ' ? 'ブルーレイレコーダー' : ''));
   const [target, setTarget] = useState<DescriptionTarget>(() => embedded?(task.sales_channel==='メルカリ'?'mercari':task.sales_channel==='ヤフオク'?'yahoo-auction':'amazon'):initialTarget(task));
   const [condition, setCondition] = useState(() => embedded?.value.condition??conditionForTarget(initialTarget(task), task.condition));
   const [accessories, setAccessories] = useState(task.accessories ?? '');
   const [year, setYear] = useState(task.manufacture_year?.toString() ?? '');
+  const [yearStatus, setYearStatus] = useState('');
+  const [readingYear, setReadingYear] = useState(false);
+  const yearEdited = useRef(false);
+  const savedYear = useRef(task.manufacture_year?.toString() ?? '');
   const [manufacturer, setManufacturer] = useState(embedded?.manufacturer??'');
   const savedChannel=task.description?.match(/^商品名（(メルカリ|ヤフオク)）/)?.[1];
   const savedForOtherChannel=!!savedChannel&&['メルカリ','ヤフオク'].includes(task.sales_channel??'')&&savedChannel!==task.sales_channel;
@@ -51,6 +65,24 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [copiedField, setCopiedField] = useState<'title' | 'body' | null>(null);
+  const photoKey=embedded?.yearPhotoKey;
+  useEffect(() => {
+    if (target !== 'amazon' || !photoKey || savedYear.current || yearEdited.current) return;
+    let active = true;
+    setReadingYear(true);
+    setYearStatus('写真から製造年を確認中…');
+    void fetchPhotoManufactureYear(task.id,photoKey).then(result => {
+      if (!active || yearEdited.current) return;
+      if (result !== null) {
+        setYear(String(result));
+        setSaved(false);
+        setYearStatus('写真から読み取りました。必要に応じて修正できます。');
+      } else setYearStatus('写真で製造年を確認できませんでした。');
+    }).catch(() => {
+      if (active && !yearEdited.current) setYearStatus('写真で製造年を確認できませんでした。');
+    }).finally(() => { if (active) setReadingYear(false); });
+    return () => { active = false; };
+  }, [task.id, target, photoKey]);
 
   useEffect(() => {
     if(embedded)return;
@@ -66,7 +98,10 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
     hasPhysicalDamage: task.has_physical_damage===true, inspected: task.inspected, sku: task.sku, listingSkus,
     itemNumber: serial, modelNo: productListingName(task), manufacturer,
   });
-  const description = embedded?(target==='amazon'?embedded.value.description:joinMarketplaceListing(target,embedded.value.title,embedded.value.description)):manual ?? generated;
+  const draftDescription = embedded?(target==='amazon'?embedded.value.description:joinMarketplaceListing(target,embedded.value.title,embedded.value.description)):manual ?? generated;
+  const description = target==='amazon' && (yearEdited.current || year!==savedYear.current) && (!year || /^\d{4}$/.test(year))
+    ? withManufactureYear(draftDescription || generated,year)
+    : draftDescription;
   const generatedListing = splitMarketplaceListing(generated);
   const listing = splitMarketplaceListing(description);
   const listingTitle = embedded?embedded.value.title:listing.title || generatedListing.title;
@@ -119,13 +154,26 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
     if (!description.trim()) { setError('商品・コンディション・付属品を入力してください。'); return; }
     setBusy(true); embedded?.onSaving(true);
     try {
-      await saveDeliveryDescription(task.id, {
-        condition: storedCondition(target, condition), accessories, description,
-        template: product || null, year: year ? Number(year) : null,
-      });
+      await persistDescription();
       await onSaved(); setSaved(true); setNotice('保存しました。');
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); embedded?.onSaving(false); }
+  }
+
+  async function persistDescription() {
+    if (!description.trim()) throw new Error('商品・コンディション・付属品を入力してください。');
+    const yearNumber=year?Number(year):null;
+    if(yearNumber!==null&&(!Number.isInteger(yearNumber)||yearNumber<1900||yearNumber>2100))throw new Error('製造年を確認してください。');
+    await saveDeliveryDescription(task.id, {
+      condition: storedCondition(target, condition), accessories, description,
+      template: product || null, year: yearNumber,
+    });
+    savedYear.current=year;
+    if (target==='amazon' && embedded && description!==embedded.value.description) embedded.onChange({description});
+  }
+
+  async function persistYear() {
+    if (year!==savedYear.current) await persistDescription();
   }
 
   const listingLayout = !!embedded && target !== 'amazon';
@@ -139,7 +187,9 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
         <label>商品<select value={product} onChange={e => { setProduct(e.target.value); updateSelection(); }}><option value="">選択してください</option>{PRODUCT_TYPES.map(value => <option key={value}>{value}</option>)}</select></label>
         <label>コンディション<ColoredSelect value={condition} onChange={e => { setCondition(e.target.value); updateSelection(); }}><option value="">選択してください</option>{CONDITIONS_BY_TARGET[target].map(value => <option key={value}>{value}</option>)}</ColoredSelect></label>
         {target !== 'amazon' && <label>メーカー<input value={manufacturer} onChange={e => { setManufacturer(e.target.value); updateSelection(); }} placeholder="商品リストから取得・必要に応じて修正" /></label>}
-        {target === 'amazon' && <label>製造年（任意）<input type="number" min={1900} max={2100} step={1} value={year} onChange={e => { setYear(e.target.value); updateSelection(); }} placeholder="例：2020" /></label>}
+        {target === 'amazon' && <label>製造年（任意）<input type="number" min={1900} max={2100} step={1} value={year} onChange={e => {
+          yearEdited.current=true; setReadingYear(false); setYearStatus(''); setYear(e.target.value); setSaved(false); setNotice('');
+        }} placeholder="例：2020" />{yearStatus&&<small role="status">{yearStatus}</small>}</label>}
       </div>);
 
   return <form className="card description-editor" onSubmit={e => void save(e)}>
@@ -164,8 +214,8 @@ export default function DescriptionEditor({ task, listingSkus, onSaved, embedded
       <div className={`description-actions${embedded?.actions?' description-listing-actions':''}`}>
       {manual !== null && description && <button type="button" className="btn" disabled={!generated} onClick={updateSelection}>選択内容から再生成</button>}
       {target !== 'amazon' && <button className="btn primary" type="button" disabled={ai.busy||!listingTitle.trim()||!product} onClick={()=>void ai.generate(true)}>{ai.busy?'生成中…':'関連キーワードを生成'}</button>}
-      <button className="btn primary" type="submit">{busy ? '保存中…' : saved ? '上書き保存' : '説明文を保存'}</button>
-      {embedded?.actions}
+      <button className="btn primary" type="submit" disabled={readingYear}>{busy ? '保存中…' : saved ? '上書き保存' : '説明文を保存'}</button>
+      {typeof embedded?.actions==='function'?embedded.actions(persistYear,readingYear):embedded?.actions}
       </div>
       {embedded?.afterActions}
       {target !== 'amazon' && ai.message && <p className="description-ai-message muted" role="status">{ai.message}</p>}

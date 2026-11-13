@@ -99,7 +99,7 @@ Deno.test('private receipt actions reject missing or wrong dispatcher credential
  }finally{globalThis.fetch=original;keys.forEach((k,i)=>saved[i]===undefined?Deno.env.delete(k):Deno.env.set(k,saved[i]!));}
 });
 Deno.test('offer uses selected seller/ASIN/price/condition and FBA has no invented quantity',()=>{const fba=listingBody(item());assert(fba.attributes.fulfillment_availability[0].fulfillment_channel_code==='AMAZON_JP');assert(!('quantity'in fba.attributes.fulfillment_availability[0]));assert(fba.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax===400);assert(fba.attributes.condition_note[0].value==='説明\n本文');const self=listingBody({...item(),sales_channel:'自己発送2'});assert(self.attributes.fulfillment_availability[0].quantity===1);assert(self.attributes.fulfillment_availability[0].fulfillment_channel_code==='DEFAULT')});
-Deno.test('battery inclusion defaults to false on all channels and preserves Japanese catalog data',()=>{
+Deno.test('battery inclusion defaults to false on all channels and the Japanese catalog supplies cell composition',()=>{
  for(const sales_channel of ['FBA1','FBA2','自己発送1','自己発送2']){
   const fields=listingBody({...item(),sales_channel},{attributes:{batteries_included:[{value:true,marketplace_id:'ATVPDKIKX0DER'}]}}).attributes;
   assert(fields.batteries_included.length===1&&fields.batteries_included[0].value===false);
@@ -107,10 +107,13 @@ Deno.test('battery inclusion defaults to false on all channels and preserves Jap
   assert(!('batteries_required' in fields)&&!('supplier_declared_dg_hz_regulation' in fields));
  }
  const known=listingBody(item(),{attributes:{
-  batteries_included:[{value:'false',marketplace_id:market},{value:true,marketplace_id:market}],
+  batteries_included:[{value:true,marketplace_id:market}],
+  battery:[{marketplace_id:'ATVPDKIKX0DER',cell_composition:[{value:'lithium_ion'}]},
+    {marketplace_id:market,cell_composition:[{value:'alkaline'}],weight:[{value:20}]}],
   batteries_required:[{value:false}],supplier_declared_dg_hz_regulation:[{value:'not_applicable'}],
  }}).attributes;
- assert(known.batteries_included[0].value===true);
+ assert(known.batteries_included[0].value===false);
+ assert(JSON.stringify(known.battery)===JSON.stringify([{cell_composition:[{value:'alkaline'}],marketplace_id:market}]));
  assert(known.batteries_required[0].value===false);
  assert(known.supplier_declared_dg_hz_regulation[0].value==='not_applicable');
 });

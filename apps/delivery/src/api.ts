@@ -317,6 +317,16 @@ export async function fetchPhotoUrls(itemId: string, purpose: 'product'|'packing
  });
 }
 
+export async function fetchPhotoManufactureYear(itemId: string, photoKey: string): Promise<number | null> {
+  return sessionRead('photo-manufacture-year:'+itemId+':'+photoKey,300000,async () => {
+    const {data,error}=await getSupabase().functions.invoke('delivery-photo-drive',{
+      body:{itemId,action:'manufacture-year',purpose:'product'},
+    });
+    if(error)throw error;
+    return Number.isInteger(data?.year)&&data.year>=1900&&data.year<=new Date().getFullYear()?data.year:null;
+  });
+}
+
 export async function deletePhoto(photoId: string): Promise<void> {
   invalidatePhotoReads();
   try {
