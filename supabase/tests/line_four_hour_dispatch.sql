@@ -48,5 +48,20 @@ do $$declare prepared jsonb;request uuid;r record;counted integer:=0;calls integ
  if prepared->>'queued'<>'0' or (select count(*) from app.seller_operations q join app.items i on i.id=q.item_id where i.lot_seq=998772)<>1 then raise exception 'Patrol duplicated a code request';end if;
  if (select count(*) from line_patrol_http_calls)<>calls or exists(select 1 from app.claim_delivery_line()) then raise exception 'Patrol resent an accepted notification';end if;
  if (select attempts from app.delivery_line_outbox where id=request)<>1 then raise exception 'Sent attempt count changed';end if;
+ update app.seller_operations q set status='uncertain',finished_at=now(),
+   result=jsonb_build_object('phase','read_shipping_code','note','配送コードの画像を確認できません。再発行しません')
+ where q.item_id=(select id from app.items where lot_seq=998772);
+ prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
+ if prepared->>'queued'<>'0' then raise exception 'Uncertain code issuance was retried';end if;
+ update app.seller_operations q set status='failed',finished_at=now(),
+   result=jsonb_build_object('phase','prepare','note','取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません')
+ where q.item_id=(select id from app.items where lot_seq=998772);
+ prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
+ if prepared->>'queued'<>'1' then raise exception 'Read-only Mercari timeout did not retry';end if;
+ update app.seller_operations q set status='failed',finished_at=now(),
+   result=jsonb_build_object('phase','prepare','note','取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません')
+ where q.item_id=(select id from app.items where lot_seq=998772) and q.status='queued';
+ prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
+ if prepared->>'queued'<>'0' then raise exception 'Mercari timeout retried more than once';end if;
 end $$;
 rollback;
