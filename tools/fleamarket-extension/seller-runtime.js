@@ -19,7 +19,7 @@ export async function normalizeSellerPhoto({file,site}){
 }
 /** Return before a full-page category navigation destroys this execution frame. */
 export async function clickSellerChoice(kind){
- const names={category:['カテゴリーを選択する','カテゴリを選択する'],condition:['商品の状態を選択する'],shipping:['配送の方法を選択する'],'category-search':['キーワードから選択する（出品カテゴリ検索）'],'shipping-details':['商品サイズと発送場所を選択する','商品サイズや発送方法を修正する']};
+ const names={category:['カテゴリーを選択する','カテゴリを選択する'],condition:['商品の状態を選択する'],shipping:['配送の方法を選択する'],'category-search':['キーワードから選択する（出品カテゴリ検索）'],'shipping-details':['商品サイズと発送場所を選択する','サイズと発送場所を選択する','サイズと発送場所を手動で選択する','商品サイズや発送方法を修正する']};
  if(!names[kind])throw Error('未対応の選択画面です');
  const norm=s=>String(s||'').replace(/\s+/g,'').trim();let candidates=[];const end=Date.now()+10000;
  const shippingEdit=e=>kind==='shipping-details'&&e.tagName==='A'&&location.hostname==='jp.mercari.com'&&/^\/transaction\/m[0-9]+$/.test(location.pathname)&&e.origin===location.origin&&e.pathname===location.pathname+'/shipping_class';
@@ -129,7 +129,7 @@ export function advanceMercariShippingEditor({itemId,shippingMethod}){
   if(location.pathname===path){
    const revise=buttons.filter(e=>norm(e.innerText)==='商品サイズや発送方法を修正する');
    const links=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&e.origin===location.origin&&e.pathname.startsWith(path+'/')&&/\/shipping(?:_[a-z]+)?$/.test(e.pathname));
-  const method=links.filter(e=>norm(e.innerText)==='発送方法を変更する'),size=[...buttons,...links].filter(e=>['商品サイズと発送場所を選択する','サイズと発送場所を選択する'].includes(norm(e.innerText)));
+  const method=links.filter(e=>norm(e.innerText)==='発送方法を変更する'),size=[...buttons,...links].filter(e=>['商品サイズと発送場所を選択する','サイズと発送場所を選択する','サイズと発送場所を手動で選択する'].includes(norm(e.innerText)));
    const choices=revise.length?revise:!body.includes(shippingMethod)&&method.length?method:size.length?size:method;
    if(choices.length===1){const state=before();setTimeout(()=>choices[0].click(),100);return state;}
   }

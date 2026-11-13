@@ -271,9 +271,10 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   },'出品結果を確認できません。サイトで確認するまで再実行しません');
  }
  // A completed document can still contain Mercari's loading shell. Wait for the exact trade's shipping controls before its first guard; never click while waiting.
+ const mercariShippingEntries=['商品サイズと発送場所を選択する','サイズと発送場所を選択する','サイズと発送場所を手動で選択する','商品サイズや発送方法を修正する'];
  if(phase==='shipping_preflight'&&job.channel==='メルカリ'){
   if(location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送画面ではありません');
-  await waitFor(()=>{root=document.querySelector('main')||document.body;return /取引画面|取引情報|発送|配送/.test(text())&&controls().some(e=>['商品サイズと発送場所を選択する','商品サイズや発送方法を修正する','配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行'].includes(buttonLabel(e)));},'取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません');
+  await waitFor(()=>{root=document.querySelector('main')||document.body;return /取引画面|取引情報|発送|配送/.test(text())&&controls().some(e=>[...mercariShippingEntries,'配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行'].includes(buttonLabel(e)));},'取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません');
  }
  if(phase==='ship_notice_preflight'){
   if(job.channel==='メルカリ'&&location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送通知画面ではありません');
@@ -316,7 +317,7 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const wantedSize=['100','140'].includes(String(payload.size))?/らくらく/.test(payload.shippingMethod||'')?'宅急便':'ゆうパック':String(payload.size||'');
   const postalSize=String(payload.size)==='140'?'120\\s*[-〜～]\\s*170':'60\\s*[-〜～]\\s*100';
   const sizeMatches=configuredSize?configuredSize===wantedSize||wantedSize==='宅急便'&&/^宅急便(?:[（(]?60\s*[-〜～]\s*160(?:サイズ)?[）)]?)?$/.test(configuredSize)||wantedSize==='ゆうパック'&&new RegExp('^ゆうパック(?:[（(]?(?:'+postalSize+')(?:サイズ)?[）)]?)?$').test(configuredSize):false;
-  const entries=controls().filter(e=>['商品サイズと発送場所を選択する','商品サイズや発送方法を修正する'].includes(buttonLabel(e))),edit=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&e.origin===location.origin&&(e.pathname==='/transaction/'+job.external_id+'/shipping_class'||buttonLabel(e)==='発送方法を変更する'&&e.pathname.startsWith('/transaction/'+job.external_id+'/')&&/\/shipping(?:_[a-z]+)?$/.test(e.pathname))),revise=entries.some(e=>buttonLabel(e)==='商品サイズや発送方法を修正する')||edit.some(e=>buttonLabel(e)==='発送方法を変更する');if(entries.length>1||edit.length>2)throw Error('配送設定の入口が曖昧です');if(payload.shippingMethod&&!text().includes(norm(payload.shippingMethod))&&!revise)throw Error('サイトの配送方法がアプリの設定と一致しません');
+  const entries=controls().filter(e=>mercariShippingEntries.includes(buttonLabel(e))),edit=[...root.querySelectorAll('a[href]')].filter(e=>visible(e)&&e.origin===location.origin&&(e.pathname==='/transaction/'+job.external_id+'/shipping_class'||buttonLabel(e)==='発送方法を変更する'&&e.pathname.startsWith('/transaction/'+job.external_id+'/')&&/\/shipping(?:_[a-z]+)?$/.test(e.pathname))),revise=entries.some(e=>buttonLabel(e)==='商品サイズや発送方法を修正する')||edit.some(e=>buttonLabel(e)==='発送方法を変更する');if(entries.length>1||edit.length>2)throw Error('配送設定の入口が曖昧です');if(payload.shippingMethod&&!text().includes(norm(payload.shippingMethod))&&!revise)throw Error('サイトの配送方法がアプリの設定と一致しません');
   const codes=controls().filter(e=>['配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行'].includes(buttonLabel(e)));if(codes.length>1)throw Error('配送QRの発行ボタンが曖昧です');const place=controls().map(buttonLabel).map(t=>t.replace(/[\s\-−–・]/g,''));const configuredDropoff=place.includes('ヤマト運輸営業所からの発送方法')?'ヤマト営業所':place.includes('セブンイレブンからの発送方法')?'セブンイレブン':place.includes('ローソンからの発送方法')?'ローソン':null;const methodMatches=!payload.shippingMethod||text().includes(norm(payload.shippingMethod));return {needsEditor:entries.length+edit.length>0&&(!sizeMatches||configuredDropoff!==payload.dropoff||!methodMatches),readyForCode:codes.length===1,configuredDropoff,configuredSize,sizeMatches,methodMatches};
  }
  if(phase==='message_sync'){

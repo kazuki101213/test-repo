@@ -582,3 +582,18 @@ test('既存コードのためサイズ画面が戻される実フローでも�
  const result=await prepareMercariShipping({job,resetExistingCode:true,execute:async(fn,args)=>{const r=await p.evaluate(fn,args);if(r.__error)throw Error(r.__error);return r;},go:async()=>assert.fail('既存コードが残るURLへ直接移動しない'),loaded:async()=>{},finishChoice:async before=>{await p.waitForFunction(before=>location.href!==before.url||document.body.innerText!==before.text,before);}});
  assert.equal(result.resetPreviousCode,true);const state=await p.evaluate(()=>window.resetState);assert.deepEqual(state.switches,['ゆうゆうメルカリ便','らくらくメルカリ便']);assert.equal(state.method,'らくらくメルカリ便');assert.equal(state.parcel,'宅急便');assert.equal(state.place,'セブンイレブン');assert.equal(state.issued,0);assert.equal(state.notified,0);await p.close();
 });
+
+test('おすすめの発送設定が表示されても手動でサイズと発送場所を選択する', async () => {
+ const external_id='m73979214253';
+ const p=await page('<h1>取引画面</h1><p>ゆうゆうメルカリ便 発送してください</p><button onclick="document.body.dataset.recommended=1">おすすめの方法で発送手続きを行う</button><button onclick="document.body.dataset.manual=1">サイズと発送場所を手動で選択する</button>','https://jp.mercari.com/transaction/'+external_id);
+ const job={id:'manual-entry',external_id,trade_key:external_id,channel:'メルカリ',payload:{shippingMethod:'ゆうゆうメルカリ便',size:'140',dropoff:'ローソン'}};
+ const result=await p.evaluate(sellerDomOperation,{job,phase:'shipping_preflight'});
+ assert.equal(result.needsEditor,true);
+ assert.equal(result.readyForCode,false);
+ assert.equal(await p.evaluate(()=>document.body.dataset.manual),undefined);
+ const editor=await p.evaluate(advanceMercariShippingEditor,{itemId:external_id,shippingMethod:job.payload.shippingMethod});
+ assert.equal(editor.__error,undefined);
+ await p.waitForFunction(()=>document.body.dataset.manual==='1');
+ assert.equal(await p.evaluate(()=>document.body.dataset.recommended),undefined);
+ await p.close();
+});
