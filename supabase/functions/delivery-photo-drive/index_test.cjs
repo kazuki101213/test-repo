@@ -103,13 +103,22 @@ test('Listing analysis maps photo indices and accepts only visible, allowed acce
   Object.assign(state.items.find(item=>item.id===itemId),{status:'商品登録前',sales_channel:'メルカリ'});
   state.item_photos.push({id:'p4',item_id:itemId,storage_path:'photos/overview.jpg',photo_kind:'product'});
   const choices=['本体','電源ケーブル'];
-  state.listingAnalysis={roles:{overview:1,frontLeft:0,frontRight:0,rearLeft:12},accessories:['本体','不明な付属品']};
+  state.listingAnalysis={overview:1,photos:[
+    {index:0,role:'frontLeft'},{index:0,role:'frontRight'},{index:12,role:'rearLeft'},
+  ],accessories:['本体','不明な付属品']};
   assert.deepEqual(await (await call('listing-analysis',{accessoryChoices:choices})).json(),{
     roles:{overview:'p4',frontLeft:'p2'},accessories:['本体'],
   });
   assert.deepEqual(state.downloads,['photos/new.jpg','photos/overview.jpg']);
-  state.listingAnalysis.roles.overview=null;
+  state.listingAnalysis.overview=null;
   assert.deepEqual((await (await call('listing-analysis',{accessoryChoices:choices})).json()).accessories,[]);
+});
+test('Listing analysis distinguishes the full remote back from the battery compartment close-up',async()=>{
+  const {state,call}=setup();
+  Object.assign(state.items.find(item=>item.id===itemId),{status:'商品登録前',sales_channel:'FBA2'});
+  state.item_photos.push({id:'battery',item_id:itemId,storage_path:'photos/battery.jpg',photo_kind:'product'});
+  state.listingAnalysis={overview:null,photos:[{index:0,role:'remoteBattery'},{index:1,role:'remoteBackOpen'}],accessories:[]};
+  assert.deepEqual((await (await call('listing-analysis',{accessoryChoices:['本体']})).json()).roles,{remoteBack:'p2',remoteBattery:'battery'});
 });
 test('return lists all original and return photos in its lot, without Drive writes',async()=>{
   const {state,call}=setup(); const response=await call('list');
