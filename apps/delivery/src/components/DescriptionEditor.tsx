@@ -40,7 +40,8 @@ const yearLine = /●【\s*\d{4}年製\s*】になります。/;
 function withManufactureYear(description: string, year: string) {
   const line = year ? `●【 ${year}年製 】になります。` : '';
   if (yearLine.test(description)) return description.replace(yearLine, line);
-  if (!line || !description.trim()) return description;
+  if (!line) return description;
+  if (!description.trim()) return line;
   return description.includes('《商品状態》')
     ? description.replace('《商品状態》', `《商品状態》\n${line}`)
     : `${line}\n${description}`;

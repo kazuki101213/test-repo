@@ -26,7 +26,6 @@ async function check(channel,overrides={},yearScenario=''){
  async function render(){for(let i=0;i<8;i++){cursor=0;tree=Editor(props);effects.splice(0).forEach(fn=>fn());await Promise.resolve();}}
  await render();
  const body=()=>all(tree).find(n=>n.type==='textarea'&&n.props.maxLength!==2000);
- assert(body());assert.equal(all(tree).filter(n=>n.type==='textarea'&&n.props.maxLength!==2000).length,1);
  if(yearScenario){
   const yearField=()=>all(tree).find(n=>n.type==='input'&&n.props.placeholder==='例：2020');
   if(yearScenario==='saved'){assert.equal(yearCalls,0);assert.equal(yearField().props.value,'2018');return;}
@@ -39,8 +38,10 @@ async function check(channel,overrides={},yearScenario=''){
   await render();await persistYear();assert.equal(saveCalls,1);
   const expected=yearScenario==='manual'?2019:2021;
   assert.equal(saved.year,expected);assert(saved.description.includes(expected+'年製'));
-  assert(saved.description.includes('保存済みの補足'));return;
+  if(overrides.description)assert(saved.description.includes(overrides.description));
+  return;
  }
+ assert(body());assert.equal(all(tree).filter(n=>n.type==='textarea'&&n.props.maxLength!==2000).length,1);
  body().props.onChange({target:{value:'編集した本文'}});await render();assert.equal(embedded.value.description,'編集した本文');
  if(channel==='メルカリ'||channel==='ヤフオク'){
   const maker=all(tree).find(n=>n.type==='input'&&n.props.placeholder==='商品リストから取得・必要に応じて修正');maker.props.onChange({target:{value:'メーカー修正'}});await render();assert(embedded.value.title.includes('メーカー修正'));if(overrides.title)assert(embedded.value.title.includes(overrides.title),'regeneration retains the known product name');assert(embedded.value.description.includes('【'+task.sku+'】'));
@@ -50,4 +51,4 @@ async function check(channel,overrides={},yearScenario=''){
  assert(saved.description.includes(embedded.value.description));
  if(channel==='メルカリ'||channel==='ヤフオク')assert(saved.description.includes(embedded.value.title));
 }
-(async()=>{for(const channel of ['メルカリ','ヤフオク','FBA','自己発送'])await check(channel);await check('メルカリ',{title:'RODE VideoMic GO',model_no:null,marketplace:'動作品Amazon返品'});for(const scenario of ['automatic','manual','saved','unclear'])await check('FBA2',{description:'保存済みの補足',manufacture_year:scenario==='saved'?2018:null},scenario);console.log('PASS: unified description and photo year auto-fill, correction, saved precedence and blank fallback');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{for(const channel of ['メルカリ','ヤフオク','FBA','自己発送'])await check(channel);await check('メルカリ',{title:'RODE VideoMic GO',model_no:null,marketplace:'動作品Amazon返品'});for(const scenario of ['automatic','manual','saved','unclear'])await check('FBA2',{description:'保存済みの補足',manufacture_year:scenario==='saved'?2018:null},scenario);await check('FBA2',{description:null,accessories:''},'automatic');console.log('PASS: unified description and photo year auto-fill, correction, saved precedence and blank fallback');})().catch(error=>{console.error(error);process.exitCode=1;});

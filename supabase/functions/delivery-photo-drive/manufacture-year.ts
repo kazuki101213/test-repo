@@ -42,11 +42,20 @@ export async function readManufactureYear(
       },
     }),
   });
-  if (!response.ok) throw new Error('Gemini manufacture year request failed');
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null);
+    const code = failure?.error?.status;
+    const reason = failure?.error?.details?.find?.((detail: {reason?: string}) => detail.reason)?.reason;
+    console.warn('Gemini manufacture year request failed', response.status,
+      typeof code === 'string' && /^[A-Z_]+$/.test(code) ? code : '',
+      typeof reason === 'string' && /^[A-Z_]+$/.test(reason) ? reason : '');
+    throw new Error('Gemini manufacture year request failed');
+  }
   const result = await response.json();
   const candidate = result.candidates?.[0];
   if (candidate?.finishReason !== 'STOP') return null;
-  const text = candidate.content?.parts?.map((part: {text?: string}) => part.text ?? '').join('');
+  const text = candidate.content?.parts?.filter((part: {thought?: boolean}) => !part.thought)
+    .map((part: {text?: string}) => part.text ?? '').join('');
   const year = JSON.parse(text || '{}').year;
   return Number.isInteger(year) && year >= 1900 && year <= new Date().getFullYear() ? year : null;
 }
