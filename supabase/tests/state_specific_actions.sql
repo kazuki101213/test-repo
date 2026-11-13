@@ -18,6 +18,8 @@ do $$declare v_item uuid:=(select id from app.items where lot_seq=992001 and not
  begin perform app.perform_inventory_action(v_item,'return_impossible','動作不良');raise exception 'Supplier check bypassed';exception when raise_exception then if sqlerrm='Supplier check bypassed' then raise;end if;end;
 end $$;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+update app.items set malfunction_reported_at=now()-interval '1 second'
+where lot_seq=992001 and not is_accessory;
 insert into app.item_comments(item_id,author_id,body) select id,app.current_staff_id(),'ordinary reply keeps fault' from app.items where lot_seq=992001 and not is_accessory;
 select app.send_malfunction_reply(gen_random_uuid(),id,'返送お願いしますか？',null)
 from app.items where lot_seq=992001 and not is_accessory;
