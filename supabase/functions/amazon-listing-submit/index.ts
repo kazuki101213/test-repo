@@ -13,7 +13,12 @@ export function accountFor(channel:string|null):AmazonAccountId{if(channel==='FB
 export function listingBody(item:ListingItem,catalog?:Obj|null){
  if(!item.asin||!/^[0-9A-Z]{10}$/.test(item.asin)||!conditionTypes[item.condition??'']||!Number.isSafeInteger(item.planned_price)||(item.planned_price??0)<1)throw new SafeError(422,'ASIN・コンディション・予定販売価格を確認してください。');
  const attributes:Obj={merchant_suggested_asin:[{value:item.asin,marketplace_id:marketplace}],condition_type:[{value:conditionTypes[item.condition!],marketplace_id:marketplace}],purchasable_offer:[{audience:'ALL',currency:'JPY',marketplace_id:marketplace,our_price:[{schedule:[{value_with_tax:item.planned_price}]}]}],fulfillment_availability:[/^FBA/.test(item.sales_channel??'')?{fulfillment_channel_code:'AMAZON_JP'}:{fulfillment_channel_code:'DEFAULT',quantity:1}]};
- // Use actual ASIN attributes only; never invent battery or dangerous-goods declarations.
+ // Battery inclusion is distinct from whether the item requires batteries.
+ const catalogBatteryIncluded=(catalog?.attributes?.batteries_included??[]).find((v:Obj)=>
+  (!v.marketplace_id||v.marketplace_id===marketplace)&&typeof v.value==='boolean'
+ );
+ attributes.batteries_included=[{value:catalogBatteryIncluded?.value??false,marketplace_id:marketplace}];
+ // Only forward known battery requirements and dangerous-goods declarations.
  for(const name of ['batteries_required','supplier_declared_dg_hz_regulation']){const values=(catalog?.attributes?.[name]??[]).filter((v:Obj)=>(!v.marketplace_id||v.marketplace_id===marketplace)&&(name==='batteries_required'?typeof v.value==='boolean':typeof v.value==='string'));if(values.length)attributes[name]=values.map((v:Obj)=>({value:v.value,marketplace_id:marketplace}));}
  if(item.description?.trim())attributes.condition_note=[{value:item.description.replace(/\\n/g,'\n'),language_tag:'ja_JP',marketplace_id:marketplace}];
  return{productType:'PRODUCT',requirements:'LISTING_OFFER_ONLY',attributes};
