@@ -12,6 +12,12 @@ assert.deepEqual(Array.from(listingPhotoOrder(photoIds,photoAnalysis,'mercari',t
  ['overview','frontLeft','frontRight','rearLeft','rearRight','remoteFront','remoteBack','remoteBattery','bottom']);
 assert.deepEqual(Array.from(listingPhotoOrder(photoIds,photoAnalysis,'yahoo',true)),
  ['overview','frontLeft','frontRight','rearLeft','rearRight','bottom','remoteFront','remoteBack','remoteBattery']);
+for (const channel of ['mercari','yahoo']) {
+ const mixedPhotos=['remoteFront','rear','overview','front','rearLeft'];
+ const mixedAnalysis={roles:Object.fromEntries(mixedPhotos.map(id=>[id,id])),accessories:[]};
+ assert.deepEqual(Array.from(listingPhotoOrder(mixedPhotos,mixedAnalysis,channel,true)),
+  ['overview','front','rearLeft','rear','remoteFront']);
+}
 assert.deepEqual(Array.from(listingPhotoOrder(['unknown','overview','remoteBattery'],photoAnalysis,'amazon',true)),['overview']);
 assert.deepEqual(Array.from(listingPhotoOrder(['unknown','overview','remoteBattery'],photoAnalysis,'amazon',false)),['overview','unknown','remoteBattery']);
 const all=(n,out=[])=>{if(Array.isArray(n))n.forEach(x=>all(x,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out);const actions=n.props?.embedded?.actions;all(typeof actions==='function'?actions(async()=>{},false):actions,out);all(n.props?.embedded?.beforeActions,out);all(n.props?.embedded?.afterActions,out)}return out};
