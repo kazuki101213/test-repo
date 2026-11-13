@@ -3,7 +3,7 @@ import {createPortal} from 'react-dom';
 import {getSupabase, inventorySerial, type DeliveryTask} from '@bussan/shared';
 import {deliveryErrorMessage} from '../errors';
 import {FbaProductLabelSheet, fbaLabelSku, type FbaProductLabel} from './FbaProductLabelSheet';
-import {calibrationFields, calibrationInput, defaultCalibration, labelSlots, parseCalibration, readCalibration, saveCalibration, type CalibrationInput} from './fbaLabelLayout';
+import {calibrationFields, calibrationInput, defaultCalibration, labelPaper, labelSlots, parseCalibration, readCalibration, saveCalibration, type CalibrationInput} from './fbaLabelLayout';
 
 type LabelItem = Pick<DeliveryTask, 'id'|'sku'|'sales_channel'>;
 async function fetchLabel(item: LabelItem): Promise<FbaProductLabel> {
@@ -125,6 +125,17 @@ export default function FbaLabelControls({items,productOnly=false,beforeLabels,s
           <button type="button" className="btn" onClick={() => labelDialog.current?.close()}>閉じる</button>
         </div>
         <p className="fba-label-print-instructions">A4・24面（66 × 33.9 mm）／倍率100%・余白なし・ヘッダーとフッターなし</p>
+        {!alignment && <fieldset className="fba-label-adjustment">
+          <legend>印刷開始位置</legend>
+          <p className="fba-label-print-instructions">用紙の空いている面を選んでください。</p>
+          <div className="fba-label-start-grid" style={{gridTemplateRows: `repeat(${labelPaper.rows}, auto)`}}>
+            {Array.from({length: labelSlots}, (_, index) => {
+              const position = index + 1;
+              return <button key={position} type="button" className={position === firstPosition ? 'btn primary' : 'btn'} aria-pressed={position === firstPosition}
+                onClick={() => setFirstPosition(position)}>{position}</button>;
+            })}
+          </div>
+        </fieldset>}
         <fieldset className="fba-label-adjustment">
           <legend>印刷位置の調整</legend>
           <div className="fba-label-adjustment-fields">
@@ -139,9 +150,6 @@ export default function FbaLabelControls({items,productOnly=false,beforeLabels,s
           </div>
           <div className="fba-label-dialog-actions">
             <button type="button" className="btn" onClick={() => updateAdjustments(calibrationInput(defaultCalibration))}>調整をリセット</button>
-            {!alignment && <label>印刷開始位置 <select value={firstPosition} onChange={event => setFirstPosition(Number(event.target.value))}>
-              {Array.from({length: labelSlots}, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}
-            </select></label>}
           </div>
           {!calibrationValid && <p role="alert" className="error">調整値を表示範囲内で、0.1 mm刻みで入力してください。</p>}
         </fieldset>
