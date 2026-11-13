@@ -7,12 +7,14 @@ const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventor
 const origin='https://test-repo-delivery.vercel.app/';
 const workflow={exports:{}};vm.runInNewContext(compile('packages/shared/src/workflow.ts'),workflow);
 const productModel={exports:{}};vm.runInNewContext(compile('packages/shared/src/productModel.ts'),productModel);
+const now=Date.parse('2026-11-13T03:00:00Z'),day=24*60*60*1000;
 async function render(file,resources,products=[],props={},reads=[],imports={}){
  let cursor=0,hooks=[],pending=[],dirty=true,tree;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,value=>{hooks[n].value=typeof value==='function'?value(hooks[n].value):value;dirty=true;}];},useRef(value){return hooks[cursor++]??={current:value};},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((value,index)=>value!==old.deps[index])){old?.cleanup?.();const hook=hooks[n]={deps};pending.push(()=>hook.cleanup=fn());}}};
  const shared={...workflow.exports,...productModel.exports,staffDisplayName:name=>name,yen:value=>String(value),readResourceSnapshot:async name=>{reads.push(name);return resources[name]??[];},getSupabase:()=>({from:table=>{assert.equal(table,'items');const q={select:fields=>{assert(['id,marketplace_item_id,marketplace,marketplace_url','id,marketplace,marketplace_item_id,marketplace_url'].includes(fields));return q;},in:(key,ids)=>{assert.equal(key,'id');assert(ids.length<=200);return Promise.resolve({data:products.filter(row=>ids.includes(row.id)),error:null});}};return q;}})};
  const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='react-dom'?{createPortal:node=>node}:name==='@bussan/shared'?shared:name==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){},pending:false,confirmation:null})}:name==='../inventory'?inventory.exports:name==='../appUrls'?{deliveryAppUrl:origin}:name==='../taskNotice'?{adminTaskNotice:()=>null}:name==='../purchaseUrl'?{purchaseItemUrl:()=>null}:{},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}}};
  const originalRequire=context.require;context.require=name=>imports[name]??originalRequire(name);
+ context.Date={now:()=>now,parse:Date.parse};
  vm.runInNewContext(compile(file),context);
  for(let n=0;n<50;n++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({staff:{id:'admin',role:'admin'},...props});pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}
  hooks.forEach(hook=>hook?.cleanup?.());return all(tree);
@@ -53,14 +55,17 @@ function inventoryLink(nodes,label,item){
  inventoryLink(shippingNodes,'発送する商品の在庫を開く','stock0');
  for(const channel of ['メルカリ','ヤフオク','自己発送'])assert(shippingNodes.some(n=>n.type==='strong'&&text(n)===channel+'発送(24時間経過)'));
  assert.equal(shippingNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,3,'Shipping reminders open the existing shipping flow');
- const inspectionNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_inspection_tasks:[{id:'inspect1',item_id:'inspect1',sku:'2500-INSPECTION',lot_seq:2500,sales_channel:'FBA2',marketplace:'ヤフオク',purchase_account_label:'ヤフオク1',marketplace_item_id:'product1',model_no:'BDZ-ZW1700'}]},[],{kind:'inspection'});
+ const inspectionRows=[3*day,4*day-1,4*day,5*day].map((age,index)=>({id:'inspect'+(index+1),item_id:'inspect'+(index+1),sku:'2500-INSPECTION',lot_seq:2500,sales_channel:'FBA2',marketplace:'ヤフオク',purchase_account_label:'ヤフオク1',marketplace_item_id:'product1',model_no:'BDZ-ZW1700',created_at:new Date(now-age).toISOString(),waiting_for_parts:index>=2}));
+ const inspectionNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_inspection_tasks:inspectionRows},[],{kind:'inspection'});
  inventoryLink(inspectionNodes,'動作確認する商品の在庫を開く','inspect1');
- assert(inspectionNodes.some(n=>n.type==='strong'&&text(n)==='動作確認ヤフオク1(2日目)'));
+ assert.deepEqual(inspectionNodes.filter(n=>n.type==='strong').map(text),[
+  '動作確認ヤフオク1(2日経過)','動作確認ヤフオク1(2日経過)','動作確認ヤフオク1(3日経過)※','動作確認ヤフオク1(4日経過)※',
+ ]);
  assert(inspectionNodes.some(n=>n.type==='small'&&text(n)==='BDZ-ZW1700、2500-INSPECTION'));
- assert.equal(inspectionNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,1);
+ assert.equal(inspectionNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,inspectionRows.length);
  const accessoryNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_inspection_tasks:[{id:'accessory',item_id:'accessory',action_item_id:'body',sku:'2500-ACCESSORY',lot_seq:2500,marketplace:'メルカリ',title:'リモコン',waiting_for_parts:true}]},[],{kind:'inspection'});
  inventoryLink(accessoryNodes,'動作確認する商品の在庫を開く','accessory');
- assert(accessoryNodes.some(n=>n.type==='strong'&&text(n)==='動作確認メルカリ(2日目)※'));
+ assert(accessoryNodes.some(n=>n.type==='strong'&&text(n)==='動作確認メルカリ(2日経過)※'));
  assert(accessoryNodes.some(n=>n.type==='small'&&text(n)==='リモコン、2500-ACCESSORY'));
  assert.equal(new URL(accessoryNodes.find(n=>n.type==='a'&&n.props.children==='確認').props.href).searchParams.get('itemId'),'body');
  const itemId='22222222-2222-4222-8222-222222222222';
