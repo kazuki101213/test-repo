@@ -115,16 +115,7 @@ do $$ declare payload jsonb; begin
 end $$;
 
 reset role;
-update app.items
-set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 2)
-where lot_seq=997613 and not is_accessory;
-set local role authenticated;
-do $$begin
-  if exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
-    then raise exception 'Linked accessory still requires inspection after the body work was completed'; end if;
-end $$;
-
-reset role;
+savepoint accessory_work_completion;
 update app.items
 set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 3)
 where lot_seq=997613 and not is_accessory;
@@ -133,6 +124,18 @@ do $$begin
   if not exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
     then raise exception 'Same-day work date hid an accessory without evidence that work followed tracking'; end if;
 end $$;
+rollback to accessory_work_completion;
+
+update app.items
+set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 2)
+where lot_seq=997613 and not is_accessory;
+set local role authenticated;
+do $$begin
+  if exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
+    then raise exception 'Linked accessory still requires inspection after the body work was completed'; end if;
+end $$;
+rollback to accessory_work_completion;
+set local role authenticated;
 
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare resource text; payload jsonb; begin
