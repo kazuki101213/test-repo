@@ -117,7 +117,7 @@ end $$;
 reset role;
 update app.items
 set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 2)
-where lot_seq=997613;
+where lot_seq=997613 and not is_accessory;
 set local role authenticated;
 do $$begin
   if exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
@@ -127,7 +127,7 @@ end $$;
 reset role;
 update app.items
 set packed_on = ((now() at time zone 'Asia/Tokyo')::date - 3)
-where lot_seq=997613;
+where lot_seq=997613 and not is_accessory;
 set local role authenticated;
 do $$begin
   if not exists (select 1 from app.v_admin_work_deadlines where lot_seq=997631 and kind='inspection')
