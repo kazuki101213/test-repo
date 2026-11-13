@@ -63,6 +63,7 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/four_account_sales.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/listing_photo_approval.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/inspection_receipt_tasks.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/yahoo_bundle_tracking.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/accessory_receipt_evaluation_tasks.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/spare_accessory_receipt_exclusion.sql"
 
