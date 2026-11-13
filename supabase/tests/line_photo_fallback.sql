@@ -44,7 +44,7 @@ do $$declare item uuid;outbox uuid;op uuid:=gen_random_uuid();begin
  insert into app.seller_operations(id,item_id,actor_id,kind,channel,account_id,expected_status,expected_updated_at,payload,status,result)
  select op,id,deliverer_id,'shipping_code','メルカリ','mercari-1',status,updated_at,'{"trade_key":"old-trade"}','succeeded','{"qr_code":"fixture-code"}' from app.items where id=item;
  if app.line_shipping_media(outbox) is not null then raise exception 'Old-trade code was reused';end if;
- update app.seller_operations set payload='{"trade_key":"m998762:current"}' where id=op;
+ update app.seller_operations set payload='{"trade_key":"m998762:current","shippingMethod":"らくらくメルカリ便","size":"100","dropoff":"セブンイレブン"}' where id=op;
  if app.line_shipping_media(outbox)->>'codeOperationId' is distinct from op::text
   or app.line_shipping_media(outbox)->'photoPaths'<>'[]'::jsonb then raise exception 'Verified current code was blocked by optional photos';end if;
  update app.items set shipped_on=current_date where id=item;

@@ -140,7 +140,7 @@ Deno.serve(async req => {
               catch (error) {
                 if (row.payload.media.automatic !== true) throw error;
                 const media = row.payload.media;
-                payload = {itemId:media.itemId,serial:media.serial,sku:media.sku,supplierUrl:media.supplierUrl,images:[],automatic:true};
+                payload = {itemId:media.itemId,serial:media.serial,sku:media.sku,supplierUrl:media.supplierUrl,shipping:media.shipping,images:[],automatic:true};
               }
             } else payload = row.payload as ShippingPayload;
             const messages = shippingMessages(payload);

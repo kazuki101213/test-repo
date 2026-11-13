@@ -9,6 +9,7 @@ export const SMALL_PACKAGES=[
  {name:'宅急便コンパクト',dimensions:'専用BOX：25×20×5cm'},
  {name:'ゆうパケットプラス',dimensions:'専用箱：24×17×7cm・2kg以内'},
  {name:'ゆうパケットポストmini',dimensions:'専用封筒内寸：21.1×16.8cm・2kg以内・郵便ポストに入る厚さ'},
+ {name:'ゆうパケットポスト',dimensions:'専用箱または発送用シール・2kg以内・郵便ポストに入る厚さ'},
  {name:'ゆうパケット',dimensions:'3辺合計60cm以内・長辺34cm以内・厚さ3cm以内・1kg以内'},
 ] as const;
 export function sellerDefaults(task:DeliveryTask,manufacturer=''):SellerDraft{
@@ -42,8 +43,26 @@ export function sellerShippingPlaces(method:string):string[]{
  return /日本郵便|ゆうゆう/.test(method)?['ローソン','郵便局']:['ヤマト営業所','セブンイレブン'];
 }
 export function sellerShippingSizes(method:string):string[]{
+ if(method==='ゆうゆうメルカリ便')return ['ゆうパケット','ゆうパケットポストmini','ゆうパケットポスト','ゆうパケットプラス','ゆうパック60〜100','ゆうパック120〜170'];
+ if(method==='らくらくメルカリ便')return ['ネコポス','宅急便コンパクト','宅急便60〜160','宅急便180〜200'];
  const postal=/日本郵便|ゆうゆう/.test(method);
- return ['100','140',...SMALL_PACKAGES.filter(value=>postal?value.name.startsWith('ゆう'):value.name==='宅急便コンパクト'||method==='らくらくメルカリ便'&&value.name==='ネコポス').map(value=>value.name)];
+ return ['100','140',...SMALL_PACKAGES.filter(value=>postal?value.name.startsWith('ゆう')&&value.name!=='ゆうパケットポスト':value.name==='宅急便コンパクト').map(value=>value.name)];
+}
+export function mercariShippingSize(method:string,size:string):string{
+ if(method==='ゆうゆうメルカリ便'){
+  if(['60','80','100'].includes(size))return 'ゆうパック60〜100';
+  if(['120','140','160','170'].includes(size))return 'ゆうパック120〜170';
+ }
+ if(method==='らくらくメルカリ便'){
+  if(['60','80','100','120','160'].includes(size))return '宅急便60〜160';
+  if(['140','180','200'].includes(size))return '宅急便180〜200';
+ }
+ return size;
+}
+export function sellerShippingCodeError(draft:Pick<SellerDraft,'shippingMethod'|'size'|'dropoff'>):string{
+ if(draft.shippingMethod==='らくらくメルカリ便'&&draft.size==='宅急便180〜200'&&draft.dropoff==='セブンイレブン')
+  return '宅急便180〜200はセブンイレブンで発送できません。発送場所を確認してください。';
+ return sellerShippingError(draft);
 }
 export function sellerShippingError(draft:{shippingMethod?:unknown;size?:unknown;dropoff?:unknown}):string{
  if(typeof draft.shippingMethod!=='string'||!draft.shippingMethod)return '配送方法を確認してください';
@@ -53,5 +72,8 @@ export function sellerShippingError(draft:{shippingMethod?:unknown;size?:unknown
 }
 export function sellerShippingDraft(defaults:SellerDraft,saved:Partial<SellerDraft>|null={}):SellerDraft{
  const draft={...defaults,...(saved??{})},places=sellerShippingPlaces(draft.shippingMethod);
- return {...draft,size:sellerShippingSizes(draft.shippingMethod).includes(draft.size)?draft.size:'',dropoff:places.includes(draft.dropoff)?draft.dropoff:places.includes(defaults.dropoff)?defaults.dropoff:places[0]!};
+ const size=mercariShippingSize(draft.shippingMethod,draft.size);
+ return {...draft,size:sellerShippingSizes(draft.shippingMethod).includes(size)?size:'',
+  dropoff:draft.dropoff&&saved?.dropoff===draft.dropoff&&draft.shippingMethod.endsWith('メルカリ便')
+   ?draft.dropoff:places.includes(draft.dropoff)?draft.dropoff:places.includes(defaults.dropoff)?defaults.dropoff:places[0]!};
 }

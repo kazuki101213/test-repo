@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel,marketplaceAccountLabel} from '@bussan/shared';
+import {sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,sellerShippingCodeError,mercariShippingSize,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel,marketplaceAccountLabel} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
 import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,retryUncertainShippingCode,requestListingResultCheck,submitAmazonListing,fetchAmazonListingPending,fetchListingPhotoAnalysis} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
@@ -59,7 +59,8 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    const defaults=mode==='listing'?listingDraft(prepared,maker,listingSkuKey?listingSkuKey.split('\n'):[]):sellerDefaults(prepared);
    receiptPhotos.current=!!receipt;
    const selection=receipt?.photoIds.length?receipt.photoIds:images.slice(0,isAmazonSalesChannel(full.sales_channel)?6:10).map(photo=>photo.id);
-   setDraft(mode==='shipping'?sellerShippingDraft(defaults,info.shipping_defaults):defaults);
+   setDraft(mode==='shipping'?sellerShippingDraft(defaults,info.shipping_defaults):mode==='listing'&&full.sales_channel==='メルカリ'
+    ?{...defaults,size:mercariShippingSize(defaults.shippingMethod,defaults.size)}:defaults);
    setDescriptionSource({task:prepared,maker});setContext(info);setPhotos(images);setSelected(selection);
    if(receipt&&full.status==='商品登録前'&&full.planned_price){
     setAmazonAwaiting({date:receipt.date,requestId:receipt.requestId,photoIds:selection,expected:{sku:full.sku,price:full.planned_price}});
@@ -107,6 +108,15 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  async function checkListing(){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await requestListingResultCheck(task.id,listingUrl);setContext(await fetchSellerContext(task.id));}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
  function movePhoto(id:string,offset:number){photosEdited.current=true;setSelected(current=>{const from=current.indexOf(id),to=from+offset;if(from<0||to<0||to>=current.length)return current;const next=[...current];[next[from],next[to]]=[next[to]!,next[from]!];return next;});request.current=crypto.randomUUID();}
  function change<K extends keyof SellerDraft>(field:K,value:SellerDraft[K]){setDraft(current=>current?{...current,[field]:value}:current);request.current=crypto.randomUUID();}
+ function changeMercariMethod(method:string){
+  setDraft(current=>{
+   if(!current)return current;
+   const equivalent:Record<string,string>={'ゆうパック60〜100':'100','ゆうパック120〜170':'140','宅急便60〜160':'100','宅急便180〜200':'140'};
+   const size=mercariShippingSize(method,equivalent[current.size]??current.size);
+   return {...current,shippingMethod:method,size:sellerShippingSizes(method).includes(size)?size:''};
+  });
+  request.current=crypto.randomUUID();
+ }
  const amazonListing=mode==='listing'&&isAmazonSalesChannel(task.sales_channel);
  const categoryError=draft?sellerListingCategoryError(draft,task.sales_channel):'';
  async function descriptionSaved(){setContext(await fetchSellerContext(task.id));const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(full)onChanged(full);}
@@ -120,6 +130,14 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  },[amazonAwaiting,task.id,staff.role,staff.id]);
  const disabled=busy||pending||!!amazonAwaiting||(mode==='listing'&&(task.photo_review_approved!==true||context?.photo_review_approved!==true)),trade=context?.listing?.trade_key;
  const tradePayload={trade_key:trade,size:draft?.size,dropoff:draft?.dropoff,shippingMethod:draft?.shippingMethod,category:draft?.category};
+ const mercari=task.sales_channel==='メルカリ';
+ const mercariPost=mercari&&/^ゆうパケットポスト(?:mini)?$/.test(draft?.size??'');
+ const codeIssue=draft?sellerShippingCodeError(draft):'';
+ const mercariMethodSelect=draft&&<label>配送方法<select value={draft.shippingMethod} disabled={disabled} onChange={event=>changeMercariMethod(event.target.value)}>{['ゆうゆうメルカリ便','らくらくメルカリ便'].map(value=><option key={value}>{value}</option>)}</select></label>;
+ const mercariSizeSelect=draft&&<label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{sellerShippingSizes(draft.shippingMethod).map(value=><option key={value}>{value}</option>)}</select></label>;
+ const dropoffOptions=draft?(mercari||draft.category==='小物'?['セブンイレブン','ヤマト営業所','ローソン','郵便局']:sellerShippingPlaces(draft.shippingMethod)):[];
+ if(mercari&&draft?.dropoff&&!dropoffOptions.includes(draft.dropoff))dropoffOptions.unshift(draft.dropoff);
+ const dropoffSelect=draft&&<label>発送場所<select value={draft.dropoff} disabled={disabled} onChange={event=>change('dropoff',event.target.value)}><option value="">選択</option>{dropoffOptions.map(value=><option key={value}>{value}</option>)}</select></label>;
  const photoChooser=<>{photoAnalysis.message&&<p className="muted" role="status">{photoAnalysis.message}</p>}<div className="seller-photos" aria-label="出品写真の掲載順">{[...selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo]:[];}),...photos.filter(photo=>!selected.includes(photo.id))].map(photo=>{const order=selected.indexOf(photo.id);return <div key={photo.id} className="seller-photo" role="group" aria-label={order<0?'出品しない写真':`写真${order+1}`}>
     <label><span>{order<0?'出品しない':`${order+1}枚目`}</span><img src={photo.url} alt="出品写真" loading="lazy"/><input type="checkbox" aria-label={order<0?'この写真を出品に含める':`${order+1}枚目を出品に含める`} checked={order>=0} disabled={disabled||order<0&&selected.length>=(amazonListing?6:10)} onChange={event=>{photosEdited.current=true;setSelected(current=>event.target.checked?[...current,photo.id]:current.filter(id=>id!==photo.id));request.current=crypto.randomUUID();}}/></label>
     {order>=0&&<div className="seller-photo-order"><button type="button" className="btn" aria-label={`写真${order+1}を前へ`} title="前へ" disabled={disabled||order===0} onClick={()=>movePhoto(photo.id,-1)}>←</button><button type="button" className="btn" aria-label={`写真${order+1}を後へ`} title="後へ" disabled={disabled||order===selected.length-1} onClick={()=>movePhoto(photo.id,1)}>→</button></div>}
@@ -143,7 +161,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <div className="seller-form">
     <label className="seller-short">{task.sales_channel==='ヤフオク'?'開始価格':'価格'}<input type="number" min={1} step={1} value={draft.price} disabled={disabled} onChange={event=>change('price',Number(event.target.value))}/></label>
     <label>送料負担<select value={draft.shippingPayer} disabled={disabled} onChange={event=>change('shippingPayer',event.target.value)}>{['出品者負担','購入者負担'].map(value=><option key={value}>{value}</option>)}</select></label>
-    <label>配送方法<select value={draft.shippingMethod} disabled={disabled} onChange={event=>change('shippingMethod',event.target.value)}>{(task.sales_channel==='ヤフオク'?['おてがる配送（ヤマト運輸）','おてがる配送（日本郵便）']:['らくらくメルカリ便','ゆうゆうメルカリ便']).map(value=><option key={value}>{value}</option>)}</select></label>
+    {mercari?<>{mercariMethodSelect}{mercariSizeSelect}{dropoffSelect}</>:<label>配送方法<select value={draft.shippingMethod} disabled={disabled} onChange={event=>change('shippingMethod',event.target.value)}>{['おてがる配送（ヤマト運輸）','おてがる配送（日本郵便）'].map(value=><option key={value}>{value}</option>)}</select></label>}
     <label className="seller-short">発送元<input value={draft.origin} disabled={disabled} onChange={event=>change('origin',event.target.value)}/></label>
     <label className="seller-short">発送までの日数<select value={draft.dispatchDays} disabled={disabled} onChange={event=>change('dispatchDays',event.target.value)}>{['1〜2日','2〜3日','4〜7日'].map(value=><option key={value}>{value}</option>)}</select></label>
     {task.sales_channel==='ヤフオク'&&<><label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).map(value=><option key={value}>{value}</option>)}</select></label>{/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&<label>梱包後の重さ<select value={draft.weightKg??''} disabled={disabled} onChange={event=>change('weightKg',event.target.value)}><option value="">選択</option>{['2','5','10','15','20','25'].map(value=><option key={value} value={value}>{value}kg以内</option>)}</select></label>}</>}
@@ -156,14 +174,20 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    </>}
    {!amazonListing&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
-   <div className="seller-form">{draft.category==='小物'&&<label>配送方法<select value={draft.shippingMethod} disabled={disabled} onChange={event=>change('shippingMethod',event.target.value)}>{(task.sales_channel==='ヤフオク'?['おてがる配送（ヤマト運輸）','おてがる配送（日本郵便）']:['らくらくメルカリ便','ゆうゆうメルカリ便']).map(value=><option key={value}>{value}</option>)}</select></label>}<label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{(draft.category==='小物'?['100','140',...SMALL_PACKAGES.map(value=>value.name)]:sellerShippingSizes(draft.shippingMethod)).map(value=><option key={value}>{value}</option>)}</select></label><label>発送場所<select value={draft.dropoff} disabled={disabled} onChange={event=>change('dropoff',event.target.value)}><option value="">選択</option>{(draft.category==='小物'?['セブンイレブン','ヤマト営業所','ローソン','郵便局']:sellerShippingPlaces(draft.shippingMethod)).map(value=><option key={value}>{value}</option>)}</select></label></div>
+   <div className="seller-form">
+    {mercari?<>{mercariMethodSelect}{mercariSizeSelect}</>:<>
+     {draft.category==='小物'&&<label>配送方法<select value={draft.shippingMethod} disabled={disabled} onChange={event=>change('shippingMethod',event.target.value)}>{['おてがる配送（ヤマト運輸）','おてがる配送（日本郵便）'].map(value=><option key={value}>{value}</option>)}</select></label>}
+     <label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{(draft.category==='小物'?['100','140',...SMALL_PACKAGES.filter(value=>value.name!=='ゆうパケットポスト').map(value=>value.name)]:sellerShippingSizes(draft.shippingMethod)).map(value=><option key={value}>{value}</option>)}</select></label>
+    </>}
+    {dropoffSelect}
+   </div>
    {draft.size&&sellerShippingError(draft)&&<p className="error" role="alert">{sellerShippingError(draft)}</p>}
    <LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>
-   {draft.category==='小物'&&<div>{SMALL_PACKAGES.map(value=><p key={value.name}>{value.name}：{value.dimensions}</p>)}</div>}
-   {/ゆうパケットポストmini/.test(draft.size)?<>
+   {draft.category==='小物'&&<div>{SMALL_PACKAGES.filter(value=>mercari?sellerShippingSizes(draft.shippingMethod).includes(value.name):value.name!=='ゆうパケットポスト').map(value=><p key={value.name}>{value.name}：{value.dimensions}</p>)}</div>}
+   {mercariPost?<p>メルカリの取引画面で専用資材のコードを読み取り、郵便ポストへ投函してください。 <a href={`https://jp.mercari.com/transaction/${encodeURIComponent(context?.listing?.external_id??'')}`} target="_blank" rel="noreferrer">取引画面を開く</a></p>:/ゆうパケットポストmini/.test(draft.size)?<>
     <button type="button" className="btn" disabled={disabled||!!sellerShippingError(draft)} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
-   </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={busy||!!sellerShippingError(draft)||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button></div>{qr&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
+   </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={busy||!!codeIssue||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button></div>{codeIssue&&!sellerShippingError(draft)&&<p className="error" role="alert">{codeIssue}</p>}{qr&&!codeIssue&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>
    {Array.isArray(latestMessages)&&latestMessages.map((entry,index)=><p key={index} className="seller-preview">{entry&&typeof entry==='object'&&typeof entry.body==='string'?entry.body:''}</p>)}

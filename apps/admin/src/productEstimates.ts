@@ -27,7 +27,7 @@ export const PRODUCT_SHIPPING_CATEGORIES = [
 ];
 export const PRODUCT_SHIPPING_SIZES = [
   '60', '80', '100', '120', '140', '160', '180', '200', 'ネコポス',
-  '宅急便コンパクト', 'ゆうパケットプラス', 'ゆうパケットポストmini', 'ゆうパケット',
+  '宅急便コンパクト', 'ゆうパケットプラス', 'ゆうパケットポストmini', 'ゆうパケットポスト', 'ゆうパケット',
 ];
 
 export function estimateProductAmounts(genre: string, price: number | null) {

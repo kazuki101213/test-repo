@@ -37,13 +37,22 @@ console.log('Catalog model categories survive renumbering, title changes and ful
 
 for(const [method,bad,expected] of [['ゆうゆうメルカリ便','セブンイレブン','ローソン'],['ゆうゆうメルカリ便','ヤマト営業所','ローソン'],['らくらくメルカリ便','ローソン','ヤマト営業所']]){
  const draft=sellerExports.sellerShippingDraft(sellerExports.sellerDefaults({title:'BD-WW1200',deliverer_name:'土井',sales_channel:'メルカリ'}),{shippingMethod:method,dropoff:bad});
- assert(sellerExports.sellerShippingPlaces(method).includes(draft.dropoff));if(method==='ゆうゆうメルカリ便')assert.equal(draft.dropoff,expected);
+ assert.equal(draft.dropoff,bad);assert(sellerExports.sellerShippingError(draft));
 }
 for(const dropoff of ['ローソン','郵便局']){
  const draft=sellerExports.sellerShippingDraft(sellerExports.sellerDefaults({title:'BD-WW1200',sales_channel:'メルカリ'}),{shippingMethod:'ゆうゆうメルカリ便',dropoff});
  assert.equal(draft.dropoff,dropoff);
 }
-console.log('Saved postal shipping methods cannot inherit Yamato/Seven drop-offs');
+console.log('Saved drop-offs are retained; incompatible choices cannot issue codes');
+for(const [method,oldSize,place,newSize] of [
+ ['ゆうゆうメルカリ便','100','ローソン','ゆうパック60〜100'],
+ ['ゆうゆうメルカリ便','140','郵便局','ゆうパック120〜170'],
+ ['らくらくメルカリ便','100','セブンイレブン','宅急便60〜160'],
+ ['らくらくメルカリ便','140','ヤマト営業所','宅急便180〜200'],
+]){
+ const draft=sellerExports.sellerShippingDraft(sellerExports.sellerDefaults({sales_channel:'メルカリ'}),{shippingMethod:method,size:oldSize,dropoff:place});
+ assert.equal(draft.size,newSize);assert.equal(draft.dropoff,place);assert.equal(sellerExports.sellerShippingCodeError(draft),'');
+}
 // Both carrier directions must reject cross-carrier packages and stores.
 for(const [method,size,place] of [['らくらくメルカリ便','宅急便コンパクト','セブンイレブン'],['ゆうゆうメルカリ便','ゆうパケットプラス','ローソン'],['ゆうゆうメルカリ便','ゆうパケットプラス','郵便局']]) assert.equal(sellerExports.sellerShippingError({shippingMethod:method,size,dropoff:place}),'');
 for(const [method,size,place] of [['らくらくメルカリ便','ゆうパケットプラス','セブンイレブン'],['ゆうゆうメルカリ便','宅急便コンパクト','ローソン'],['らくらくメルカリ便','宅急便コンパクト','ローソン'],['ゆうゆうメルカリ便','ゆうパケットプラス','セブンイレブン']]) assert.notEqual(sellerExports.sellerShippingError({shippingMethod:method,size,dropoff:place}),'');

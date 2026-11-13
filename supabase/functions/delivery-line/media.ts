@@ -1,6 +1,6 @@
-import type { ShippingPayload } from './validation.ts';
+import type { ShippingDetails, ShippingPayload } from './validation.ts';
 export async function prepareShippingMedia({ admin, media, deliveryId, QRCode, fetcher = fetch }: {
-  admin: any; media: { itemId: string; serial: string; sku: string; supplierUrl: string | null; photoPaths: string[]; codeOperationId: string | null; withoutBarcode?: string; automatic?: boolean };
+  admin: any; media: { itemId: string; serial: string; sku: string; supplierUrl: string | null; photoPaths: string[]; codeOperationId: string | null; withoutBarcode?: string; automatic?: boolean; shipping?: ShippingDetails };
   deliveryId: string; QRCode: { toDataURL(text: string, options: unknown): Promise<string> }; fetcher?: typeof fetch;
 }): Promise<ShippingPayload> {
   if (!Array.isArray(media.photoPaths) || (media.automatic === true ? media.photoPaths.length > 2 : media.photoPaths.length !== 2) || media.photoPaths.some(path => typeof path !== 'string' || !/\.(?:jpe?g|png)$/i.test(path))) throw new Error('通知写真はJPEGまたはPNGを指定してください');
@@ -34,5 +34,5 @@ export async function prepareShippingMedia({ admin, media, deliveryId, QRCode, f
     const type = response.headers.get('content-type')?.split(';')[0],size = Number(response.headers.get('content-length'));
     if (!response.ok || !['image/jpeg','image/png'].includes(type || '') || !Number.isFinite(size) || size <= 0 || size > 10 * 1024 * 1024) throw new Error('通知画像を取得できません');
   }));
-  return { itemId: media.itemId, serial: media.serial, sku: media.sku, supplierUrl: media.supplierUrl, images: images as string[], ...(media.automatic === true ? {automatic:true} : !codeUrl ? {withoutBarcode: 'size_unset' as const} : {}) };
+  return { itemId: media.itemId, serial: media.serial, sku: media.sku, supplierUrl: media.supplierUrl, images: images as string[], ...(media.shipping ? { shipping: media.shipping } : {}), ...(media.automatic === true ? {automatic:true} : !codeUrl ? {withoutBarcode: 'size_unset' as const} : {}) };
 }
