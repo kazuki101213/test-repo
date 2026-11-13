@@ -5,14 +5,30 @@ type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'
 const taskOrder={inspection:0,photo_approved:1,listing_due:1,shipping:2,photo_return:3,reply:4};
 const orderedTasks=(rows:ReturnTask[])=>[...rows].sort((a,b)=>taskOrder[a.kind]-taskOrder[b.kind]||(a.created_at??'').localeCompare(b.created_at??'')||a.id.localeCompare(b.id));
 const hour=3_600_000;
-const deadlineHours={inspection:[48,72],photo_approved:[120,168],listing_due:[120,168],shipping:[12,24],photo_return:[],reply:[]};
-function taskDeadlines(row:ReturnTask){
+const day=24*hour;
+const listingTiming={warningHours:120,overdueHours:168,dayOffset:2};
+const taskTimings={
+ inspection:{warningHours:48,overdueHours:72,dayOffset:1},
+ photo_approved:listingTiming,
+ listing_due:listingTiming,
+ shipping:{warningHours:12,overdueHours:24,dayOffset:0},
+ photo_return:null,
+ reply:null,
+};
+function taskTiming(row:ReturnTask,now:number){
+ const timing=taskTimings[row.kind];
  const started=Date.parse((row.kind==='shipping'?row.created_at:row.tracking_recorded_at)??'');
- return Number.isFinite(started)?deadlineHours[row.kind].map(hours=>started+hours*hour):[];
-}
-function taskDeadlineTone(row:ReturnTask,now:number){
- const [warning=Infinity,overdue=Infinity]=taskDeadlines(row);
- return now>=overdue?'overdue':now>=warning?'warning':undefined;
+ if(!timing||!Number.isFinite(started))return null;
+ const warning=started+timing.warningHours*hour;
+ const overdue=started+timing.overdueHours*hour;
+ if(now<warning)return {tone:undefined,days:0,nextAt:warning};
+ const fullDays=Math.floor((now-started)/day);
+ const nextDay=started+(fullDays+1)*day;
+ return {
+  tone:now>=overdue?'overdue':'warning',
+  days:fullDays-timing.dayOffset,
+  nextAt:now>=overdue?nextDay:Math.min(overdue,nextDay),
+ };
 }
 const taskTitle={inspection:'動作確認お願いします。',photo_approved:'出品お願いします。',listing_due:'出品お願いします。',shipping:'発送お願いします。',reply:'動作不良への返信があります。',photo_return:'商品写真の修正お願いします。'};
 function displayTaskTitle(row:ReturnTask){
@@ -75,21 +91,23 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   return()=>{active=false;window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);window.removeEventListener('delivery-return-tasks-changed',changed);window.removeEventListener('delivery-item-workflow-changed',workflowChanged);};
  },[staffId]);
  useEffect(()=>{
-  const next=Math.min(...rows.flatMap(taskDeadlines).filter(deadline=>deadline>now));
+  const next=rows.reduce((earliest,row)=>Math.min(earliest,taskTiming(row,now)?.nextAt??Infinity),Infinity);
   if(!Number.isFinite(next))return;
   const timer=window.setTimeout(()=>setNow(Date.now()),Math.max(0,next-Date.now()));
   return()=>window.clearTimeout(timer);
  },[rows,now]);
  return <>{error&&<li className="error" role="alert">{error}</li>}{orderedTasks(rows).map(row=>{
-  const tone=taskDeadlineTone(row,now);
+  const timing=taskTiming(row,now);
+  const tone=timing?.tone;
   if(row.kind==='listing_due'&&!tone)return null;
+  const title=displayTaskTitle(row)+(timing&&timing.days>0?`(${timing.days}日経過)`:'');
   const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);
   const model=row.kind==='inspection'
    ? productModelText({model_no:row.model_no??null,title:row.title??'',marketplace:row.marketplace??''})
    : '';
   return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')} data-deadline={tone}>
-  <div className="delivery-return-content"><strong>{displayTaskTitle(row)}</strong>
+  <div className="delivery-return-content"><strong>{title}</strong>
    <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
     {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{model&&model!=='—'?`${model}、${row.sku}`:row.sku}</span></div>
   </div>
