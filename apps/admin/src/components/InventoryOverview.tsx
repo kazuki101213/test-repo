@@ -34,7 +34,7 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
        {photosOpen ? '写真を閉じる' : '写真確認'}
      </button>
    );
-   const statusActions = <span className="approved-status-actions">{status}{photoToggle('mobile')}</span>;
+   const statusActions = <span className="approved-status-actions">{status}{!accessory&&photoToggle('mobile')}</span>;
    const bg=inventoryBoxColor(inherits?(parent?.status??i.inventory_parent_status??i.status):i.status,inherits&&(parent||i.inventory_parent_serial)?(parent?parent.purchased_at:i.inventory_parent_purchased_at):i.purchased_at),serial=inherits?serialOf(i):inventorySerial(i);
    const purchaseUrl=noticeProductUrl(i.marketplace,i.marketplace_item_id,i.marketplace_url),actual=salePrice(i),payout=salePayout(i),rate=i.product_sold_price&&i.product_profit!=null?(i.product_profit/i.product_sold_price*100).toFixed(1)+'%':'—',expectedRate=i.planned_price&&i.expected_profit!=null?(i.expected_profit/i.planned_price*100).toFixed(1)+'%':'—';
    const button=(field:InventoryField,value:ReactNode,className='')=><button type="button" className={`inventory-cell-edit ${className}`} onClick={()=>edit(field)} title={`${({marketplace_item_id:'商品ID',tracking_no:'追跡番号',asin:'ASIN',memo:'仕入担当者からのコメント'} as Record<string,string>)[field]??'項目'}をクリックして編集`}>{value??'—'}</button>;
@@ -44,9 +44,9 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
    const profitClass=(n:number|null|undefined)=>n!=null&&n<0?'approved-loss':'approved-profit';
    return <div key={i.id} className={`approved-inventory-row approved-record${accessory?' approved-accessory':''}${separate?' approved-separate':''}`} role="row" data-item-id={i.id} data-item-status={i.status} data-kind={accessory?(separate?'separate':'bundled'):'body'} style={{backgroundColor:bg}}>
     <div className="approved-identity" role="cell">
-     {accessory?<span className="approved-child-state">{status}</span>:<button type="button" className="inventory-photo approved-photo" onClick={()=>onFullEdit(saleItem)} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>{i.amazon_image_url?<img src={i.amazon_image_url} alt={`${i.title}の商品画像`} loading="lazy"/>:<span>写真なし</span>}</button>}
+     {!accessory&&<button type="button" className="inventory-photo approved-photo" onClick={()=>onFullEdit(saleItem)} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>{i.amazon_image_url?<img src={i.amazon_image_url} alt={`${i.title}の商品画像`} loading="lazy"/>:<span>写真なし</span>}</button>}
      <div className="approved-identity-text">
-      {!accessory&&statusActions}
+      {statusActions}
       <div className="approved-serial-line"><strong>{button('lot_seq',serial)}</strong>{!accessory&&<span className="approved-product-number"> / {button('product_no',i.product_no??'—')}</span>}{accessory&&button('title',i.title)}{accessory?<button type="button" className="inventory-cell-edit" onClick={()=>onFullEdit(saleItem)} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}><span className="inventory-label inventory-accessory-label">{badge}</span></button>:<span className="inventory-label inventory-accessory-label">{badge}</span>}</div>
       {!accessory&&<div className="approved-model">{button(i.model_no?'model_no':'title',productModelText(i))}</div>}
       {button('sku',i.sku,'sku approved-sku')}
