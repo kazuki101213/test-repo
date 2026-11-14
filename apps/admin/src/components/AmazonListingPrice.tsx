@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
-export type ListingPrice={id:string;sku:string;accountId?:'amazon-1'|'amazon-2';price:number|null;error?:string};
+export type ListingPrice={id:string;sku:string;accountId?:'amazon-1'|'amazon-2';sellerSku?:string;price:number|null;error?:string};
 const pending=new Map<string,Array<{resolve:(row:ListingPrice)=>void;reject:(e:Error)=>void}>>();
 let timer:ReturnType<typeof setTimeout>|undefined;
 async function invoke(body:object){
@@ -22,7 +22,7 @@ export default function AmazonListingPrice({itemId,sku,salesChannel}:{itemId:str
   if(lock.current||!listing?.accountId)return;
   const price=Number(value);if(!/^\d+$/.test(value)||!Number.isSafeInteger(price)||price<1){setError('1円以上の整数を入力してください。');return;}
   lock.current=true;setBusy(true);setError('');setMessage('');
-  try{const result=await invoke({action:'write',itemId,accountId:listing.accountId,expectedPrice:listing.price,price});if(mounted.current){setMessage(result.verified?'価格を反映しました。':'Amazonが変更を受け付けました。反映を確認中です。');if(result.verified)setListing({...listing,price});else{const row=await readPrice(itemId);setListing(row);if(row.price===price)setMessage('価格を反映しました。');}}}
+  try{const result=await invoke({action:'write',itemId,accountId:listing.accountId,sellerSku:listing.sellerSku,expectedPrice:listing.price,price});if(mounted.current){setMessage(result.verified?'価格を反映しました。':'Amazonが変更を受け付けました。反映を確認中です。');if(result.verified)setListing({...listing,price});else{const row=await readPrice(itemId);setListing(row);if(row.price===price)setMessage('価格を反映しました。');}}}
   catch(e){if(mounted.current)setError(e instanceof Error?e.message:'価格を反映できませんでした。');}
   finally{lock.current=false;if(mounted.current)setBusy(false);}
  }
