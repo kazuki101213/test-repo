@@ -1,11 +1,11 @@
 import ColoredLabel from './ColoredLabel';
 import { productModelText } from '@bussan/shared';
 import { useEffect, useRef, useState } from 'react';
-import { fetchWorkloadDetail, type WorkloadItem, type WorkloadMetric } from '../api';
+import { fetchWorkloadDetail, type DashboardScope, type WorkloadItem, type WorkloadMetric } from '../api';
 import { productSerial } from '../inventory';
 
-export default function WorkloadDetail({ delivererId, name, metric, onClose }: {
-  delivererId: string; name: string; metric: WorkloadMetric; onClose: () => void;
+export default function WorkloadDetail({ delivererId, name, metric, scope, scopeLabel, onClose }: {
+  delivererId: string; name: string; metric: WorkloadMetric; scope: DashboardScope; scopeLabel: string; onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [rows, setRows] = useState<WorkloadItem[] | null>(null);
@@ -18,12 +18,12 @@ export default function WorkloadDetail({ delivererId, name, metric, onClose }: {
   useEffect(() => {
     let active = true;
     setRows(null); setError('');
-    fetchWorkloadDetail(delivererId, metric).then(result => { if (active) setRows(result); })
+    fetchWorkloadDetail(delivererId, metric, scope).then(result => { if (active) setRows(result); })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     return () => { active = false; };
-  }, [delivererId, metric]);
+  }, [delivererId, metric, scope]);
   return <dialog ref={dialog} className="monthly-detail" aria-labelledby="workload-detail-title" onCancel={onClose}>
-    <div className="toolbar"><h2 id="workload-detail-title">{name} · {metric.label}の詳細</h2><span style={{ flex: 1 }} /><button className="btn" onClick={onClose} autoFocus>閉じる</button></div>
+    <div className="toolbar"><h2 id="workload-detail-title">{name} · {scopeLabel} · {metric.label}の詳細</h2><span style={{ flex: 1 }} /><button className="btn" onClick={onClose} autoFocus>閉じる</button></div>
     {error ? <div className="error" role="alert">{error}</div> : rows === null ? <p>読み込み中…</p> : <>
       <p>{rows.length}点</p>
       {rows.length === 0 ? <p>該当する商品はありません。</p> : <div className="scroll"><table>

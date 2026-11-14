@@ -1,13 +1,13 @@
 import ColoredLabel from './ColoredLabel';
 import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
-import { fetchMonthlyDetail, type MonthlyDetailItem } from '../api';
+import { fetchMonthlyDetail, type DashboardScope, type MonthlyDetailItem } from '../api';
 import { productSerial, financialProductSerial } from '../inventory';
 import type { ExpenseInput } from '../expenses';
 import { ExpenseTable } from './ExpenseList';
 
 export type MonthlyMetric = '仕入数' | '仕入金額' | '販売数' | '売上' | '振込金額' | '粗利益' | '経費' | '純利益' | '平均利益単価';
-export default function MonthlyDetail({ month, metric, onClose }: { month: string; metric: MonthlyMetric; onClose: () => void }) {
+export default function MonthlyDetail({ month, metric, scope, scopeLabel, onClose }: { month: string; metric: MonthlyMetric; scope: DashboardScope; scopeLabel: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [data, setData] = useState<{ items: MonthlyDetailItem[]; expenses: ExpenseInput[] } | null>(null);
   const [error, setError] = useState('');
@@ -20,15 +20,15 @@ export default function MonthlyDetail({ month, metric, onClose }: { month: strin
   useEffect(() => {
     let active = true;
     setData(null); setError('');
-    fetchMonthlyDetail(month, kind).then(result => { if (active) setData(result); })
+    fetchMonthlyDetail(month, kind, scope).then(result => { if (active) setData(result); })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     return () => { active = false; };
-  }, [month, kind]);
+  }, [month, kind, scope]);
   const sum = (key: 'cost_amount' | 'sold_price' | 'payout_amount' | 'profit' | 'refund_amount' | 'shipping_cost' | 'other_cost') => (data?.items ?? []).reduce((total, row) => total + (row[key] ?? 0), 0);
   const expenseTotal = (data?.expenses ?? []).reduce((total, row) => total + row.amount, 0);
   const soldCount = new Set((data?.items ?? []).map(row => financialProductSerial(row.sku,row.lot_seq))).size;
   return <dialog ref={dialog} className="monthly-detail" aria-labelledby="monthly-detail-title" onCancel={onClose}>
-    <div className="toolbar"><h2 id="monthly-detail-title">{month} · {metric}の内訳</h2><span style={{ flex: 1 }} /><button className="btn" onClick={onClose} autoFocus>閉じる</button></div>
+    <div className="toolbar"><h2 id="monthly-detail-title">{month} · {scopeLabel} · {metric}の内訳</h2><span style={{ flex: 1 }} /><button className="btn" onClick={onClose} autoFocus>閉じる</button></div>
     {error ? <div className="error" role="alert">{error}</div> : !data ? <p>読み込み中…</p> : <>
       {kind === 'purchase' ? <p>{data.items.length}件の仕入 · 合計 {yen(sum('cost_amount'))}</p> : kind === 'expense' ? <p>{data.expenses.length}件 · 経費合計 {yen(expenseTotal)}</p> : <>
         <div className="monthly-detail-totals">
