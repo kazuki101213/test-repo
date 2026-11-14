@@ -34,7 +34,6 @@ set local role postgres;
 insert into app.delivery_line_links(staff_id,line_user_id) select id,'U'||repeat('7',32) from app.staff where code='DD';
 update app.delivery_line_settings set enabled=true;
 set local role authenticated;
-do $$begin if app.line_shipping_context((select id from approval_probe))->>'requiresPhotos'<>'false' then raise exception 'Cached listing client still blocked';end if;end $$;
 select app.queue_seller_operation(id,'listing',payload,request) from approval_probe;
 -- Upload invalidates approval even if the listing was queued earlier.
 insert into app.item_photos(item_id,storage_path) select id,'test/approval-added.jpg' from approval_probe;

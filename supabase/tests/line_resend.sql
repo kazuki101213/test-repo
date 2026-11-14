@@ -21,7 +21,26 @@ do $$begin
  then raise exception 'Initial retry key is missing';end if;
 end $$;
 set local role authenticated;
+set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+do $$declare item uuid:=(select id from resend_probe);begin
+ begin
+  perform app.line_shipping_context(item);
+  raise exception 'Assigned delivery staff opened administrator LINE settings';
+ exception when insufficient_privilege then null;end;
+ begin
+  perform app.save_line_shipping_preferences(item,null,null,'{}');
+  raise exception 'Assigned delivery staff changed administrator LINE settings';
+ exception when insufficient_privilege then null;end;
+ begin
+  perform app.request_delivery_line_resend(item);
+  raise exception 'Assigned delivery staff resent administrator LINE notification';
+ exception when insufficient_privilege then null;end;
+end $$;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 do $$declare r jsonb;item uuid:=(select id from resend_probe);begin
+ if app.line_shipping_context(item)->>'state' is distinct from 'sent' then
+  raise exception 'Administrator cannot see the sent LINE notification for another staff member';
+ end if;
  r:=app.request_delivery_line_resend(item);
  if r->>'queued'<>'true' or r->>'codeRequired'<>'false' then raise exception 'Valid trade could not request resend: %',r;end if;
  begin
