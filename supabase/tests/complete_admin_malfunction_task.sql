@@ -99,6 +99,7 @@ do $$
 declare
   item app.items;
   next_status app.item_status;
+  return_event uuid;
 begin
   if exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
     where task->>'lot_seq'='997865') then
@@ -106,6 +107,7 @@ begin
   end if;
 
   select * into strict item from app.items where lot_seq=997864;
+  select id into strict return_event from app.inventory_workflow_events where item_id=item.id and action='return_impossible';
   if item.status<>'商品登録前' or item.sales_channel<>'ヤフオク' then
     raise exception 'No-return action did not prepare the Yahoo listing';
   end if;
@@ -114,7 +116,8 @@ begin
       perform app.set_inventory_workflow(item.id,next_status);
     end if;
     if not exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
-      where task->>'id'=item.id::text and task->>'status'=next_status::text and task->>'supplier_refund_pending'='true') then
+      where task->>'id'=item.id::text and task->>'status'=next_status::text and task->>'supplier_refund_pending'='true'
+        and task->>'supplier_refund_event_id'=return_event::text) then
       raise exception 'Refund task disappeared at status %', next_status;
     end if;
   end loop;
@@ -128,6 +131,34 @@ begin
   if exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
     where task->>'id'=item.id::text) then
     raise exception 'Refund task remained after the refund was recorded';
+  end if;
+  update app.items set non_amazon_refund_amount=0 where id=item.id;
+
+  begin
+    perform app.complete_supplier_refund_task(item.id,gen_random_uuid());
+    raise exception 'A stale confirmation cleared the refund task';
+  exception when serialization_failure then null;
+  end;
+  perform set_config('request.jwt.claim.sub','22222222-2222-2222-2222-222222222222',true);
+  begin
+    perform app.complete_supplier_refund_task(item.id,return_event);
+    raise exception 'A delivery worker confirmed the supplier refund';
+  exception when insufficient_privilege then null;
+  end;
+  perform set_config('request.jwt.claim.sub','11111111-1111-1111-1111-111111111111',true);
+
+  perform app.complete_supplier_refund_task(item.id,return_event);
+  perform app.complete_supplier_refund_task(item.id,return_event);
+  if (select count(*) from app.inventory_workflow_events e where e.item_id=item.id
+    and e.action='supplier_refund_confirmed' and e.note=return_event::text)<>1 then
+    raise exception 'Refund confirmation was not recorded exactly once';
+  end if;
+  if exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
+    where task->>'id'=item.id::text) then
+    raise exception 'Refund task remained after manual confirmation';
+  end if;
+  if not exists(select 1 from app.items where id=item.id and status='販売済' and non_amazon_refund_amount=0) then
+    raise exception 'Refund confirmation altered inventory status or accounting';
   end if;
 end $$;
 rollback;
