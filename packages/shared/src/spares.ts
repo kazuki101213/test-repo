@@ -31,6 +31,7 @@ export interface SpareAccessory {
   source_sku: string | null;
   owner_staff_id: string | null;
   owner_name: string | null;
+  purchaser_id?: string | null;
   purchased_at: string | null;
   title: string;
   manufacturer: string | null;

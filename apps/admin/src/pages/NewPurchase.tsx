@@ -197,8 +197,6 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setUrlOverride(null);
     setPurchaseSource(accountLabelFor(selectedSpare.marketplace, selectedSpare.purchase_account_label) ||
       (selectedSpare.marketplace && MARKETPLACES.includes(selectedSpare.marketplace as Marketplace) ? selectedSpare.marketplace : 'その他'));
-    const spareOwner = staff.find(row => row.id === selectedSpare.owner_staff_id && canAssignPurchase(row));
-    if (spareOwner) setPurchaserId(spareOwner.id);
   }
   useEffect(() => {
     if ((!isAmazonReturn && !isWorkingAmazonReturn) || lotSeq === '') {
@@ -245,7 +243,9 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
   }, [marketplace, lotSeq, isAmazonReturn, isWorkingAmazonReturn]);
   const matchingProducts = products;
 
-  const purchaser = staff.find((s) => s.id === purchaserId);
+  const sparePurchaserId = workStream === '付属品' ? selectedSpare?.purchaser_id : null;
+  const assignedPurchaserId = sparePurchaserId || purchaserId;
+  const purchaser = staff.find((s) => s.id === assignedPurchaserId);
   // 利益が出ない仕入れはその場で気づけるようにする
   const overTarget = product?.target_cost != null && cost !== '' && Number(cost) > product.target_cost;
 
@@ -308,7 +308,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         ...((isAmazonReturn || isWorkingAmazonReturn) && assignedReturnSku ? { sku: assignedReturnSku } : {}),
         lot_seq: lotSeq === '' ? undefined : Number(lotSeq.match(/^\d+/)?.[0] ?? ''),
         is_accessory: !isWorkingAmazonReturn && workStream === '付属品',
-        purchaser_id: purchaserId,
+        purchaser_id: assignedPurchaserId,
         deliverer_id: delivererId || null,
         work_stream: workStream || null,
         purchased_at: purchasedAt,
@@ -445,7 +445,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
           <div>
             <div className="grid inventory-registration-fields">
               <label className="field"><span>仕入担当者</span>
-                <select value={purchaserId} onChange={(e) => setPurchaserId(e.target.value)} required>
+                <select value={assignedPurchaserId} onChange={(e) => setPurchaserId(e.target.value)} disabled={!!sparePurchaserId} required>
                   {staff.filter(canAssignPurchase).map(s => <option key={s.id} value={s.id}>{staffDisplayName(s)}</option>)}
                 </select>
               </label>
@@ -508,7 +508,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
         staff={staff} initialOwnerId={selectedDelivererId} initialManufacturer={product?.maker??undefined}
         onClose={()=>setRegisteringSpare(false)}
         save={async input=>{
-          const metadata={model_no:product?.model_no||title.trim()||null,asin:asin.trim().toUpperCase()||null,tracking_no:trackingNo.trim()||null};
+          const metadata={purchaser_id:purchaserId||undefined,model_no:product?.model_no||title.trim()||null,asin:asin.trim().toUpperCase()||null,tracking_no:trackingNo.trim()||null};
           if(draft) return registerPurchaseDraftSpare(draft.id,{...input,...metadata});
           const holder=staff.find(person=>person.id===input.owner_staff_id);
           await createSpareAccessory({...input,...metadata,owner_name:holder?.name??null,source_sku:null,marketplace,purchase_account_id,marketplace_item_id:generatedReference?.itemId??(marketplaceItemId.trim()||null),usage_note:null});
