@@ -29,6 +29,7 @@ type ReplyTemplate = TaskKind | keyof typeof RETURN_TEMPLATES;
 interface MalfunctionTask {
   status: ItemStatus; id: string; sku: string; lot_seq: number; title: string; asin: string | null; marketplace_item_id: string | null;
   purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
+  supplier_refund_pending?: boolean;
   products: { model_no: string | null }[];
 }
 type PurchaseSource = { id: string; marketplace: string | null; marketplace_item_id: string | null; marketplace_url: string | null };
@@ -207,9 +208,9 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
         <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={'返信写真 ' + (index + 1)} loading="lazy" /></a>)}</div> : null}
     </div>)}
     </div>
-    <div className="task-template-row"><select aria-label="返信の定型文" value={kind} disabled={busy || pending || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value as ReplyTemplate | '')}>
+    <div className="task-template-row">{!item.supplier_refund_pending && <select aria-label="返信の定型文" value={kind} disabled={busy || pending || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value as ReplyTemplate | '')}>
       <option value="">定型文選択</option>{(item.status === '動作不良' ? [...TASK_TEMPLATES, ...Object.keys(RETURN_TEMPLATES)] : AUCTION_TEMPLATES).map(value => <option key={value} value={value}>{value}</option>)}
-    </select><button type="button" className="btn task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy || pending || loadingTemplatePhotos}
+    </select>}<button type="button" className="btn task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy || pending || loadingTemplatePhotos}
       onClick={() => ask('納品担当者とのメッセージ：送信', sendReply)}>{busy ? '送信中…' : '送信'}</button></div>
     <div className="task-reply-editor"><textarea ref={replyEditor} aria-label="納品担当者への返信" value={draft} disabled={busy || pending} onChange={event => setDraft(event.target.value)}
       maxLength={2000} placeholder="納品担当者への返信を入力" />
@@ -219,7 +220,7 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
     {error && <p className="error" role="alert">メッセージ：{error}</p>}
     </div></div>
     <div className="malfunction-management-actions">
-      {item.status === '動作不良' && <button type="button" className="btn yahoo-instruction-open" data-action="yahoo_instruction" aria-haspopup="dialog"
+      {!item.supplier_refund_pending && item.status === '動作不良' && <button type="button" className="btn yahoo-instruction-open" data-action="yahoo_instruction" aria-haspopup="dialog"
         disabled={busy || pending || loadingTemplatePhotos} onClick={() => setChoosingYahooInstruction(true)}>ヤフオク販売指示</button>}
       {actions}
     </div>
@@ -357,7 +358,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {rows.map(row => {
       const source = purchaseSources.get(row.id);
       const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, source?.marketplace_item_id ?? row.marketplace_item_id, source?.marketplace_url ?? null);
-      const controls = (staff.role === 'admin' || staff.role === 'purchaser') && (
+      const controls = !row.supplier_refund_pending && (staff.role === 'admin' || staff.role === 'purchaser') && (
         <div className="workflow-buttons">
           {row.status === 'Amazon補填申請中' && (
             <button type="button" className="btn" data-action="complete_compensation_report" data-direction="back"
@@ -388,16 +389,17 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       return <li id={`admin-malfunction-${row.id}`} key={'malfunction-' + row.id} className="malfunction-task-row admin-task-card malfunction-report-row admin-fault-task">
       <div className="malfunction-task-content">
         <div className="task-action-details malfunction-report-details">
-          <strong>{row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
+          <strong>{row.supplier_refund_pending ? '動作不良（返金待ち）' : row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
           <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.id)} target="_blank" rel="noopener noreferrer" aria-label="報告商品の在庫を開く">【{productSerial(row.sku,row.lot_seq)}】</a>
           {sourceUrl ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く">【{(source?.marketplace_item_id ?? row.marketplace_item_id) || '商品ID未登録'}】</a> : <span>【{(source?.marketplace_item_id ?? row.marketplace_item_id) || '商品ID未登録'}】</span>}
           <small>{row.sku}</small>
         </div>
 
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
+        {row.supplier_refund_pending && <small>返金を受け取ったら、在庫の「Amazon以外からの補填」に金額を登録してください。</small>}
         <MalfunctionReportPhotos key={row.malfunction_reported_at} itemId={row.id} />
       </div>
-      <MalfunctionConversation item={{...row, marketplace_item_id: source?.marketplace_item_id ?? row.marketplace_item_id}} staff={staff} onReplied={refresh} actions={controls} />
+      <MalfunctionConversation key={row.supplier_refund_pending ? 'refund' : 'report'} item={{...row, marketplace_item_id: source?.marketplace_item_id ?? row.marketplace_item_id}} staff={staff} onReplied={refresh} actions={controls} />
     </li>;})}
     {returning&&<ReturnReasonDialog label={(returning.status==='動作不良'?'動作不良':'破損報告')+'：差し戻し'} onSubmit={returnReport} onCancel={()=>setReturning(null)}/>}
     {confirmation}

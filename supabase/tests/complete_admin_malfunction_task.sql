@@ -69,3 +69,65 @@ begin
   end if;
 end $$;
 rollback;
+
+-- The delivery app's no-return decision keeps the refund task through resale.
+begin;
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no)
+select fixture.lot_seq,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),
+       current_date,'Supplier refund fixture',1000,'ヤフオク','メルカリ','fixture'
+from (values (997864),(997865)) fixture(lot_seq);
+
+set local role authenticated;
+set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+select app.perform_inventory_action(id,'report',status,'Fixture fault')
+from app.items where lot_seq in (997864,997865);
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+select app.perform_inventory_action(id,'supplier_check',status) from app.items where lot_seq=997864;
+select app.perform_inventory_action(id,'yahoo_instruction',status) from app.items where lot_seq=997865;
+
+set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+select app.perform_inventory_action(id,'return_impossible',status) from app.items where lot_seq=997864;
+do $$begin
+  if exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
+    where task->>'lot_seq'='997864') then
+    raise exception 'Delivery worker saw a management refund task';
+  end if;
+end $$;
+
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+do $$
+declare
+  item app.items;
+  next_status app.item_status;
+begin
+  if exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
+    where task->>'lot_seq'='997865') then
+    raise exception 'Regular Yahoo listing instruction produced a refund task';
+  end if;
+
+  select * into strict item from app.items where lot_seq=997864;
+  if item.status<>'商品登録前' or item.sales_channel<>'ヤフオク' then
+    raise exception 'No-return action did not prepare the Yahoo listing';
+  end if;
+  foreach next_status in array array['商品登録前','出品中','取引中','販売済']::app.item_status[] loop
+    if next_status<>item.status then
+      perform app.set_inventory_workflow(item.id,next_status);
+    end if;
+    if not exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
+      where task->>'id'=item.id::text and task->>'status'=next_status::text and task->>'supplier_refund_pending'='true') then
+      raise exception 'Refund task disappeared at status %', next_status;
+    end if;
+  end loop;
+
+  update app.items set amazon_refund_amount=100,inventory_refund_amount=200 where id=item.id;
+  if not exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
+    where task->>'id'=item.id::text and task->>'supplier_refund_pending'='true') then
+    raise exception 'Amazon refunds cleared the supplier refund task';
+  end if;
+  update app.items set non_amazon_refund_amount=700 where id=item.id;
+  if exists(select 1 from jsonb_array_elements(app.read_resource_snapshot('malfunctions')->'rows') task
+    where task->>'id'=item.id::text) then
+    raise exception 'Refund task remained after the refund was recorded';
+  end if;
+end $$;
+rollback;
