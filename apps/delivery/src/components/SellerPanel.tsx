@@ -182,12 +182,12 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     {dropoffSelect}
    </div>
    {draft.size&&sellerShippingError(draft)&&<p className="error" role="alert">{sellerShippingError(draft)}</p>}
-   <LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>
    {draft.category==='小物'&&<div>{SMALL_PACKAGES.filter(value=>mercari?sellerShippingSizes(draft.shippingMethod).includes(value.name):value.name!=='ゆうパケットポスト').map(value=><p key={value.name}>{value.name}：{value.dimensions}</p>)}</div>}
    {mercariPost?<p>メルカリの取引画面で専用資材のコードを読み取り、郵便ポストへ投函してください。 <a href={`https://jp.mercari.com/transaction/${encodeURIComponent(context?.listing?.external_id??'')}`} target="_blank" rel="noreferrer">取引画面を開く</a></p>:/ゆうパケットポストmini/.test(draft.size)?<>
     <button type="button" className="btn" disabled={disabled||!!sellerShippingError(draft)} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
    </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={busy||!!codeIssue||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button></div>{codeIssue&&!sellerShippingError(draft)&&<p className="error" role="alert">{codeIssue}</p>}{qr&&!codeIssue&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
+   <LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>
    {Array.isArray(latestMessages)&&latestMessages.map((entry,index)=><p key={index} className="seller-preview">{entry&&typeof entry==='object'&&typeof entry.body==='string'?entry.body:''}</p>)}
