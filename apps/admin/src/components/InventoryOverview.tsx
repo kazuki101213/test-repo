@@ -28,12 +28,13 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
          aria-label={`${i.sku}の販売状態を編集（${statusLabel}）`} title="販売状態を編集" onClick={()=>edit('status')}>{statusLabel}</button>;
    const photosOpen = openPhotosFor === i.id;
    const photosId = `inventory-photos-${i.id}`;
-   const statusActions = <span className="approved-status-actions">{status}
-     <button type="button" className="btn ghost approved-photo-toggle" aria-expanded={photosOpen}
+   const photoToggle = (placement: 'mobile' | 'desktop') => (
+     <button type="button" className={`btn ghost approved-photo-toggle approved-photo-toggle-${placement}`} aria-expanded={photosOpen}
        aria-controls={photosOpen ? photosId : undefined} onClick={()=>onTogglePhotos(i.id)}>
        {photosOpen ? '写真を閉じる' : '写真確認'}
      </button>
-   </span>;
+   );
+   const statusActions = <span className="approved-status-actions">{status}{photoToggle('mobile')}</span>;
    const bg=inventoryBoxColor(inherits?(parent?.status??i.inventory_parent_status??i.status):i.status,inherits&&(parent||i.inventory_parent_serial)?(parent?parent.purchased_at:i.inventory_parent_purchased_at):i.purchased_at),serial=inherits?serialOf(i):inventorySerial(i);
    const purchaseUrl=noticeProductUrl(i.marketplace,i.marketplace_item_id,i.marketplace_url),actual=salePrice(i),payout=salePayout(i),rate=i.product_sold_price&&i.product_profit!=null?(i.product_profit/i.product_sold_price*100).toFixed(1)+'%':'—',expectedRate=i.planned_price&&i.expected_profit!=null?(i.expected_profit/i.planned_price*100).toFixed(1)+'%':'—';
    const button=(field:InventoryField,value:ReactNode,className='')=><button type="button" className={`inventory-cell-edit ${className}`} onClick={()=>edit(field)} title={`${({marketplace_item_id:'商品ID',tracking_no:'追跡番号',asin:'ASIN',memo:'仕入担当者からのコメント'} as Record<string,string>)[field]??'項目'}をクリックして編集`}>{value??'—'}</button>;
@@ -59,7 +60,11 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
     <div className="approved-amounts" role="cell">{(!accessory||separate)&&<>{moneyField('販売予定金額',i.planned_price,'planned_price')}{moneyField('振込予定金額',i.planned_payout,'planned_payout')}{moneyField('販売金額',actual,'sold_price')}{moneyField('振込金額',payout,'payout_amount')}</>}</div>
     <div className="approved-profits" role="cell">{(!accessory||separate)&&<><div className={`approved-expected ${profitClass(i.expected_profit)}`}>{moneyField('予定利益額',i.expected_profit,'planned_payout')}{field('予定利益率',expectedRate)}</div><div className={`approved-actual ${profitClass(i.product_profit)}`}>{moneyField('利益額',i.product_profit,'payout_amount')}{field('利益率',rate)}</div></>}</div>
     <div className="approved-refunds" role="cell">{!accessory&&<>{moneyField('在庫の払い戻し',i.inventory_refund_amount,'inventory_refund_amount')}{moneyField('Amazon以外からの補填',i.non_amazon_refund_amount,'non_amazon_refund_amount')}{moneyField('Amazon返金金額',i.amazon_refund_amount,'amazon_refund_amount')}</>}</div>
-    <div className="approved-comments" role="cell">{field('仕入担当者からのコメント',<button type="button" className="inventory-comment" onClick={()=>edit('memo')} title="仕入担当者からのコメントを編集">{i.memo||'—'}</button>)}{field('納品担当者からのコメント',i.latest_comment?<button type="button" className="inventory-comment" onClick={()=>onComment(i)} title="コメント全文を表示">{i.latest_comment}</button>:'—')}</div>
+    <div className="approved-comments" role="cell">
+     {field('仕入担当者からのコメント',<button type="button" className="inventory-comment" onClick={()=>edit('memo')} title="仕入担当者からのコメントを編集">{i.memo||'—'}</button>)}
+     {field('納品担当者からのコメント',i.latest_comment?<button type="button" className="inventory-comment" onClick={()=>onComment(i)} title="コメント全文を表示">{i.latest_comment}</button>:'—')}
+     {photoToggle('desktop')}
+    </div>
     {photosOpen && <div className="approved-inventory-photos" role="cell" aria-colspan={9}><InventoryPhotos itemId={i.id} sku={i.sku} id={photosId}/></div>}
    </div>;
   })}
