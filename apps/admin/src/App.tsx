@@ -102,7 +102,7 @@ export default function App() {
             ))}
           </nav>
         )}
-        {visiblePage === 'dashboard' && <Dashboard staff={session.staff} userId={session.user.id} />}
+        {visiblePage === 'dashboard' && <Dashboard key={session.staff.id} staff={session.staff} userId={session.user.id} />}
         {visiblePage === 'inventory' && <Inventory me={session.staff} />}
         {visiblePage === 'spares' && <Spares me={session.staff} />}
         {visiblePage === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}

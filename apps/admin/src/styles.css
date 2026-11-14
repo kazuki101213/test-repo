@@ -72,9 +72,17 @@ h2 { font-family: inherit; font-size: 20px; margin: 0 0 4px; }
 .card h3 { margin: 0 0 10px; font-size: 14px; }
 
 .kpi-label { color: var(--muted); font-size: 12px; }
-.sales-kpi-line { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
-.sales-summary-card { container-type: inline-size; }
-.sales-summary-card .kpi-value,.sales-summary-card .sales-kpi-line strong { font-size:clamp(12px, 8.5cqi, 22px); white-space:nowrap; }
+.dashboard-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dashboard-comparison-panel { min-width: 0; container-type: inline-size; }
+.dashboard-comparison-panel:first-child { padding-inline-end: 8px; }
+.dashboard-comparison-panel + .dashboard-comparison-panel { padding-inline-start: 8px; border-inline-start: 1px solid var(--border); }
+.dashboard-comparison-panel h4 { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+.dashboard-comparison-panel .kpi-label:not(:first-of-type) { margin-top: 8px; }
+.dashboard-comparison-panel :is(.kpi-value, .sales-summary strong) { font-size: clamp(12px, 16cqi, 22px); overflow-wrap: anywhere; }
+.dashboard-kpi-count { display: block; font-size: 13px; }
+.dashboard-scope-legend { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+.dashboard-metric-pair { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dashboard-metric-divider { color: var(--muted); }
 .document-review-columns { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; }
 .monthly-detail.invoice-review { width:min(1400px,96vw); }
 .review-receipts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; max-height:65vh; overflow:auto; }
@@ -84,8 +92,6 @@ h2 { font-family: inherit; font-size: 20px; margin: 0 0 4px; }
 .packed-summary { margin:16px 0; }
 .packed-summary td { white-space:normal; }
 @media(max-width:800px) { .document-review-columns { grid-template-columns:1fr; } }
-.sales-kpi-line span { color: var(--muted); font-size: 12px; }
-.sales-kpi-line strong { font-size: 22px; font-weight: 650; letter-spacing: -.01em; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .kpi-value { font-size: 22px; font-weight: 650; margin-top: 4px; letter-spacing: -.01em; }
 .kpi-value.pos { color: var(--ok); }
 .kpi-value.neg { color: var(--danger); }
@@ -294,7 +300,9 @@ input[type='month'] { padding: 4px 5px; border-radius: 8px; border: 1px solid va
 .sales-summary span { color: var(--muted); }
 .sales-chart-scroll { overflow-x: auto; }
 .sales-chart { display: block; width: 100%; margin-top: 12px; }
-.sales-chart text { fill: var(--muted); font-size: 13px; }
+.sales-chart text { fill: var(--muted); font-size: 16px; }
+.daily-sales .dashboard-comparison-panel .sales-summary { display: flex; gap: 4px 10px; }
+.daily-sales .dashboard-comparison-panel .sales-summary span { font-size: 12px; }
 .chart-grid { stroke: var(--border); stroke-dasharray: 4 4; }
 .chart-hit { fill: transparent; cursor: pointer; }
 .chart-hit:focus { outline: none; stroke: var(--text); stroke-width: 2; }

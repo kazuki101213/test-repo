@@ -144,6 +144,21 @@ export const workloadMetrics = [
 export type WorkloadMetric = typeof workloadMetrics[number];
 export type DelivererWorkload = { deliverer_id: string; deliverer_name: string } & Record<WorkloadMetric['key'], number>;
 
+export type DashboardScope = 'all' | 'mine';
+export type DashboardMonth = Pick<MonthlySummary, 'month' | '仕入数' | '仕入金額' | '販売数' | '売上' | '振込金額' | '粗利益' | '経費' | '純利益'>;
+export type DashboardStock = Pick<StockSummary, '現在庫数' | '売上見込み合計' | '見込み利益合計'>;
+export type DashboardPurchaserSummary = {
+  stock: DashboardStock;
+  months: DashboardMonth[];
+  workload: Omit<DelivererWorkload, 'deliverer_name'>[];
+};
+
+export async function fetchDashboardPurchaserSummary(): Promise<DashboardPurchaserSummary> {
+  const { data, error } = await getSupabase().rpc('read_dashboard_purchaser_summary');
+  if (error) throw new Error(error.message);
+  return data as DashboardPurchaserSummary;
+}
+
 export async function fetchWorkload(): Promise<DelivererWorkload[]> {
   const { data, error } = await getSupabase().from('v_deliverer_stock_workload').select('*').order('deliverer_name');
   if (error) throw error;
@@ -162,9 +177,9 @@ export interface ItemFilter {
 
 export type WorkloadItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'title' | 'model_no' | 'status' | 'marketplace' | 'sales_channel' | 'purchased_at' | 'packed_on' | 'shipped_on'>;
 
-export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric): Promise<WorkloadItem[]> {
+export async function fetchWorkloadDetail(delivererId: string, metric: WorkloadMetric, scope: DashboardScope = 'all'): Promise<WorkloadItem[]> {
   return readAllRows<WorkloadItem>(async (from, to) => {
-    const query = getSupabase().from('v_deliverer_stock_workload_items')
+    const query = getSupabase().from(scope === 'mine' ? 'v_dashboard_purchaser_workload_items' : 'v_deliverer_stock_workload_items')
       .select('id,lot_seq,sku,title,model_no,status,marketplace,sales_channel,purchased_at,packed_on,shipped_on')
       .eq('deliverer_id', delivererId);
     const filtered = metric.bucket === null ? query.eq('on_hand', true) : query.eq('bucket', metric.bucket);
@@ -334,21 +349,23 @@ export async function deleteExpenses(rows: ExpenseInput[], requestId: string): P
 }
 
 export type MonthlyDetailItem = Pick<ItemView, 'id' | 'lot_seq' | 'sku' | 'is_accessory' | 'title' | 'marketplace' | 'purchased_at' | 'sold_on' | 'cost_amount' | 'sold_price' | 'payout_amount' | 'refund_amount' | 'profit'> & { shipping_cost: number; other_cost: number };
-export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale' | 'expense' | 'profit') {
+export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale' | 'expense' | 'profit', scope: DashboardScope = 'all') {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('対象月が不正です。');
   const year = Number(month.slice(0, 4)), monthNumber = Number(month.slice(5));
   const from = month + '-01';
   const to = new Date(Date.UTC(year, monthNumber, 0)).toISOString().slice(0, 10);
+  const purchaseTable = scope === 'mine' ? 'v_dashboard_purchaser_purchases' : 'items';
+  const salesTable = scope === 'mine' ? 'v_dashboard_purchaser_sales' : 'v_financial_sales';
   const items = kind === 'expense' ? Promise.resolve([] as MonthlyDetailItem[]) : readAllRows<MonthlyDetailItem>(async (start, end) => {
     const dateColumn = kind === 'purchase' ? 'purchased_at' : 'sold_on';
-    const { data, error } = await getSupabase().from(kind === 'purchase' ? 'items' : 'v_financial_sales')
+    const { data, error } = await getSupabase().from(kind === 'purchase' ? purchaseTable : salesTable)
       .select('id,lot_seq,sku,is_accessory,title,marketplace,purchased_at,sold_on,cost_amount,sold_price,payout_amount,refund_amount,profit,shipping_cost,other_cost')
       .gte(dateColumn, from).lte(dateColumn, to).order('lot_seq', { ascending: false }).order('id').range(start, end);
     if (error) throw new Error(error.message);
     return (data ?? []) as MonthlyDetailItem[];
   });
   const expenses = kind !== 'expense' && kind !== 'profit' ? Promise.resolve([] as ExpenseInput[]) : readAllRows<ExpenseInput>(async (start, end) => {
-    const { data, error } = await getSupabase().from('expenses')
+    const { data, error } = await getSupabase().from(scope === 'mine' ? 'v_dashboard_purchaser_expenses' : 'expenses')
       .select('id,incurred_on,category,name,amount,card_id,staff_id,memo')
       .is('deleted_at', null).gte('incurred_on', from).lte('incurred_on', to).order('incurred_on').order('id').range(start, end);
     if (error) throw new Error(error.message);
@@ -878,6 +895,12 @@ export type DailySalesSummary={days:{date:string;amount:number;count:number}[];c
 export async function fetchDailySalesSummary(from:string,to:string):Promise<DailySalesSummary>{
  const {data,error}=await getSupabase().rpc('read_daily_sales_summary',{p_from:from,p_to:to});
  if(error)throw error;return data as DailySalesSummary;
+}
+
+export async function fetchDashboardDailySales(from: string, to: string): Promise<Record<DashboardScope, DailySalesSummary>> {
+  const { data, error } = await getSupabase().rpc('read_dashboard_daily_sales', { p_from: from, p_to: to });
+  if (error) throw new Error(error.message);
+  return data as Record<DashboardScope, DailySalesSummary>;
 }
 
 export async function fetchProducts(query?: string, ownerStaffId?: string): Promise<Product[]> {
