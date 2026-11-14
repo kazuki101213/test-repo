@@ -7,6 +7,26 @@ select n,(select id from app.staff where code='AA'),(select id from app.staff wh
 -- old workflow-sync bug to rewrite the accessory's purchase SKU into suffix a.
 insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
 select '990201a-AADD-'||to_char(current_date,'YYYYMMDD')||'-10',990201,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'paged accessory fixture',100,'ヤフオク',true;
+update app.items set purchased_at=current_date-30 where lot_seq=990202;
+do $$
+declare
+ filters constant jsonb := '{"queryField":"tracking_no","query":"123456","status":"all"}';
+ by_date jsonb;
+ by_serial jsonb;
+ expanded jsonb;
+begin
+ by_date := app.read_inventory_page('delivery', filters, 1, '{}');
+ by_serial := app.read_inventory_page('delivery', filters || '{"sort":"serial"}', 1, '{}');
+ expanded := app.read_inventory_page('delivery', filters || '{"sort":"serial"}', 2, '{}');
+ if by_date->'rows'->0->>'lot_seq' is distinct from '990201'
+    or by_serial->'rows'->0->>'lot_seq' is distinct from '990202'
+    or jsonb_array_length(by_serial->'rows') <> 1
+    or expanded->'rows'->0->>'lot_seq' is distinct from '990202'
+    or expanded->'rows'->1->>'lot_seq' is distinct from '990201'
+    or jsonb_array_length(expanded->'rows') <> 3 then
+   raise exception 'All-status serial sorting did not order groups before paging';
+ end if;
+end $$;
 create temporary table page_probe as select app.read_inventory_page('delivery','{"queryField":"serial","query":"９９０２０１","status":"検品中"}',1,'{}') p;
 do $$
 declare
