@@ -172,7 +172,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    {categoryError&&<p className="error" role="alert">{categoryError}</p>}
    <button type="button" className="btn primary" disabled={disabled||photoAnalysis.reading||!!categoryError||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||task.sales_channel==='ヤフオク'&&(!(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).includes(draft.size)||/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&!draft.weightKg)||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
    </>}
-   {!amazonListing&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
+   {!amazonListing&&staff.role==='admin'&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
    <div className="seller-form">
     {mercari?<>{mercariMethodSelect}{mercariSizeSelect}</>:<>
@@ -187,7 +187,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     <button type="button" className="btn" disabled={disabled||!!sellerShippingError(draft)} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
    </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={busy||!!codeIssue||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button></div>{codeIssue&&!sellerShippingError(draft)&&<p className="error" role="alert">{codeIssue}</p>}{qr&&!codeIssue&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
-   <LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>
+   {staff.role==='admin'&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>}
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>
    {Array.isArray(latestMessages)&&latestMessages.map((entry,index)=><p key={index} className="seller-preview">{entry&&typeof entry==='object'&&typeof entry.body==='string'?entry.body:''}</p>)}
