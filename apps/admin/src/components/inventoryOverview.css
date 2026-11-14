@@ -14,7 +14,7 @@
 .approved-status-actions { display:flex; flex-direction:column; align-items:flex-start; gap:3px; }
 .approved-record .approved-photo-toggle { font-size:11px; padding:2px 6px; min-height:26px; }
 .approved-record .approved-photo-toggle-mobile { display:none; }
-.approved-record .approved-photo-toggle-desktop { display:block; margin:4px 0 0 auto; white-space:nowrap; }
+.approved-record .approved-photo-toggle-desktop { display:block; align-self:flex-end; margin-top:auto; white-space:nowrap; }
 .approved-record .approved-inventory-photos { grid-column:1 / -1; padding:8px 12px; border-top:1px solid var(--border); }
 .approved-inventory-photos .inventory-photo-gallery { margin:0; }
 .approved-record .approved-identity { display:flex; gap:10px; align-items:center; padding-block:8px; }
@@ -61,6 +61,7 @@
 .approved-price-error button { margin-left:5px; text-decoration:underline; }
 @media(min-width:1200px) {
  .approved-people > div:nth-child(-n+2) .inventory-cell-edit > span { white-space:nowrap; }
+ .approved-record:not(.approved-accessory) > .approved-comments { display:flex; flex-direction:column; }
 }
 @media(min-width:1200px) and (max-width:1599px) {
  .approved-inventory { font-size:11px; }
