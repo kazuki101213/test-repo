@@ -26,7 +26,7 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
      ? <span className="inventory-label inventory-status-label" style={statusStyle}>{statusLabel}</span>
      : <button type="button" className="inventory-label inventory-status-label approved-status-edit" style={statusStyle}
          aria-label={`${i.sku}の販売状態を編集（${statusLabel}）`} title="販売状態を編集" onClick={()=>edit('status')}>{statusLabel}</button>;
-   const photosOpen = openPhotosFor === i.id;
+   const photosOpen = !accessory && openPhotosFor === i.id;
    const photosId = `inventory-photos-${i.id}`;
    const photoToggle = (placement: 'mobile' | 'desktop') => (
      <button type="button" className={`btn ghost approved-photo-toggle approved-photo-toggle-${placement}`} aria-expanded={photosOpen}
@@ -44,7 +44,7 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
    const profitClass=(n:number|null|undefined)=>n!=null&&n<0?'approved-loss':'approved-profit';
    return <div key={i.id} className={`approved-inventory-row approved-record${accessory?' approved-accessory':''}${separate?' approved-separate':''}`} role="row" data-item-id={i.id} data-item-status={i.status} data-kind={accessory?(separate?'separate':'bundled'):'body'} style={{backgroundColor:bg}}>
     <div className="approved-identity" role="cell">
-     {accessory?<span className="approved-child-state">{statusActions}</span>:<button type="button" className="inventory-photo approved-photo" onClick={()=>onFullEdit(saleItem)} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>{i.amazon_image_url?<img src={i.amazon_image_url} alt={`${i.title}の商品画像`} loading="lazy"/>:<span>写真なし</span>}</button>}
+     {accessory?<span className="approved-child-state">{status}</span>:<button type="button" className="inventory-photo approved-photo" onClick={()=>onFullEdit(saleItem)} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}>{i.amazon_image_url?<img src={i.amazon_image_url} alt={`${i.title}の商品画像`} loading="lazy"/>:<span>写真なし</span>}</button>}
      <div className="approved-identity-text">
       {!accessory&&statusActions}
       <div className="approved-serial-line"><strong>{button('lot_seq',serial)}</strong>{!accessory&&<span className="approved-product-number"> / {button('product_no',i.product_no??'—')}</span>}{accessory&&button('title',i.title)}{accessory?<button type="button" className="inventory-cell-edit" onClick={()=>onFullEdit(saleItem)} title="商品情報編集" aria-label={`${i.sku}の商品情報編集`}><span className="inventory-label inventory-accessory-label">{badge}</span></button>:<span className="inventory-label inventory-accessory-label">{badge}</span>}</div>
@@ -63,7 +63,7 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
     <div className="approved-comments" role="cell">
      {field('仕入担当者からのコメント',<button type="button" className="inventory-comment" onClick={()=>edit('memo')} title="仕入担当者からのコメントを編集">{i.memo||'—'}</button>)}
      {field('納品担当者からのコメント',i.latest_comment?<button type="button" className="inventory-comment" onClick={()=>onComment(i)} title="コメント全文を表示">{i.latest_comment}</button>:'—')}
-     {photoToggle('desktop')}
+     {!accessory&&photoToggle('desktop')}
     </div>
     {photosOpen && <div className="approved-inventory-photos" role="cell" aria-colspan={9}><InventoryPhotos itemId={i.id} sku={i.sku} id={photosId}/></div>}
    </div>;
