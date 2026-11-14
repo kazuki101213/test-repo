@@ -366,16 +366,17 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, purchaseId, source?.marketplace_url ?? null);
       const id = `admin-malfunction-${row.id}`;
       const key = 'malfunction-' + row.id;
-      const details = <>
-        <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.id)} target="_blank" rel="noopener noreferrer" aria-label="報告商品の在庫を開く">【{productSerial(row.sku,row.lot_seq)}】</a>
-        {sourceUrl ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く">【{purchaseId || '商品ID未登録'}】</a> : <span>【{purchaseId || '商品ID未登録'}】</span>}
-        <small>{row.sku}</small>
-      </>;
+      const inventoryLink = <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.id)} target="_blank" rel="noopener noreferrer" aria-label="報告商品の在庫を開く">【{productSerial(row.sku,row.lot_seq)}】</a>;
+      const purchaseLink = sourceUrl
+        ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く">【{purchaseId || '商品ID未登録'}】</a>
+        : <span>【{purchaseId || '商品ID未登録'}】</span>;
       if (row.supplier_refund_pending) {
         return <li id={id} key={key} className="malfunction-task-row admin-task-card">
           <div className="task-action-details supplier-refund-details">
             <strong>動作不良(返金待ち)</strong>
-            {details}
+            {inventoryLink}
+            {purchaseLink}
+            <small>{row.sku}</small>
           </div>
           <button type="button" className="btn" disabled={busy !== null || pending || !row.supplier_refund_event_id}
             onClick={() => ask(`【${productSerial(row.sku,row.lot_seq)}】の返金を仕入先から受け取りましたか？`, () => completeMalfunctionTask(row))}>完了</button>
@@ -414,7 +415,9 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       <div className="malfunction-task-content">
         <div className="task-action-details malfunction-report-details">
           <strong>{row.status === 'Amazon補填申請中' ? '破損報告' : '動作不良'}</strong>
-          {details}
+          {inventoryLink}
+          {purchaseLink}
+          <small>{row.sku}</small>
         </div>
 
         <p className="malfunction-report-message" style={{ whiteSpace: 'pre-wrap' }}>{row.malfunction_comment || '報告内容が登録されていません。'}</p>
