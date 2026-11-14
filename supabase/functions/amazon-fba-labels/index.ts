@@ -73,12 +73,32 @@ export async function handler(req: Request): Promise<Response> {
     if (staff.error || !staff.data?.is_active || (adminResult.data !== true && item.deliverer_id !== staffResult.data)) {
       throw new LabelError(403, 'この商品のラベル印刷権限がありません。');
     }
-    if (item.sku !== input.expectedSku || item.sales_channel !== input.expectedChannel ||
+    if (typeof input.expectedSku !== 'string' || !input.expectedSku || item.sales_channel !== input.expectedChannel ||
         item.status !== '商品登録前' || (item.is_accessory && !/^\d+c+(?:[-_])/i.test(item.sku))) {
       throw new LabelError(409, '商品の状態が変わりました。在庫で選び直してください。');
     }
     if (!/^[A-Z0-9]{10}$/.test(item.asin ?? '') || !item.condition) throw new LabelError(422, '商品のASINとコンディションを確認してください。');
     const account = accountForLabel(item.sales_channel);
+    const planUsesHistoricalSku = item.sku !== input.expectedSku;
+    if (planUsesHistoricalSku) {
+      const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+        auth: {persistSession: false, autoRefreshToken: false}, db: {schema: 'app'},
+      });
+      // An existing plan needs labels for the seller SKU Amazon accepted for its manifest.
+      const [alias, reservation] = await Promise.all([
+        sb.from('item_sku_aliases').select('sku').eq('item_id', input.itemId).eq('sku', input.expectedSku).maybeSingle(),
+        service.from('fba_inbound_items')
+          .select('sku,fba_inbound_plans!inner(id)')
+          .eq('item_id', input.itemId).eq('sku', input.expectedSku)
+          .eq('asin', item.asin).eq('condition', item.condition).eq('sales_channel', item.sales_channel)
+          .is('released_at', null).is('published_at', null)
+          .eq('fba_inbound_plans.account', account === 'amazon-2' ? 'FBA2' : 'FBA1')
+          .eq('fba_inbound_plans.staff_id', item.deliverer_id)
+          .neq('fba_inbound_plans.stage', 'cancelled').maybeSingle(),
+      ]);
+      if (alias.error || reservation.error) throw new LabelError(502, '納品プランと商品のSKU履歴を確認できませんでした。');
+      if (!alias.data || !reservation.data) throw new LabelError(409, '商品の状態が変わりました。在庫で選び直してください。');
+    }
     const credentials = amazonCredentials(account);
     const lwa = await fetch('https://api.amazon.com/auth/o2/token', {
       method: 'POST',
@@ -105,9 +125,9 @@ export async function handler(req: Request): Promise<Response> {
       if (!Array.isArray(summaries)) throw new LabelError(502, 'AmazonのFBA在庫応答が不正です。');
       return summaries;
     };
-    let sku = item.sku;
+    let sku: string = input.expectedSku;
     let summaries = await readSummaries([sku]);
-    if (!summaries.some(row => row.sellerSku === sku && row.asin === item.asin)) {
+    if (!planUsesHistoricalSku && !summaries.some(row => row.sellerSku === sku && row.asin === item.asin)) {
       const aliases = await sb.from('item_sku_aliases').select('sku').eq('item_id', input.itemId).neq('sku', sku);
       if (aliases.error) throw new LabelError(502, '商品のSKU履歴を確認できません。');
       const historicalSkus = (aliases.data ?? []).map(row => row.sku);
