@@ -224,8 +224,8 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
       </div>
       </div>
 
-      {onFbaDelivery&&shownRows.length>0&&<p className="delivery-fba-mobile-hint">
-        {allProducts?'「全商品」は閲覧用です。「作業中」に切り替えると、対象商品を選択できます。':'FBA納品は「商品登録前」のFBA商品を選択できます。'}
+      {allProducts&&onFbaDelivery&&shownRows.length>0&&<p className="delivery-fba-mobile-hint">
+        「全商品」は閲覧用です。「作業中」に切り替えると、対象商品を選択できます。
       </p>}
       {replyTaskError && <div className="error">{replyTaskError}</div>}
       {error && <div className="error" role="alert">{error}</div>}
