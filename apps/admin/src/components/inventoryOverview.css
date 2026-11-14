@@ -44,9 +44,7 @@
 .approved-accessory .approved-purchase { display:grid; grid-template-columns:max-content minmax(0,1fr); column-gap:6px; align-content:center; }
 .approved-accessory .approved-purchase > .approved-field:nth-last-child(n+3) { grid-column:1/-1; }
 .approved-accessory .approved-profits .approved-actual { font-size:13px; line-height:14px; }
-.approved-accessory .approved-identity { position:relative; padding-left:130px; }
-.approved-child-state { position:absolute; left:8px; top:8px; width:112px; }
-.approved-child-state .inventory-label { font-size:10px; }
+.approved-accessory .approved-identity { padding-left:130px; }
 .approved-accessory .approved-serial-line strong { font-size:16px; line-height:20px; }
 .approved-accessory .approved-serial-line { gap:5px; }
 .approved-accessory .approved-serial-line .inventory-accessory-label { font-size:10px; }
@@ -70,7 +68,6 @@
  .approved-record .approved-photo { width:88px; height:112px; flex-basis:88px; }
  .approved-record .approved-sku { font-size:12px; }
  .approved-accessory .approved-identity { padding-left:103px; }
- .approved-child-state { left:5px; width:88px; }
  .approved-people .inventory-label { font-size:10px; padding-inline:3px; }
  .approved-inventory-head .inventory-column-heading { font-size:11px; }
  .approved-inventory-row .approved-identity { gap:10px; }
@@ -83,7 +80,7 @@
  .approved-record .approved-identity { grid-column:1/-1; order:1; padding:0; margin-bottom:4px; gap:10px; }
  .approved-record .approved-photo { width:88px; height:88px; flex-basis:88px; }
  .approved-identity-text { padding:0; }
- .approved-identity-text > .approved-status-actions { float:right; margin-left:6px; }
+ .approved-record:not(.approved-accessory) .approved-identity-text > .approved-status-actions { float:right; margin-left:6px; }
  .approved-record .approved-photo-toggle-mobile { display:inline-block; }
  .approved-record .approved-photo-toggle-desktop { display:none; }
  .approved-serial-line strong { font-size:21px; }
@@ -115,9 +112,6 @@
  .approved-record .inventory-comment { display:block; overflow:visible; -webkit-line-clamp:unset; }
  .approved-accessory .approved-identity { padding:0; }
  .approved-accessory .approved-purchase { display:block; }
- .approved-child-state { position:static; width:auto; order:2; }
- .approved-accessory .approved-identity { flex-wrap:wrap; }
- .approved-accessory .approved-identity-text { flex:1; }
  .approved-accessory .approved-sku { margin-top:3px; }
  .approved-accessory .approved-amazon-price:not(:has(.amazon-listing-price)) { display:none; }
  .approved-record.approved-accessory { min-height:0; }
