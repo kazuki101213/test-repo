@@ -28,8 +28,15 @@ export default function LineShippingSettings({itemId,draft,overviewId,listing=fa
   }catch(cause){if(active.current)setError('再送は受け付けました。表示の更新に失敗しました。'+deliveryErrorMessage(cause));}
  }catch(cause){if(active.current)setError(deliveryErrorMessage(cause));}finally{lock.current=false;if(active.current)setBusy(false);}}
  return <section className="line-shipping-settings" aria-label="LINE発送依頼の設定">
-  <div className="row"><span>LINE発送依頼</span><button type="button" className="btn ghost" disabled={busy||!context} onClick={()=>void edit()}>通知写真を設定</button>{!listing&&<button type="button" className="btn ghost" disabled={busy} onClick={()=>void save()}>配送設定を保存</button>}</div>
-  {context?.state==='sent'&&<><p role="status">LINEへ送信済み</p><button type="button" className="btn ghost" disabled={busy} onClick={()=>void resend()}>LINEを再送</button></>}{notice&&<p role="status">{notice}</p>}{error&&<p className="error" role="alert">{error}</p>}
+  <div className="row">
+   <span>LINE発送依頼</span>
+   <div className="row">
+    {context?.state==='sent'&&<button type="button" className="btn ghost" disabled={busy} onClick={()=>void resend()}>LINEを再送</button>}
+    <button type="button" className="btn ghost" disabled={busy||!context} onClick={()=>void edit()}>通知写真を設定</button>
+   </div>
+   {!listing&&<button type="button" className="btn ghost" disabled={busy} onClick={()=>void save()}>配送設定を保存</button>}
+  </div>
+  {context?.state==='sent'&&<p role="status">LINEへ送信済み</p>}{notice&&<p role="status">{notice}</p>}{error&&<p className="error" role="alert">{error}</p>}
   {open&&photos&&<>
    <p>全体写真と型番が読める写真を指定してください。商品リストに配送サイズがある商品は、配送コード発行後にコード画像も送ります。サイズ未設定の商品はコード画像を付けずに送ります。</p>
    <p>{context?.photoOrder?.length?'出品時の写真順です。出品に使わなかった写真は末尾に表示します。':'写真の追加順です。'}</p>
