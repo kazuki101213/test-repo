@@ -23,7 +23,7 @@ export async function fetchStaff(): Promise<Staff[]> {
 }
 
 export type SpareAccessoryInput = Pick<SpareAccessory,
-  'source_sku' | 'owner_staff_id' | 'owner_name' | 'purchased_at' | 'title' | 'manufacturer' | 'model_no' | 'asin' | 'cost_amount' |
+  'source_sku' | 'owner_staff_id' | 'owner_name' | 'purchaser_id' | 'purchased_at' | 'title' | 'manufacturer' | 'model_no' | 'asin' | 'cost_amount' |
   'marketplace' | 'marketplace_item_id' | 'tracking_no' | 'usage_note' | 'purchase_account_id'
 >;
 export type SpareAccessoryField = keyof Pick<SpareAccessory,
@@ -550,7 +550,7 @@ export async function dismissPurchaseDraft(id: string): Promise<void> {
   if (!data) throw new Error('仕入れリストが既に変更されています。一覧を再読み込みしてください。');
 }
 
-export async function registerPurchaseDraftSpare(draftId:string,input:{owner_staff_id:string;title:string;manufacturer:string|null;purchased_at:string;cost_amount:number;model_no?:string|null;asin?:string|null;tracking_no?:string|null}):Promise<string>{
+export async function registerPurchaseDraftSpare(draftId:string,input:{owner_staff_id:string;purchaser_id?:string;title:string;manufacturer:string|null;purchased_at:string;cost_amount:number;model_no?:string|null;asin?:string|null;tracking_no?:string|null}):Promise<string>{
   const {data,error}=await getSupabase().rpc('register_purchase_draft_spare',{p_draft_id:draftId,p_input:input});
   if(error)throw error;
   return data as string;
