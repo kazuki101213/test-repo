@@ -65,7 +65,11 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
   const overlappingStatuses = groupedStatuses?.filter(status => !inventoryFilters.status?.length || inventoryFilters.status.includes(status));
   const requestStates = overlappingStatuses?.length ? {...inventoryFilters, status: overlappingStatuses} : inventoryFilters;
   const requestStatus = groupedStatuses ? (overlappingStatuses?.length ? 'all' : groupedStatuses[0]) : filter;
-  const inventory=useInventoryPage<DeliveryInventoryRow>(allProducts?'delivery-all':'delivery',staff.id,{status:requestStatus,states:requestStates,queryField,query:queryField==='deliverer'?'':query,purchaserIds,delivererIds:effectiveDelivererIds,from:purchasedFrom,to:purchasedTo});
+  const inventory=useInventoryPage<DeliveryInventoryRow>(allProducts?'delivery-all':'delivery',staff.id,{
+    status:requestStatus, states:requestStates, queryField, query:queryField==='deliverer'?'':query,
+    purchaserIds, delivererIds:effectiveDelivererIds, from:purchasedFrom, to:purchasedTo,
+    sort:!allProducts&&filter==='all'?'serial':undefined,
+  });
   const tasks=inventory.rows,loading=inventory.loading;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const detailRevision = 0;
