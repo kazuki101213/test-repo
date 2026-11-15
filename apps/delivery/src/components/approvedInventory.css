@@ -54,7 +54,9 @@
   --delivery-bundled-column:minmax(244px,.9fr);
   --delivery-action-column:minmax(320px,.7fr);
  }
- .approved-delivery-head,.approved-delivery-body { grid-template-columns:var(--delivery-main-column) var(--delivery-bundled-column) var(--delivery-action-column); }
+ /* Both column gaps around the empty track separate the body from its accessories. */
+ .approved-delivery-head,.approved-delivery-body { grid-template-columns:var(--delivery-main-column) 0 var(--delivery-bundled-column) var(--delivery-action-column); }
+ .delivery-head-bundled,.approved-delivery-body > .delivery-bundled { grid-column:3; }
  .approved-delivery-head { display:grid; gap:16px; padding:9px 12px; background:var(--surface-2); border-block:1px solid var(--border); color:var(--muted); font-size:12px; line-height:20px; align-items:center; }
  .delivery-inventory-actions-with-header > .delivery-fba-actions { display:none; }
  .delivery-head-action { display:flex; justify-content:space-between; align-items:center; gap:var(--control-gap); align-self:stretch; }
