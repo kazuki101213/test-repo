@@ -72,7 +72,7 @@
  .amazon-self-shipping { column-gap:var(--delivery-column-gap); align-items:center; }
  .amazon-self-shipping-details { grid-column:3; }
  .amazon-self-shipping-actions { grid-column:-2; }
- .amazon-self-shipping-order { padding:12px 0; border-block:1px solid var(--border); }
+ .amazon-self-shipping-order { padding:12px 0; }
  .delivery-main-info { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr); gap:12px; align-items:center; }
  .delivery-main-identity { display:flex; align-items:center; gap:12px; }
  .app .approved-delivery-card .task-card-photo-button { flex:0 0 96px; width:96px; height:96px; min-height:0; padding:0; margin:8px 0; border:0; border-radius:4px; background:var(--surface-2); overflow:hidden; }
