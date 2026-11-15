@@ -81,3 +81,7 @@ verify_jwt = false
 
 [functions.amazon-fba-inbound]
 verify_jwt = false
+
+# Auth.getUser and the assigned inventory item gate the read-only Orders lookup.
+[functions.amazon-self-shipping]
+verify_jwt = false

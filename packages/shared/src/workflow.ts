@@ -1,14 +1,15 @@
 import type {DeliveryTask} from './types';
 export type InventoryAction='work_complete'|'return_request_complete'|'return_request_cancel'|'inspection_complete'|'inspection_cancel'|'report'|'report_cancel'|'send_back'|'supplier_check'|'supplier_return_complete'|'supplier_return_cancel'|'return_impossible'|'yahoo_instruction'|'yahoo_instruction_cancel'|'compensation_complete'|'compensation_denied'|'listing_complete'|'listing_cancel'|'trade_cancel'|'resell';
 export type ProductPanel='photos'|'packingPhotos'|'description'|'messages'|'comments'|'listing'|'shipping';
-export interface WorkflowButton {key:InventoryAction|ProductPanel;label:string;note?:boolean;confirmation?:string;disabled?:boolean}
-const forwardActions=new Set<WorkflowButton['key']>(['work_complete','return_request_complete','inspection_complete','report','supplier_return_complete','return_impossible','listing','listing_complete','shipping','supplier_check','yahoo_instruction','compensation_complete','compensation_denied']);
+export interface WorkflowButton {key:InventoryAction|ProductPanel|'selfShipping';label:string;note?:boolean;confirmation?:string;disabled?:boolean}
+const forwardActions=new Set<WorkflowButton['key']>(['work_complete','return_request_complete','inspection_complete','report','supplier_return_complete','return_impossible','listing','listing_complete','shipping','selfShipping','supplier_check','yahoo_instruction','compensation_complete','compensation_denied']);
 export function workflowButtonDirection(key:WorkflowButton['key']):'forward'|'back'|undefined {
  return key.endsWith('_cancel')||key==='resell'||key==='send_back'?'back':forwardActions.has(key)?'forward':undefined;
 }
 export const isAmazonReturn=(task:Pick<DeliveryTask,'marketplace'>)=>task.marketplace==='Amazon返品'||task.marketplace==='動作品Amazon返品';
 export const sendsSupplierReturnMessage=(marketplace:DeliveryTask['marketplace'])=>marketplace==='ヤフオク'||marketplace==='メルカリ';
-export const canAddPackingPhotos=(task:Pick<DeliveryTask,'status'|'sales_channel'>)=>/^FBA(?:[12１２])?$/.test(task.sales_channel??'') ? task.status==='商品登録前' : (/^自己発送(?:[12１２])?$/.test(task.sales_channel??'')||['ヤフオク','メルカリ'].includes(task.sales_channel??''))&&task.status==='出品中';
+const selfShippingChannel=/^自己発送(?:[12１２])?$/;
+export const canAddPackingPhotos=(task:Pick<DeliveryTask,'status'|'sales_channel'>)=>/^FBA(?:[12１２])?$/.test(task.sales_channel??'') ? task.status==='商品登録前' : (selfShippingChannel.test(task.sales_channel??'')||['ヤフオク','メルカリ'].includes(task.sales_channel??''))&&task.status==='出品中';
 /** The selected inventory tab never controls an individual product's commands. */
 export function deliveryWorkflowButtons(task:DeliveryTask):WorkflowButton[]{
  if(task.is_accessory&&!/^\d+[a-z]*c-/i.test(task.sku))return [];
@@ -19,12 +20,13 @@ export function deliveryWorkflowButtons(task:DeliveryTask):WorkflowButton[]{
  case '商品登録前':return [
   {key:'photos',label:'商品写真'},
   ...(canAddPackingPhotos(task)?[{key:'packingPhotos' as const,label:'梱包写真'}]:[]),
-  ...(task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク'?[{key:'listing' as const,label:'出品'}]:/^FBA(?:[12１２])?$/.test(task.sales_channel??'')||/^自己発送(?:[12１２])?$/.test(task.sales_channel??'')?[{key:'listing_complete' as const,label:'出品'}]:[]),
+  ...(task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク'?[{key:'listing' as const,label:'出品'}]:/^FBA(?:[12１２])?$/.test(task.sales_channel??'')||selfShippingChannel.test(task.sales_channel??'')?[{key:'listing_complete' as const,label:'出品'}]:[]),
   ...(task.workflow_decision==='yahoo'?[{key:'yahoo_instruction_cancel' as const,label:'販売不可取消'},...(task.has_malfunction_reply?[{key:'comments' as const,label:'仕入担当者へメッセージ'}]:[])]:!task.workflow_decision?[{key:'inspection_cancel' as const,label:'検品完了取消'}]:[])];
  case '出品中':return [...(canAddPackingPhotos(task)?[{key:'packingPhotos' as const,label:'梱包写真'}]:[]),...(task.seller_message_attention?[{key:'messages' as const,label:'取引メッセージを確認'}]:[]),{key:'listing_cancel',label:'出品中取消',note:true,confirmation:'実際に出品されていないことを確認しましたか？ サイトの出品は取り下げません。'}];
  case '取引中': {
   const marketplace=task.sales_channel==='メルカリ'||task.sales_channel==='ヤフオク';
   return [
+   ...(selfShippingChannel.test(task.sales_channel??'')&&!task.shipped_on?[{key:'selfShipping' as const,label:'自己発送'}]:[]),
    ...(marketplace?[{key:'shipping' as const,label:'発送'},{key:'messages' as const,label:task.seller_message_attention?'取引メッセージを確認':'取引メッセージ'}]:[]),
    {key:'trade_cancel',label:'出品中へ',note:true,confirmation:'アプリ内だけを出品中へ戻します。サイトのキャンセル手続きは行いません。'},
    {key:'resell',label:'商品登録前へ',note:true,confirmation:marketplace

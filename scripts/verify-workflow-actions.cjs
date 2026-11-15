@@ -5,6 +5,12 @@ const base={id:'one',sku:'2407-AAMM-20261012-1000',title:'ブルーレイレコ�
 const keys=(status,extra={})=>Array.from(workflow.deliveryWorkflowButtons({...base,status,...extra}),button=>button.key);
 assert.equal(workflow.deliveryWorkflowButtons({...base,status:'Amazon返送依頼'})[0].label,'発送依頼済');
 assert.equal(workflow.deliveryWorkflowButtons({...base,status:'取引中'})[0].label,'発送');
+for(const sales_channel of ['自己発送','自己発送1','自己発送2']){
+ assert.equal(workflow.deliveryWorkflowButtons({...base,status:'取引中',sales_channel})[0].label,'自己発送');
+ assert(!keys('取引中',{sales_channel,shipped_on:'2026-11-15'}).includes('selfShipping'));
+ assert(!keys('出品中',{sales_channel}).includes('selfShipping'));
+}
+assert(!keys('取引中',{sales_channel:'FBA2'}).includes('selfShipping'));
 for(const key of ['return_request_complete','inspection_complete','report','listing','listing_complete','shipping','supplier_return_complete','return_impossible','supplier_check','yahoo_instruction','compensation_complete','compensation_denied'])assert.equal(workflow.workflowButtonDirection(key),'forward',key);
 for(const key of ['inspection_cancel','listing_cancel','return_request_cancel','supplier_return_cancel','report_cancel','trade_cancel','resell','send_back','yahoo_instruction_cancel'])assert.equal(workflow.workflowButtonDirection(key),'back',key);
 for(const key of ['photos','packingPhotos','messages','comments','description'])assert.equal(workflow.workflowButtonDirection(key),undefined,key);
