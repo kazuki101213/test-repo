@@ -276,11 +276,32 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送画面ではありません');
   await waitFor(()=>{root=document.querySelector('main')||document.body;return /取引画面|取引情報|発送|配送/.test(text())&&controls().some(e=>[...mercariShippingEntries,'配送用の2次元コードを表示する','配送用QRコードを表示','2次元コードを発行する','QRコードを表示','発送用QRコードを発行','発送用バーコードを発行','発送用2次元コードを発行'].includes(buttonLabel(e)));},'取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません');
  }
+ function mercariAcceptance(){
+  if(job.channel!=='メルカリ'||location.pathname!=='/transaction/'+job.external_id)return null;
+  const scope=document.querySelector('main')||document.body;
+  const allowed=/^(店舗で受付済み|店舗で受付済みです|荷物受付|荷物を受け付けました|引受|受付完了)[。]?$/;
+  const headings=[...scope.querySelectorAll('h2,h3,h4')].filter(visible);
+  const statuses=[...scope.querySelectorAll('[data-testid="shipping-status"],[data-testid="delivery-status"],[role="status"]')].filter(element=>{
+   if(!visible(element)||element.closest('button,a,form,textarea,[role="dialog"],[role="log"],[data-testid*="message"]'))return false;
+   const heading=headings.findLast(node=>node.compareDocumentPosition(element)&Node.DOCUMENT_POSITION_FOLLOWING);
+   if(heading&&/メッセージ|コメント/.test(norm(heading.innerText)))return false;
+   const status=norm(element.innerText);
+   if(!allowed.test(status))return false;
+   // A generic live region must explicitly identify an accepted parcel.
+   return element.matches('[data-testid="shipping-status"],[data-testid="delivery-status"]')||/^(店舗で受付済み|荷物受付|荷物を受け付けました)/.test(status);
+  });
+  const states=[...new Set(statuses.map(element=>norm(element.innerText).replace(/。$/,'')))];
+  return states.length===1?states[0]:null;
+ }
  if(phase==='ship_notice_preflight'){
   if(job.channel==='メルカリ'&&location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送通知画面ではありません');
   let completedSince=0;
   await waitFor(()=>{root=document.body;if(noticeButtons().some(e=>!e.disabled||job.channel==='ヤフオク'&&[...root.querySelectorAll('input[type=checkbox]')].some(c=>visible(c)&&/商品を発送しました/.test(label(c)))))return true;if(!shippingNoticeCompleted()){completedSince=0;return false;}if(!completedSince)completedSince=Date.now();return Date.now()-completedSince>=1000;},'発送通知ボタンの表示を確認できません。通知は送信していません');
-  tradeGuard();return shippingNoticeCompleted()?{ready:true,alreadyNotified:true,observed_at:new Date().toISOString()}:{ready:true};
+  tradeGuard();
+  const observed_at=new Date().toISOString();
+  if(shippingNoticeCompleted())return {ready:true,alreadyNotified:true,observed_at};
+  const acceptance=mercariAcceptance();
+  return {ready:true,observed_at,...(acceptance?{acceptance}:{})};
  }
  tradeGuard();
  if(phase==='yahoo_shipping_preflight'){
@@ -372,10 +393,14 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   const input=field(['発送用コード','2次元コード','専用資材コード','ポスト発送確認用番号']);setValue(input,payload.code);const button=oneButton(['登録する','コードを登録','読み取り内容を登録']);reserve();button.click();await waitFor(()=>statusValues().some(value=>/^(登録完了|読み取り完了|登録が完了しました|読み取りが完了しました)$/.test(value)),'専用資材の登録結果を確認できません');return {registered:true,note:'専用資材を対象取引へ登録しました'};
  }
  if(phase==='ship_notice'){
-  if(payload.automatic_receipt){const proof=payload.automatic_receipt;
-   const shown=[...root.querySelectorAll('p,span,div,dt,dd,td,th')].filter(e=>visible(e)&&!e.children.length&&!e.closest('button,textarea')).filter(e=>{const h=[...root.querySelectorAll('h2,h3')].filter(h=>visible(h)&&(h.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_FOLLOWING)).at(-1);return !h||!/メッセージ|コメント/.test(h.innerText);}).map(e=>norm(e.innerText)).join(' ').normalize('NFKC');
-   const numbers=new Set([...shown.matchAll(/(?:送り状番号|お問い合わせ番号|お問合せ番号|追跡番号|伝票番号)\s*[:：]?\s*([0-9][0-9 -]{9,18}[0-9])/g)].map(m=>m[1].replace(/\D/g,'')));
-   if(proof.accepted!==true||!/^\d{11,13}$/.test(proof.tracking_number||'')||!Number.isFinite(Date.parse(proof.observed_at))||Date.now()-Date.parse(proof.observed_at)>300000||Date.parse(proof.observed_at)>Date.now()+30000||numbers.size!==1||!numbers.has(proof.tracking_number))throw Error('現在の荷物の引受根拠を確認できません。通知していません');
+  if(payload.automatic_receipt){
+   const proof=payload.automatic_receipt,observed=Date.parse(proof.observed_at);
+   if(proof.accepted!==true||!Number.isFinite(observed)||Date.now()-observed>300000||observed>Date.now()+30000)throw Error('発送確認が古くなりました。通知していません');
+   if(proof.source==='mercari_shipping_status'||proof.source==='delivery_handoff'){
+    if(job.channel!=='メルカリ'||location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送確認ではありません');
+    if(proof.source==='mercari_shipping_status'&&(!proof.status||mercariAcceptance()!==proof.status))throw Error('取引画面で荷物の受付を再確認できません');
+   }
+   else if(!proof.tracking_number)throw Error('現在の荷物の引受根拠を確認できません。通知していません');
   }
   if(job.channel==='ヤフオク'){const checks=fields().filter(e=>e.type==='checkbox'&&/商品を発送しました/.test(label(e)));if(checks.length>1)throw Error('発送確認のチェック欄を確定できません');if(checks.length===1&&!checks[0].checked)checks[0].click();}
   const buttons=noticeButtons();if(buttons.length!==1||buttons[0].disabled)throw Error('発送通知ボタンを1件に確認できません');const button=buttons[0];reserve();button.click();let confirmed=false;
