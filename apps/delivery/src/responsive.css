@@ -228,13 +228,15 @@
 .workflow-confirmation::backdrop { background:#0005; }
 .workflow-confirmation h3 { margin:0 0 12px; font-size:18px; }
 .workflow-confirmation-buttons { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+.task-detail-inline.amazon-self-shipping { padding:12px; border-top:1px solid var(--border); }
+.amazon-self-shipping > h3 { margin:0 0 8px; }
 .amazon-self-shipping-product { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
 .amazon-self-shipping-product > span { color:var(--muted); font-size:12px; }
 .amazon-self-shipping-order { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:9px 16px; margin:0 0 14px; padding:12px 0; border-block:1px solid var(--border); }
 .amazon-self-shipping-order dt { color:var(--muted); }
 .amazon-self-shipping-order dd { margin:0; overflow-wrap:anywhere; }
-.amazon-self-shipping-actions { flex-wrap:wrap; }
-.amazon-self-shipping-actions .btn { min-height:38px; text-decoration:none; }
+.amazon-self-shipping-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.amazon-self-shipping-actions .btn { display:inline-flex; align-items:center; text-decoration:none; }
 @media screen and (min-width:1024px) and (max-width:1279px) {
   .seller-photos { grid-template-columns:repeat(8,minmax(0,1fr)); }
 }

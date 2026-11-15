@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getSupabase, inventorySerial, salesChannelLabel, type DeliveryTask } from '@bussan/shared';
 
 type ShippingOrder = { orderId: string; amazonSku: string; shipBy: string | null; account: 'amazon-1' | 'amazon-2' };
@@ -6,16 +6,9 @@ const sellerCentral = 'https://sellercentral.amazon.co.jp/orders-v3';
 const dateFormat = new Intl.DateTimeFormat('ja-JP', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Tokyo' });
 
 export default function AmazonSelfShipping({ task, onClose }: { task: DeliveryTask; onClose: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const [order, setOrder] = useState<ShippingOrder | null>(null);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    const modal = dialog.current;
-    modal?.showModal();
-    return () => modal?.close();
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,9 +34,8 @@ export default function AmazonSelfShipping({ task, onClose }: { task: DeliveryTa
     return () => controller.abort();
   }, [task.id, task.sales_channel, attempt]);
 
-  return <dialog ref={dialog} className="workflow-confirmation amazon-self-shipping"
-    aria-labelledby="amazon-self-shipping-title" onCancel={event => { event.preventDefault(); onClose(); }}>
-    <h3 id="amazon-self-shipping-title">Amazon自己発送</h3>
+  return <section className="task-detail-inline amazon-self-shipping" aria-label="Amazon自己発送">
+    <h3>Amazon自己発送</h3>
     <p className="amazon-self-shipping-product"><strong>{inventorySerial(task)} {task.model_no || task.title}</strong>
       <span>{salesChannelLabel(task.sales_channel)}</span></p>
     {order ? <>
@@ -55,11 +47,11 @@ export default function AmazonSelfShipping({ task, onClose }: { task: DeliveryTa
       </dl>
       <p className="sub">セラーセントラルの注文詳細で配送先住所を確認します。</p>
     </> : error ? <p className="error" role="alert">{error}</p> : <p role="status">Amazonの未出荷注文を確認しています…</p>}
-    <div className="workflow-confirmation-buttons amazon-self-shipping-actions">
-      <button type="button" className="btn" onClick={onClose} autoFocus>閉じる</button>
+    <div className="amazon-self-shipping-actions">
+      <button type="button" className="btn ghost" onClick={onClose}>閉じる</button>
       {error && <button type="button" className="btn" onClick={() => { setError(''); setAttempt(current => current + 1); }}>再試行</button>}
       {order ? <a className="btn primary" href={sellerCentral + '/order/' + order.orderId} target="_blank" rel="noopener noreferrer">配送先住所を確認</a>
         : error && <a className="btn" href={sellerCentral + '/mfn/unshipped'} target="_blank" rel="noopener noreferrer">セラーセントラルの未出荷一覧</a>}
     </div>
-  </dialog>;
+  </section>;
 }
