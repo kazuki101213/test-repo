@@ -51,12 +51,16 @@
 @media(min-width:1280px) {
  .approved-delivery-head,.approved-delivery-card {
   --delivery-column-gap:16px;
-  --delivery-main-column:minmax(590px,1.7fr);
-  --delivery-bundled-column:minmax(244px,.9fr);
-  --delivery-action-column:minmax(320px,.7fr);
+  --delivery-bundled-gap:100px;
+  --delivery-main-min:590px;
+  --delivery-bundled-min:244px;
+  --delivery-main-column:minmax(var(--delivery-main-min),1.7fr);
+  --delivery-bundled-column:minmax(var(--delivery-bundled-min),.9fr);
+  --delivery-action-limit:calc(100% - var(--delivery-main-min) - var(--delivery-bundled-min) - var(--delivery-bundled-gap) - var(--delivery-column-gap));
+  --delivery-action-column:minmax(min(320px,var(--delivery-action-limit)),.7fr);
  }
- /* The spacer and its two column gaps give the accessories four times the regular spacing. */
- .approved-delivery-head,.approved-delivery-body { grid-template-columns:var(--delivery-main-column) calc(2 * var(--delivery-column-gap)) var(--delivery-bundled-column) var(--delivery-action-column); }
+ /* The spacer fills the part of the accessory gap left after the two adjacent grid gaps. */
+ .approved-delivery-head,.approved-delivery-body { grid-template-columns:var(--delivery-main-column) calc(var(--delivery-bundled-gap) - 2 * var(--delivery-column-gap)) var(--delivery-bundled-column) var(--delivery-action-column); }
  .delivery-head-bundled,.approved-delivery-body > .delivery-bundled { grid-column:3; }
  .approved-delivery-head { display:grid; gap:var(--delivery-column-gap); padding:9px 12px; background:var(--surface-2); border-block:1px solid var(--border); color:var(--muted); font-size:12px; line-height:20px; align-items:center; }
  .delivery-inventory-actions-with-header > .delivery-fba-actions { display:none; }
@@ -104,9 +108,9 @@
 }
 @media(min-width:1700px) {
  .approved-delivery-head,.approved-delivery-card {
-  --delivery-main-column:minmax(660px,1.7fr);
-  --delivery-bundled-column:minmax(285px,.9fr);
-  --delivery-action-column:620px;
+  --delivery-main-min:660px;
+  --delivery-bundled-min:285px;
+  --delivery-action-column:min(620px,var(--delivery-action-limit));
  }
 }
 @media(min-width:1280px) and (max-width:1599px) {
