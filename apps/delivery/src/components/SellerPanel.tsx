@@ -1,8 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
 import {sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,sellerShippingCodeError,mercariShippingSize,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel,marketplaceAccountLabel} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
-import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,retryUncertainShippingCode,requestListingResultCheck,submitAmazonListing,fetchAmazonListingPending,fetchListingPhotoAnalysis} from '../api';
-import type {SellerContext,ItemPhoto,SellerOperation} from '../api';
+import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,retryUncertainShippingCode,requestListingResultCheck,submitAmazonListing,fetchAmazonListingPending,fetchListingPhotoAnalysis,mercariShippingHandoff} from '../api';
+import type {SellerContext,ItemPhoto,SellerOperation,MercariShippingHandoffState} from '../api';
 import {listingDraft} from '../listingDraft';
 import {accessoryOptions} from '../description';
 import {listingPhotoOrder} from '../listingPhotoOrder';
@@ -25,6 +25,40 @@ function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>
 }
 function checking(op:SellerOperation){return op.status==='uncertain'&&['queued','running'].includes(String(op.result.read_check_state));}
 function statusText(op:SellerOperation){if(checking(op))return '出品済み商品を確認中';return ({queued:'拡張機能の実行待ち',running:'実行中',succeeded:'完了',failed:'停止',uncertain:'結果の確認が必要'} as const)[op.status];}
+
+function MercariShippingHandoff({itemId,tradeKey,disabled}:{itemId:string;tradeKey:string;disabled:boolean}){
+ const [state,setState]=useState<MercariShippingHandoffState|null>(null);
+ const [saving,setSaving]=useState(false);
+ const [error,setError]=useState('');
+ useEffect(()=>{
+  let active=true;
+  void mercariShippingHandoff(itemId,tradeKey).then(value=>{
+   if(active)setState(value);
+  }).catch(cause=>{
+   if(active)setError(deliveryErrorMessage(cause));
+  });
+  return()=>{active=false;};
+ },[itemId,tradeKey]);
+
+ async function confirmHandoff(){
+  if(saving||disabled||!window.confirm('この商品の荷物を店員や配送業者に渡した、またはポストに投函しましたか？'))return;
+  setSaving(true);
+  setError('');
+  try{setState(await mercariShippingHandoff(itemId,tradeKey,true));}
+  catch(cause){setError(deliveryErrorMessage(cause));}
+  finally{setSaving(false);}
+ }
+
+ return <div className="seller-shipping-actions">
+  {state==='pending'&&<button type="button" className="btn" disabled={disabled||saving} onClick={()=>void confirmHandoff()}>
+   荷物を預けたことを記録
+  </button>}
+  {state==='confirmed'&&<p role="status">荷物の引き渡しを記録しました。発送通知は定期処理で行います。</p>}
+  {state==='notified'&&<p role="status">発送通知済み</p>}
+  {error&&<p className="error" role="alert">{error}</p>}
+ </div>;
+}
+
 export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onChanged}:{mode:'listing'|'shipping'|'messages';task:DeliveryTask;staff:Staff;listingSkus?:string[];onClose:()=>void;onChanged:(task:DeliveryTask)=>void}){
  const [draft,setDraft]=useState<SellerDraft|null>(null),[photos,setPhotos]=useState<ItemPhoto[]>([]),[selected,setSelected]=useState<string[]>([]),[context,setContext]=useState<SellerContext|null>(null);
  const [descriptionSource,setDescriptionSource]=useState<{task:DeliveryTask;maker:string}|null>(null);
@@ -187,6 +221,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     <button type="button" className="btn" disabled={disabled||!!sellerShippingError(draft)} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
    </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={busy||!!codeIssue||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button></div>{codeIssue&&!sellerShippingError(draft)&&<p className="error" role="alert">{codeIssue}</p>}{qr&&!codeIssue&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
+   {mercari&&<MercariShippingHandoff key={task.id+':'+trade} itemId={task.id} tradeKey={trade} disabled={disabled}/>}
    {staff.role==='admin'&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>}
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>

@@ -15,6 +15,30 @@ for(const mode of ['accepted','unaccepted','already','changed','uncertain'])test
  if(mode==='uncertain')assert.equal(finish.args.p_status,'uncertain');
  if(mode==='accepted'){assert.equal(phases.filter(v=>v==='ship_notice').length,1);assert.equal(finish.args.p_status,'succeeded');}
 });
+for(const evidence of ['mercari_shipping_status','delivery_handoff','none'])test('Mercari shipment proof without a tracking number: '+evidence,async()=>{
+ const target={...job,channel:'メルカリ',receipt:null,handoff_confirmed:evidence==='delivery_handoff'};
+ const operations=[],claims=[],finished=[];
+ const session={
+  go:async()=>{},
+  operation:async(_,phase)=>{
+   operations.push(phase);
+   return phase==='ship_notice_preflight'
+    ?{ready:true,observed_at:proof.observed_at,...(evidence==='mercari_shipping_status'?{acceptance:'荷物受付'}:{})}
+    :{notified:true};
+  },
+  outboundReceipt:async()=>null,
+ };
+ const rpc=async(name,args)=>{
+  if(name==='extension_claim_daily_shipping_notice'){claims.push(args.p_proof);return {id:'notice'};}
+  finished.push(args);
+ };
+ await processDailyShipping({jobs:[target],session,rpc,log:async()=>{},fetchReceipts:async()=>assert.fail('Unexpected carrier lookup')});
+ assert.deepEqual(operations,evidence==='none'?['ship_notice_preflight']:['ship_notice_preflight','ship_notice']);
+ if(evidence==='none'){assert.deepEqual(claims,[]);return;}
+ assert.equal(claims[0].source,evidence);
+ assert.equal(claims[0].tracking_number,undefined);
+ assert.equal(finished[0].p_status,'succeeded');
+});
 test('carrier lookup batches ten, omits cookies, never retries a failed request',async()=>{
  const sizes=[],methods=[];let count=0;
  await fetchCarrierReceipts({receipts:Array.from({length:11},(_,i)=>({...receipt,tracking_number:String(999999999900+i)})),pace:fn=>fn(),parse:async args=>{sizes.push(args.receipts.length);return [];},fetchPage:async(url,args)=>{count++;methods.push(args);return {ok:true,headers:new Headers({'content-type':'text/html;charset=utf-8'}),arrayBuffer:async()=>new TextEncoder().encode('<h1>tracking</h1>').buffer};}});

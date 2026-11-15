@@ -470,6 +470,15 @@ export interface SellerContext {photo_review_approved?:boolean;revision:string;l
 export async function fetchSellerContext(itemId:string):Promise<SellerContext>{
  const {data,error}=await getSupabase().rpc('seller_operation_context',{p_item_id:itemId});if(error)throw error;return data as SellerContext;
 }
+export type MercariShippingHandoffState = 'pending' | 'confirmed' | 'notified';
+export async function mercariShippingHandoff(itemId: string, tradeKey: string, confirm = false): Promise<MercariShippingHandoffState> {
+ const {data,error}=await getSupabase().rpc('mercari_shipping_handoff',{
+  p_item_id:itemId,p_trade_key:tradeKey,p_confirm:confirm,
+ });
+ if(error)throw error;
+ if(data!=='pending'&&data!=='confirmed'&&data!=='notified')throw new Error('荷物の引き渡し記録を確認できませんでした。');
+ return data;
+}
 export async function requestListingResultCheck(itemId:string,listingUrl=''):Promise<string>{
  const {data,error}=await getSupabase().rpc('request_listing_result_check',{p_item_id:itemId,p_listing_url:listingUrl.trim()||null});if(error)throw error;return data as string;
 }
