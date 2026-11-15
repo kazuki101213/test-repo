@@ -5,14 +5,12 @@ import {performInventoryAction,submitMalfunctionReport,completeSupplierReturn,co
 import type {ReportAttachment} from '../api';
 import WorkflowConfirmation from './WorkflowConfirmation';
 import WorkDateConfirmation from './WorkDateConfirmation';
-import AmazonSelfShipping from './AmazonSelfShipping';
 
 const panels=new Set(['photos','packingPhotos','description','messages','comments','listing','shipping','selfShipping']);
 const isReversal=(button:WorkflowButton)=>button.key.endsWith('_cancel')||button.key==='resell';
 export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void;onPanel?:(panel:ProductPanel)=>void}){
  const [busy,setBusy]=useState(false),[form,setForm]=useState<WorkflowButton|null>(null),[note,setNote]=useState('');
  const [confirming,setConfirming]=useState<WorkflowButton|null>(null);
- const [shippingOpen,setShippingOpen]=useState(false);
  const [hasPhysicalDamage,setHasPhysicalDamage]=useState(false);
  const [photos,setPhotos]=useState<ReportAttachment[]>([]);
  const photoInput=useRef<HTMLInputElement>(null);
@@ -53,7 +51,6 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
   finally{lock.current=false;setBusy(false);setConfirming(null);}
  }
  function choose(button:WorkflowButton){
-  if(button.key==='selfShipping'){setShippingOpen(true);return;}
   if(button.key==='listing_complete'){onPanel?.('listing');return;}
   if(panels.has(button.key)){onPanel?.(button.key as ProductPanel);return;}
   request.current=crypto.randomUUID();
@@ -91,6 +88,5 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
    }}/>}
   {confirming&&confirming.key!=='supplier_return_complete'&&confirming.key!=='work_complete'&&
    <WorkflowConfirmation button={confirming} busy={busy} onConfirm={()=>void run(confirming,true)} onCancel={()=>setConfirming(null)}/>}
-  {shippingOpen&&buttons.some(button=>button.key==='selfShipping')&&<AmazonSelfShipping task={task} onClose={()=>setShippingOpen(false)}/>}
  </div>;
 }

@@ -1,7 +1,7 @@
 import type {DeliveryTask} from './types';
 export type InventoryAction='work_complete'|'return_request_complete'|'return_request_cancel'|'inspection_complete'|'inspection_cancel'|'report'|'report_cancel'|'send_back'|'supplier_check'|'supplier_return_complete'|'supplier_return_cancel'|'return_impossible'|'yahoo_instruction'|'yahoo_instruction_cancel'|'compensation_complete'|'compensation_denied'|'listing_complete'|'listing_cancel'|'trade_cancel'|'resell';
-export type ProductPanel='photos'|'packingPhotos'|'description'|'messages'|'comments'|'listing'|'shipping';
-export interface WorkflowButton {key:InventoryAction|ProductPanel|'selfShipping';label:string;note?:boolean;confirmation?:string;disabled?:boolean}
+export type ProductPanel='photos'|'packingPhotos'|'description'|'messages'|'comments'|'listing'|'shipping'|'selfShipping';
+export interface WorkflowButton {key:InventoryAction|ProductPanel;label:string;note?:boolean;confirmation?:string;disabled?:boolean}
 const forwardActions=new Set<WorkflowButton['key']>(['work_complete','return_request_complete','inspection_complete','report','supplier_return_complete','return_impossible','listing','listing_complete','shipping','selfShipping','supplier_check','yahoo_instruction','compensation_complete','compensation_denied']);
 export function workflowButtonDirection(key:WorkflowButton['key']):'forward'|'back'|undefined {
  return key.endsWith('_cancel')||key==='resell'||key==='send_back'?'back':forwardActions.has(key)?'forward':undefined;

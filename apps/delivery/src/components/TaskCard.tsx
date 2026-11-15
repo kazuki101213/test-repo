@@ -1,8 +1,9 @@
-import { salesChannelLabel } from '@bussan/shared';
+import { deliveryWorkflowButtons, salesChannelLabel } from '@bussan/shared';
 import { lazy, Suspense, useState, type SyntheticEvent, type KeyboardEvent } from 'react';
 import { jpDate, canViewDeliveryAssignee, productModelText, inventorySerial, isSeparateAccessory, inventoryBoxColor, inventoryStaffStyle, inventorySiteStyle, inventoryStatusStyle, inventoryStatusText, staffDisplayName, accessoryDisplayLabel, noticeProductUrl } from '@bussan/shared';
 import type { DeliveryInventoryRow, DeliveryTask, Staff, ProductPanel } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
+import AmazonSelfShipping from './AmazonSelfShipping';
 import WorkflowControls from './WorkflowControls';
 import {fetchTask} from '../api';
 import {canSelectFbaItem} from '../fbaSelection';
@@ -113,6 +114,18 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   </div>
  </>;
  const mainAccessory=task.is_accessory;
+ let detail;
+ if(operate(selected)&&expandedId){
+  if(panel==='selfShipping'){
+   if(deliveryWorkflowButtons(selected).some(button=>button.key==='selfShipping')){
+    detail=<AmazonSelfShipping key={`${selected.id}:${selected.sales_channel}`} task={selected} onClose={onClose}/>;
+   }
+  }else if(panel==='listing'||panel==='shipping'||panel==='messages'&&(selected.status==='取引中'||selected.status==='出品中')){
+   detail=<Suspense fallback={<p>読み込み中…</p>}><SellerPanel listingSkus={listingSkus} mode={panel} task={selected} staff={staff} onClose={onClose} onChanged={onTaskChange}/></Suspense>;
+  }else{
+   detail=<TaskDetail mode={panel} key={`${expandedId}-${detailRevision}-${panel}`} itemId={expandedId} latestTask={selected} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened}/>;
+  }
+ }
  return <div id={`delivery-task-${task.id}`} className="card task-card approved-delivery-card" data-expanded={!!expandedId} data-item-status={task.status} style={{backgroundColor:inventoryBoxColor(task.status,task.purchased_at)}}>
   {members.some(member=>unreadItemIds.has(member.id))&&<span className="photo-approval-mark" role="img" aria-label="未確認のメッセージまたは写真承認があります"/>}
   {mainAccessory?<section className="delivery-independent-record" data-item-id={task.id} data-item-status={task.status} style={{backgroundColor:inventoryBoxColor(task.status,task.purchased_at)}}>{accessoryInfo(task)}{controls(task)}</section>:<div className="approved-delivery-body">
@@ -129,6 +142,6 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   </div>}
   {separate.map(item=><section key={item.id} className="delivery-independent-record" data-kind="separate" data-item-id={item.id} data-item-status={item.status} style={{backgroundColor:inventoryBoxColor(item.status,item.purchased_at)}}>{accessoryInfo(item)}{controls(item)}</section>)}
   {actionError&&<p className="error" role="alert">{actionError}</p>}
-  {operate(selected)&&expandedId&&(panel==='listing'||panel==='shipping'||panel==='messages'&&(selected.status==='取引中'||selected.status==='出品中')?<Suspense fallback={<p>読み込み中…</p>}><SellerPanel listingSkus={listingSkus} mode={panel} task={selected} staff={staff} onClose={onClose} onChanged={onTaskChange}/></Suspense>:<TaskDetail mode={panel} key={`${expandedId}-${detailRevision}-${panel}`} itemId={expandedId} latestTask={selected} staff={staff} listingSkus={listingSkus} onClose={onClose} onChanged={onTaskChange} onOpened={onDetailOpened}/>)}
+  {detail}
  </div>;
 }
