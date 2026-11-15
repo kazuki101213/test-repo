@@ -35,18 +35,19 @@ export default function AmazonSelfShipping({ task, onClose }: { task: DeliveryTa
   }, [task.id, task.sales_channel, attempt]);
 
   return <section className="task-detail-inline amazon-self-shipping" aria-label="Amazon自己発送">
-    <h3>Amazon自己発送</h3>
-    <p className="amazon-self-shipping-product"><strong>{inventorySerial(task)} {task.model_no || task.title}</strong>
-      <span>{salesChannelLabel(task.sales_channel)}</span></p>
-    {order ? <>
-      <dl className="amazon-self-shipping-order">
+    <div className="amazon-self-shipping-summary">
+      <h3>Amazon自己発送</h3>
+      <p className="amazon-self-shipping-product"><strong>{inventorySerial(task)} {task.model_no || task.title}</strong>
+        <span>{salesChannelLabel(task.sales_channel)}</span></p>
+    </div>
+    <div className="amazon-self-shipping-details">
+      {order ? <dl className="amazon-self-shipping-order">
         <dt>注文状況</dt><dd>未出荷</dd>
         <dt>注文番号</dt><dd>{order.orderId}</dd>
         <dt>AmazonのSKU</dt><dd>{order.amazonSku}</dd>
         <dt>出荷期限</dt><dd>{order.shipBy ? dateFormat.format(new Date(order.shipBy)) : '—'}</dd>
-      </dl>
-      <p className="sub">セラーセントラルの注文詳細で配送先住所を確認します。</p>
-    </> : error ? <p className="error" role="alert">{error}</p> : <p role="status">Amazonの未出荷注文を確認しています…</p>}
+      </dl> : error ? <p className="error" role="alert">{error}</p> : <p role="status">Amazonの未出荷注文を確認しています…</p>}
+    </div>
     <div className="amazon-self-shipping-actions">
       <button type="button" className="btn ghost" onClick={onClose}>閉じる</button>
       {error && <button type="button" className="btn" onClick={() => { setError(''); setAttempt(current => current + 1); }}>再試行</button>}
