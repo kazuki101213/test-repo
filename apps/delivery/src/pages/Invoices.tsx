@@ -17,6 +17,7 @@ import DocumentPreview from '../components/DocumentPreview';
 import type { Invoice, InvoiceDetails, InvoiceLine, InvoiceProfile, InvoiceSnapshot } from '../invoices';
 import '../invoice.css';
 
+const previewPage = (page: ReactNode, index: number) => <DocumentPreview key={index}>{page}</DocumentPreview>;
 const errorText = (e: unknown) => e instanceof Error ? e.message : (e as { message?: string })?.message ?? '読み込みに失敗しました。';
 const defaultAuctionDays = (month: string) => {
   if (month === '2026-11') return ['02', '05', '07', '09', '12', '14', '16', '19', '21', '23', '26', '28', '30'].map(day => `${month}-${day}`);
@@ -221,8 +222,7 @@ export default function Invoices({ staff, onNavigationChange, review, initialMon
     {(loading || profileLoading) && <div className="empty no-print">読み込み中…</div>}
     {!loading && snapshot && !settings && <>
       <div className="invoice-documents">
-      <div className="invoice-section">
-      {invoice?.approved_at ? <div className="no-print"><p>承認済み・外注費に計上済みです。</p></div> :
+      {!invoice?.approved_at && <div className="invoice-section">
       <form id="invoice-submit-form" className="no-print invoice-editor" onSubmit={e => { e.preventDefault(); void save(); }}>
         {isIshikawa && <section className="invoice-auction-workdays">
           <h3>ヤフオク入札作業</h3>
@@ -244,10 +244,10 @@ export default function Invoices({ staff, onNavigationChange, review, initialMon
           {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
         </section>}
         <InvoiceExtraRows key={`${staffId}/${month}`} lines={extras} disabled={busy || receiptBusy || pdfBusy} onChange={lines => { setExtras(lines); setDirty(true); setMessage(''); }} onDraftChange={() => setDirty(true)} />
-      </form>}
-      </div>
+      </form>
+      </div>}
       <div className="receipt-section">
-      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onSavingChange={setReceiptSaving} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
+      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={!!invoice?.approved_at} disabled={busy || pdfBusy} onBusyChange={setReceiptBusy} onSavingChange={setReceiptSaving} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
       {!invoice?.approved_at && <label className="invoice-note-input no-print"><span className="invoice-note-heading">備考欄</span><textarea form="invoice-submit-form" maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>}
       {review && <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />}
@@ -259,10 +259,12 @@ export default function Invoices({ staff, onNavigationChange, review, initialMon
         {receiptRows.filter(row=>row.document_type==='receipt').map(row=><InvoiceAttachmentPreview key={row.id} file={row} label="領収書"/>)}
         {claimedReceipts.some(row=>row.mime_type.startsWith('image/'))&&<ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} part="photos" renderPage={reviewPage('領収書の写真PDF')}/>}
         {receiptRows.filter(row=>row.document_type==='receipt_photo'&&!claimedReceipts.some(claim=>claim.id===row.id&&claim.mime_type.startsWith('image/'))).map(row=><InvoiceAttachmentPreview key={row.id} file={row} label="領収書の写真PDF"/>)}
-      </div> : <>
-      <DocumentPreview><div className="invoice-preview is-preview"><InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} /></div></DocumentPreview>
-      <DocumentPreview><ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} /></DocumentPreview>
-      </>}
+      </div> : <div className="invoice-pdf-previews">
+        <div className="invoice-preview is-preview">
+          <InvoiceSheet snapshot={snapshot} month={month} issued={issued} extras={invoice?.approved_at ? (snapshot.extras ?? []) : previewExtras} note={note} receipts={claimedReceipts} renderPage={previewPage} />
+        </div>
+        <ReceiptSheets rows={claimedReceipts} month={month} name={snapshot.profile.issuer_name} renderPage={previewPage} />
+      </div>}
 
     </>}
     </div>
