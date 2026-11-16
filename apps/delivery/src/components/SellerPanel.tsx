@@ -24,7 +24,11 @@ function PackageCamera({onRead,onClose}:{onRead:(code:string)=>void;onClose:()=>
  return <div><video ref={video} className="seller-camera" playsInline muted aria-label="専用資材のコードを読み取るカメラ"/>{error&&<p className="error" role="alert">カメラを起動できません：{error}</p>}<button type="button" className="btn" onClick={onClose}>カメラを閉じる</button></div>;
 }
 function checking(op:SellerOperation){return op.status==='uncertain'&&['queued','running'].includes(String(op.result.read_check_state));}
-function statusText(op:SellerOperation){if(checking(op))return '出品済み商品を確認中';return ({queued:'拡張機能の実行待ち',running:'実行中',succeeded:'完了',failed:'停止',uncertain:'結果の確認が必要'} as const)[op.status];}
+function statusText(op:SellerOperation){
+ if(checking(op))return '出品済み商品を確認中';
+ if(op.status==='succeeded'&&op.kind==='shipping_code')return '発送コード取得済み';
+ return ({queued:'拡張機能の実行待ち',running:'実行中',succeeded:'完了',failed:'停止',uncertain:'結果の確認が必要'} as const)[op.status];
+}
 
 function MercariShippingHandoff({itemId,tradeKey,disabled}:{itemId:string;tradeKey:string;disabled:boolean}){
  const [state,setState]=useState<MercariShippingHandoffState|null>(null);
@@ -248,7 +252,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
    </>:<><div className="seller-shipping-actions"><button type="button" className="btn" disabled={busy||!!codeIssue||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button></div>{codeIssue&&!sellerShippingError(draft)&&<p className="error" role="alert">{codeIssue}</p>}{qr&&!codeIssue&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
    {mercari&&<MercariShippingHandoff key={task.id+':'+trade} itemId={task.id} tradeKey={trade} disabled={disabled}/>}
-   {staff.role==='admin'&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft}/>}
+   {staff.role==='admin'&&<LineShippingSettings key={task.id+':'+trade} itemId={task.id} draft={draft}/>}
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>
    {Array.isArray(latestMessages)&&latestMessages.map((entry,index)=><p key={index} className="seller-preview">{entry&&typeof entry==='object'&&typeof entry.body==='string'?entry.body:''}</p>)}
@@ -257,6 +261,6 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
   </>}
   {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<div><label>出品済み商品のURL（任意）<input type="url" value={listingUrl} disabled={busy||!!watching} onChange={event=>setListingUrl(event.target.value)}/></label><button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button></div>}
   {confirming&&<WorkDateConfirmation title={amazonListing?`${task.sales_channel==='FBA2'||task.sales_channel==='自己発送2'?'Amazon2':'Amazon1'}に${amazonConfirmation?.price.toLocaleString('ja-JP')??''}円で出品しますか。`:(marketplaceAccountLabel(context?.listing_account_id) ? `${marketplaceAccountLabel(context?.listing_account_id)}に出品しますか。` : '出品しますか。')} purchasedAt={task.purchased_at} savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onConfirm={async date=>{if(lock.current||disabled)return;if(!draft)throw new Error('出品内容を確認してください。');if(confirming==='listing'&&(categoryError||yahooShippingError))throw new Error(categoryError||yahooShippingError);if(confirming==='listing_complete')await completeAmazonListing(date);else{lock.current=true;setBusy(true);try{const {expected_revision,...payload}={...draft,work_completed_on:date,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];}),expected_revision:context?.revision};await queueSellerOperation(task.id,'listing',{...payload,...(yahooListing?{yahoo_shipping_rule:1}:{}),expected_revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));}finally{lock.current=false;setBusy(false);}}}}/>}
-  <div className="seller-history" aria-live="polite">{operations.map(op=><p key={op.id}>{statusText(op)}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
+  <div className="seller-history" aria-live="polite">{operations.filter(op=>mode!=='shipping'||(op.trade_key===trade&&['shipping_code','register_package','ship_notice'].includes(op.kind))).map(op=><p key={op.id}>{statusText(op)}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
  </section>;
 }
