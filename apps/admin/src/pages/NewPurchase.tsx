@@ -180,23 +180,31 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
     setPlannedPrice(product.list_price ?? '');
     setPlannedPayout(product.payout_estimate ?? '');
   }, [product]);
-  function selectSpare(id: string) {
-    setSpareId(id);
-    const selectedSpare = availableSpares.find(row => row.id === id);
-    if (!selectedSpare || workStream !== '付属品' || isAmazonReturn || isWorkingAmazonReturn) return;
+  function fillAccessoryPurchase(spare: SpareAccessory) {
     setProductId('');
     setProductSearch('');
-    setTitle(selectedSpare.title);
+    setTitle(spare.title);
     setAsin('');
     setPlannedPrice('');
     setPlannedPayout('');
-    if (selectedSpare.purchased_at) setPurchasedAt(selectedSpare.purchased_at);
-    setCost(selectedSpare.cost_amount);
-    setTrackingNo(selectedSpare.tracking_no ?? '');
-    setMarketplaceItemId(selectedSpare.marketplace_item_id ?? '');
+    if (spare.purchased_at) setPurchasedAt(spare.purchased_at);
+    setCost(spare.cost_amount);
+    setTrackingNo(spare.tracking_no ?? '');
+    setMarketplaceItemId(spare.marketplace_item_id ?? '');
     setUrlOverride(null);
-    setPurchaseSource(accountLabelFor(selectedSpare.marketplace, selectedSpare.purchase_account_label) ||
-      (selectedSpare.marketplace && MARKETPLACES.includes(selectedSpare.marketplace as Marketplace) ? selectedSpare.marketplace : 'その他'));
+    setPurchaseSource(accountLabelFor(spare.marketplace, spare.purchase_account_label) ||
+      (spare.marketplace && MARKETPLACES.includes(spare.marketplace as Marketplace) ? spare.marketplace : 'その他'));
+  }
+
+  function selectSpare(id: string) {
+    setSpareId(id);
+    const spare = availableSpares.find(row => row.id === id);
+    if (spare && workStream === '付属品') fillAccessoryPurchase(spare);
+  }
+
+  function changeWorkStream(next: WorkStream | '') {
+    setWorkStream(next);
+    if (next === '付属品' && selectedSpare) fillAccessoryPurchase(selectedSpare);
   }
   useEffect(() => {
     if ((!isAmazonReturn && !isWorkingAmazonReturn) || lotSeq === '') {
@@ -456,7 +464,7 @@ export default function NewPurchase({ me, onSaved, draft }: { me: Staff; onSaved
                 </select>
               </label>
               <label className="field"><span>作業ライン</span>
-                <select value={workStream} onChange={(e) => setWorkStream(e.target.value as WorkStream)}>
+                <select value={workStream} onChange={(e) => changeWorkStream(e.target.value as WorkStream | '')}>
                   <option value="">—</option>
                   {WORK_STREAMS.map((w) => <option key={w} value={w}>{workStreamLabels[w]}</option>)}
                 </select>
