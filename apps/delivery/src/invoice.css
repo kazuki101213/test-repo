@@ -86,14 +86,10 @@
 .receipt-row-actions { display:flex; gap:6px; justify-content:flex-end; }
 .receipt-detail-table .receipt-actions-cell { border:0; background:transparent; }
 .receipt-list-position { min-width:0; }
-.receipt-list-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; margin-bottom:8px; }
-.receipt-list-heading h3 { margin:0; }
-.receipt-list-heading label { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .invoice-summaries { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; align-items:start; }
 .invoice-summaries > .card,.invoice-summaries .receipt-list { min-width:0; margin:0; }
 .invoice-summaries .packed-summary { margin:0; }
-.invoice-summaries :is(.gross-profit-summary,.packed-summary) > h3,.invoice-summaries .receipt-list-heading h3 { font-size:15px; font-weight:700; line-height:1.4; }
-.invoice-summaries :is(.gross-profit-summary,.packed-summary) > h3 { margin:0 0 8px; }
+.invoice-summaries :is(.receipt-list,.gross-profit-summary,.packed-summary) > h3 { margin:0 0 8px; font-size:15px; font-weight:700; line-height:1.4; }
 .invoice-summaries :is(.receipt-detail-table,.gross-profit-summary,.packed-summary) :is(th,td) { font-size:12px; }
 @media screen and (min-width:1024px) {
  .invoice-summaries { grid-template-columns:repeat(3,minmax(0,1fr)); }

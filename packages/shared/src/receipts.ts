@@ -20,6 +20,8 @@ export interface InvoiceReceipt extends Partial<Omit<ReceiptDetails, 'category'>
   url: string;
 }
 const bucket = 'invoice-receipts';
+const receiptFields = 'id,original_name,storage_path,document_type,mime_type,spent_on,description,amount,category,payee,memo,include_in_invoice,version';
+export type InvoiceReceiptSummary = Omit<InvoiceReceipt, 'url'> & { billing_month: string };
 
 export function releaseReceiptImages(rows: InvoiceReceipt[]) {
   rows.forEach(row => URL.revokeObjectURL(row.url));
@@ -27,10 +29,31 @@ export function releaseReceiptImages(rows: InvoiceReceipt[]) {
 
 export async function loadInvoiceReceipts(staffId: string, month: string): Promise<InvoiceReceipt[]> {
   const sb = getSupabase();
-  const { data, error } = await sb.from('invoice_receipts').select('id,original_name,storage_path,document_type,mime_type,spent_on,description,amount,category,payee,memo,include_in_invoice,version')
+  const { data, error } = await sb.from('invoice_receipts').select(receiptFields)
     .eq('staff_id', staffId).eq('billing_month', month + '-01').order('created_at').order('id');
   if (error) throw error;
   return loadReceiptImages(data ?? []);
+}
+
+export async function loadInvoiceReceiptHistory(staffId: string, firstMonth: string, lastMonth: string): Promise<InvoiceReceiptSummary[]> {
+  const sb = getSupabase();
+  const rows: InvoiceReceiptSummary[] = [];
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await sb.from('invoice_receipts').select(`billing_month,${receiptFields}`)
+      .eq('staff_id', staffId).gte('billing_month', firstMonth + '-01').lte('billing_month', lastMonth + '-01')
+      .order('billing_month', { ascending: false }).order('spent_on', { ascending: false, nullsFirst: false })
+      .order('id').range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < pageSize) return rows;
+  }
+}
+
+export async function createInvoiceReceiptLink(storagePath: string): Promise<string> {
+  const { data, error } = await getSupabase().storage.from(bucket).createSignedUrl(storagePath, 300);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 export async function loadReceiptImages(files: Omit<InvoiceReceipt, 'url'>[]): Promise<InvoiceReceipt[]> {
