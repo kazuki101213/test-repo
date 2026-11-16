@@ -56,7 +56,7 @@ test('Shipping bundles exact requested text and three images; incomplete media c
  assert.equal(validation.dispatchState(409),'sent');assert.equal(validation.dispatchState(500),'pending');assert.equal(validation.dispatchState(400),'failed');
 });
 test('Missing supplier URL omits that line but preserves exact item and three photos',()=>{
- const payload={itemId:'e6d0e28b-f6eb-46d1-998a-3581ba232401',serial:'2346b',sku:'2346b-AALL-20260927-0',supplierUrl:null,images:['front','model','code'].map(x=>'https://fixture.invalid/'+x+'.jpg')};
+ const payload={itemId:'e6d0e28b-f6eb-46d1-998a-3581ba232401',serial:'2346B',sku:'2346B-AALL-20260927-0',supplierUrl:null,images:['front','model','code'].map(x=>'https://fixture.invalid/'+x+'.jpg')};
  const messages=validation.shippingMessages(payload);assert.equal(messages.length,4);assert(messages[0].text.includes('【2346b】'));assert(messages[0].text.includes('?itemId='+payload.itemId));assert(!messages[0].text.includes('［仕入れ先］'));assert.throws(()=>validation.shippingMessages({...payload,supplierUrl:''}));assert.throws(()=>validation.shippingMessages({...payload,supplierUrl:'https://unexpected.invalid/item'}));
 });
 

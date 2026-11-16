@@ -108,7 +108,7 @@ export default function ReturnTasks({staffId}:{staffId:string}){
    : '';
   return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')} data-deadline={tone}>
   <div className="delivery-return-content"><strong>{title}</strong>
-   <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
+   <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^(\d+[a-z]*)(?:[-_]|$)/i)?.[1]?.toLowerCase()||row.lot_seq}】</a>
     {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{model&&model!=='—'?`${model}、${row.sku}`:row.sku}</span></div>
   </div>
   {row.kind==='reply'?<button type="button" className="btn" disabled={pending.includes(row.id)} onClick={()=>void complete(row)}>{pending.includes(row.id)?'更新中…':'確認'}</button>:<a className="btn" href={inventoryUrl}>確認</a>}

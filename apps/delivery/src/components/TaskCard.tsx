@@ -102,7 +102,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
  const accessoryInfo=(item:DeliveryInventoryRow,compact=false)=> <>
   <div className={`delivery-accessory-identity${independent(item)?' independent':''}`}>
    {independent(item)&&<span className="delivery-accessory-state">{status(item)}<b className="delivery-mobile-accessory-name">{item.title}</b></span>}
-   <div className="delivery-accessory-text"><div className="delivery-accessory-title">{selectItem(item)}<strong>{independent(item)?inventorySerial(item):task.inventory_group_serial||inventorySerial(task)}</strong>{independent(item)&&<b>{item.title}</b>}{badge(item.is_accessory?accessoryDisplayLabel(item):'本体')}{!independent(item)&&<b>{item.title}</b>}</div>{independent(item)&&<CopyableText label="SKU" value={item.sku}/>}</div>
+   <div className="delivery-accessory-text"><div className="delivery-accessory-title">{selectItem(item)}<strong>{independent(item)?inventorySerial(item):task.inventory_group_serial?.toLowerCase()||inventorySerial(task)}</strong>{independent(item)&&<b>{item.title}</b>}{badge(item.is_accessory?accessoryDisplayLabel(item):'本体')}{!independent(item)&&<b>{item.title}</b>}</div>{independent(item)&&<CopyableText label="SKU" value={item.sku}/>}</div>
   </div>
   {people(item)}
   <div className={`delivery-accessory-details${compact?' compact':''}`}>

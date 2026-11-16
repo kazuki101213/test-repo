@@ -14,7 +14,7 @@ export type DeliverySearchField = typeof deliverySearchFields[number]['value'];
 export const normalizeSearch = (value: string) => value.normalize('NFKC').toLocaleLowerCase().replace(/[\s‐‑–—−ー]/g, '');
 
 export function deliverySearchValue(task: DeliveryTask, field: DeliverySearchField, originalIds: Map<string, string>): string {
-  if (field === 'serial') return task.sku.match(/^(\d+[a-z]*)-/i)?.[1] ?? String(task.lot_seq ?? '');
+  if (field === 'serial') return task.sku.match(/^(\d+[a-z]*)-/i)?.[1]?.toLowerCase() ?? String(task.lot_seq ?? '');
   if (field === 'model') return productModelText(task);
   if (field === 'accessory_name') return task.is_accessory ? task.title : '';
   if (field === 'marketplace_item_id') return (task.is_accessory || task.marketplace === '動作品Amazon返品'

@@ -9,7 +9,7 @@ import './inventoryOverview.css';
 
 type Props={items:InventoryItem[];canPrice:boolean;openPhotosFor:string|null;heading:(field:string)=>ReactNode;onEdit:(item:InventoryItem,field:InventoryField)=>void;onFullEdit:(item:InventoryItem)=>void;onComment:(item:InventoryItem)=>void;onTogglePhotos:(itemId:string)=>void};
 export default function InventoryOverview({items,canPrice,openPhotosFor,heading,onEdit,onFullEdit,onComment,onTogglePhotos}:Props){
- const serialOf=(i:InventoryItem)=>i.is_accessory&&!isSeparateAccessory(i)&&i.inventory_parent_serial?i.inventory_parent_serial:(i as InventoryItem&{inventory_group_serial?:string}).inventory_group_serial||inventorySerial(i);
+ const serialOf=(i:InventoryItem)=>i.is_accessory&&!isSeparateAccessory(i)&&i.inventory_parent_serial?i.inventory_parent_serial.toLowerCase():(i as InventoryItem&{inventory_group_serial?:string}).inventory_group_serial?.toLowerCase()||inventorySerial(i);
  const parents=new Map(items.filter(i=>!i.is_accessory).map(i=>[serialOf(i),i]));
  const counts=new Map<string,number>();for(const i of items)if(i.is_accessory&&!isSeparateAccessory(i))counts.set(serialOf(i),(counts.get(serialOf(i))??0)+1);
  const headers=[['status','photo','serial','product_no','model','sku','asin','registration'],['purchaser','deliverer','marketplace','sales_channel'],['item_id','tracking','purchased_at','cost'],['condition','packed_on','shipped_on','sold_on','sold_days'],[],['planned_price','planned_payout','sold_price','payout'],['expected_profit','expected_rate','profit','rate'],['inventory_refund','other_refund','amazon_refund'],['purchaser_comment','comment']];

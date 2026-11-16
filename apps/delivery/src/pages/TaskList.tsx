@@ -29,7 +29,7 @@ const FOOTER_FILTERS: { key: Filter; label: string }[] = [
 
 function serialNumber(task: DeliveryTask): string {
   const prefix = task.inventory_group_serial?.trim() || task.sku.match(/^(\d+[a-z]*)-/i)?.[1];
-  return prefix?.toLocaleUpperCase() ?? `item:${task.id}`;
+  return prefix?.toLowerCase() ?? `item:${task.id}`;
 }
 
 function baseSerialNumber(task: DeliveryTask): string {
