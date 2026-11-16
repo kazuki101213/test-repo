@@ -97,6 +97,7 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/admin_listing_task_delay.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/status_driven_notices_shipping_reminders.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/return_without_sales_days.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_fba_customer_returns.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/reflect_original_product_photos.sql"
 
