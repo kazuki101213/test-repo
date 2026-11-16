@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { loadInvoiceReceipts, uploadInvoiceReceipt, updateInvoiceReceipt, removeInvoiceReceipt, releaseReceiptImages, reimbursementCategories } from '@bussan/shared';
-import type { InvoiceReceipt, ReceiptDetails } from '@bussan/shared';
+import { createInvoiceReceiptLink, loadInvoiceReceiptHistory, loadInvoiceReceipts, uploadInvoiceReceipt, updateInvoiceReceipt, removeInvoiceReceipt, releaseReceiptImages, reimbursementCategories } from '@bussan/shared';
+import type { InvoiceReceipt, InvoiceReceiptSummary, ReceiptDetails } from '@bussan/shared';
 import DateInput from './DateInput';
 type ReceiptDraft = Omit<ReceiptDetails, 'category' | 'include_in_invoice'> & { category: ReceiptDetails['category'] | null };
 const blank = (): ReceiptDraft => ({ spent_on: '', description: '', amount: null, category: null });
-const isExcluded = (row: InvoiceReceipt) => row.include_in_invoice === false && !!row.spent_on && row.amount != null;
+const isExcluded = (row: Omit<InvoiceReceipt, 'url'>) => row.include_in_invoice === false && !!row.spent_on && row.amount != null;
 const messageOf = (e: unknown) => (e as { message?: string })?.message ?? '保存できませんでした。';
 export default function InvoiceReceipts({ staffId, month, historyMonths, approved, disabled = false, tableTarget, onBusyChange, onRowsChange, onChanged, onSavingChange }: {
   staffId: string; month: string; approved: boolean; disabled?: boolean; tableTarget: HTMLElement | null; onBusyChange: (busy: boolean) => void;
@@ -21,10 +21,11 @@ export default function InvoiceReceipts({ staffId, month, historyMonths, approve
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  const [displayMonth, setDisplayMonth] = useState(() => historyMonths && !historyMonths.includes(month) ? historyMonths[0] ?? month : month);
-  const [history, setHistory] = useState<{ month: string; rows: InvoiceReceipt[]; error?: string } | null>(null);
+  const firstHistoryMonth = historyMonths?.at(-1);
+  const lastHistoryMonth = historyMonths?.[0];
+  const [history, setHistory] = useState<{ rows: InvoiceReceiptSummary[]; error?: string } | null>(null);
   const [historyRevision, setHistoryRevision] = useState(0);
-  const showingHistory = displayMonth !== month;
+  const [attachmentError, setAttachmentError] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const editorForm = useRef<HTMLFormElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
@@ -40,19 +41,14 @@ export default function InvoiceReceipts({ staffId, month, historyMonths, approve
     return () => { active = false; releaseReceiptImages(loaded); };
   }, [staffId, month, revision]);
   useEffect(() => {
-    if (!showingHistory) return;
+    if (!firstHistoryMonth || !lastHistoryMonth) return;
     let active = true;
-    let loaded: InvoiceReceipt[] = [];
     setHistory(null);
-    void loadInvoiceReceipts(staffId, displayMonth).then(data => {
-      loaded = data;
-      if (active) setHistory({ month: displayMonth, rows: data });
-      else releaseReceiptImages(data);
-    }).catch(e => {
-      if (active) setHistory({ month: displayMonth, rows: [], error: messageOf(e) });
-    });
-    return () => { active = false; releaseReceiptImages(loaded); };
-  }, [staffId, displayMonth, showingHistory, historyRevision]);
+    void loadInvoiceReceiptHistory(staffId, firstHistoryMonth, lastHistoryMonth)
+      .then(data => { if (active) setHistory({ rows: data }); })
+      .catch(e => { if (active) setHistory({ rows: [], error: messageOf(e) }); });
+    return () => { active = false; };
+  }, [staffId, firstHistoryMonth, lastHistoryMonth, revision, historyRevision]);
   function reset() { setDraft(blank()); setEditing(null); setFile(null); setAttachmentMenu(false); if (input.current) input.current.value = ''; if (cameraInput.current) cameraInput.current.value = ''; }
   async function save() {
     if (!editable || busy || loading) return;
@@ -81,12 +77,25 @@ export default function InvoiceReceipts({ staffId, month, historyMonths, approve
     setError('');
     editorForm.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-  const selectedHistory = history?.month === displayMonth ? history : null;
-  const tableRows = showingHistory ? selectedHistory?.rows ?? [] : rows;
-  const tableLoading = showingHistory ? !selectedHistory : loading;
-  const tableError = showingHistory ? selectedHistory?.error : error;
-  const canEdit = editable && !showingHistory;
+  async function openReceipt(storagePath: string) {
+    setAttachmentError('');
+    const tab = window.open('', '_blank');
+    if (!tab) { setAttachmentError('ブラウザーでポップアップを許可してください。'); return; }
+    tab.opener = null;
+    try { tab.location.replace(await createInvoiceReceiptLink(storagePath)); }
+    catch { tab.close(); setAttachmentError('添付ファイルを開けませんでした。'); }
+  }
+  const invoiceRowsById = new Map(rows.map(row => [row.id, row]));
+  const tableRows = historyMonths ? history?.rows ?? [] : rows;
+  const tableLoading = historyMonths ? !history : loading;
+  const tableError = historyMonths ? history?.error : error;
+  const canEdit = editable && (!historyMonths || historyMonths.includes(month));
   const receipts = tableRows.filter(row => row.document_type !== 'invoice');
+  const attachment = (row: Omit<InvoiceReceipt, 'url'>, label: string) => {
+    const url = invoiceRowsById.get(row.id)?.url;
+    return url ? <a href={url} target="_blank" rel="noreferrer">{label}</a>
+      : <button type="button" className="btn ghost" onClick={() => void openReceipt(row.storage_path)}>{label}</button>;
+  };
   return <section className="invoice-receipts">
     {(!approved || busy || loading || error) && <div className="receipt-editor no-print">
       {!approved && <h3>立替支払い</h3>}
@@ -115,29 +124,28 @@ export default function InvoiceReceipts({ staffId, month, historyMonths, approve
       {busy && <p role="status">明細を保存しています…</p>}{loading && <p role="status">明細を読み込み中…</p>}{error && <div className="error" role="alert">{error}<button type="button" className="btn ghost" disabled={busy} onClick={() => setRevision(n => n + 1)}>再読み込み</button></div>}
 
     </div>}
-    {tableTarget && createPortal(<div className="card receipt-list no-print"><div className="receipt-list-heading">
-      <h3>領収書明細</h3>
-      {historyMonths && <label>請求月<select aria-label="領収書明細の請求月" value={displayMonth} onChange={e => setDisplayMonth(e.target.value)}>
-        {historyMonths.map(value => <option key={value} value={value}>{value.replace('-', '年')}月</option>)}
-      </select></label>}
-    </div>
+    {tableTarget && createPortal(<div className="card receipt-list no-print"><h3>領収書明細</h3>
       {tableLoading && <p role="status">明細を読み込み中…</p>}
-      {showingHistory && tableError && <div className="error" role="alert">{tableError}<button type="button" className="btn ghost" onClick={() => setHistoryRevision(n => n + 1)}>再読み込み</button></div>}
+      {historyMonths && tableError && <div className="error" role="alert">{tableError}<button type="button" className="btn ghost" onClick={() => setHistoryRevision(n => n + 1)}>再読み込み</button></div>}
+      {attachmentError && <p className="error" role="alert">{attachmentError}</p>}
       <div className="receipt-detail-scroll"><table className="receipt-detail-table"><thead><tr><th>日付</th><th>内容</th><th>区分</th><th className="receipt-amount">金額</th><th>写真・PDF</th>{canEdit && <th className="receipt-actions-cell" aria-label="明細の編集・削除" />}</tr></thead>
-        <tbody>{receipts.map(row => <tr key={row.id}>
+        <tbody>{receipts.map(row => {
+          const invoiceRow = invoiceRowsById.get(row.id);
+          return <tr key={row.id}>
           <td>{row.spent_on || '未登録'}</td>
           <td>{row.description || '未登録'}{row.payee && <>　{row.payee}</>}{row.memo && <>　{row.memo}</>}{isExcluded(row) && <small className="receipt-excluded">請求対象外</small>}</td>
           <td>{row.category ?? '—'}</td>
           <td className="receipt-amount">{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td>
-          <td><a href={row.url} target="_blank" rel="noreferrer">{row.mime_type === 'application/pdf' ? 'PDF' : '写真'}</a></td>
-          {canEdit && <td className="receipt-actions-cell"><div className="receipt-row-actions">
-            <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => edit(row)}>編集</button>
-            <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => void remove(row)}>削除</button>
-          </div></td>}
-        </tr>)}</tbody>
+          <td>{attachment(row, row.mime_type === 'application/pdf' ? 'PDF' : '写真')}</td>
+          {canEdit && <td className="receipt-actions-cell">{invoiceRow && <div className="receipt-row-actions">
+            <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => edit(invoiceRow)}>編集</button>
+            <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => void remove(invoiceRow)}>削除</button>
+          </div>}</td>}
+        </tr>;
+        })}</tbody>
       </table></div>
       {!tableLoading && !tableError && !receipts.length && <p>登録済みの明細はありません。</p>}
-      {tableRows.filter(row => row.document_type === 'invoice').map(row => <p key={row.id}>以前の請求書添付：<a href={row.url} target="_blank" rel="noreferrer">{row.original_name}</a></p>)}
+      {tableRows.filter(row => row.document_type === 'invoice').map(row => <p key={row.id}>以前の請求書添付：{attachment(row, row.original_name)}</p>)}
     </div>, tableTarget)}
   </section>;
 }
