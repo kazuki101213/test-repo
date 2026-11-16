@@ -14,7 +14,6 @@ import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryIt
 import type { InventoryField } from '../api';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
-import AmazonOrderHistory from '../components/AmazonOrderHistory';
 import { productCount, productSerial } from '../inventory';
 import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, type ColumnFilters } from '../inventoryFilters';
 import InventoryStateFilter from '../components/InventoryStateFilter';
@@ -192,7 +191,6 @@ export default function Inventory({ me }: { me: Staff }) {
           </div></td></tr>)}
         </tbody></table></div> : !draftError && !draftsLoading && <p className="sub">未反映の購入履歴はありません。</p>}
       </details>
-      {me.role === 'admin' && <AmazonOrderHistory />}
 
       {inventory.error&&<div className="error" role="alert">{inventory.error} <button className="btn" type="button" onClick={()=>void inventory.refresh()}>再読み込み</button></div>}
       {loading && items.length === 0 && <div className="empty">読み込み中…</div>}
