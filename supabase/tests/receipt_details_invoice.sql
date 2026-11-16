@@ -14,6 +14,7 @@ begin
  select * into inv from app.delivery_invoices where id=(result->'invoice'->>'id')::uuid;
  if inv.total<>2200 or (inv.snapshot->>'tax')::bigint<>100 or (inv.snapshot->>'receipt_subtotal')::bigint<>1100 then raise exception 'Tax-inclusive receipt charged twice or excluded rows charged: %',inv.snapshot; end if;
  if jsonb_array_length(inv.snapshot->'receipt_lines')<>1 or inv.snapshot->'receipt_lines'->0->>'description'<>'資材費' then raise exception 'Details not snapshotted'; end if;
+ if not exists(select 1 from app.v_expense_reimbursements where id=receipt and category='梱包資材費' and not approved and not included_in_expense) then raise exception 'Unapproved reimbursement missing from the management list'; end if;
  if not exists(select 1 from app.invoice_receipt_submissions s cross join lateral jsonb_array_elements(s.files) x where s.staff_id=worker and s.billing_month='2099-01-01' and x->>'description'='資材費' and (x->>'amount')::bigint=1100) then raise exception 'Receipt submission metadata missing'; end if;
  update app.invoice_receipts set amount=1200 where id=receipt;
  fail:=false;
@@ -23,6 +24,7 @@ begin
  select * into inv from app.delivery_invoices where id=inv.id;
  if inv.total<>2300 or inv.version<>2 then raise exception 'Re-submission duplicated receipts: %',inv.total; end if;
  perform app.approve_delivery_invoice(inv.id,inv.version,'2099-02-01');
+ if not exists(select 1 from app.v_expense_reimbursements where id=receipt and approved and included_in_expense and amount=1200) then raise exception 'Reimbursement approval/ledger link missing'; end if;
  fail:=false;
  begin update app.invoice_receipts set amount=1300 where id=receipt; exception when others then if sqlerrm like '%承認済み%' then fail:=true; else raise; end if; end;
  if not fail then raise exception 'Approved receipt edited'; end if;
@@ -45,6 +47,7 @@ begin
  if n is distinct from 2 then raise exception 'Owner update/version did not work'; end if;
  select count(*) into n from app.invoice_receipts where staff_id=worker and billing_month='2099-01-01';
  if n<>2 then raise exception 'Own receipts unavailable through RLS'; end if;
+ if exists(select 1 from app.v_expense_reimbursements where staff_id=worker) then raise exception 'The management-only reimbursement list is visible to a worker'; end if;
  perform set_config('request.jwt.claim.sub',other_login,true);
  select count(*) into n from app.invoice_receipts where staff_id=worker;
  if n<>0 then raise exception 'Other staff receipts leaked through RLS'; end if;

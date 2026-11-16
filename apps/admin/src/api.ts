@@ -5,7 +5,7 @@ import { getSupabase, STATUSES, usageRecordText, purchaseSourceFields, salesDest
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
-import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
+import { validateExpense, type ExpenseInput, type ExpenseDraft, type ExpenseReimbursement } from './expenses';
 import { materialPurchaseWindow, type BubbleWrapEstimate, type MaterialPurchase, type MaterialWorkload, type MaterialAnalysisInput, type MaterialAnalysis } from './materialPurchases';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
@@ -338,6 +338,16 @@ export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
       .select('id,target_month,category,name,card_id').is('deleted_at', null).order('target_month').order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as ExpenseDraft[];
+  });
+}
+
+export async function fetchExpenseReimbursements(): Promise<ExpenseReimbursement[]> {
+  return readAllRows<ExpenseReimbursement>(async (from, to) => {
+    const { data, error } = await getSupabase().from('v_expense_reimbursements')
+      .select('id,spent_on,staff_id,description,category,amount,approved,included_in_expense')
+      .order('spent_on', { ascending: false }).order('id').range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as ExpenseReimbursement[];
   });
 }
 

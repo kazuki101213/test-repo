@@ -61,7 +61,6 @@
   .layout .inventory-workspace.with-purchase { grid-template-columns:minmax(0,1fr) minmax(300px,380px); }
   .layout .dashboard-workspace.with-expense { grid-template-columns:minmax(0,1fr) minmax(280px,360px); overflow:visible; }
   .layout .purchase-registration-screen { max-width:none; width:100%; }
-  .layout .expense-columns { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .layout .expense-entry-top { display:grid; grid-template-columns:minmax(0,1fr) auto; }
   .layout .expense-entry-top > * { min-width:0; overflow-wrap:anywhere; }
   .layout .amazon-sales-update { display:grid; grid-template-columns:auto minmax(0,1fr); }
@@ -81,7 +80,6 @@
 @media screen and (max-width:1279px) and (min-width:1024px) {
   .layout .grid.kpi { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .layout .inventory-workspace.with-purchase, .layout .dashboard-workspace.with-expense { grid-template-columns:minmax(0,1fr); }
-  .layout .expense-columns { grid-template-columns:minmax(0,1fr); }
 }
 @media screen and (max-width:1023px) {
   .layout { grid-template-columns:minmax(0,1fr); }
@@ -102,7 +100,6 @@
   .layout .inventory-workspace.with-purchase, .layout .dashboard-workspace.with-expense, .layout .grid.cols2, .layout .dashboard-charts, .layout .document-review-columns { grid-template-columns:minmax(0,1fr); overflow:visible; }
   .layout .purchase-panel { width:100%; }
   .layout .purchase-panel .grid.cols2 { grid-template-columns:minmax(0,1fr); }
-  .layout .expense-columns { grid-template-columns:minmax(0,1fr); }
   .layout .spare-search { grid-template-columns:minmax(0,1fr); }
   .layout .notification-controls, .layout .amazon-sales-update, .layout .spare-shipping-form { grid-template-columns:minmax(0,1fr); }
   .layout .review-receipts { grid-template-columns:minmax(0,1fr); }
