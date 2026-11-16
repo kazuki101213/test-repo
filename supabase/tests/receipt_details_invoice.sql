@@ -6,8 +6,8 @@ begin
  select user_id::text into other_login from app.profiles where staff_id=(select id from app.staff where code='HH') limit 1;
  perform set_config('request.jwt.claim.sub',(select user_id::text from app.profiles where staff_id=buyer limit 1),true);
  insert into app.delivery_invoice_profiles(staff_id,details,enabled,unit_price,tax_percent) values(worker,'{"issuer_name":"検証担当者"}',true,500,10) on conflict(staff_id) do update set enabled=true,unit_price=500,tax_percent=10;
- insert into app.invoice_receipts(id,staff_id,billing_month,storage_path,original_name,spent_on,description,amount,payee,include_in_invoice)
- values(receipt,worker,'2099-01-01',worker::text||'/2099-01/'||receipt::text||'.jpg','receipt.jpg','2098-12-31','資材費',1100,'販売店',true);
+ insert into app.invoice_receipts(id,staff_id,billing_month,storage_path,original_name,spent_on,description,amount,payee,category,include_in_invoice)
+ values(receipt,worker,'2099-01-01',worker::text||'/2099-01/'||receipt::text||'.jpg','receipt.jpg','2098-12-31','資材費',1100,'販売店','梱包資材費',true);
  insert into app.invoice_receipts(staff_id,billing_month,storage_path,original_name,spent_on,description,amount,include_in_invoice)
  values(worker,'2099-01-01',worker::text||'/2099-01/'||gen_random_uuid()::text||'.jpg','excluded.jpg','2099-01-01','請求外',900,false);
  result:=app.submit_invoice_documents(worker,'2099-01-01',true,true,'2099-02-01','[{"date":null,"description":"手当","quantity":1,"unit_price":1000}]','',null);
@@ -27,16 +27,22 @@ begin
  begin update app.invoice_receipts set amount=1300 where id=receipt; exception when others then if sqlerrm like '%承認済み%' then fail:=true; else raise; end if; end;
  if not fail then raise exception 'Approved receipt edited'; end if;
  fail:=false;
- begin insert into app.invoice_receipts(staff_id,billing_month,storage_path,original_name,include_in_invoice) values(worker,'2099-03-01',worker::text||'/2099-03/'||gen_random_uuid()::text||'.jpg','bad.jpg',true); exception when check_violation then fail:=true; end;
+ begin insert into app.invoice_receipts(staff_id,billing_month,storage_path,original_name,category,include_in_invoice) values(worker,'2099-03-01',worker::text||'/2099-03/'||gen_random_uuid()::text||'.jpg','bad.jpg','配送費',true); exception when check_violation then fail:=true; end;
  if not fail then raise exception 'Incomplete claimed receipt accepted'; end if;
- insert into app.invoice_receipts(staff_id,billing_month,storage_path,original_name,spent_on,description,amount,include_in_invoice)
- values(worker,'2099-03-01',worker::text||'/2099-03/'||gen_random_uuid()::text||'.jpg','editable.jpg','2099-03-01','編集確認',100,true);
+ fail:=false;
+ begin
+  insert into app.invoice_receipts(staff_id,billing_month,storage_path,original_name,spent_on,description,amount,include_in_invoice)
+  values(worker,'2099-03-01',worker::text||'/2099-03/'||gen_random_uuid()::text||'.jpg','no-category.jpg','2099-03-01','区分確認',100,true);
+ exception when check_violation then fail:=true; end;
+ if not fail then raise exception 'Claimed receipt accepted without category'; end if;
+ insert into app.invoice_receipts(staff_id,billing_month,storage_path,original_name,spent_on,description,amount,category,include_in_invoice)
+ values(worker,'2099-03-01',worker::text||'/2099-03/'||gen_random_uuid()::text||'.jpg','editable.jpg','2099-03-01','編集確認',100,'配送費',true);
  -- Exercise real authenticated grants and ownership policies, not only postgres.
  perform set_config('request.jwt.claim.sub',(select user_id::text from app.profiles where staff_id=worker limit 1),true);
  execute 'set local role authenticated';
- update app.invoice_receipts set memo='owner edit' where staff_id=worker and billing_month='2099-03-01';
- select version into n from app.invoice_receipts where staff_id=worker and billing_month='2099-03-01';
- if n<>2 then raise exception 'Owner update/version did not work'; end if;
+ update app.invoice_receipts set memo='owner edit',category='旅費交通費' where staff_id=worker and billing_month='2099-03-01';
+ select version into n from app.invoice_receipts where staff_id=worker and billing_month='2099-03-01' and category='旅費交通費';
+ if n is distinct from 2 then raise exception 'Owner update/version did not work'; end if;
  select count(*) into n from app.invoice_receipts where staff_id=worker and billing_month='2099-01-01';
  if n<>2 then raise exception 'Own receipts unavailable through RLS'; end if;
  perform set_config('request.jwt.claim.sub',other_login,true);
