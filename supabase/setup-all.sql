@@ -23653,6 +23653,27 @@ end $$;
 notify pgrst,'reload schema';
 
 
+-- ▼▼▼ 20261116043731_amazon_sales_expense_payment.sql ▼▼▼
+
+alter table app.payment_cards add column expense_only boolean not null default false;
+
+insert into app.payment_cards (name, expense_only)
+values ('Amazon売上金', true)
+on conflict (name) do update set expense_only = true, is_active = true;
+
+notify pgrst,'reload schema';
+
+
+-- ▼▼▼ 20261116043843_invoice_reimbursement_categories.sql ▼▼▼
+
+alter table app.invoice_receipts
+  drop constraint invoice_reimbursement_category,
+  add constraint invoice_reimbursement_category
+    check (category in (
+      '配送費', '旅費交通費', '梱包資材費', '消耗品費', '支払手数料', '外注費', '研修費', '保管料', '固定費', '変動費'
+    ));
+
+
 -- ▼▼▼ 20261116044028_amazon_fba_return_sync.sql ▼▼▼
 
 create table app.amazon_fba_return_sync (
@@ -23849,5 +23870,31 @@ select cron.schedule('amazon-fba-return-sync', '15 * * * *', $job$
 $job$);
 
 notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261116044956_unify_expense_categories_and_reimbursements.sql ▼▼▼
+
+alter type app.expense_category add value if not exists '配送費';
+alter type app.expense_category add value if not exists '旅費交通費';
+alter type app.expense_category add value if not exists '梱包資材費';
+alter type app.expense_category add value if not exists '消耗品費';
+alter type app.expense_category add value if not exists '支払手数料';
+alter type app.expense_category add value if not exists '研修費';
+alter type app.expense_category add value if not exists '保管料';
+
+create view app.v_expense_reimbursements with (security_invoker = true) as
+select r.id, r.spent_on, r.staff_id, r.description, r.category, r.amount,
+       a.approved_at is not null as approved,
+       e.id is not null as included_in_expense
+from app.invoice_receipts r
+left join app.delivery_invoices i on i.staff_id = r.staff_id and i.billing_month = r.billing_month
+left join app.delivery_invoice_approvals a on a.invoice_id = i.id
+left join app.expenses e on e.id = a.expense_id and e.deleted_at is null
+where app.is_admin() and r.include_in_invoice and r.document_type <> 'invoice'
+  and r.spent_on is not null and r.amount is not null;
+
+revoke all on app.v_expense_reimbursements from public, anon;
+grant select on app.v_expense_reimbursements to authenticated;
+notify pgrst,'reload schema';
 
 

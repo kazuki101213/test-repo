@@ -59,7 +59,7 @@ export default function PackingPhotoTasks(){
   const source=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   return <li key={row.id} className="admin-task-card admin-simple-task">
    <div className="task-action-details"><strong>梱包が追加されました。</strong>
-    <a href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.item_id)}>【{row.sku.match(/^([^-]+)-/)?.[1]||row.lot_seq}】</a>
+    <a href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.item_id)}>【{row.sku.match(/^(\d+[a-z]*)(?:[-_]|$)/i)?.[1]?.toLowerCase()||row.lot_seq}】</a>
     {source?<a href={source} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<small>{row.sku}</small>
    </div><button type="button" className="btn" onClick={()=>setSelected(row)}>確認</button>
   </li>;

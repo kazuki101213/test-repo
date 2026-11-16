@@ -2,7 +2,9 @@ import { cachedReceiptBlob } from './receiptBlobCache';
 import { getSupabase } from './supabase';
 
 export type InvoiceDocumentType = 'invoice' | 'receipt' | 'receipt_photo';
-export const reimbursementCategories = ['配送費', '旅費交通費', '梱包資材費', '消耗品費', 'その他'] as const;
+export const reimbursementCategories = [
+  '配送費', '旅費交通費', '梱包資材費', '消耗品費', '支払手数料', '外注費', '研修費', '保管料', '固定費', '変動費',
+] as const;
 export type ReimbursementCategory = typeof reimbursementCategories[number];
 export interface ReceiptDetails { spent_on: string | null; description: string; amount: number | null; category: ReimbursementCategory; include_in_invoice: boolean }
 export interface InvoiceReceipt extends Partial<Omit<ReceiptDetails, 'category'>> {

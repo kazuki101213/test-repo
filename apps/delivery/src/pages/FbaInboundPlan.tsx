@@ -8,7 +8,7 @@ const shipmentStatus:Record<string,string>={UNCONFIRMED:'未確定',WORKING:'発
  IN_TRANSIT:'配送中',DELIVERED:'到着済み',CHECKED_IN:'到着確認済み',RECEIVING:'受領中',CLOSED:'受領完了',CANCELLED:'取消済み',
  DELETED:'削除済み',ABANDONED:'中止'};
 const defaultBox=(items:string[]=[]):Box=>({length:50,width:30,height:30,weight:8,items});
-const serial=(sku:string)=>sku.split('-')[0]||sku;
+const serial=(sku:string)=>sku.match(/^(\d+[a-z]*)(?:[-_]|$)/i)?.[1]?.toLowerCase() || sku.split('-')[0] || sku;
 const shortDate=(s:string)=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric'}).format(new Date(s));
 const createPlanLabel='FBA納品プラン';
 const sellerCentralShipments='https://sellercentral.amazon.co.jp/gp/ssof/shipping-queue.html';

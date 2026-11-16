@@ -244,12 +244,12 @@ export default function Invoices({ staff, onNavigationChange, review, initialMon
           {auctionAdjustment > 0 && <p className="error" role="alert">注意：粗利益の10%が作業日分を上回るため、粗利益連動調整 ¥{auctionAdjustment.toLocaleString('ja-JP')} を加算します。</p>}
         </section>}
         <InvoiceExtraRows key={`${staffId}/${month}`} lines={extras} disabled={busy || receiptBusy || pdfBusy} onChange={lines => { setExtras(lines); setDirty(true); setMessage(''); }} onDraftChange={() => setDirty(true)} />
-        <label className="invoice-note-input"><span className="invoice-note-heading">備考欄</span><textarea maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>
       </form>}
       </div>
       <div className="receipt-section">
       <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={busy || pdfBusy || !!invoice?.approved_at} onBusyChange={setReceiptBusy} onSavingChange={setReceiptSaving} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
+      {!invoice?.approved_at && <label className="invoice-note-input no-print"><span className="invoice-note-heading">備考欄</span><textarea form="invoice-submit-form" maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>}
       {review && <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />}
       </div>
       {review ? <div className="invoice-review-documents">

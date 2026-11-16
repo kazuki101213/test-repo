@@ -12,7 +12,7 @@ export function groupedInvoiceLines(snapshot: InvoiceSnapshot, extras: InvoiceLi
   for (const line of snapshot.lines) {
     const description = line.description === 'Amazon返品対応' ? line.description : '納品外注費';
     const key = `${line.date}|${line.unit_price}|${description}`;
-    const serial = line.serial?.trim() || (line.lot_seq != null ? String(line.lot_seq) : '');
+    const serial = line.serial?.trim().toLowerCase() || (line.lot_seq != null ? String(line.lot_seq) : '');
     const previous = grouped.get(key);
     if (previous) {
       previous.line.quantity += line.quantity;
