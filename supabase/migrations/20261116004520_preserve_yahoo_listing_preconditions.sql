@@ -12,9 +12,10 @@ declare
         END IF;
       END;
     END IF;$body$;
- anchor text:=$body$    IF i.status <> '商品登録前' THEN RAISE EXCEPTION '商品登録前の商品だけ出品できます'; END IF;$body$;
+ anchor text:=(regexp_match(definition,
+  $pattern$(^[ \t]*if i\.status[ \t]*<>[ \t]*'商品登録前'[ \t]*then[ \t]*raise exception '商品登録前の商品だけ出品できます';[ \t]*end if;)$pattern$,'im'))[1];
 begin
- if strpos(definition,policy||E'\n')=0 or strpos(definition,anchor)=0 then
+ if strpos(definition,policy||E'\n')=0 or anchor is null then
   raise exception 'seller queue preconditions or Yahoo guard missing';
  end if;
  definition:=replace(definition,policy||E'\n','');
