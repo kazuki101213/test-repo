@@ -18,7 +18,12 @@ type Row = {
 };
 type Batch = { report_id: string; starts_on: string; ends_on: string; row_count: number };
 type AppOnly = { lot_seq: number; example_sku: string; app_sold_on: string; app_sold_price: number | null; sales_channels: string };
-type ReturnWorkRow = { lot_seq: number; sku: string; status: string; amazon_returned_on: string | null; returned_on: string | null };
+type ReturnWorkRow = { lot_seq: number; sku: string; status: string; marketplace: string | null; purchased_at: string | null; amazon_returned_on: string | null; returned_on: string | null };
+
+function returnWorkDate(row: ReturnWorkRow) {
+  return row.amazon_returned_on ?? row.returned_on
+    ?? (row.marketplace === 'Amazon返品' ? row.purchased_at : null);
+}
 
 const lotNumber = (sku: string | null) => {
   const match = sku?.match(/^([0-9]+[a-z]*)[-_]/i);
@@ -77,7 +82,7 @@ export default function AmazonOrderHistory() {
       const itemRows: ReturnWorkRow[] = [];
       for (let start = 0; start < lots.length; start += 100) {
         const { data, error: workError } = await getSupabase().from('items')
-          .select('lot_seq,sku,status,amazon_returned_on,returned_on')
+          .select('lot_seq,sku,status,marketplace,purchased_at,amazon_returned_on,returned_on')
           .in('lot_seq', lots.slice(start, start + 100));
         if (workError) throw workError;
         itemRows.push(...((data ?? []) as ReturnWorkRow[]));
@@ -100,7 +105,7 @@ export default function AmazonOrderHistory() {
   const unmatchedBaseSales = appOnly;
   const returnsByLot = useMemo(() => {
     const result = new Map<string, ReturnWorkRow[]>();
-    for (const row of lotItems) if (row.amazon_returned_on || row.returned_on) {
+    for (const row of lotItems) if (returnWorkDate(row)) {
       const serial = lotNumber(row.sku);
       if (serial) result.set(serial, [...(result.get(serial) ?? []), row]);
     }
@@ -153,7 +158,7 @@ export default function AmazonOrderHistory() {
         const work = returnsByLot.get(lot) ?? [];
         const orderIds = [...new Set(orders.map(row => row.order_id))];
         return <details key={lot} style={{ marginTop: 10 }}><summary>{lot}：Amazon注文 {new Set(orders.map(row => row.order_id)).size}件／返品記録 {work.length}件</summary>
-          {work.length > 0 && <p className="sub">返品記録：{work.map(row => `${row.sku}（${row.amazon_returned_on ?? row.returned_on}）`).join('、')}</p>}
+          {work.length > 0 && <p className="sub">返品記録：{work.map(row => `${row.sku}（${returnWorkDate(row)}）`).join('、')}</p>}
           <div className="scroll"><table><thead><tr><th>注文順</th><th>Amazon注文日</th><th>注文番号</th><th>Amazon SKU</th><th>価格</th><th>SKU一致行の販売日</th></tr></thead><tbody>{orders.map(row => <tr key={row.order_item_id}>
             <td>{orderIds.indexOf(row.order_id) + 1}</td><td>{row.order_on}</td><td>{row.order_id}</td><td className="sku">{row.sku ?? '—'}</td>
             <td className="num">{row.item_price === null ? '—' : yen(row.item_price)}</td><td>{row.app_sold_on ?? '—'}</td>

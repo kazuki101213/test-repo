@@ -520,6 +520,12 @@ export async function fetchInventoryPaymentCard(id: string): Promise<string | nu
   return data.card_id as string | null;
 }
 
+export async function fetchInventoryReturnReason(id: string): Promise<string | null> {
+  const { data, error } = await getSupabase().from('items').select('return_reason').eq('id', id).single();
+  if (error) throw error;
+  return data.return_reason as string | null;
+}
+
 export async function createItem(input: ItemInsert, spareId?: string): Promise<{ id: string; sku: string; accessory_sku?: string }> {
   const normalizedInput = input;
   if (normalizedInput.marketplace === 'Amazon返品' && normalizedInput.is_accessory && !normalizedInput.lot_seq) {
