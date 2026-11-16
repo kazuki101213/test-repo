@@ -88,6 +88,25 @@ do $$begin
  begin perform app.request_delivery_line_resend((select id from resend_probe));raise exception 'Shipped trade resend accepted';
  exception when raise_exception then if sqlerrm<>'現在の未発送取引を確認できません' then raise;end if;end;
 end $$;
+-- A new trade on the same item must not inherit a sent LINE request or a dispatch date.
+update app.delivery_line_outbox set state='sent',sent_at=now() where id=(select id from resend_key_probe);
+update app.delivery_line_settings set enabled=false;
+do $$declare item uuid:=(select id from resend_probe); begin
+ perform app.perform_inventory_action(item,'resell','取引中','cancelled on site');
+ if exists(select 1 from app.items where id=item and (shipped_on is not null or status<>'商品登録前')) then
+  raise exception 'Cancelled trade dispatch date was carried over';
+ end if;
+ insert into app.seller_listings(item_id,channel,account_id,external_id,url,trade_key)
+ values(item,'メルカリ','mercari-1','m994863','https://jp.mercari.com/transaction/m994863','m994863:2026-11-16T09:00');
+ update app.items set status='取引中',seller_trade_key='m994863:2026-11-16T09:00',
+   seller_cancelled_at=null,seller_cancelled_trade_key=null where id=item;
+ if app.line_shipping_context(item)->>'state' is not null then
+  raise exception 'Replacement trade displayed the old sent LINE request';
+ end if;
+ if not exists(select 1 from app.delivery_line_outbox where id=(select id from resend_key_probe) and state='sent') then
+  raise exception 'Historical LINE request was lost';
+ end if;
+end $$;
 rollback;
 
 begin;

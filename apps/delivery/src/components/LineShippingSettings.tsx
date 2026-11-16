@@ -36,7 +36,9 @@ export default function LineShippingSettings({itemId,draft,overviewId,listing=fa
    </div>
    {!listing&&<button type="button" className="btn ghost" disabled={busy} onClick={()=>void save()}>配送設定を保存</button>}
   </div>
-  {context?.state==='sent'&&<p role="status">LINEへ送信済み</p>}{notice&&<p role="status">{notice}</p>}{error&&<p className="error" role="alert">{error}</p>}
+  {context?.state==='sent'&&<p role="status">LINEで発送依頼を送信済み</p>}
+  {!listing&&context?.state===null&&!notice&&<p role="status">この取引のLINE発送依頼は未送信です</p>}
+  {notice&&<p role="status">{notice}</p>}{error&&<p className="error" role="alert">{error}</p>}
   {open&&photos&&<>
    <p>全体写真と型番が読める写真を指定してください。商品リストに配送サイズがある商品は、配送コード発行後にコード画像も送ります。サイズ未設定の商品はコード画像を付けずに送ります。</p>
    <p>{context?.photoOrder?.length?'出品時の写真順です。出品に使わなかった写真は末尾に表示します。':'写真の追加順です。'}</p>
