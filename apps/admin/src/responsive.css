@@ -61,8 +61,6 @@
   .layout .inventory-workspace.with-purchase { grid-template-columns:minmax(0,1fr) minmax(300px,380px); }
   .layout .dashboard-workspace.with-expense { grid-template-columns:minmax(0,1fr) minmax(280px,360px); overflow:visible; }
   .layout .purchase-registration-screen { max-width:none; width:100%; }
-  .layout .expense-entry-top { display:grid; grid-template-columns:minmax(0,1fr) auto; }
-  .layout .expense-entry-top > * { min-width:0; overflow-wrap:anywhere; }
   .layout .amazon-sales-update { display:grid; grid-template-columns:auto minmax(0,1fr); }
   .layout .notification-controls { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; }
   .layout .spare-shipping-form { display:grid; grid-template-columns:minmax(0,1fr) auto auto; }

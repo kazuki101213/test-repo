@@ -131,8 +131,11 @@ export default function ExpenseList({ revision }: { revision: number }) {
             const entries = filtered.filter(row => row.incurred_on.startsWith(month));
             const monthDrafts = pending.filter(row => row.target_month.startsWith(month));
             return <li key={month} className="expense-month-group"><h4>{month.replace('-', '年')}月 · {yen(entries.reduce((sum, row) => sum + row.amount, 0))}</h4><ul className="expense-entries">{entries.map(row => <li key={row.id}>
-            <div className="expense-entry-top"><time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time><label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!deletion} onChange={e => { const checked=e.target.checked; setSelected(current => { const next=new Set(current); checked ? next.add(row.id) : next.delete(row.id); return next; }); }} /></label></div>
-            <div>{editCell(row, 'name', expenseContentLabel(row, staffNames))}</div>
+            <div className="expense-entry-top">
+              <time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time>
+              <label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!deletion} onChange={e => { const checked=e.target.checked; setSelected(current => { const next=new Set(current); checked ? next.add(row.id) : next.delete(row.id); return next; }); }} /></label>
+            </div>
+            <div className="expense-entry-name">{editCell(row, 'name', expenseContentLabel(row, staffNames))}</div>
             {!isAskulExpense(row) && row.staff_id && staffNames[row.staff_id] && <div className="expense-hint">担当者 {staffNames[row.staff_id]}</div>}
             <div className="expense-entry-bottom"><span className="expense-hint">{editCell(row, 'category', expenseCategoryLabel(row.category))}</span><strong>{editCell(row, 'amount', yen(row.amount))}</strong></div>
           </li>)}{monthDrafts.map(row => <li key={row.id}>
