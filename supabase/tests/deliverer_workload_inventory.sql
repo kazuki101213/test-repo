@@ -78,11 +78,12 @@ do $$ declare summary record; bad integer; begin
    raise exception 'Incorrect Amazon return count: %',summary;
  end if;
  select count(*) into bad from app.v_deliverer_stock_workload_items i join workload_cases c using(id)
- where (c.status='検品中' and i.on_hand)
+ where (c.status='検品中' and i.on_hand is distinct from (c.shipped_on is null))
+   or (c.status='受取前' and i.on_hand)
    or (c.status='Amazon返送依頼' and (i.bucket is distinct from 'Amazon返品' or i.on_hand))
    or (c.status='商品登録前' and c.channel='FBA' and c.shipped_on is null and not i.on_hand)
    or (c.status='出品中' and c.channel='FBA' and c.shipped_on is not null and i.bucket is not null);
- if bad <> 0 then raise exception 'Incorrect receipt or split shipment classification'; end if;
+ if bad <> 0 then raise exception 'Incorrect inspection, receipt or split shipment classification'; end if;
  if not exists (select 1 from app.v_deliverer_stock_workload_items detail
      join app.items i using(id)
      where i.asin='B0WORK2084' and i.product_id is null and detail.on_hand
