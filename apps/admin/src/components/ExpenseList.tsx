@@ -17,6 +17,10 @@ function expenseContentLabel(row: ExpenseInput, staffNames: Record<string, strin
     ? `${assignee} ${row.name}` : row.name;
 }
 
+function expenseMonthTitle(month: string, entries: readonly { amount: number }[]) {
+  return `${month.replace('-', '年')}月 · ${yen(entries.reduce((sum, row) => sum + row.amount, 0))}`;
+}
+
 function useExpenseStaffNames(needed: boolean) {
   const [names, setNames] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -103,6 +107,13 @@ export default function ExpenseList({ revision }: { revision: number }) {
     && (!categoryFilter || categoryFilter === d.category) && matchesSearch(d.name));
   const visibleReimbursements = reimbursements.filter(row => (!categoryFilter || categoryFilter === row.category)
     && matchesSearch(`${row.description} ${staffNames[row.staff_id] ?? ''}`));
+  const reimbursementsByMonth = new Map<string, ExpenseReimbursement[]>();
+  for (const row of visibleReimbursements) {
+    const month = row.spent_on.slice(0, 7);
+    const entries = reimbursementsByMonth.get(month);
+    if (entries) entries.push(row);
+    else reimbursementsByMonth.set(month, [row]);
+  }
   const months = [...new Set([...filtered.map(row => row.incurred_on.slice(0, 7)), ...pending.map(row => row.target_month.slice(0, 7))])].sort().reverse();
   return <div className="dashboard-workspace with-expense registration-workspace">
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費一覧">
@@ -130,7 +141,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
           {months.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{months.map(month => {
             const entries = filtered.filter(row => row.incurred_on.startsWith(month));
             const monthDrafts = pending.filter(row => row.target_month.startsWith(month));
-            return <li key={month} className="expense-month-group"><h4>{month.replace('-', '年')}月 · {yen(entries.reduce((sum, row) => sum + row.amount, 0))}</h4><ul className="expense-entries">{entries.map(row => <li key={row.id}>
+            return <li key={month} className="expense-month-group"><h4>{expenseMonthTitle(month, entries)}</h4><ul className="expense-entries">{entries.map(row => <li key={row.id}>
             <div className="expense-entry-top">
               <time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time>
               <label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!deletion} onChange={e => { const checked=e.target.checked; setSelected(current => { const next=new Set(current); checked ? next.add(row.id) : next.delete(row.id); return next; }); }} /></label>
@@ -150,12 +161,15 @@ export default function ExpenseList({ revision }: { revision: number }) {
           {reimbursementStatus.loading ? <p>読み込み中…</p>
             : reimbursementStatus.error ? <p className="error" role="alert">{reimbursementStatus.error}</p>
             : visibleReimbursements.length === 0 ? <p className="sub">該当する立替支払いはありません。</p>
-            : <ul className="expense-entries">{visibleReimbursements.map(row => <li key={row.id}>
-              <time dateTime={row.spent_on}>{row.spent_on}</time>
-              <div>{row.description}</div>
-              <div className="expense-hint">{staffNames[row.staff_id]}</div>
-              <div className="expense-entry-bottom"><span className="expense-hint">{row.category ?? '区分未設定'}</span><strong>{yen(row.amount)}</strong></div>
-              <div className="expense-hint">{row.included_in_expense ? '経費に計上済み' : row.approved ? '承認済み' : '未承認'}</div>
+            : <ul className="expense-entries">{Array.from(reimbursementsByMonth, ([month, entries]) => <li key={month} className="expense-month-group">
+              <h4>{expenseMonthTitle(month, entries)}</h4>
+              <ul className="expense-entries">{entries.map(row => <li key={row.id}>
+                <time dateTime={row.spent_on}>{row.spent_on}</time>
+                <div>{row.description}</div>
+                <div className="expense-hint">{staffNames[row.staff_id]}</div>
+                <div className="expense-entry-bottom"><span className="expense-hint">{row.category ?? '区分未設定'}</span><strong>{yen(row.amount)}</strong></div>
+                <div className="expense-hint">{row.included_in_expense ? '経費に計上済み' : row.approved ? '承認済み' : '未承認'}</div>
+              </li>)}</ul>
             </li>)}</ul>}
         </section>
       </div>
