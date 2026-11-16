@@ -98,14 +98,23 @@ async function testReceiptEditor(){
  control('区分').props.onChange({target:{value:'支払手数料'}});await settle();
  all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
  assert.equal(uploaded.details.category,'支払手数料');
- assert(text(tree).includes('【支払手数料】'));
+ const detailTable=()=>all(tree).find(n=>n.props?.className==='receipt-detail-table');
+ const detailCells=()=>all(detailTable()).filter(n=>n.type==='td').map(text);
+ const headers=all(detailTable()).filter(n=>n.type==='th').map(text);
+ assert.deepEqual(headers.slice(0,5),['日付','内容','区分','金額','写真・PDF']);
+ assert.deepEqual(detailCells().slice(0,4),['2026-10-01','梱包資材','支払手数料','¥1,100']);
  assert(!('payee' in uploaded.details || 'memo' in uploaded.details));
- assert.equal(uploaded.staff,'worker');assert.equal(uploaded.month,'2026-10');assert.equal(uploaded.details.amount,1100);assert.equal(uploaded.details.spent_on,'2026-10-01');assert.equal(uploaded.details.description,'梱包資材');assert.equal(uploaded.details.include_in_invoice,true);stored[0].include_in_invoice=false;assert(text(tree).includes('¥1,100'));
+ assert.equal(uploaded.staff,'worker');assert.equal(uploaded.month,'2026-10');assert.equal(uploaded.details.amount,1100);assert.equal(uploaded.details.spent_on,'2026-10-01');assert.equal(uploaded.details.description,'梱包資材');assert.equal(uploaded.details.include_in_invoice,true);
  all(tree).find(n=>n.type==='button'&&text(n)==='編集').props.onClick();await settle();
  assert.equal(control('区分').props.value,'支払手数料');
  control('区分').props.onChange({target:{value:'配送費'}});await settle();
  control('金額').props.onChange({target:{valueAsNumber:1200}});await settle();all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(edited.row.version,1);assert.equal(edited.details.amount,1200);assert.equal(edited.details.include_in_invoice,true,'Saving a receipt must include it in the invoice');assert(text(tree).includes('¥1,200'));
  assert.equal(edited.details.category,'配送費');
+ stored[0].include_in_invoice=false;
+ all(tree).find(n=>n.type==='button'&&text(n)==='編集').props.onClick();await settle();
+ assert(text(detailTable()).includes('請求対象外'));
+ all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+ assert.equal(edited.details.include_in_invoice,false,'Editing an excluded receipt must keep it out of the invoice');
 }
 function testExtraRows(){
  let hooks=[],cursor=0,lines=[],changed=0,tree;
