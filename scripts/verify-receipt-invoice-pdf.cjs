@@ -76,7 +76,7 @@ assert.equal(api.exports.invoiceReceiptDetails([...rows,{...receipt('excluded',9
 async function testReceiptEditor(){
  let hooks=[],cursor=0,pending=[],dirty=true,tree,stored=[],uploaded,edited;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
- const noop=()=>{};const props={staffId:'worker',month:'2026-10',approved:false,tableTarget:{},onBusyChange:noop,onRowsChange:noop,onCountChange:noop,onChanged:noop,onPrint:noop};
+ const noop=()=>{};const props={staffId:'worker',month:'2026-10',approved:false,disabled:false,tableTarget:{},onBusyChange:noop,onRowsChange:noop,onCountChange:noop,onChanged:noop,onPrint:noop};
  const component={exports:{},window:{confirm:()=>true},require:name=>name==='react'?react:name==='react-dom'?{createPortal:child=>child}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{
   loadInvoiceReceipts:async()=>stored,releaseReceiptImages:noop,reimbursementCategories:api.exports.reimbursementCategories,
   uploadInvoiceReceipt:async(staff,month,file,type,details)=>{uploaded={staff,month,file,type,details};stored=[{...receipt('registered',details.amount),...details,version:1,original_name:file.name}]},
@@ -115,6 +115,15 @@ async function testReceiptEditor(){
  assert(text(detailTable()).includes('請求対象外'));
  all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
  assert.equal(edited.details.include_in_invoice,false,'Editing an excluded receipt must keep it out of the invoice');
+
+ props.disabled=true;dirty=true;await settle();
+ assert(text(tree).includes('立替支払い'),'Temporary submission or PDF processing keeps the heading');
+ assert(!all(tree).some(n=>n.type==='form'));
+ props.disabled=false;props.approved=true;dirty=true;await settle();
+ assert(!text(tree).includes('立替支払い'));
+ assert(text(tree).includes('領収書明細')&&text(detailTable()).includes('¥1,200'));
+ assert(all(detailTable()).some(n=>n.type==='a'&&n.props.href==='blob:registered'));
+ assert(!all(tree).some(n=>n.type==='form'||n.type==='button'&&['編集','削除'].includes(text(n))));
 }
 function testExtraRows(){
  let hooks=[],cursor=0,lines=[],changed=0,tree;
