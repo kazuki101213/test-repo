@@ -30,6 +30,15 @@
 .invoice-note-input { margin:0; width:calc((100% - 8px)/2); }
 .invoice-preview,.receipt-document { display:none; }
 .invoice-preview.is-preview,.receipt-document.is-preview { display:block; overflow:visible; }
+@media screen {
+ .invoice-pdf-previews { margin:20px 0; }
+ .invoice-pdf-previews .document-preview { margin:0; }
+}
+@media screen and (min-width:1024px) {
+ .invoice-pdf-previews { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:16px; padding-inline:14px; }
+ .invoice-pdf-previews :is(.invoice-preview.is-preview,.invoice-document,.receipt-document.is-preview) { display:contents; }
+ .invoice-pdf-previews .document-preview :is(.invoice-sheet,.receipt-summary-sheet,.receipt-photo-sheet) { margin:0; }
+}
 .receipt-thumbnails { display:flex; flex-wrap:wrap; gap:12px; margin:12px 0; }
 .receipt-camera-btn { display:grid; place-items:center; width:44px; height:44px; padding:0; }
 .receipt-thumbnails figure { margin:0; width:120px; }
