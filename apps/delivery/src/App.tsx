@@ -123,11 +123,11 @@ export default function App() {
   return (
     <div className={tab === 'bid-calculator' && compactBidViewport ? 'app app-bid-calculator' : 'app'}>
       <div className="topbar">
-        <div>
+        <div className="app-switch-actions">
+          {canOpenManagement(session.staff) && <button type="button" className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => { if (canLeave()) switchApplication('management'); }}>管理アプリへ</button>}
+          <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button>
           <span className="who">{staffDisplayName(session.staff)}</span>
         </div>
-        <div className="app-switch-actions">{canOpenManagement(session.staff) && <button type="button" className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => { if (canLeave()) switchApplication('management'); }}>管理アプリへ</button>}
-        <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button></div>
       </div>
       {error && <p className="error" role="alert">{error}</p>}
       <nav className="row invoice-tabs delivery-navigation no-print" aria-label="納品アプリのメニュー">
