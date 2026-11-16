@@ -1,4 +1,4 @@
-import { downloadReport, parseCustomerReturns } from './report.ts';
+import { downloadReport, parseCustomerReturns, parseRemovalShipments } from './report.ts';
 
 const header = 'return-date\torder-id\tsku\tquantity\treason\tdetailed-disposition\tstatus\tlicense-plate-number\tcustomer-comments';
 const first = '2026-11-15T20:00:00Z\t111-1234567-1234567\t1234-AAII-20261101-1000\t1\tDEFECTIVE\tCUSTOMER_DAMAGED\tUnit returned to inventory\tLPN1';
@@ -28,4 +28,16 @@ Deno.test('downloads and decodes a gzip report without sending the Amazon token'
     return Promise.resolve(new Response(encoded));
   });
   assert(parseCustomerReturns(result, '2026-11-15').length === 1);
+});
+
+Deno.test('keeps all removal shipments for a SKU together, including packages without a tracking number', () => {
+  const header = 'request-date\torder-id\tshipment-date\tsku\tfnsku\tshipped-quantity\tcarrier\ttracking-number';
+  const first = '2026-11-15T20:00:00Z\tAb0987\t2026-11-17\t123a-AAII-20261114-1000\tX000123ABC\t1\tYAMATO\t008765432109';
+  const second = first.replace('008765432109', '');
+  const result = parseRemovalShipments('\uFEFF' + header + '\r\n' + first + '\r\n' + second);
+  assert(result.length === 1 && result[0].source_sku === '123a-AAII-20261114-1000');
+  const [shipped, untracked] = result[0].shipments;
+  assert(shipped.removal_order_id === 'Ab0987' && shipped.requested_on === '2026-11-16');
+  assert(shipped.tracking_no === '008765432109' && shipped.carrier === 'YAMATO');
+  assert(untracked.tracking_no === '');
 });

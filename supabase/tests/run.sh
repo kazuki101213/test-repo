@@ -74,6 +74,8 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/delivery_all_products_catalog.sql
 
 # アプリが読む列・関数がこのスキーマに存在するかを突き合わせる
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/malfunction_report_photos.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_fba_customer_returns.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_fba_removal_tracking.sql"
 
 DB="$DB" "$HERE/check-app-schema.py"
 
