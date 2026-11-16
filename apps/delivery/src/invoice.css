@@ -124,7 +124,7 @@
  .receipt-entry-actions { grid-column:1 / -1; display:flex; align-items:flex-end; gap:8px; }
  .receipt-entry-actions .receipt-attachment { width:44px; min-width:0; }
  .receipt-entry-actions .receipt-attachment > span { white-space:nowrap; }
- .receipt-entry-actions .receipt-camera-btn { width:44px; padding:0; }
+ .invoices .receipt-entry-actions .receipt-camera-btn { width:44px !important; padding:0 !important; }
 }
 
 .invoice-recipient-save { grid-column:1 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:end; }
