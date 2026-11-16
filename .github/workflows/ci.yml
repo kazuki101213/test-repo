@@ -44,6 +44,9 @@ jobs:
       - name: Amazon seller-fulfilled dispatch dates
         run: deno test --no-config --no-lock --node-modules-dir=none supabase/functions/amazon-payments/dispatch_test.ts
 
+      - name: Amazon FBA customer return report
+        run: deno test --no-config --no-lock --node-modules-dir=none supabase/functions/amazon-fba-returns/report_test.ts
+
       - name: Amazon seller-fulfilled order lookup
         run: deno test --no-config --no-lock --node-modules-dir=none --allow-env supabase/functions/amazon-self-shipping/index_test.ts
 
