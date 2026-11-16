@@ -71,6 +71,9 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
   }
   const method=all(field('配送方法')).find(n=>n.type==='input');
   assert.equal(method?.props.value,'おてがる配送（日本郵便）');assert.equal(method.props.readOnly,true);
+  const dispatchDays=all(field('発送までの日数')).find(n=>n.type==='select');
+  assert.equal(dispatchDays?.props.value,'3〜7日');
+  assert.deepEqual(Array.from(dispatchDays.props.children,option=>option.props.children),['1〜2日','2〜3日','3〜7日']);
   const publish=all(tree).find(n=>n.type==='button'&&n.props.children==='出品');
   assert.equal(publish.props.disabled,false);
   publish.props.onClick();await settle();assert.equal(queued,undefined);
@@ -78,6 +81,7 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
   await modal.props.onConfirm('2026-10-20');await settle();
   assert.equal(queued.payload.yahoo_shipping_rule,1);
   assert.equal(queued.payload.size,'120');assert.equal(queued.payload.weightKg,'5');
+  assert.equal(queued.payload.dispatchDays,'3〜7日');
   return;
  }
  if(approved&&!saved){
