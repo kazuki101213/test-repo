@@ -103,12 +103,13 @@ export async function updateSpareAccessory(id: string, field: SpareAccessoryFiel
   if (!data) throw new Error('予備付属品が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
 
-export async function fetchCards(): Promise<{ id: string; name: string }[]> {
- return sessionRead('master:cards',30000,async()=>{
-  const { data, error } = await getSupabase()
-    .from('payment_cards').select('id, name').eq('is_active', true).order('name');
+export async function fetchCards(purpose: 'purchase' | 'expense' = 'purchase'): Promise<{ id: string; name: string }[]> {
+ return sessionRead(`master:cards:${purpose}`,30000,async()=>{
+  const query = getSupabase().from('payment_cards').select('id, name').eq('is_active', true).order('name');
+  if (purpose === 'purchase') query.eq('expense_only', false);
+  const { data, error } = await query;
   if (error) throw error;
-  const paymentOrder = ['PayPayカード', 'セゾンカード', 'アメックスカード', 'メルカリ残高', '楽天カード', '振込', '現金'];
+  const paymentOrder = ['PayPayカード', 'セゾンカード', 'アメックスカード', 'メルカリ残高', 'Amazon売上金', '楽天カード', '振込', '現金'];
   return ((data ?? []) as { id: string; name: string }[]).sort((a, b) => {
     const rank = (name: string) => { const index = paymentOrder.indexOf(name); return index < 0 ? paymentOrder.length : index; };
     return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ja');

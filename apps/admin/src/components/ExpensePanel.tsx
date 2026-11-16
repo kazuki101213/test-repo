@@ -26,7 +26,7 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
 
   useEffect(() => {
     let active = true;
-    fetchCards().then(c => { if (active) setCards(c); })
+    fetchCards('expense').then(c => { if (active) setCards(c); })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     return () => { active = false; };
   }, []);
