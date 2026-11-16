@@ -5,6 +5,7 @@ import type { InvoiceReceipt, ReceiptDetails } from '@bussan/shared';
 import DateInput from './DateInput';
 type ReceiptDraft = Omit<ReceiptDetails, 'category' | 'include_in_invoice'> & { category: ReceiptDetails['category'] | null };
 const blank = (): ReceiptDraft => ({ spent_on: '', description: '', amount: null, category: null });
+const isExcluded = (row: InvoiceReceipt) => row.include_in_invoice === false && !!row.spent_on && row.amount != null;
 const messageOf = (e: unknown) => (e as { message?: string })?.message ?? '保存できませんでした。';
 export default function InvoiceReceipts({ staffId, month, approved, tableTarget, onBusyChange, onRowsChange, onChanged, onSavingChange }: {
   staffId: string; month: string; approved: boolean; tableTarget: HTMLElement | null; onBusyChange: (busy: boolean) => void;
@@ -40,7 +41,7 @@ export default function InvoiceReceipts({ staffId, month, approved, tableTarget,
     if (!editing && !file) { setError('写真またはPDFを1件選択してください。'); return; }
     setBusy(true); setError('');
     try {
-      const details: ReceiptDetails = { ...draft, category: draft.category, description: draft.description.trim(), include_in_invoice: true };
+      const details: ReceiptDetails = { ...draft, category: draft.category, description: draft.description.trim(), include_in_invoice: !editing || !isExcluded(editing) };
       if (editing) await updateInvoiceReceipt(editing, details);
       else if (file) await uploadInvoiceReceipt(staffId, month, file, file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') ? 'receipt' : 'receipt_photo', details);
       reset(); onChanged(); setRevision(n => n + 1);
@@ -90,11 +91,12 @@ export default function InvoiceReceipts({ staffId, month, approved, tableTarget,
 
     </div>
     {tableTarget && createPortal(<div className="card receipt-list no-print"><h3>領収書明細</h3>
-      <div className="receipt-detail-scroll"><table className="receipt-detail-table"><thead><tr><th>日付</th><th>内容・区分</th><th>金額</th><th>写真・PDF</th>{!approved && <th className="receipt-actions-cell" aria-label="明細の編集・削除" />}</tr></thead>
+      <div className="receipt-detail-scroll"><table className="receipt-detail-table"><thead><tr><th>日付</th><th>内容</th><th>区分</th><th className="receipt-amount">金額</th><th>写真・PDF</th>{!approved && <th className="receipt-actions-cell" aria-label="明細の編集・削除" />}</tr></thead>
         <tbody>{receipts.map(row => <tr key={row.id}>
           <td>{row.spent_on || '未登録'}</td>
-          <td>{row.description || '未登録'}{row.category && <>　【{row.category}】</>}{row.payee && <>　{row.payee}</>}{row.memo && <>　{row.memo}</>}</td>
-          <td>{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td>
+          <td>{row.description || '未登録'}{row.payee && <>　{row.payee}</>}{row.memo && <>　{row.memo}</>}{isExcluded(row) && <small className="receipt-excluded">請求対象外</small>}</td>
+          <td>{row.category ?? '—'}</td>
+          <td className="receipt-amount">{row.amount == null ? '未登録' : `¥${row.amount.toLocaleString('ja-JP')}`}</td>
           <td><a href={row.url} target="_blank" rel="noreferrer">{row.mime_type === 'application/pdf' ? 'PDF' : '写真'}</a></td>
           {!approved && <td className="receipt-actions-cell"><div className="receipt-row-actions">
             <button type="button" className="btn ghost" disabled={busy || loading} onClick={() => edit(row)}>編集</button>

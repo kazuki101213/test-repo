@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
-import { deleteExpenses, fetchExpenses, fetchExpenseDrafts, fetchExpenseReimbursements, fetchExpenseStaffNames, importAskulExpenses, updateExpenseField, type ExpenseField } from '../api';
+import { deleteExpenses, excludeExpenseReimbursements, fetchExpenses, fetchExpenseDrafts, fetchExpenseReimbursements, fetchExpenseStaffNames, importAskulExpenses, updateExpenseField, type ExpenseField } from '../api';
 import type { ExpenseInput, ExpenseDraft, ExpenseReimbursement } from '../expenses';
 import { expenseCategories, expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
@@ -9,6 +9,17 @@ import AskulMaterialAnalysis from './AskulMaterialAnalysis';
 import './ExpenseSelection.css';
 
 type ExpenseCategory = typeof expenseCategories[number];
+type SelectionAction =
+  | { kind: 'expense'; rows: ExpenseInput[]; requestId: string }
+  | { kind: 'reimbursement'; rows: ExpenseReimbursement[] };
+
+function toggleSelection(current: Set<string>, id: string, checked: boolean) {
+  const next = new Set(current);
+  if (checked) next.add(id);
+  else next.delete(id);
+  return next;
+}
+
 const isAskulExpense = (row: ExpenseInput) => row.memo?.startsWith('アスクル ') === true;
 
 function expenseContentLabel(row: ExpenseInput, staffNames: Record<string, string>) {
@@ -56,7 +67,8 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | ''>('');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const [deletion, setDeletion] = useState<{ rows: ExpenseInput[]; requestId: string } | null>(null);
+  const [selectedReimbursements, setSelectedReimbursements] = useState<Set<string>>(() => new Set());
+  const [selectionAction, setSelectionAction] = useState<SelectionAction | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [message, setMessage] = useState('');
@@ -65,14 +77,23 @@ export default function ExpenseList({ revision }: { revision: number }) {
   const [askulResult, setAskulResult] = useState<Awaited<ReturnType<typeof importAskulExpenses>> | null>(null);
   const deleteLock = useRef(false);
   async function removeSelected() {
-    if (!deletion || deleteLock.current) return;
+    if (!selectionAction || deleteLock.current) return;
     deleteLock.current = true; setDeleting(true); setDeleteError('');
     try {
-      const count = await deleteExpenses(deletion.rows, deletion.requestId);
-      const ids = new Set(deletion.rows.map(row => row.id));
-      setRows(current => current.filter(row => !ids.has(row.id)));
-      setDrafts(current => current.filter(row => !ids.has(row.id)));
-      setSelected(new Set()); setDeletion(null); setMessage(`${count}件の経費を削除しました。`);
+      const ids = new Set(selectionAction.rows.map(row => row.id));
+      if (selectionAction.kind === 'expense') {
+        const count = await deleteExpenses(selectionAction.rows, selectionAction.requestId);
+        setRows(current => current.filter(row => !ids.has(row.id)));
+        setDrafts(current => current.filter(row => !ids.has(row.id)));
+        setSelected(new Set());
+        setMessage(`${count}件の経費を削除しました。`);
+      } else {
+        const count = await excludeExpenseReimbursements([...ids]);
+        const remaining = ids.size - count;
+        setSelectedReimbursements(new Set());
+        setMessage(`${count}件の立替支払いを請求から除外しました。${remaining > 0 ? `${remaining}件は承認済み、または既に除外済みです。` : ''}`);
+      }
+      setSelectionAction(null);
       setSavedRevision(value => value + 1);
     } catch (cause) { setDeleteError(cause instanceof Error ? cause.message : String(cause)); }
     finally { deleteLock.current = false; setDeleting(false); }
@@ -85,7 +106,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setExpenseBusy(false); }
   }
-  const editCell = (row: ExpenseInput, field: ExpenseField, label: string) => <button type="button" className="expense-edit" disabled={expenseBusy || !!deletion} onClick={() => { setFieldEdit({ row, field, value: field === 'category' ? expenseCategoryLabel(row.category) : String(row[field]) }); setError(''); }}>{label}</button>;
+  const editCell = (row: ExpenseInput, field: ExpenseField, label: string) => <button type="button" className="expense-edit" disabled={expenseBusy || !!selectionAction} onClick={() => { setFieldEdit({ row, field, value: field === 'category' ? expenseCategoryLabel(row.category) : String(row[field]) }); setError(''); }}>{label}</button>;
   useEffect(() => {
     let active = true;
     setLoading(true); setError('');
@@ -94,7 +115,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
       .finally(() => { if (active) setLoading(false); });
     setReimbursementStatus({loading:true});
     fetchExpenseReimbursements().then(data => {
-      if (active) { setReimbursements(data); setReimbursementStatus({loading:false}); }
+      if (active) { setReimbursements(data); setSelectedReimbursements(new Set()); setReimbursementStatus({loading:false}); }
     }).catch(e => {
       if (active) setReimbursementStatus({loading:false,error:e instanceof Error ? e.message : String(e)});
     });
@@ -107,6 +128,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
     && (!categoryFilter || categoryFilter === d.category) && matchesSearch(d.name));
   const visibleReimbursements = reimbursements.filter(row => (!categoryFilter || categoryFilter === row.category)
     && matchesSearch(`${row.description} ${staffNames[row.staff_id] ?? ''}`));
+  const selectedUnapproved = visibleReimbursements.filter(row => !row.approved && selectedReimbursements.has(row.id));
   const reimbursementsByMonth = new Map<string, ExpenseReimbursement[]>();
   for (const row of visibleReimbursements) {
     const month = row.spent_on.slice(0, 7);
@@ -119,18 +141,19 @@ export default function ExpenseList({ revision }: { revision: number }) {
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費一覧">
     <div className="toolbar expense-search-toolbar">
       <div className="expense-search-actions">
-        <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => { setAskulResult(null); setAskulImportOpen(true); }}>アスクルCSV取り込み</button>
-        <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => setMaterialAnalysisOpen(true)}>資材の購入分析</button>
+        <button type="button" className="btn" disabled={expenseBusy || !!selectionAction} onClick={() => { setAskulResult(null); setAskulImportOpen(true); }}>アスクルCSV取り込み</button>
+        <button type="button" className="btn" disabled={expenseBusy || !!selectionAction} onClick={() => setMaterialAnalysisOpen(true)}>資材の購入分析</button>
       </div>
-      <select aria-label="経費区分で絞り込む" value={categoryFilter} disabled={!!deletion} onChange={e => {
+      <select aria-label="経費区分で絞り込む" value={categoryFilter} disabled={!!selectionAction} onChange={e => {
         setCategoryFilter(e.currentTarget.value as ExpenseCategory | '');
         setSelected(new Set());
+        setSelectedReimbursements(new Set());
       }}>
         <option value="">すべて</option>
         {expenseCategories.map(category => <option key={category} value={category}>{category}</option>)}
       </select>
-      <input aria-label="経費を検索" placeholder="検索" type="search" value={query} disabled={!!deletion} onChange={e => { setQuery(e.target.value); setSelected(new Set()); }} />
-      <button type="button" className="btn" disabled={loading || expenseBusy || !!deletion || !selected.size} onClick={() => { setDeleteError(''); setMessage(''); setDeletion({ rows: filtered.filter(row => selected.has(row.id)).map(row => ({...row})), requestId: crypto.randomUUID() }); }}>削除</button>
+      <input aria-label="経費を検索" placeholder="検索" type="search" value={query} disabled={!!selectionAction} onChange={e => { setQuery(e.target.value); setSelected(new Set()); setSelectedReimbursements(new Set()); }} />
+      <button type="button" className="btn" disabled={loading || expenseBusy || !!selectionAction || !selected.size} onClick={() => { setDeleteError(''); setMessage(''); setSelectionAction({ kind: 'expense', rows: filtered.filter(row => selected.has(row.id)).map(row => ({...row})), requestId: crypto.randomUUID() }); }}>削除</button>
     </div>
     {message && <p className="ok" role="status">{message}</p>}
     {askulResult && <p className="ok" role="status" data-askul-inserted={askulResult.inserted} data-askul-skipped={askulResult.skipped}>アスクルCSVから{askulResult.inserted}件を登録しました。登録済み{askulResult.skipped}件。{askulResult.assignedExisting > 0 && `登録済みの${askulResult.assignedExisting}件に担当者を設定しました。`}{askulResult.quantitiesAdded > 0 && `登録済みの${askulResult.quantitiesAdded}件に資材の購入数量を追加しました。`}</p>}
@@ -144,7 +167,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
             return <li key={month} className="expense-month-group"><h4>{expenseMonthTitle(month, entries)}</h4><ul className="expense-entries">{entries.map(row => <li key={row.id}>
             <div className="expense-entry-top">
               <time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time>
-              <label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!deletion} onChange={e => { const checked=e.target.checked; setSelected(current => { const next=new Set(current); checked ? next.add(row.id) : next.delete(row.id); return next; }); }} /></label>
+              <label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!selectionAction} onChange={e => { const checked = e.currentTarget.checked; setSelected(current => toggleSelection(current, row.id, checked)); }} /></label>
             </div>
             <div className="expense-entry-name">{editCell(row, 'name', expenseContentLabel(row, staffNames))}</div>
             {!isAskulExpense(row) && row.staff_id && staffNames[row.staff_id] && <div className="expense-hint">担当者 {staffNames[row.staff_id]}</div>}
@@ -157,14 +180,36 @@ export default function ExpenseList({ revision }: { revision: number }) {
           })}</ul>}
         </section>
         <section className="expense-column" aria-label="立替支払い">
-          <header><h3>立替支払い</h3><p>{visibleReimbursements.length}件</p></header>
+          <header>
+            <div className="reimbursement-heading">
+              <h3>立替支払い</h3>
+              <button type="button" className="btn" disabled={reimbursementStatus.loading || expenseBusy || !!selectionAction || !selectedUnapproved.length} onClick={() => {
+                setDeleteError('');
+                setMessage('');
+                setSelectionAction({ kind: 'reimbursement', rows: selectedUnapproved });
+              }}>請求から除外</button>
+            </div>
+            <p>{visibleReimbursements.length}件</p>
+          </header>
           {reimbursementStatus.loading ? <p>読み込み中…</p>
             : reimbursementStatus.error ? <p className="error" role="alert">{reimbursementStatus.error}</p>
             : visibleReimbursements.length === 0 ? <p className="sub">該当する立替支払いはありません。</p>
             : <ul className="expense-entries">{Array.from(reimbursementsByMonth, ([month, entries]) => <li key={month} className="expense-month-group">
               <h4>{expenseMonthTitle(month, entries)}</h4>
               <ul className="expense-entries">{entries.map(row => <li key={row.id}>
-                <time dateTime={row.spent_on}>{row.spent_on}</time>
+                <div className="expense-entry-top">
+                  <time dateTime={row.spent_on}>{row.spent_on}</time>
+                  <label className="expense-selection"><input
+                    type="checkbox"
+                    aria-label={`${row.spent_on} ${row.description}を選択`}
+                    checked={selectedReimbursements.has(row.id)}
+                    disabled={row.approved || expenseBusy || !!selectionAction}
+                    onChange={e => {
+                      const checked = e.currentTarget.checked;
+                      setSelectedReimbursements(current => toggleSelection(current, row.id, checked));
+                    }}
+                  /></label>
+                </div>
                 <div>{row.description}</div>
                 <div className="expense-hint">{staffNames[row.staff_id]}</div>
                 <div className="expense-entry-bottom"><span className="expense-hint">{row.category ?? '区分未設定'}</span><strong>{yen(row.amount)}</strong></div>
@@ -191,19 +236,29 @@ export default function ExpenseList({ revision }: { revision: number }) {
     setSavedRevision(value => value + 1);
   }} />}
   {materialAnalysisOpen && <AskulMaterialAnalysis onClose={() => setMaterialAnalysisOpen(false)} />}
-  {deletion && <ExpenseDeleteConfirmation rows={deletion.rows} busy={deleting} error={deleteError} onDelete={() => void removeSelected()} onClose={() => { if (!deleteLock.current) setDeletion(null); }} />}
+  {selectionAction && <ExpenseSelectionConfirmation action={selectionAction} busy={deleting} error={deleteError} onDelete={() => void removeSelected()} onClose={() => { if (!deleteLock.current) setSelectionAction(null); }} />}
   </div>;
 }
 
-function ExpenseDeleteConfirmation({ rows, busy, error, onDelete, onClose }: { rows: ExpenseInput[]; busy: boolean; error: string; onDelete: () => void; onClose: () => void }) {
+function ExpenseSelectionConfirmation({ action, busy, error, onDelete, onClose }: { action: SelectionAction; busy: boolean; error: string; onDelete: () => void; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const element=dialog.current; element?.showModal(); return () => element?.close(); }, []);
-  return <dialog ref={dialog} className="expense-delete-confirmation" aria-label="経費の削除" onCancel={e => { e.preventDefault(); if (!busy) onClose(); }}>
-    <h3>経費の削除</h3><p>選択した{rows.length}件の経費を削除しますか？</p>
-    <ul>{rows.map(row => <li key={row.id}>{row.incurred_on}　{row.name}　{yen(row.amount)}</li>)}</ul>
-    <p>合計 {yen(rows.reduce((total,row) => total+row.amount,0))}</p>
-    {rows.some(row => row.memo?.startsWith('納品請求書 ')) && <p>請求書の承認記録は変更されません。</p>}
+  useEffect(() => { const element = dialog.current; element?.showModal(); return () => element?.close(); }, []);
+  const excluding = action.kind === 'reimbursement';
+  const title = excluding ? '立替支払いを請求から除外' : '経費の削除';
+  const rows = excluding
+    ? action.rows.map(row => ({ id: row.id, date: row.spent_on, name: row.description, amount: row.amount }))
+    : action.rows.map(row => ({ id: row.id, date: row.incurred_on, name: row.name, amount: row.amount }));
+  return <dialog ref={dialog} className="expense-delete-confirmation" aria-label={title} onCancel={e => { e.preventDefault(); if (!busy) onClose(); }}>
+    <h3>{title}</h3>
+    <p>選択した{rows.length}件{excluding ? 'の立替支払いを請求から除外しますか？' : 'の経費を削除しますか？'}</p>
+    <ul>{rows.map(row => <li key={row.id}>{row.date}　{row.name}　{yen(row.amount)}</li>)}</ul>
+    <p>合計 {yen(rows.reduce((total, row) => total + row.amount, 0))}</p>
+    {action.kind === 'reimbursement' && <p>領収書は納品アプリの領収書明細に残ります。提出済みの請求書は再提出してください。</p>}
+    {action.kind === 'expense' && action.rows.some(row => row.memo?.startsWith('納品請求書 ')) && <p>請求書の承認記録は変更されません。</p>}
     {error && <p className="error" role="alert">{error}</p>}
-    <div className="toolbar"><button type="button" className="btn primary" disabled={busy} onClick={onDelete}>{busy ? '削除中…' : '削除'}</button><button type="button" className="btn" autoFocus disabled={busy} onClick={onClose}>閉じる</button></div>
+    <div className="toolbar">
+      <button type="button" className="btn primary" disabled={busy} onClick={onDelete}>{busy ? '処理中…' : excluding ? '請求から除外' : '削除'}</button>
+      <button type="button" className="btn" autoFocus disabled={busy} onClick={onClose}>閉じる</button>
+    </div>
   </dialog>;
 }

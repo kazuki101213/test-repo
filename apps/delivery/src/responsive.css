@@ -83,23 +83,12 @@
   .invoice-fields .btn { height:44px; }
   .invoice-auction-workdays > .row { display:grid; grid-template-columns:150px auto; justify-content:start; margin:8px 0; }
   .receipt-attachment-options { display:grid; grid-template-columns:auto auto; justify-content:start; }
-  .receipt-detail-table { min-width:520px; table-layout:fixed; }
-  .receipt-detail-table th:first-child { width:100px; }
-  .receipt-detail-table th:nth-child(3) { width:96px; }
-  .receipt-detail-table th:nth-child(4) { width:68px; }
-  .receipt-detail-table th.receipt-actions-cell, .receipt-detail-table td.receipt-actions-cell { width:116px; padding-left:8px; }
-  .receipt-detail-table td:nth-child(2) { white-space:normal; }
   .receipt-row-actions .btn { padding:8px; }
-  .packed-summary-scroll table { min-width:520px; table-layout:fixed; }
-  .packed-summary-scroll th:first-child { width:70px; }
-  .packed-summary-scroll th:nth-child(2), .packed-summary-scroll th:nth-child(3) { width:100px; }
-  .packed-summary-scroll td { overflow-wrap:anywhere; }
   .gross-profit-summary .toolbar { display:grid; grid-template-columns:auto minmax(0,1fr) 200px 150px; align-items:end; gap:12px; }
   .gross-profit-summary .scroll { max-width:100%; overflow:auto; }
-  .gross-profit-summary table { width:100%; min-width:470px; border-collapse:collapse; table-layout:fixed; }
-  .gross-profit-summary th, .gross-profit-summary td { padding:8px; text-align:left; overflow-wrap:anywhere; }
-  .gross-profit-summary th:first-child { width:104px; }
-  .gross-profit-summary th:last-child, .gross-profit-summary td:last-child { width:120px; text-align:right; white-space:nowrap; }
+  .gross-profit-summary table { width:max-content; border-collapse:collapse; }
+  .gross-profit-summary th, .gross-profit-summary td { padding:8px; text-align:left; white-space:nowrap; }
+  .gross-profit-summary th:last-child, .gross-profit-summary td:last-child { text-align:right; }
   .document-preview { min-width:0; margin:20px 0; }
   .document-preview-content { width:190mm; transform-origin:top left; }
   .document-preview .invoice-sheet, .document-preview .receipt-summary-sheet, .document-preview .receipt-photo-sheet { width:190mm; margin:0 auto 20px; }
