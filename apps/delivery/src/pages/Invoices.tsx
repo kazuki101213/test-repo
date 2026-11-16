@@ -5,7 +5,7 @@ import type { Staff, InvoiceReceipt } from '@bussan/shared';
 import { staffDisplayName, deliveryStaffOptions, invoiceReceiptDetails, downloadInvoicePdf } from '@bussan/shared';
 import DateInput from '../components/DateInput';
 import MonthInput from '../components/MonthInput';
-import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday, monthlyGrossProfit } from '../invoices';
+import { findInvoice, invoiceProfiles, prepareInvoice, submitDocuments, saveInvoiceProfile, japanToday, monthlyGrossProfit, recentInvoiceMonths } from '../invoices';
 import PackedSummary from '../components/PackedSummary';
 import GrossProfitSummary from '../components/GrossProfitSummary';
 import InvoiceSheet from '../components/InvoiceSheet';
@@ -98,6 +98,8 @@ export default function Invoices({ staff, onNavigationChange, review, initialMon
   const reviewPage = (label: string) => (page: ReactNode, index: number) => <section className="invoice-review-page" aria-label={`${label} ${index + 1}ページ`} key={`${label}-${index}`}><h3>{label}</h3><DocumentPreview>{page}</DocumentPreview></section>;
   const profile = profiles.find(p => p.staff_id === staffId);
   const isIshikawa = profile?.details.issuer_name === '石川秀樹';
+  const canSeeGrossProfit = staff.role !== 'deliverer';
+  const historyMonths = recentInvoiceMonths();
 
   useEffect(() => {
     onNavigationChange(busy || receiptBusy || pdfBusy ? 'busy' : dirty || settings ? 'dirty' : null);
@@ -247,7 +249,7 @@ export default function Invoices({ staff, onNavigationChange, review, initialMon
       </form>
       </div>}
       <div className="receipt-section">
-      <InvoiceReceipts key={`${staffId}/${month}`} staffId={staffId} month={month} tableTarget={receiptTableTarget} approved={!!invoice?.approved_at} disabled={busy || pdfBusy} onBusyChange={setReceiptBusy} onSavingChange={setReceiptSaving} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
+      <InvoiceReceipts key={`${staffId}/${month}/${historyMonths[0]}`} staffId={staffId} month={month} historyMonths={review ? undefined : historyMonths} tableTarget={receiptTableTarget} approved={!!invoice?.approved_at} disabled={busy || pdfBusy} onBusyChange={setReceiptBusy} onSavingChange={setReceiptSaving} onRowsChange={setReceiptRows} onChanged={() => { setDirty(true); setMessage(''); }} />
       </div>
       {!invoice?.approved_at && <label className="invoice-note-input no-print"><span className="invoice-note-heading">備考欄</span><textarea form="invoice-submit-form" maxLength={2000} rows={2} value={note} disabled={busy} onChange={e => { setNote(e.target.value); setDirty(true); }} /></label>}
       {review && <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />}
@@ -268,10 +270,10 @@ export default function Invoices({ staff, onNavigationChange, review, initialMon
 
     </>}
     </div>
-    {!review && <div className="invoice-summaries no-print">
+    {!review && <div className={`invoice-summaries no-print${canSeeGrossProfit ? '' : ' invoice-summaries--without-profit'}`}>
       <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />
-      <GrossProfitSummary key={`${staffId}/${month}/${reload}`} staffId={staff.role === 'deliverer' ? null : staffId} month={profile ? month : ''} />
-      <div className="card"><PackedSummary staffId={staff.id} /></div>
+      {canSeeGrossProfit && <GrossProfitSummary key={`${staffId}/${month}/${reload}`} staffId={staffId} month={profile ? month : ''} />}
+      <div className="card"><PackedSummary staffId={staffId} month={historyMonths.at(-1) ?? month} monthCount={historyMonths.length} /></div>
     </div>}
   </section>;
 }

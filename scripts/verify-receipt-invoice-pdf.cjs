@@ -76,9 +76,10 @@ assert.equal(api.exports.invoiceReceiptDetails([...rows,{...receipt('excluded',9
 async function testReceiptEditor(){
  let hooks=[],cursor=0,pending=[],dirty=true,tree,stored=[],uploaded,edited;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
- const noop=()=>{};const props={staffId:'worker',month:'2026-10',approved:false,disabled:false,tableTarget:{},onBusyChange:noop,onRowsChange:noop,onCountChange:noop,onChanged:noop,onPrint:noop};
+ const noop=()=>{};let invoiceRows;
+ const props={staffId:'worker',month:'2026-10',historyMonths:['2026-10','2026-09','2026-08','2026-07','2026-06','2026-05'],approved:false,disabled:false,tableTarget:{},onBusyChange:noop,onRowsChange:rows=>{invoiceRows=rows},onCountChange:noop,onChanged:noop,onPrint:noop};
  const component={exports:{},window:{confirm:()=>true},require:name=>name==='react'?react:name==='react-dom'?{createPortal:child=>child}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{
-  loadInvoiceReceipts:async()=>stored,releaseReceiptImages:noop,reimbursementCategories:api.exports.reimbursementCategories,
+  loadInvoiceReceipts:async(staff,month)=>month==='2026-09'?[{...receipt('historical',500),description:'過去の領収書',url:'blob:history',mime_type:'application/pdf'}]:stored,releaseReceiptImages:noop,reimbursementCategories:api.exports.reimbursementCategories,
   uploadInvoiceReceipt:async(staff,month,file,type,details)=>{uploaded={staff,month,file,type,details};stored=[{...receipt('registered',details.amount),...details,version:1,original_name:file.name}]},
   updateInvoiceReceipt:async(row,details)=>{edited={row,details};stored=[{...row,...details,version:2}]},removeInvoiceReceipt:noop,
  }:{__esModule:true,default:'DateInput'}};
@@ -115,6 +116,15 @@ async function testReceiptEditor(){
  assert(text(detailTable()).includes('請求対象外'));
  all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
  assert.equal(edited.details.include_in_invoice,false,'Editing an excluded receipt must keep it out of the invoice');
+ const history=()=>all(tree).find(n=>n.type==='select'&&n.props['aria-label']==='領収書明細の請求月');
+ assert.deepEqual(all(history()).filter(n=>n.type==='option').map(n=>n.props.value),props.historyMonths);
+ history().props.onChange({target:{value:'2026-09'}});await settle();
+ assert(text(detailTable()).includes('過去の領収書'));
+ assert(all(detailTable()).some(n=>n.type==='a'&&n.props.href==='blob:history'));
+ assert(!all(detailTable()).some(n=>n.type==='button'));
+ assert.equal(invoiceRows[0].id,'registered');
+ history().props.onChange({target:{value:'2026-10'}});await settle();
+ assert(text(detailTable()).includes('梱包資材'));
 
  props.disabled=true;dirty=true;await settle();
  assert(text(tree).includes('立替支払い'),'Temporary submission or PDF processing keeps the heading');

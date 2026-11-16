@@ -214,13 +214,13 @@ export default function ExpenseList({ revision }: { revision: number }) {
                 <div>{row.description}</div>
                 <div className="expense-hint">{staffNames[row.staff_id]}</div>
                 <div className="expense-entry-bottom"><span className="expense-hint">{row.category ?? '区分未設定'}</span><strong>{yen(row.amount)}</strong></div>
-                <div className="expense-hint">{row.included_in_expense ? '経費に計上済み' : row.approved ? '承認済み' : '未承認'}</div>
+                <div className="expense-hint">請求月 {row.billing_month.slice(0, 7).replace('-', '年')}月 · {row.included_in_expense ? '経費に計上済み' : row.approved ? '承認済み' : '未承認'}</div>
               </li>)}</ul>
             </li>)}</ul>}
         </section>
     <div className="expense-registration-column">
       <ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} onClose={draft ? () => { if (expenseBusy) return; setEditing(undefined); setDraft(undefined); } : undefined} />
-      <AmazonUnreflectedPayments />
+      <AmazonUnreflectedPayments onReflected={() => setSavedRevision(value => value + 1)} />
     </div>
   {fieldEdit && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="経費の項目を編集"><div className="card inventory-comment-panel">
     <h3>{{ incurred_on: '日付', category: '区分', name: '内容', amount: '金額' }[fieldEdit.field]}を編集</h3>

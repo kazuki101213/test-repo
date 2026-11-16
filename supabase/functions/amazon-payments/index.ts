@@ -61,11 +61,27 @@ const paymentKinds: Record<string, string> = {
   Refund: '注文の返金', DebtRecovery: 'Amazonへの支払い',
   'サービス料金 - 取り消し': '請求の取消', 'サービス料金 - 訂正': '訂正後の請求',
 };
+const inventoryRefundTypes = ['inventory reimbursement', 'inventoryreimbursement', 'fba inventory reimbursement', 'fbainventoryreimbursement', 'fba_inventory_reimbursement', '在庫の払い戻し', '在庫払い戻し'];
+const isRefundType = (type: string) => type === 'refund' || type === '返金';
 
-function unreflectedPayment(row: Obj, accountLabels: Map<string, string>) {
+type PaymentAccount = ReturnType<typeof amazonAccounts>[number];
+function paymentReflection(row: Obj, account: PaymentAccount | undefined) {
+  if (row.transaction_type === 'DebtRecovery' && row.description === 'DebtPayment') return 'settlement';
+  if (account && row.transaction_type === 'ServiceFee' && row.currency === 'JPY'
+    && ['RELEASED', 'DEFERRED_RELEASED'].includes(String(row.status))
+    && Number.isSafeInteger(row.amount) && Number(row.amount) < 0) return 'expense';
+  if (account?.configured && row.transaction_type === 'Shipment' && row.status === 'RELEASED') return 'sale';
+  const type = String(row.transaction_type ?? '').trim().toLowerCase();
+  if (account?.configured && ['RELEASED', '支払い実行済み'].includes(String(row.status))
+    && (isRefundType(type) || inventoryRefundTypes.includes(type))) return 'refund';
+  return null;
+}
+
+function unreflectedPayment(row: Obj, accounts: Map<string, PaymentAccount>) {
   const accountKey = String(row.account_key);
   const legacyAccount = /^amzn([12])\./.exec(accountKey)?.[1];
-  const account = accountLabels.get(accountKey) ?? (legacyAccount ? 'Amazon' + legacyAccount : 'アカウント不明');
+  const configuredAccount = accounts.get(accountKey);
+  const account = configuredAccount?.label ?? (legacyAccount ? 'Amazon' + legacyAccount : 'アカウント不明');
   const type = String(row.transaction_type ?? '');
   const description = String(row.description ?? '').trim().replace(/[：:]$/, '');
   const kind = Object.hasOwn(paymentKinds, type) ? paymentKinds[type] : type || '区分不明';
@@ -73,7 +89,7 @@ function unreflectedPayment(row: Obj, accountLabels: Map<string, string>) {
     id: (account === 'アカウント不明' ? accountKey : account) + ':' + row.transaction_id,
     date: row.transaction_day, account,
     description: (Object.hasOwn(paymentDescriptions, description) ? paymentDescriptions[description] : description) || kind,
-    kind, partiallyReflected: row.partially_reflected === true,
+    kind, partiallyReflected: row.partially_reflected === true, canReflect: paymentReflection(row, configuredAccount) !== null,
     amount: typeof row.amount === 'number' ? Math.abs(row.amount) : null, currency: row.currency,
   };
 }
@@ -110,30 +126,73 @@ export async function handler(req: Request): Promise<Response> {
       if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
       actorId = user.user.id;
     }
-    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose', 'dispatch-dates', 'service-fees', 'unreflected'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose', 'dispatch-dates', 'service-fees', 'unreflected', 'review-payment'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
     if (body.action === 'accounts') return respond(200, { accounts: amazonAccounts() });
-    if (body.action === 'unreflected') {
-      const offset = body.offset ?? 0;
-      if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) {
-        throw new SafeError(400, '明細のページ指定が不正です。');
-      }
+    if (body.action === 'unreflected' || body.action === 'review-payment') {
       const reader = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
         db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false },
       });
-      const { data, error } = await reader.from('v_amazon_unreflected_payments')
-        .select('account_key,transaction_id,transaction_day,transaction_type,description,amount,currency,partially_reflected')
-        .order('posted_at', { ascending: false }).order('account_key').order('transaction_id').range(offset, offset + 499);
-      if (error) throw new SafeError(503, 'Amazonの未反映分を読み込めません。');
-      const accountLabels = new Map<string, string>();
+      const payments = reader.from('v_amazon_unreflected_payments')
+        .select('account_key,transaction_id,transaction_day,transaction_type,description,amount,currency,partially_reflected,status');
+      const accounts = new Map<string, PaymentAccount>();
       for (const account of amazonAccounts()) {
         try {
           const { sellerId } = amazonCredentials(account.id, false);
-          accountLabels.set(await sellerAccountKey(sellerId), account.label);
+          accounts.set(await sellerAccountKey(sellerId), account);
         } catch (error) {
           if (!(error instanceof AmazonAccountError)) throw error;
         }
       }
-      return respond(200, { rows: data.map(row => unreflectedPayment(row, accountLabels)) });
+      if (body.action === 'unreflected') {
+        const offset = body.offset ?? 0;
+        if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) {
+          throw new SafeError(400, '明細のページ指定が不正です。');
+        }
+        const { data, error } = await payments.order('posted_at', { ascending: false }).order('account_key').order('transaction_id').range(offset, offset + 499);
+        if (error) throw new SafeError(503, 'Amazonの未反映分を読み込めません。');
+        return respond(200, { rows: data.map(row => unreflectedPayment(row, accounts)) });
+      }
+      if (scheduled) throw new SafeError(403, '管理アプリから操作してください。');
+      const { paymentId, decision } = body;
+      if (typeof paymentId !== 'string' || paymentId.length > 570 || paymentId.indexOf(':') <= 0
+        || (decision !== 'reflect' && decision !== 'delete')) throw new SafeError(400, '明細と操作を指定してください。');
+      const transactionId = paymentId.slice(paymentId.indexOf(':') + 1);
+      const { data, error } = await payments.eq('transaction_id', transactionId);
+      if (error) throw new SafeError(503, 'Amazonの明細を確認できませんでした。');
+      const matches = data.filter(row => unreflectedPayment(row, accounts).id === paymentId);
+      if (matches.length !== 1) throw new SafeError(409, '対象の明細を確認できませんでした。画面を再読み込みしてください。');
+      const [row] = matches;
+      const account = accounts.get(row.account_key);
+      const reflection = paymentReflection(row, account);
+      if (decision === 'delete' || reflection === 'settlement') {
+        const { error: saveError } = await reader.from('amazon_payment_review_resolutions').upsert({
+          account_key: row.account_key, marketplace_id: marketplace, transaction_id: transactionId,
+          resolution: decision === 'delete' ? 'dismissed' : 'settlement_confirmed', resolved_by: actorId,
+        }, { onConflict: 'account_key,marketplace_id,transaction_id', ignoreDuplicates: true });
+        if (saveError) throw new SafeError(503, '明細を更新できませんでした。');
+        return respond(200, { message: decision === 'delete' ? '未反映分から削除しました。' : 'Amazon残高の精算として確認しました。', removed: true });
+      }
+      if (reflection === 'expense' && account) {
+        const { data: result, error: saveError } = await reader.rpc('apply_amazon_service_fee_expenses', {
+          p_account: row.account_key, p_marketplace: marketplace, p_transactions: [transactionId], p_account_label: account.label,
+        });
+        if (saveError) throw new SafeError(503, 'サービス料金を経費に反映できませんでした。');
+        if (!(result?.created || result?.matched || result?.linked)) throw new SafeError(409, 'サービス料金の金額または計上先を確認してください。');
+        return respond(200, { message: 'サービス料金を経費に反映しました。', removed: true, expenseChanged: true });
+      }
+      if ((reflection === 'sale' || reflection === 'refund') && account) {
+        const response = await handler(new Request(req.url, {
+          method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reconcile', accountId: account.id, transactionId }),
+        }));
+        if (!response.ok) return response;
+        const { results } = await response.json();
+        const review = results.find((result: Obj) => result.status === 'review');
+        const applied = results.some((result: Obj) => result.status === 'applied' || result.status === 'unchanged');
+        if (!applied) throw new SafeError(409, review?.reason ?? '照合先を確認できませんでした。');
+        return respond(200, { message: review ? '照合できた分を反映しました。残り：' + review.reason : '照合できた明細を反映しました。' });
+      }
+      throw new SafeError(409, 'この区分の自動反映先は設定されていません。');
     }
     const accountId = amazonAccountId(body.accountId);
     if (body.action === 'identity') {
@@ -197,6 +256,7 @@ export async function handler(req: Request): Promise<Response> {
     if (body.action === 'diagnose' && !scheduled) throw new SafeError(403, '診断は定期更新の認証からのみ実行できます。');
     if (body.action === 'dispatch-dates' && !scheduled) throw new SafeError(403, '出荷日の同期は定期更新の認証からのみ実行できます。');
     const range = body.action === 'diagnose' || body.action === 'dispatch-dates'
+      || (body.action === 'reconcile' && body.postedAfter === undefined && body.postedBefore === undefined)
       ? { postedAfter: new Date(Date.now() - 4 * 86400000).toISOString(), postedBefore: new Date(Date.now() - 180000).toISOString() }
       : dateRange(body);
     const credentials = amazonCredentials(accountId, body.action !== 'history');
@@ -305,8 +365,8 @@ export async function handler(req: Request): Promise<Response> {
       if (readError) throw new SafeError(503, '照合する履歴を読み込めません。');
       if (!transaction) throw new SafeError(404, '先にAmazonの販売情報を取得してください。');
       const normalizedType = String(transaction.transaction_type ?? '').trim().toLowerCase();
-      const isInventoryReimbursement = ['inventory reimbursement', 'inventoryreimbursement', 'fba inventory reimbursement', 'fbainventoryreimbursement', 'fba_inventory_reimbursement', '在庫の払い戻し', '在庫払い戻し'].includes(normalizedType);
-      const isRefund = normalizedType === 'refund' || normalizedType === '返金';
+      const isInventoryReimbursement = inventoryRefundTypes.includes(normalizedType);
+      const isRefund = isRefundType(normalizedType);
       if (isInventoryReimbursement || isRefund) {
         if (!['RELEASED', '支払い実行済み'].includes(String(transaction.status))) {
           return respond(200, { results: [{ sku: '—', status: 'review', reason: '金額が確定していない取引のため反映しません。' }] });

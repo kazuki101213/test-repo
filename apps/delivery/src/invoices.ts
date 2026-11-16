@@ -74,3 +74,9 @@ export async function submitDocuments(staff: string, month: string, issued: stri
   return data.invoice as Invoice | null;
 }
 export const japanToday = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+export function recentInvoiceMonths(today = japanToday()): string[] {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  return Array.from({ length: 6 }, (_, offset) =>
+    new Date(Date.UTC(year, month - 1 - offset, 1)).toISOString().slice(0, 7));
+}

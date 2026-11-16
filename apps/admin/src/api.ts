@@ -345,6 +345,7 @@ export type AmazonUnreflectedPayment = {
   description: string;
   kind: string;
   partiallyReflected: boolean;
+  canReflect: boolean;
   amount: number | null;
   currency: string | null;
 };
@@ -359,6 +360,18 @@ export async function fetchAmazonUnreflectedPayments(): Promise<AmazonUnreflecte
   });
 }
 
+export async function reviewAmazonPayment(paymentId: string, decision: 'reflect' | 'delete') {
+  const { data, error } = await getSupabase().functions.invoke<{ message: string; removed?: boolean; expenseChanged?: boolean }>('amazon-payments', {
+    body: { action: 'review-payment', paymentId, decision },
+  });
+  if (error) {
+    const response = error.context instanceof Response ? await error.context.json().catch(() => null) : null;
+    throw new Error(typeof response?.error === 'string' ? response.error : 'Amazonの明細を更新できませんでした。');
+  }
+  if (!data?.message) throw new Error('Amazonの明細の更新結果を確認できませんでした。');
+  return data;
+}
+
 export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
   return readAllRows<ExpenseDraft>(async (from, to) => {
     const { data, error } = await getSupabase().from('expense_drafts')
@@ -371,7 +384,7 @@ export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
 export async function fetchExpenseReimbursements(): Promise<ExpenseReimbursement[]> {
   return readAllRows<ExpenseReimbursement>(async (from, to) => {
     const { data, error } = await getSupabase().from('v_expense_reimbursements')
-      .select('id,spent_on,staff_id,description,category,amount,approved,included_in_expense')
+      .select('id,spent_on,staff_id,description,category,amount,approved,included_in_expense,billing_month')
       .order('spent_on', { ascending: false }).order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as ExpenseReimbursement[];
