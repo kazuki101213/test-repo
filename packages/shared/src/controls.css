@@ -42,3 +42,18 @@
  :root { --search-item-width:108px; --search-field-width:clamp(96px,calc(var(--control-viewport-width,100vw) - 174px),260px); }
  :is(.layout .management-navigation,.app .delivery-navigation) { overflow-x:auto; }
 }
+
+@media screen {
+ :is(.layout,.app) > header.app-navigation-bar {
+  display:flex; flex-flow:row nowrap; align-items:center; justify-content:flex-start; gap:12px;
+  min-width:0; overflow-x:auto; scrollbar-width:thin;
+ }
+ :is(.layout,.app) .app-navigation-bar > nav {
+  display:flex; flex:0 0 auto; flex-wrap:nowrap;
+  width:max-content; max-width:none; margin:0; padding-block:0; overflow:visible;
+ }
+ :is(.layout,.app) .app-navigation-bar > .app-session-actions {
+  display:flex; flex:0 0 auto; align-items:center; gap:8px;
+  margin-inline-start:auto; white-space:nowrap;
+ }
+}
