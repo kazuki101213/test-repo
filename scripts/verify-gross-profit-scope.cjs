@@ -68,7 +68,28 @@ async function testSubmission(receipts,expectedReceipts){
  assert.equal(sent[0],'worker');assert.equal(sent[6],true);assert.equal(sent[7],expectedReceipts,'Invoice send includes registered receipts and skips an empty receipt submission');
  assert(!text(view.tree).includes('領収書送信'));assert(!text(view.tree).includes('保存後、請求書を送信すると反映されます。'));
 }
+async function testDashboardPairs(){
+ const staff={id:'osabe',code:'AA',name:'長部一輝',role:'admin'}, requests=[];
+ const allMonth={month:'2026-11-01',仕入数:6,仕入金額:62000}, ownMonth={month:'2026-11-01',仕入数:3,仕入金額:30000};
+ const allStock={現在庫数:5,売上見込み合計:90000,見込み利益合計:20000}, ownStock={現在庫数:2,売上見込み合計:40000,見込み利益合計:8000};
+ const dashboard=mount('apps/admin/src/pages/Dashboard.tsx',{staff,userId:'user'},{
+  '@bussan/shared':{...staffNames.exports,yen:n=>'¥'+(n??0)},
+  '../sales':{japanMonth:()=> '2026-11'},
+  '../api':{fetchStockSummary:async()=>allStock,fetchMonthly:async()=>[allMonth],fetchWorkload:async()=>[],workloadMetrics:[],
+   fetchDashboardPurchaserSummary:async()=>({stock:ownStock,months:[ownMonth],workload:[]}),
+   fetchDashboardPurchaseForecast:async month=>{requests.push(month);return{all:12300,mine:-4500}}},
+ });
+ await dashboard.settle();
+ assert.deepEqual(requests,['2026-11']);
+ const pairs=(card)=>all(all(dashboard.tree).find(n=>n.props?.className==='card '+card))
+  .filter(n=>typeof n.type==='function'&&n.props.firstLabel)
+  .map(n=>all(n.type(n.props)).filter(node=>node.props?.className?.includes('kpi-label')||node.props?.className?.includes('dashboard-money-pair')).map(text));
+ assert.deepEqual(pairs('purchase-summary-card'),[['仕入金額 / 見込利益','¥62000/¥12300'],['仕入金額 / 見込利益','¥30000/¥-4500']]);
+ assert.deepEqual(pairs('stock-summary-card'),[['見込売上 / 見込利益','¥90000/¥20000'],['見込売上 / 見込利益','¥40000/¥8000']]);
+ assert.match(fs.readFileSync('apps/admin/src/styles.css','utf8'),/\.dashboard-money-pair \{[^}]*flex-wrap:nowrap/);
+}
 (async()=>{
+ await testDashboardPairs();
  await testScope({id:'osabe',code:'AA',name:'長部一輝',role:'admin'},'osabe',true);
  await testScope({id:'ishikawa',code:'EE',name:'石川秀樹',role:'purchaser'},'ishikawa',false);
  await testScope({id:'other-admin',code:'XX',name:'別管理者',role:'admin'},'other-admin',true);
