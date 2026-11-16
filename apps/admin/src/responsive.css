@@ -269,6 +269,7 @@
 @media screen {
  .layout .spare-search.spare-toolbar { display:grid; grid-template-columns:max-content 132px minmax(0,260px); align-items:center; gap:8px; }
  .layout .spare-search.spare-toolbar > :is(input,select) { width:100%; min-width:0; }
+ .layout .expense-search-actions { display:flex; align-items:center; gap:var(--control-gap); }
  .layout .toolbar.expense-search-toolbar > select { width:auto; field-sizing:content; }
  .layout .toolbar.expense-search-toolbar > input[type=search] { width:0 !important; flex:1 1 0; min-width:6rem !important; max-width:var(--search-field-width); }
  .layout .toolbar.product-search-toolbar { grid-template-columns:max-content minmax(0,260px) max-content; align-items:center; }
@@ -279,6 +280,10 @@
  .layout .spare-search.spare-toolbar > .btn { font-size:14px; padding-inline:8px; }
  .layout .toolbar.product-search-toolbar { grid-template-columns:max-content minmax(0,1fr) max-content; gap:6px; }
  .layout .toolbar.product-search-toolbar > .btn { font-size:14px; padding-inline:8px; }
+}
+@media screen and (max-width:700px) {
+ .layout .expense-search-toolbar > .expense-search-actions { flex-basis:100%; }
+ .layout .toolbar.expense-search-toolbar > input[type=search] { min-width:4rem !important; }
 }
 
 /* Give the stock breakdown a full row under the dashboard cards. */

@@ -107,8 +107,10 @@ export default function ExpenseList({ revision }: { revision: number }) {
   return <div className="dashboard-workspace with-expense registration-workspace">
     <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費一覧">
     <div className="toolbar expense-search-toolbar">
-      <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => { setAskulResult(null); setAskulImportOpen(true); }}>アスクルCSV取り込み</button>
-      <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => setMaterialAnalysisOpen(true)}>資材の購入分析</button>
+      <div className="expense-search-actions">
+        <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => { setAskulResult(null); setAskulImportOpen(true); }}>アスクルCSV取り込み</button>
+        <button type="button" className="btn" disabled={expenseBusy || !!deletion} onClick={() => setMaterialAnalysisOpen(true)}>資材の購入分析</button>
+      </div>
       <select aria-label="経費区分で絞り込む" value={categoryFilter} disabled={!!deletion} onChange={e => {
         setCategoryFilter(e.currentTarget.value as ExpenseCategory | '');
         setSelected(new Set());
