@@ -1,6 +1,6 @@
 import { staffDisplayName, yen, type Staff } from '@bussan/shared';
 import { useEffect, useState, type ReactNode } from 'react';
-import { fetchDashboardPurchaserSummary, fetchMonthly, fetchStockSummary, fetchWorkload, workloadMetrics } from '../api';
+import { fetchDashboardPurchaseForecast, fetchDashboardPurchaserSummary, fetchMonthly, fetchStockSummary, fetchWorkload, workloadMetrics } from '../api';
 import type { DashboardMonth, DashboardPurchaserSummary, DashboardScope, DashboardStock, DelivererWorkload, WorkloadMetric } from '../api';
 import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
@@ -21,6 +21,17 @@ function MetricPair({ children }: { children: (scope: DashboardScope) => ReactNo
   </span>;
 }
 
+function MoneyPair({ firstLabel, firstAmount, forecast }: { firstLabel: string; firstAmount?: number; forecast?: number }) {
+  return <>
+    <div className="kpi-label">{firstLabel} / 見込利益</div>
+    <div className="kpi-value dashboard-money-pair">
+      <span>{yen(firstAmount)}</span>
+      <span className="dashboard-metric-divider">/</span>
+      <span className={(forecast ?? 0) < 0 ? 'neg' : 'pos'}>{yen(forecast)}</span>
+    </div>
+  </>;
+}
+
 function formatMonthlyMetric(metric: MonthlyMetric, month?: DashboardMonth) {
   if (metric === '平均利益単価') return month?.販売数 ? yen(Math.round(month.粗利益 / month.販売数)) : '—';
   if (metric === '仕入数' || metric === '販売数') return month?.[metric] ?? 0;
@@ -29,10 +40,12 @@ function formatMonthlyMetric(metric: MonthlyMetric, month?: DashboardMonth) {
 
 export default function Dashboard({ staff, userId }: { staff: Staff; userId: string }) {
   const isAdmin = staff.role === 'admin';
+  const thisMonth = japanMonth();
   const [expenseRevision, setExpenseRevision] = useState(0);
   const [stock, setStock] = useState<DashboardStock | null>(null);
   const [months, setMonths] = useState<DashboardMonth[]>([]);
   const [mine, setMine] = useState<DashboardPurchaserSummary | null>(null);
+  const [purchaseForecast, setPurchaseForecast] = useState<Record<DashboardScope, number> | null>(null);
   const [workload, setWorkload] = useState<DelivererWorkload[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ month: string; metric: MonthlyMetric; scope: DashboardScope } | null>(null);
@@ -41,6 +54,10 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
   useEffect(() => {
     let active = true;
     setError(null);
+    setPurchaseForecast(null);
+    void fetchDashboardPurchaseForecast(thisMonth)
+      .then(value => { if (active) setPurchaseForecast(value); })
+      .catch((e) => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     Promise.all([fetchStockSummary(), fetchMonthly(), fetchWorkload(), fetchDashboardPurchaserSummary()])
       .then(([s, m, w, purchaser]) => {
         if (active) {
@@ -52,9 +69,8 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
       })
       .catch((e) => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     return () => { active = false; };
-  }, [expenseRevision, staff.id]);
+  }, [expenseRevision, staff.id, thisMonth]);
 
-  const thisMonth = japanMonth();
   const mineByMonth = new Map(mine?.months.map(row => [row.month, row]));
   const mineByDeliverer = new Map(mine?.workload.map(row => [row.deliverer_id, row]));
   const visibleMonths = months.filter(row => row.month?.slice(0, 7) <= thisMonth);
@@ -96,7 +112,8 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
             <div className="dashboard-comparison">
               {summaries.map(({ scope, name, month }) => <div className="dashboard-comparison-panel" key={scope}>
                 <h4>{name}</h4>
-                <div className="kpi-value">{yen(month?.仕入金額)} <span className="dashboard-kpi-count">{month?.仕入数 ?? 0} 点</span></div>
+                <MoneyPair firstLabel="仕入金額" firstAmount={month?.仕入金額} forecast={purchaseForecast?.[scope]} />
+                <span className="dashboard-kpi-count">{month?.仕入数 ?? 0} 点</span>
               </div>)}
             </div>
           </div>
@@ -105,10 +122,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
             <div className="dashboard-comparison">
               {summaries.map(({ scope, name, stock: inventory }) => <div className="dashboard-comparison-panel" key={scope}>
                 <h4>{name}</h4>
-                <div className="kpi-label">見込み売上</div>
-                <div className="kpi-value">{yen(inventory?.売上見込み合計)}</div>
-                <div className="kpi-label">見込み利益</div>
-                <div className={`kpi-value ${(inventory?.見込み利益合計 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(inventory?.見込み利益合計)}</div>
+                <MoneyPair firstLabel="見込売上" firstAmount={inventory?.売上見込み合計} forecast={inventory?.見込み利益合計} />
               </div>)}
             </div>
           </div>

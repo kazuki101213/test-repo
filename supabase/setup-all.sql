@@ -24249,3 +24249,80 @@ grant execute on function app.apply_amazon_service_fee_expenses(text, text, text
 notify pgrst, 'reload schema';
 
 
+-- ▼▼▼ 20261116132750_link_invoice_gross_profit_to_selected_staff.sql ▼▼▼
+
+-- Invoice filters can select a purchaser or a delivery assignee.
+create or replace function app.monthly_gross_profit_by_purchaser(p_purchaser_id uuid,p_month date)
+returns jsonb language plpgsql stable security invoker set search_path=pg_catalog,app as $$
+declare
+ current_id uuid := app.current_staff_id();
+ current_user_role text := app.current_role();
+ target_id uuid := current_id;
+ target_role text := current_user_role;
+ result jsonb;
+begin
+ if auth.uid() is null or current_id is null or p_month is null or extract(day from p_month) <> 1 then
+  raise exception '対象月またはログイン情報が不正です' using errcode='22023';
+ end if;
+
+ if current_user_role = 'admin' then
+  select s.id,s.role into target_id,target_role from app.staff s where s.id=p_purchaser_id and s.is_active;
+  if target_role is null or target_role not in ('admin','purchaser','deliverer') then
+   raise exception '担当者を選択してください' using errcode='22023';
+  end if;
+ elsif (current_user_role = 'purchaser' and p_purchaser_id = current_id)
+    or (current_user_role = 'deliverer' and p_purchaser_id is null) then
+  target_id := current_id;
+ else
+  raise exception '閲覧する権限がありません' using errcode='42501';
+ end if;
+
+ with products as (
+  select s.sku,s.sold_on,owner.name as purchaser_name,s.profit as gross_profit
+  from app.v_financial_sales s
+  join app.items event_item on event_item.id=s.id
+  join app.items origin on origin.id=s.origin_item_id
+  left join app.staff owner on owner.id=origin.purchaser_id
+  where s.sold_on>=p_month and s.sold_on<p_month+interval '1 month'
+    and ((target_role in ('admin','purchaser') and origin.purchaser_id=target_id)
+      or (target_role='deliverer' and event_item.deliverer_id=target_id))
+ )
+ select jsonb_build_object(
+  'rows',coalesce(jsonb_agg(jsonb_build_object('sku',sku,'sold_on',sold_on,'purchaser_name',purchaser_name,'gross_profit',gross_profit) order by sold_on,sku),'[]'::jsonb),
+  'total',coalesce(sum(gross_profit),0)
+ ) into result from products;
+ return result;
+end $$;
+
+
+-- ▼▼▼ 20261116133106_add_dashboard_purchase_forecast.sql ▼▼▼
+
+create function app.read_dashboard_purchase_forecast(p_month date) returns jsonb
+language plpgsql stable security invoker set search_path = '' as $$
+declare
+ purchaser_ids uuid[];
+begin
+ if not coalesce(app.management_reports_allowed(), false) then
+  raise exception '閲覧する権限がありません' using errcode = '42501';
+ end if;
+ if p_month is null or extract(day from p_month) <> 1 then
+  raise exception '対象月を確認してください' using errcode = '22023';
+ end if;
+
+ purchaser_ids := app.dashboard_purchaser_ids();
+ return (
+  select jsonb_build_object(
+   'all', coalesce(sum(v.expected_profit), 0),
+   'mine', coalesce(sum(v.expected_profit) filter (where i.purchaser_id = any(purchaser_ids)), 0)
+  )
+  from app.v_financial_families f
+  join app.items i on i.id = f.origin_item_id
+  join app.v_inventory_display v on v.id = i.id
+  where f.origin_purchased_at >= p_month and f.origin_purchased_at < p_month + interval '1 month'
+ );
+end $$;
+revoke all on function app.read_dashboard_purchase_forecast(date) from public, anon, authenticated;
+grant execute on function app.read_dashboard_purchase_forecast(date) to authenticated;
+notify pgrst, 'reload schema';
+
+

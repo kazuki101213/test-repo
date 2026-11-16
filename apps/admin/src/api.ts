@@ -154,6 +154,12 @@ export type DashboardPurchaserSummary = {
   workload: Omit<DelivererWorkload, 'deliverer_name'>[];
 };
 
+export async function fetchDashboardPurchaseForecast(month: string): Promise<Record<DashboardScope, number>> {
+  const { data, error } = await getSupabase().rpc('read_dashboard_purchase_forecast', { p_month: `${month}-01` });
+  if (error) throw new Error(error.message);
+  return data as Record<DashboardScope, number>;
+}
+
 export async function fetchDashboardPurchaserSummary(): Promise<DashboardPurchaserSummary> {
   const { data, error } = await getSupabase().rpc('read_dashboard_purchaser_summary');
   if (error) throw new Error(error.message);

@@ -1,58 +1,27 @@
-import MonthInput from './MonthInput';
-import { staffDisplayName, canViewDeliveryAssignee } from '@bussan/shared';
 import { useEffect, useState } from 'react';
-import { getSupabase } from '@bussan/shared';
-import type { Staff } from '@bussan/shared';
-import { japanToday, monthlyGrossProfit, yen } from '../invoices';
+import { staffDisplayName } from '@bussan/shared';
+import { monthlyGrossProfit, yen } from '../invoices';
 import type { MonthlyGrossProfit } from '../invoices';
 
-type Person = Pick<Staff, 'id' | 'name' | 'role'>;
-
-export default function GrossProfitSummary({ staff }: { staff: Staff }) {
-  const canSelectPurchaser = canViewDeliveryAssignee(staff);
-  const [people, setPeople] = useState<Person[]>([]);
-  const [purchaserId, setPurchaserId] = useState('');
-  const [month, setMonth] = useState(japanToday().slice(0, 7));
+export default function GrossProfitSummary({ staffId, month }: { staffId: string | null; month: string }) {
   const [summary, setSummary] = useState<MonthlyGrossProfit | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!month);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!canSelectPurchaser) return;
+    if (!month) return;
     let active = true;
-    void (async () => {
-      try {
-        const { data, error } = await getSupabase().from('staff').select('id,name,role').eq('is_active', true).in('role', ['admin', 'purchaser']).order('name');
-        if (error) throw error;
-        if (!active) return;
-        const rows = (data ?? []) as Person[];
-        setPeople(rows);
-        setPurchaserId(current => current || rows[0]?.id || '');
-      } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : String(cause));
-      }
-    })();
-    return () => { active = false; };
-  }, [canSelectPurchaser]);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true); setError(''); setSummary(null);
-    const target = canSelectPurchaser ? purchaserId : staff.role === 'deliverer' ? null : staff.id;
-    if (!month || (canSelectPurchaser && !target)) { setLoading(false); return; }
-    void monthlyGrossProfit(target, month).then(data => { if (active) setSummary(data); })
-      .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); })
+    setLoading(true);
+    setError('');
+    setSummary(null);
+    void monthlyGrossProfit(staffId, month).then(data => { if (active) setSummary(data); })
+      .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : (cause as { message?: string })?.message ?? '粗利益を読み込めませんでした。'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [staff.id, staff.role, canSelectPurchaser, purchaserId, month]);
+  }, [staffId, month]);
 
   return <section className="card gross-profit-summary">
-    <div className="toolbar"><h3>粗利益</h3><span style={{ flex: 1 }} />
-      {canSelectPurchaser && <label>担当者<select value={purchaserId} onChange={event => setPurchaserId(event.target.value)}>
-        {people.map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}
-      </select></label>}
-      <label>対象月<MonthInput value={month} onChange={event => setMonth(event.target.value)} /></label>
-    </div>
+    <h3>粗利益</h3>
     {error && <p className="error" role="alert">{error}</p>}
     {loading ? <p>読み込み中…</p> : !error && <>
       <div className="scroll"><table><thead><tr><th>販売日</th><th>SKU</th><th>仕入担当者</th><th>粗利益</th></tr></thead>
