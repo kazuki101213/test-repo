@@ -59,10 +59,13 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
  // The exact multi-letter serial must reach the atomic reserve registration.
  hooks.splice(0);cursor=0;pending=[];selectedDraft=null;dirty=true;currentSpares=[spare];saved=undefined;
  api.createItem=async(payload,id)=>{saved={payload,id};return{id:'created',sku:payload.sku};};
- await settle();field('作業ライン').props.onChange({target:{value:'付属品'}});await settle();
+ await settle();
+ all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
+ field('作業ライン').props.onChange({target:{value:'付属品'}});await settle();
+ assert.equal(field('仕入先').props.value,'ヤフオク');assert.equal(field('商品ID').props.value,'spare-id');
+ assert.equal(field('追跡番号').props.value,'spare-track');assert.equal(field('仕入金額（円）').props.value,1230);
  assert.equal(field('通番号').props.type,'text');assert.equal(field('通番号').props.inputMode,'text');
  field('通番号').props.onChange({target:{value:'1894AA'}});await settle();
- all(tree).find(n=>n.type==='input'&&n.props.name==='purchase-spare'&&n.props.value==='spare').props.onChange();await settle();
  await all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
  assert(saved);assert.equal(saved.id,'spare');assert.equal(saved.payload.lot_seq,1894);assert.match(saved.payload.sku,/^1894aa-/);assert.equal(saved.payload.is_accessory,true);
  const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventory.ts'),inventory);
