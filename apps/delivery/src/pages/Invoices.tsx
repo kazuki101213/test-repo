@@ -266,8 +266,12 @@ export default function Invoices({ staff, onNavigationChange, review, initialMon
 
     </>}
     </div>
-    {!review && <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />}
-    {!review&&<div className="no-print"><GrossProfitSummary staff={staff} /></div>}
-    {!review&&<div className="card no-print"><PackedSummary staffId={staff.id} /></div>}
+    {!review && <>
+      <div ref={setReceiptTableTarget} className="receipt-list-position no-print" />
+      <div className="invoice-summaries no-print">
+        <GrossProfitSummary key={`${staffId}/${month}/${reload}`} staffId={staff.role === 'deliverer' ? null : staffId} month={profile ? month : ''} />
+        <div className="card"><PackedSummary staffId={staff.id} /></div>
+      </div>
+    </>}
   </section>;
 }

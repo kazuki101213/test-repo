@@ -12,13 +12,52 @@ function mount(file,props,mocks){
  return {get tree(){return tree},async settle(){for(let n=0;n<40;n++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default(props);pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}};
 }
 async function testScope(staff,expectedTarget,canSelect){
- const calls=[],people=[{id:'ishikawa',name:'石川秀樹',role:'purchaser'},{id:'osabe',name:'長部一輝',role:'admin'}];let queries=0;
- const q={select(){return q},eq(){return q},in(){return q},order:async()=>({data:people,error:null})};
- const view=mount('apps/delivery/src/components/GrossProfitSummary.tsx',{staff},{'@bussan/shared':{...staffNames.exports,getSupabase:()=>{queries++;return{from:()=>q}}},'../invoices':{japanToday:()=> '2026-10-15',yen:n=>'¥'+n,monthlyGrossProfit:async(target,month)=>{calls.push([target,month]);return{rows:[],total:0}}}});
- await view.settle();assert.equal(calls.at(-1)[0],expectedTarget);assert.equal(calls.at(-1)[1],'2026-10');
- const selector=all(view.tree).find(n=>n.type==='select');assert.equal(!!selector,canSelect);assert.equal(queries,canSelect?1:0);
- assert(all(view.tree).some(n=>n.type==='h3'&&text(n)==='粗利益'));assert(!text(view.tree).includes('販売日を基準に'));
- if(canSelect){selector.props.onChange({target:{value:'osabe'}});await view.settle();assert.equal(calls.at(-1)[0],'osabe','Administrators can switch between purchasers')}
+ const profiles = [staff, { id:'another', role:'deliverer', name:'別担当者' }].map(person => ({
+  staff_id:person.id, details:{issuer_name:person.name}, unit_price:400
+ }));
+ const view=mount('apps/delivery/src/pages/Invoices.tsx',{staff,onNavigationChange(){}},{
+  '@bussan/shared':{...staffNames.exports,invoiceReceiptDetails:()=>[],deliveryStaffOptions:rows=>rows},
+  '../invoices':{japanToday:()=> '2026-10-15',invoiceProfiles:async()=>profiles,findInvoice:async()=>null,
+   prepareInvoice:async()=>({profile:profiles[0].details,lines:[],tax_percent:0}),
+   monthlyGrossProfit:async()=>({rows:[],total:0})},
+ });
+ await view.settle();
+ const nodes=()=>all(view.tree);
+ const profit=()=>nodes().find(n=>n.type==='GrossProfitSummary');
+ const packed=()=>nodes().find(n=>n.type==='PackedSummary');
+ const tablePosition=nodes().find(n=>n.props?.className==='receipt-list-position no-print');
+ const panels=nodes().find(n=>n.props?.className==='invoice-summaries no-print');
+ assert(nodes().indexOf(tablePosition)<nodes().indexOf(panels),'Both reports follow the receipt list');
+ assert.equal(all(panels).find(n=>n.type==='GrossProfitSummary'),profit());
+ assert.equal(panels.props.children[0],profit());
+ assert.equal(all(panels.props.children[1]).find(n=>n.type==='PackedSummary'),packed());
+ assert.equal(profit().props.staffId,expectedTarget);
+ assert.equal(profit().props.month,'2026-10');
+ assert.equal(packed().props.staffId,staff.id);
+
+ const [selector]=nodes().filter(n=>n.type==='select');
+ assert.equal(!selector.props.disabled&&staff.role==='admin',canSelect);
+ if(canSelect){
+  nodes().find(n=>n.type==='InvoiceReceipts').props.onBusyChange(false);
+  await view.settle();
+  nodes().find(n=>n.type==='select').props.onChange({target:{value:'another'}});
+  await view.settle();
+  assert.equal(profit().props.staffId,'another','The selected invoice assignee drives the report');
+ }
+ nodes().find(n=>n.type==='MonthInput'&&n.props['aria-label']==='請求対象月').props.onChange({target:{value:'2026-09'}});
+ await view.settle();
+ assert.equal(profit().props.month,'2026-09');
+
+ const calls=[];
+ const summary=mount('apps/delivery/src/components/GrossProfitSummary.tsx',profit().props,{
+  '@bussan/shared':staffNames.exports,
+  '../invoices':{yen:n=>'¥'+n,monthlyGrossProfit:async(target,month)=>{calls.push([target,month]);return{rows:[],total:0}}},
+ });
+ await summary.settle();
+ assert.equal(calls[0][0],canSelect?'another':expectedTarget);
+ assert.equal(calls[0][1],'2026-09');
+ assert(!all(summary.tree).some(n=>n.type==='select'||n.type==='MonthInput'),'The report has no independent filters');
+ assert(all(summary.tree).some(n=>n.type==='h3'&&text(n)==='粗利益'));
 }
 async function testSubmission(receipts,expectedReceipts){
  const staff={id:'worker',code:'DD',name:'担当者',role:'deliverer'};let sent;
@@ -30,9 +69,9 @@ async function testSubmission(receipts,expectedReceipts){
  assert(!text(view.tree).includes('領収書送信'));assert(!text(view.tree).includes('保存後、請求書を送信すると反映されます。'));
 }
 (async()=>{
- await testScope({id:'osabe',code:'AA',name:'長部一輝',role:'admin'},'ishikawa',true);
+ await testScope({id:'osabe',code:'AA',name:'長部一輝',role:'admin'},'osabe',true);
  await testScope({id:'ishikawa',code:'EE',name:'石川秀樹',role:'purchaser'},'ishikawa',false);
- await testScope({id:'other-admin',code:'XX',name:'別管理者',role:'admin'},'ishikawa',true);
+ await testScope({id:'other-admin',code:'XX',name:'別管理者',role:'admin'},'other-admin',true);
  await testScope({id:'worker',code:'DD',name:'担当者',role:'deliverer'},null,false);
  await testSubmission([],false);await testSubmission([{document_type:'receipt_photo',include_in_invoice:true,spent_on:'2026-10-01'}],true);await testSubmission([{document_type:'invoice'}],false);
  console.log('Gross profit owner scope/administrator selector and combined invoice-receipt submission passed');

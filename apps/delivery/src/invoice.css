@@ -78,6 +78,9 @@
 .receipt-row-actions { display:flex; gap:6px; justify-content:flex-end; }
 .receipt-detail-table .receipt-actions-cell { border:0; background:transparent; }
 .receipt-list-position { min-width:0; }
+.invoice-summaries { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; align-items:start; }
+.invoice-summaries > .card { min-width:0; margin:0; }
+.invoice-summaries .packed-summary { margin:0; }
 .invoice-note-heading { font-size:15px; font-weight:700; }
 @media print { .receipt-summary-sheet,.receipt-photo-sheet { width:190mm; margin:0; break-after:page; } }
 

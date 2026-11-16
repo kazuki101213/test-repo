@@ -80,6 +80,10 @@ h2 { font-family: inherit; font-size: 20px; margin: 0 0 4px; }
 .dashboard-comparison-panel .kpi-label:not(:first-of-type) { margin-top: 8px; }
 .dashboard-comparison-panel :is(.kpi-value, .sales-summary strong) { font-size: clamp(12px, 16cqi, 22px); overflow-wrap: anywhere; }
 .dashboard-kpi-count { display: block; font-size: 13px; }
+.dashboard-comparison-panel .dashboard-money-pair { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:3px; font-size:clamp(11px,8.5cqi,22px); font-variant-numeric:tabular-nums; }
+.dashboard-money-pair > span { white-space:nowrap; }
+.dashboard-money-pair > .pos { color:var(--ok); }
+.dashboard-money-pair > .neg { color:var(--danger); }
 .dashboard-scope-legend { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
 .dashboard-metric-pair { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .dashboard-metric-divider { color: var(--muted); }
