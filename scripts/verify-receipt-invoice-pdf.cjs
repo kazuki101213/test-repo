@@ -29,7 +29,7 @@ assert.equal(text(auctionRow.props.children[0]),'11/01');
 assert.equal(text(auctionRow.props.children[1]),'ヤフオク入札作業');
 assert.equal(auctionLine.description,'ヤフオク入札作業日','Display wording must preserve saved workday data');
 function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out}
-function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}
+function text(n){return n==null||typeof n==='boolean'?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}
 const receipt=(id,amount,type='receipt_photo')=>({id,original_name:id+'.pdf',spent_on:'2026-10-01',description:'資材費',amount,mime_type:type==='receipt'?'application/pdf':'image/jpeg',document_type:type,url:'blob:'+id,include_in_invoice:true});
 // Fee categories keep their display order even when their dates differ.
 for(const review_edited of [false,true]){
