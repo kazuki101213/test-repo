@@ -101,6 +101,12 @@ async function testDashboardPairs(){
   .map(n=>all(n.type(n.props)).filter(node=>node.props?.className?.includes('kpi-label')||node.props?.className?.includes('dashboard-money-pair')).map(text));
  assert.deepEqual(pairs('purchase-summary-card'),[['仕入金額 / 見込利益','¥62000/¥12300'],['仕入金額 / 見込利益','¥30000/¥-4500']]);
  assert.deepEqual(pairs('stock-summary-card'),[['見込売上 / 見込利益','¥90000/¥20000'],['見込売上 / 見込利益','¥40000/¥8000']]);
+ const stacked=(card)=>all(all(dashboard.tree).find(n=>n.props?.className==='card '+card))
+  .filter(n=>typeof n.type==='function'&&n.props.firstLabel)
+  .map(n=>Array.from(all(n.type(n.props)).find(node=>node.type==='dl').props.children,row=>Array.from(row.props.children,text)));
+ assert.deepEqual(stacked('purchase-summary-card'),[[['仕入金額','¥62000'],['見込利益','¥12300']],[['仕入金額','¥30000'],['見込利益','¥-4500']]]);
+ assert.deepEqual(stacked('stock-summary-card'),[[['見込売上','¥90000'],['見込利益','¥20000']],[['見込売上','¥40000'],['見込利益','¥8000']]]);
+ assert.match(fs.readFileSync('apps/admin/src/responsive.css','utf8'),/@media screen and \(max-width:1023px\)\s*\{\s*\.dashboard-money-wide \{ display:none; \}\s*\.dashboard-money-stacked \{ display:grid;/);
  assert.match(fs.readFileSync('apps/admin/src/styles.css','utf8'),/\.dashboard-money-pair \{[^}]*flex-wrap:nowrap/);
 }
 (async()=>{
