@@ -8,13 +8,21 @@ for(const [name,origin,place,postal] of cases)for(const channel of ['メルカ�
  const draft=sellerExports.sellerDefaults({deliverer_name:name,sales_channel:channel,title:'BDZ-ZW1500',planned_price:20981,condition:'非常に良い'});
  assert.equal(draft.dispatchDays,channel==='メルカリ'?'4〜7日':'2〜3日');assert.equal(draft.origin,origin);assert.equal(draft.dropoff,place);
  assert.equal(draft.shippingMethod,channel==='メルカリ'?(postal?'ゆうゆうメルカリ便':'らくらくメルカリ便'):(postal?'おてがる配送（日本郵便）':'おてがる配送（ヤマト運輸）'));
- assert.equal(draft.price,Math.ceil(20981*(channel==='メルカリ'?.8:.35)));assert.equal(draft.size,'100');
+ assert.equal(draft.price,Math.ceil(20981*(channel==='メルカリ'?.8:.35)));assert.equal(draft.size,channel==='ヤフオク'?'120':'100');
 }
 console.log('Seven staff shipping defaults and channel prices passed');
-for(const [title,category,weight] of [['リモコン','小物','2'],['ブルーレイレコーダー BDZ-ZW1500','ブルーレイレコーダー','5'],['BDP-S6700','ブルーレイレコーダー','5'],['UBP-X700','ブルーレイレコーダー','5'],['液晶テレビ','テレビ','5'],['液晶モニター','モニター','5']]){
+for(const [title,category,weight] of [['リモコン','小物',undefined],['ブルーレイレコーダー BDZ-ZW1500','ブルーレイレコーダー','5'],['BDP-S6700','ブルーレイレコーダー','5'],['UBP-X700','ブルーレイレコーダー','5'],['液晶テレビ','テレビ','5'],['液晶モニター','モニター','5']]){
  for(const channel of ['ヤフオク','メルカリ']){const draft=sellerExports.sellerDefaults({title,sales_channel:channel});assert.equal(draft.category,category);assert.equal(draft.weightKg,channel==='ヤフオク'?weight:undefined);}
 }
-console.log('Yahoo packed weight: small 2kg, other categories 5kg; Mercari unchanged');
+const yahooSmall=sellerExports.sellerDefaults({model_no:'QuietComfort 20',sales_channel:'ヤフオク'});
+const staffShipping={category:'小物',shippingMethod:'おてがる配送（ヤマト運輸）',origin:'千葉県',dropoff:'セブンイレブン'};
+const inherited=sellerExports.applyYahooListingShipping(yahooSmall,{...staffShipping,source:'sale',size:'ネコポス'});
+assert.equal(inherited.size,'ネコポス');assert.equal(inherited.weightKg,undefined);
+const review=sellerExports.applyYahooListingShipping({...inherited,weightKg:'2'},{...staffShipping,source:'review'});
+assert.equal(review.size,'');assert.equal(review.weightKg,undefined);
+const monitor=sellerExports.applyYahooListingShipping(yahooSmall,{...staffShipping,source:'fixed',category:'モニター',size:'140',weightKg:'5'});
+assert.equal(monitor.size,'140');assert.equal(monitor.weightKg,'5');
+console.log('Yahoo packed weight and last-sale shipping checked');
 
 for(const condition of ['ほぼ新品','非常に良い','良い','可',null]){
  const expected=condition==='可'?6000:10500;

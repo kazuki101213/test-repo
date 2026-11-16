@@ -38,7 +38,9 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
  let cursor=0,hooks=[],pending=[],tree,dirty=true,queued,checks=0,finished=false,changed=[];const checkOperation=()=>({id:'uncertain-op',kind:'listing',status:finished?'succeeded':'uncertain',created_at:'2026-01-01T00:00:00Z',result:checks&&!finished?{read_check_state:'queued',read_check_requested_at:new Date().toISOString()}:{}});
  const hookReact={useRef(v){return hooks[cursor++]??={current:v};},useState(v){const n=cursor++;hooks[n]??={value:v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){const previous=hooks[n];hooks[n]={deps};pending.push(()=>{previous?.cleanup?.();hooks[n].cleanup=fn();});}}};
  const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,...channels,...require('./marketplace-account-modules.cjs'),canViewDeliveryAssignee:()=>false},'./DescriptionEditor':{default:({embedded})=>jsx('div',{children:[jsx('input',{maxLength:128,value:embedded.value.title,disabled:embedded.disabled}),jsx('textarea',{maxLength:5000,value:embedded.value.description,disabled:embedded.disabled})]})},'../listingDraft':{listingDraft},'../api':{
-  fetchTask:async()=>{for(let i=0;i<4;i++)await Promise.resolve();return {...base,sales_channel:channel,description:saved,status:finished?'出品中':base.status};},fetchSellerContext:async()=>({revision:'one',operations:uncertain?[checkOperation()]:[],photo_review_approved:approved}),fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',requestListingResultCheck:async id=>{assert.equal(id,base.id);checks++;},fetchSellerOperation:async()=>{throw Error('Extra polling RPC');},queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
+  fetchTask:async()=>{for(let i=0;i<4;i++)await Promise.resolve();return {...base,sales_channel:channel,description:saved,status:finished?'出品中':base.status};},fetchSellerContext:async()=>({revision:'one',operations:uncertain?[checkOperation()]:[],photo_review_approved:approved,
+   yahoo_listing_shipping:channel==='ヤフオク'?{category:'ブルーレイレコーダー',shippingMethod:'おてがる配送（日本郵便）',origin:'千葉県',dropoff:'ローソン',size:'120',weightKg:'5',source:'fixed'}:null}),
+  fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',requestListingResultCheck:async id=>{assert.equal(id,base.id);checks++;},fetchSellerOperation:async()=>{throw Error('Extra polling RPC');},queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
  }}).default;
  const props={mode:'listing',task:{...base,sales_channel:channel,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(task){changed.push(task);},onClose(){}};
  async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=Panel(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
@@ -61,14 +63,22 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
   finished=true;testTimers.at(-1)();await settle();assert.equal(named('出品結果を確認'),undefined);assert.equal(queued,undefined);assert.equal(changed.length,1,'Result confirmation must update the stock card before ending the effect');assert.equal(changed[0].status,'出品中');return;
  }
  if(channel==='ヤフオク'){
-  const weight=all(tree).find(n=>n.type==='label'&&all(n).some(child=>child==='梱包後の重さ'||child?.props?.children==='梱包後の重さ'))||all(tree).find(n=>n.type==='label'&&Array.isArray(n.props?.children)&&n.props.children[0]==='梱包後の重さ');
-  assert(weight,'Buyer-paid postal shipping must expose the packed weight');const select=all(weight).find(n=>n.type==='select');assert(select);
-  const named=()=>all(tree).find(n=>n.type==='button'&&n.props.children==='出品');assert.equal(select.props.value,'5','Recorder weight defaults to 5kg');assert.equal(named().props.disabled,false);select.props.onChange({target:{value:''}});await settle();assert.equal(named().props.disabled,true,'Clearing weight blocks publish before queue');assert.equal(queued,undefined);
-    select.props.onChange({target:{value:'10'}});await settle();assert.equal(named().props.disabled,false);
-  const embedded=()=>all(tree).find(n=>n.props?.embedded)?.props.embedded;
-  embedded().onChange({description:'手入力本文',category:'ブルーレイレコーダー'});await settle();assert.equal(embedded().value.weightKg,'10','Same category edits retain manual weight');
-  embedded().onChange({category:'小物'});await settle();assert.equal(embedded().value.weightKg,'2');
-  embedded().onChange({category:'モニター'});await settle();assert.equal(embedded().value.weightKg,'5');assert.equal(queued,undefined,'Weight and category selection never queues a listing');return;
+  const field=name=>all(tree).find(n=>n.type==='label'&&Array.isArray(n.props?.children)&&n.props.children[0]===name);
+  for(const [name,value] of [['配送サイズ','120'],['梱包後の重さ','5']]){
+   const select=all(field(name)).find(n=>n.type==='select');
+   assert.equal(select?.props.value,value);
+   assert.equal(select.props.disabled,true);
+  }
+  const method=all(field('配送方法')).find(n=>n.type==='input');
+  assert.equal(method?.props.value,'おてがる配送（日本郵便）');assert.equal(method.props.readOnly,true);
+  const publish=all(tree).find(n=>n.type==='button'&&n.props.children==='出品');
+  assert.equal(publish.props.disabled,false);
+  publish.props.onClick();await settle();assert.equal(queued,undefined);
+  const modal=all(tree).find(n=>n.props?.title==='出品しますか。');
+  await modal.props.onConfirm('2026-10-20');await settle();
+  assert.equal(queued.payload.yahoo_shipping_rule,1);
+  assert.equal(queued.payload.size,'120');assert.equal(queued.payload.weightKg,'5');
+  return;
  }
  if(approved&&!saved){
   const order=()=>all(tree).filter(n=>n.props?.className==='seller-photo').map(n=>all(n).find(child=>child.type==='img').props.src);
