@@ -42,6 +42,7 @@
 .approved-record.approved-accessory { min-height:64px; }
 .approved-accessory > [role=cell] { padding-block:4px; line-height:14px; }
 .approved-accessory .approved-purchase { display:grid; grid-template-columns:max-content minmax(0,1fr); column-gap:6px; align-content:center; }
+.with-purchase .approved-accessory .approved-purchase { align-content:start; }
 .approved-accessory .approved-purchase > .approved-field:nth-last-child(n+3) { grid-column:1/-1; }
 .approved-accessory .approved-profits .approved-actual { font-size:13px; line-height:14px; }
 .approved-accessory .approved-identity { padding-left:130px; }
@@ -112,6 +113,8 @@
  .approved-record .inventory-comment { display:block; overflow:visible; -webkit-line-clamp:unset; }
  .approved-accessory .approved-identity { padding:0; }
  .approved-accessory .approved-purchase { display:block; }
+ .with-purchase .approved-accessory .approved-purchase { order:3; }
+ .with-purchase .approved-accessory .approved-amazon-price { order:4; }
  .approved-accessory .approved-sku { margin-top:3px; }
  .approved-accessory .approved-amazon-price:not(:has(.amazon-listing-price)) { display:none; }
  .approved-record.approved-accessory { min-height:0; }
