@@ -22,13 +22,22 @@ function MetricPair({ children }: { children: (scope: DashboardScope) => ReactNo
 }
 
 function MoneyPair({ firstLabel, firstAmount, forecast }: { firstLabel: string; firstAmount?: number; forecast?: number }) {
+  const amount = yen(firstAmount);
+  const profit = yen(forecast);
+  const profitClass = (forecast ?? 0) < 0 ? 'neg' : 'pos';
   return <>
-    <div className="kpi-label">{firstLabel} / 見込利益</div>
-    <div className="kpi-value dashboard-money-pair">
-      <span>{yen(firstAmount)}</span>
-      <span className="dashboard-metric-divider">/</span>
-      <span className={(forecast ?? 0) < 0 ? 'neg' : 'pos'}>{yen(forecast)}</span>
+    <div className="dashboard-money-wide">
+      <div className="kpi-label">{firstLabel} / 見込利益</div>
+      <div className="kpi-value dashboard-money-pair">
+        <span>{amount}</span>
+        <span className="dashboard-metric-divider">/</span>
+        <span className={profitClass}>{profit}</span>
+      </div>
     </div>
+    <dl className="dashboard-money-stacked">
+      <div><dt>{firstLabel}</dt><dd>{amount}</dd></div>
+      <div><dt>見込利益</dt><dd className={profitClass}>{profit}</dd></div>
+    </dl>
   </>;
 }
 
