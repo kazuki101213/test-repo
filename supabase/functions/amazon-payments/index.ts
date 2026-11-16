@@ -78,7 +78,7 @@ export async function handler(req: Request): Promise<Response> {
       if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
       actorId = user.user.id;
     }
-    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose', 'dispatch-dates'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose', 'dispatch-dates', 'service-fees'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
     if (body.action === 'accounts') return respond(200, { accounts: amazonAccounts() });
     const accountId = amazonAccountId(body.accountId);
     if (body.action === 'identity') {
@@ -316,14 +316,35 @@ export async function handler(req: Request): Promise<Response> {
     const nextToken = responseBody.payload.nextToken;
     if (nextToken != null && (typeof nextToken !== 'string' || nextToken.length > 10000)) throw new SafeError(502, 'Amazonのページ情報が不正です。');
     const fetchedAt = new Date().toISOString();
-    const records = list(responseBody.payload.transactions).map(t => normalizeTransaction(t, accountKey, fetchedAt));
+    const serviceFees = body.action === 'service-fees';
+    const transactions = list(responseBody.payload.transactions);
+    const eligible = serviceFees ? transactions.filter(value => {
+      const transaction = obj(value);
+      return transaction.transactionType === 'ServiceFee'
+        && ['RELEASED', 'DEFERRED_RELEASED'].includes(String(transaction.transactionStatus));
+    }) : transactions;
+    const records = eligible.map(t => normalizeTransaction(t, accountKey, fetchedAt));
     const unique = [...new Map(records.map(r => [r.transaction_id, r])).values()];
+    let expenses;
     if (unique.length) {
       // Only the authenticated administrator can reach this trusted write path.
       const writer = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false } });
       const { error } = await writer.from('amazon_payment_transactions').upsert(unique, { onConflict: 'account_key,marketplace_id,transaction_id' });
       if (error) throw new SafeError(503, 'Amazonから取得できましたが、履歴の保存に失敗しました。同じ期間で再試行できます。');
+      if (serviceFees) {
+        const { data, error: expenseError } = await writer.rpc('apply_amazon_service_fee_expenses', {
+          p_account: accountKey, p_marketplace: marketplace,
+          p_transactions: unique.map(transaction => transaction.transaction_id),
+          p_account_label: accountId === 'amazon-2' ? 'Amazon2' : 'Amazon1',
+        });
+        if (expenseError) throw new SafeError(503, 'Amazonサービス料金を経費に登録できませんでした。同じページで再試行できます。');
+        expenses = data;
+      }
     }
+    if (serviceFees) return respond(200, {
+      expenses: expenses ?? { created: 0, matched: 0, linked: 0, zero: 0, review: 0 },
+      nextToken: nextToken || undefined,
+    });
     return respond(200, { saved: unique.length, nextToken: nextToken || undefined, fetchedAt, ...range, dispatch });
   } catch (e) {
     return respond(e instanceof SafeError || e instanceof AmazonAccountError ? e.status : 502, { error: e instanceof SafeError || e instanceof AmazonAccountError ? e.message : '外部サービスとの通信に失敗しました。時間をおいて再試行してください。' });
