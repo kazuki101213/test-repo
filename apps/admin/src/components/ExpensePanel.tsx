@@ -11,7 +11,6 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
   const [name, setName] = useState(initial?.name ?? template?.name ?? '');
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
   const [card, setCard] = useState(initial?.card_id ?? template?.card_id ?? '');
-  const [memo, setMemo] = useState(initial?.memo ?? '');
   const [original, setOriginal] = useState(initial);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState('');
@@ -41,13 +40,13 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
       if (template && date.slice(0, 7) !== template.month) throw new Error(`${template.month}の日付を入力してください。`);
       const input: ExpenseInput = {
         id: id.current, incurred_on: date, category, name: name.trim(), amount: Number(amount),
-        card_id: card || null, staff_id: original?.staff_id ?? null, memo: memo.trim() || null,
+        card_id: card || null, staff_id: original?.staff_id ?? null, memo: original?.memo ?? null,
       };
       if (original) await updateExpense(input, original);
       else await saveExpense(input);
       setDone(`${date} ${input.name} ${yen(input.amount)}を保存しました。左メニューの「経費」で確認できます。`);
       if (initial || template) setOriginal(input);
-      else { id.current = crypto.randomUUID(); setName(''); setAmount(''); setMemo(''); }
+      else { id.current = crypto.randomUUID(); setName(''); setAmount(''); }
       onSaved(input);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { saving.current = false; setBusy(false); onBusyChange(false); }
@@ -64,7 +63,6 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
         <label className="field expense-wide"><span>内容</span><input type="text" required maxLength={200} value={name} onChange={e => setName(e.target.value)} placeholder="梱包資材、家賃など" /></label>
         <label className="field"><span>金額（円）</span><input type="number" required step={1} value={amount} onChange={e => setAmount(e.target.value)} /></label>
         <label className="field"><span>支払い方法</span><select value={card} onChange={e => setCard(e.target.value)}><option value="">未指定</option>{cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-        <label className="field expense-wide"><span>経費メモ</span><textarea rows={2} value={memo} onChange={e => setMemo(e.target.value)} /></label>
         <button className="btn primary expense-submit" type="submit">{busy ? '保存中…' : '経費登録'}</button>
       </fieldset>
     </form>

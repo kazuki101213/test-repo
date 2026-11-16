@@ -46,6 +46,38 @@ export function dateRange(body: Obj, now = Date.now()) {
   return { postedAfter: new Date(after).toISOString(), postedBefore: new Date(before).toISOString() };
 }
 
+async function sellerAccountKey(sellerId: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sellerId));
+  return Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
+}
+
+const paymentDescriptions: Record<string, string> = {
+  FBAPostInboundTransportation: 'FBA納品送料',
+  Subscription: '月額利用料',
+  DebtPayment: '残高不足分の精算',
+};
+const paymentKinds: Record<string, string> = {
+  ServiceFee: 'サービス料金', Shipment: '注文に対する支払い',
+  Refund: '注文の返金', DebtRecovery: 'Amazonへの支払い',
+  'サービス料金 - 取り消し': '請求の取消', 'サービス料金 - 訂正': '訂正後の請求',
+};
+
+function unreflectedPayment(row: Obj, accountLabels: Map<string, string>) {
+  const accountKey = String(row.account_key);
+  const legacyAccount = /^amzn([12])\./.exec(accountKey)?.[1];
+  const account = accountLabels.get(accountKey) ?? (legacyAccount ? 'Amazon' + legacyAccount : 'アカウント不明');
+  const type = String(row.transaction_type ?? '');
+  const description = String(row.description ?? '').trim().replace(/[：:]$/, '');
+  const kind = Object.hasOwn(paymentKinds, type) ? paymentKinds[type] : type || '区分不明';
+  return {
+    id: (account === 'アカウント不明' ? accountKey : account) + ':' + row.transaction_id,
+    date: row.transaction_day, account,
+    description: (Object.hasOwn(paymentDescriptions, description) ? paymentDescriptions[description] : description) || kind,
+    kind, partiallyReflected: row.partially_reflected === true,
+    amount: typeof row.amount === 'number' ? Math.abs(row.amount) : null, currency: row.currency,
+  };
+}
+
 export async function handler(req: Request): Promise<Response> {
   const respond = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers });
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers });
@@ -78,8 +110,31 @@ export async function handler(req: Request): Promise<Response> {
       if (admin !== true) throw new SafeError(403, 'ペイメントは管理者のみ利用できます。');
       actorId = user.user.id;
     }
-    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose', 'dispatch-dates', 'service-fees'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
+    if (!['accounts', 'identity', 'history', 'sync', 'reconcile', 'daily', 'diagnose', 'dispatch-dates', 'service-fees', 'unreflected'].includes(String(body.action))) throw new SafeError(400, '操作の指定が不正です。');
     if (body.action === 'accounts') return respond(200, { accounts: amazonAccounts() });
+    if (body.action === 'unreflected') {
+      const offset = body.offset ?? 0;
+      if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) {
+        throw new SafeError(400, '明細のページ指定が不正です。');
+      }
+      const reader = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+        db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data, error } = await reader.from('v_amazon_unreflected_payments')
+        .select('account_key,transaction_id,transaction_day,transaction_type,description,amount,currency,partially_reflected')
+        .order('posted_at', { ascending: false }).order('account_key').order('transaction_id').range(offset, offset + 499);
+      if (error) throw new SafeError(503, 'Amazonの未反映分を読み込めません。');
+      const accountLabels = new Map<string, string>();
+      for (const account of amazonAccounts()) {
+        try {
+          const { sellerId } = amazonCredentials(account.id, false);
+          accountLabels.set(await sellerAccountKey(sellerId), account.label);
+        } catch (error) {
+          if (!(error instanceof AmazonAccountError)) throw error;
+        }
+      }
+      return respond(200, { rows: data.map(row => unreflectedPayment(row, accountLabels)) });
+    }
     const accountId = amazonAccountId(body.accountId);
     if (body.action === 'identity') {
       if (!scheduled) throw new SafeError(403, '出品者IDの確認はサービス認証が必要です。');
@@ -147,8 +202,7 @@ export async function handler(req: Request): Promise<Response> {
     const credentials = amazonCredentials(accountId, body.action !== 'history');
     const seller = credentials.sellerId;
     // Separate histories by seller without persisting the credential itself.
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(seller));
-    const accountKey = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
+    const accountKey = await sellerAccountKey(seller);
     if (body.action === 'history') {
       const offset = body.offset ?? 0;
       if (!Number.isSafeInteger(offset) || Number(offset) < 0 || Number(offset) > 1000000) throw new SafeError(400, '履歴のページ指定が不正です。');
@@ -320,8 +374,7 @@ export async function handler(req: Request): Promise<Response> {
     const transactions = list(responseBody.payload.transactions);
     const eligible = serviceFees ? transactions.filter(value => {
       const transaction = obj(value);
-      return transaction.transactionType === 'ServiceFee'
-        && ['RELEASED', 'DEFERRED_RELEASED'].includes(String(transaction.transactionStatus));
+      return ['RELEASED', 'DEFERRED_RELEASED'].includes(String(transaction.transactionStatus));
     }) : transactions;
     const records = eligible.map(t => normalizeTransaction(t, accountKey, fetchedAt));
     const unique = [...new Map(records.map(r => [r.transaction_id, r])).values()];
@@ -331,10 +384,11 @@ export async function handler(req: Request): Promise<Response> {
       const writer = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { db: { schema: 'app' }, auth: { persistSession: false, autoRefreshToken: false } });
       const { error } = await writer.from('amazon_payment_transactions').upsert(unique, { onConflict: 'account_key,marketplace_id,transaction_id' });
       if (error) throw new SafeError(503, 'Amazonから取得できましたが、履歴の保存に失敗しました。同じ期間で再試行できます。');
-      if (serviceFees) {
+      const feeTransactions = serviceFees ? unique.filter(t => t.transaction_type === 'ServiceFee') : [];
+      if (feeTransactions.length) {
         const { data, error: expenseError } = await writer.rpc('apply_amazon_service_fee_expenses', {
           p_account: accountKey, p_marketplace: marketplace,
-          p_transactions: unique.map(transaction => transaction.transaction_id),
+          p_transactions: feeTransactions.map(transaction => transaction.transaction_id),
           p_account_label: accountId === 'amazon-2' ? 'Amazon2' : 'Amazon1',
         });
         if (expenseError) throw new SafeError(503, 'Amazonサービス料金を経費に登録できませんでした。同じページで再試行できます。');

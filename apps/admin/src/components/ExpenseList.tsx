@@ -6,6 +6,7 @@ import { expenseCategories, expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
 import AskulExpenseImport from './AskulExpenseImport';
 import AskulMaterialAnalysis from './AskulMaterialAnalysis';
+import AmazonUnreflectedPayments from './AmazonUnreflectedPayments';
 import './ExpenseSelection.css';
 
 type ExpenseCategory = typeof expenseCategories[number];
@@ -137,8 +138,8 @@ export default function ExpenseList({ revision }: { revision: number }) {
     else reimbursementsByMonth.set(month, [row]);
   }
   const months = [...new Set([...filtered.map(row => row.incurred_on.slice(0, 7)), ...pending.map(row => row.target_month.slice(0, 7))])].sort().reverse();
-  return <div className="dashboard-workspace with-expense registration-workspace">
-    <section id="expense-list" className="card expense-list dashboard-content" aria-label="経費一覧">
+  return <section id="expense-list" className="expense-workspace" aria-label="経費一覧">
+    <div className="card expense-tools">
     <div className="toolbar expense-search-toolbar">
       <div className="expense-search-actions">
         <button type="button" className="btn" disabled={expenseBusy || !!selectionAction} onClick={() => { setAskulResult(null); setAskulImportOpen(true); }}>アスクルCSV取り込み</button>
@@ -157,11 +158,11 @@ export default function ExpenseList({ revision }: { revision: number }) {
     </div>
     {message && <p className="ok" role="status">{message}</p>}
     {askulResult && <p className="ok" role="status" data-askul-inserted={askulResult.inserted} data-askul-skipped={askulResult.skipped}>アスクルCSVから{askulResult.inserted}件を登録しました。登録済み{askulResult.skipped}件。{askulResult.assignedExisting > 0 && `登録済みの${askulResult.assignedExisting}件に担当者を設定しました。`}{askulResult.quantitiesAdded > 0 && `登録済みの${askulResult.quantitiesAdded}件に資材の購入数量を追加しました。`}</p>}
-    {error ? <div className="error">{error}</div> : loading ? <p>読み込み中…</p> : <>
-      <div className="expense-columns">
-        <section className="expense-column" aria-label="経費">
+    </div>
+        <section className="card expense-column expense-posted" aria-label="経費">
           <header><h3>経費</h3><p>{filtered.length}件 · <strong>{yen(filtered.reduce((sum, row) => sum + row.amount, 0))}</strong></p></header>
-          {months.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{months.map(month => {
+          {error ? <p className="error" role="alert">{error}</p> : loading ? <p>読み込み中…</p>
+            : months.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{months.map(month => {
             const entries = filtered.filter(row => row.incurred_on.startsWith(month));
             const monthDrafts = pending.filter(row => row.target_month.startsWith(month));
             return <li key={month} className="expense-month-group"><h4>{expenseMonthTitle(month, entries)}</h4><ul className="expense-entries">{entries.map(row => <li key={row.id}>
@@ -179,7 +180,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
           </li>)}</ul></li>;
           })}</ul>}
         </section>
-        <section className="expense-column" aria-label="立替支払い">
+        <section className="card expense-column expense-reimbursements" aria-label="立替支払い">
           <header>
             <div className="reimbursement-heading">
               <h3>立替支払い</h3>
@@ -217,10 +218,10 @@ export default function ExpenseList({ revision }: { revision: number }) {
               </li>)}</ul>
             </li>)}</ul>}
         </section>
-      </div>
-    </>}
-  </section>
-  {<ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} onClose={draft ? () => { if (expenseBusy) return; setEditing(undefined); setDraft(undefined); } : undefined} />}
+    <div className="expense-registration-column">
+      <ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} onClose={draft ? () => { if (expenseBusy) return; setEditing(undefined); setDraft(undefined); } : undefined} />
+      <AmazonUnreflectedPayments />
+    </div>
   {fieldEdit && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="経費の項目を編集"><div className="card inventory-comment-panel">
     <h3>{{ incurred_on: '日付', category: '区分', name: '内容', amount: '金額' }[fieldEdit.field]}を編集</h3>
     <label className="field"><span>{fieldEdit.row.name}</span>{fieldEdit.field === 'category' ? <select value={fieldEdit.value} onChange={e => setFieldEdit(current => current && { ...current, value: e.target.value })}>{expenseCategories.map(value => <option key={value} value={value}>{value}</option>)}</select>
@@ -237,7 +238,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
   }} />}
   {materialAnalysisOpen && <AskulMaterialAnalysis onClose={() => setMaterialAnalysisOpen(false)} />}
   {selectionAction && <ExpenseSelectionConfirmation action={selectionAction} busy={deleting} error={deleteError} onDelete={() => void removeSelected()} onClose={() => { if (!deleteLock.current) setSelectionAction(null); }} />}
-  </div>;
+  </section>;
 }
 
 function ExpenseSelectionConfirmation({ action, busy, error, onDelete, onClose }: { action: SelectionAction; busy: boolean; error: string; onDelete: () => void; onClose: () => void }) {
