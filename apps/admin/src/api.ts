@@ -351,6 +351,13 @@ export async function fetchExpenseReimbursements(): Promise<ExpenseReimbursement
   });
 }
 
+export async function excludeExpenseReimbursements(ids: string[]): Promise<number> {
+  const { data, error } = await getSupabase().from('invoice_receipts')
+    .update({ include_in_invoice: false }).in('id', ids).eq('include_in_invoice', true).select('id');
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
 export async function deleteExpenses(rows: ExpenseInput[], requestId: string): Promise<number> {
   if (!rows.length || rows.length > 1000) throw new Error('削除する経費を1〜1,000件選択してください。');
   const { data, error } = await getSupabase().rpc('delete_expenses', { p_rows: rows, p_request_id: requestId });
