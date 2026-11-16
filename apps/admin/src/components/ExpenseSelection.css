@@ -23,3 +23,43 @@
 .expense-delete-confirmation::backdrop { background:#0006; }
 .expense-delete-confirmation ul { padding-left:20px; overflow-wrap:anywhere; }
 .expense-delete-confirmation .toolbar { display:flex; flex-wrap:wrap; gap:8px; }
+
+.expense-workspace {
+ display:grid; grid-template-columns:minmax(0,1fr); gap:14px;
+ grid-template-areas:"registration" "tools" "posted" "reimbursements";
+}
+.expense-workspace .expense-tools { grid-area:tools; padding:9px 12px; min-width:0; }
+.expense-workspace .expense-search-toolbar { margin:0; }
+.expense-workspace .expense-posted { grid-area:posted; }
+.expense-workspace .expense-reimbursements { grid-area:reimbursements; }
+.expense-workspace .expense-registration-column { grid-area:registration; display:grid; gap:14px; min-width:0; }
+.expense-workspace .expense-registration-column .expense-panel { position:static; margin:0; scroll-margin-top:12px; }
+.expense-workspace :is(.expense-column h3, .expense-panel h2) { font-size:14px; }
+.layout .expense-workspace .expense-date-field { width:100% !important; }
+.layout .expense-workspace .expense-date-field .calendar-control { flex:0 0 auto !important; width:100% !important; }
+.amazon-unreflected { min-height:288px; }
+.amazon-unreflected > h3 { margin:0 0 12px; }
+.amazon-unreflected-entries { list-style:none; margin:0; padding:0; }
+.amazon-unreflected-entries > li { border-top:1px solid var(--border); padding:11px 0; }
+.amazon-unreflected-meta { display:flex; justify-content:space-between; gap:8px; margin-bottom:6px; color:var(--muted); font-size:12px; }
+.amazon-unreflected-entry { display:flex; align-items:center; justify-content:space-between; gap:10px; overflow-wrap:anywhere; }
+.amazon-unreflected-entry strong { flex:none; text-align:right; }
+.amazon-unreflected-entry small { display:block; font-weight:400; }
+
+@media screen and (min-width:1024px) {
+ .layout:has(> main > .expense-workspace) { display:flex; flex-direction:column; height:100dvh; }
+ .layout:has(> main > .expense-workspace) > .app-navigation-bar { flex:none; }
+ .layout > main:has(> .expense-workspace) {
+  display:flex; flex-direction:column; flex:1 1 auto; min-height:0; padding-bottom:14px;
+ }
+ .expense-workspace {
+  flex:1 1 auto; min-height:0;
+  grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:auto minmax(0,1fr);
+  grid-template-areas:"tools tools tools" "posted reimbursements registration";
+ }
+ .expense-workspace .expense-registration-column {
+  grid-template-rows:max-content minmax(10rem,1fr); min-height:0; overflow-y:auto;
+ }
+ .expense-workspace .expense-column { display:flex; flex-direction:column; min-height:0; }
+ .expense-workspace .expense-column > :is(.expense-entries,.amazon-unreflected-entries) { min-height:0; overflow-y:auto; }
+}

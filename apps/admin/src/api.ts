@@ -338,6 +338,27 @@ export async function fetchExpenses(): Promise<ExpenseInput[]> {
   });
 }
 
+export type AmazonUnreflectedPayment = {
+  id: string;
+  date: string;
+  account: string;
+  description: string;
+  kind: string;
+  partiallyReflected: boolean;
+  amount: number | null;
+  currency: string | null;
+};
+
+export async function fetchAmazonUnreflectedPayments(): Promise<AmazonUnreflectedPayment[]> {
+  return readAllRows(async offset => {
+    const { data, error } = await getSupabase().functions.invoke<{ rows: AmazonUnreflectedPayment[] }>('amazon-payments', {
+      body: { action: 'unreflected', offset },
+    });
+    if (error || !Array.isArray(data?.rows)) throw new Error('Amazonの未反映分を読み込めませんでした。');
+    return data.rows;
+  });
+}
+
 export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
   return readAllRows<ExpenseDraft>(async (from, to) => {
     const { data, error } = await getSupabase().from('expense_drafts')
