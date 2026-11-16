@@ -78,21 +78,33 @@ async function testReceiptEditor(){
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
  const noop=()=>{};const props={staffId:'worker',month:'2026-10',approved:false,tableTarget:{},onBusyChange:noop,onRowsChange:noop,onCountChange:noop,onChanged:noop,onPrint:noop};
  const component={exports:{},window:{confirm:()=>true},require:name=>name==='react'?react:name==='react-dom'?{createPortal:child=>child}:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{
-  loadInvoiceReceipts:async()=>stored,releaseReceiptImages:noop,
+  loadInvoiceReceipts:async()=>stored,releaseReceiptImages:noop,reimbursementCategories:api.exports.reimbursementCategories,
   uploadInvoiceReceipt:async(staff,month,file,type,details)=>{uploaded={staff,month,file,type,details};stored=[{...receipt('registered',details.amount),...details,version:1,original_name:file.name}]},
   updateInvoiceReceipt:async(row,details)=>{edited={row,details};stored=[{...row,...details,version:2}]},removeInvoiceReceipt:noop,
  }:{__esModule:true,default:'DateInput'}};
  vm.runInNewContext(compile('apps/delivery/src/components/InvoiceReceipts.tsx'),component);
  async function settle(){for(let n=0;n<30;n++){if(dirty){cursor=0;dirty=false;tree=component.exports.default(props);pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
- const control=label=>{const node=all(tree).find(n=>n.type==='label'&&typeof n.props.children?.[0]==='string'&&text(n.props.children[0])===label);assert(node,label);return all(node).find(n=>n.type==='input'||n.type==='DateInput')};
+ const control=label=>{const node=all(tree).find(n=>n.type==='label'&&typeof n.props.children?.[0]==='string'&&text(n.props.children[0])===label);assert(node,label);return all(node).find(n=>['input','DateInput','select'].includes(n.type))};
  await settle();
  control('日付').props.onChange({target:{value:'2026-10-01'}});await settle();
  control('内容').props.onChange({target:{value:'梱包資材'}});await settle();
  control('金額').props.onChange({target:{valueAsNumber:1100}});await settle();
  all(tree).find(n=>n.type==='input'&&n.props.type==='file'&&!n.props.capture).props.onChange({target:{files:[{name:'photo.jpg',type:'image/jpeg'}]}});await settle();
+ assert.equal(control('区分').props.required,true);
  all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+ assert.equal(uploaded,undefined);
+ assert(text(tree).includes('区分を選択してください。'));
+ control('区分').props.onChange({target:{value:'梱包資材費'}});await settle();
+ all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();
+ assert.equal(uploaded.details.category,'梱包資材費');
+ assert(text(tree).includes('【梱包資材費】'));
+ assert(!('payee' in uploaded.details || 'memo' in uploaded.details));
  assert.equal(uploaded.staff,'worker');assert.equal(uploaded.month,'2026-10');assert.equal(uploaded.details.amount,1100);assert.equal(uploaded.details.spent_on,'2026-10-01');assert.equal(uploaded.details.description,'梱包資材');assert.equal(uploaded.details.include_in_invoice,true);stored[0].include_in_invoice=false;assert(text(tree).includes('¥1,100'));
- all(tree).find(n=>n.type==='button'&&text(n)==='編集').props.onClick();await settle();control('金額').props.onChange({target:{valueAsNumber:1200}});await settle();all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(edited.row.version,1);assert.equal(edited.details.amount,1200);assert.equal(edited.details.include_in_invoice,true,'Saving a receipt must include it in the invoice');assert(text(tree).includes('¥1,200'));
+ all(tree).find(n=>n.type==='button'&&text(n)==='編集').props.onClick();await settle();
+ assert.equal(control('区分').props.value,'梱包資材費');
+ control('区分').props.onChange({target:{value:'配送費'}});await settle();
+ control('金額').props.onChange({target:{valueAsNumber:1200}});await settle();all(tree).find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await settle();assert.equal(edited.row.version,1);assert.equal(edited.details.amount,1200);assert.equal(edited.details.include_in_invoice,true,'Saving a receipt must include it in the invoice');assert(text(tree).includes('¥1,200'));
+ assert.equal(edited.details.category,'配送費');
 }
 function testExtraRows(){
  let hooks=[],cursor=0,lines=[],changed=0,tree;

@@ -2,8 +2,21 @@ import { cachedReceiptBlob } from './receiptBlobCache';
 import { getSupabase } from './supabase';
 
 export type InvoiceDocumentType = 'invoice' | 'receipt' | 'receipt_photo';
-export interface ReceiptDetails { spent_on: string | null; description: string; amount: number | null; payee: string; memo: string; include_in_invoice: boolean }
-export interface InvoiceReceipt extends Partial<ReceiptDetails> { version?: number; id: string; original_name: string; storage_path: string; document_type: InvoiceDocumentType; mime_type: string; url: string }
+export const reimbursementCategories = ['配送費', '旅費交通費', '梱包資材費', '消耗品費', 'その他'] as const;
+export type ReimbursementCategory = typeof reimbursementCategories[number];
+export interface ReceiptDetails { spent_on: string | null; description: string; amount: number | null; category: ReimbursementCategory; include_in_invoice: boolean }
+export interface InvoiceReceipt extends Partial<Omit<ReceiptDetails, 'category'>> {
+  category?: ReimbursementCategory | null;
+  payee?: string;
+  memo?: string;
+  version?: number;
+  id: string;
+  original_name: string;
+  storage_path: string;
+  document_type: InvoiceDocumentType;
+  mime_type: string;
+  url: string;
+}
 const bucket = 'invoice-receipts';
 
 export function releaseReceiptImages(rows: InvoiceReceipt[]) {
@@ -12,7 +25,7 @@ export function releaseReceiptImages(rows: InvoiceReceipt[]) {
 
 export async function loadInvoiceReceipts(staffId: string, month: string): Promise<InvoiceReceipt[]> {
   const sb = getSupabase();
-  const { data, error } = await sb.from('invoice_receipts').select('id,original_name,storage_path,document_type,mime_type,spent_on,description,amount,payee,memo,include_in_invoice,version')
+  const { data, error } = await sb.from('invoice_receipts').select('id,original_name,storage_path,document_type,mime_type,spent_on,description,amount,category,payee,memo,include_in_invoice,version')
     .eq('staff_id', staffId).eq('billing_month', month + '-01').order('created_at').order('id');
   if (error) throw error;
   return loadReceiptImages(data ?? []);

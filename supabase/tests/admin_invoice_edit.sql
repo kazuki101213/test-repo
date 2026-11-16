@@ -10,8 +10,8 @@ begin
  insert into app.delivery_invoice_profiles(staff_id,details,enabled,unit_price,tax_percent)
  values(worker,'{"issuer_name":"編集検証","recipient":"宛先保持","bank":"銀行保持"}',true,500,10)
  on conflict(staff_id) do update set details=excluded.details,enabled=true,unit_price=500,tax_percent=10;
- insert into app.invoice_receipts(id,staff_id,billing_month,storage_path,original_name,spent_on,description,amount,include_in_invoice)
- values(receipt,worker,'2099-04-01',worker::text||'/2099-04/'||receipt::text||'.jpg','receipt.jpg','2099-04-01','資材',600,true);
+ insert into app.invoice_receipts(id,staff_id,billing_month,storage_path,original_name,spent_on,description,amount,category,include_in_invoice)
+ values(receipt,worker,'2099-04-01',worker::text||'/2099-04/'||receipt::text||'.jpg','receipt.jpg','2099-04-01','資材',600,'梱包資材費',true);
  result:=app.submit_invoice_documents(worker,'2099-04-01',true,true,'2099-05-01','[]','元備考',null);
  select * into inv from app.delivery_invoices where id=(result->'invoice'->>'id')::uuid;
  expected_profile:=inv.snapshot->'profile';
