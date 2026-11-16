@@ -27,10 +27,12 @@ async function testScope(staff,expectedTarget,canSelect){
  const packed=()=>nodes().find(n=>n.type==='PackedSummary');
  const tablePosition=nodes().find(n=>n.props?.className==='receipt-list-position no-print');
  const panels=nodes().find(n=>n.props?.className==='invoice-summaries no-print');
- assert(nodes().indexOf(tablePosition)<nodes().indexOf(panels),'Both reports follow the receipt list');
- assert.equal(all(panels).find(n=>n.type==='GrossProfitSummary'),profit());
- assert.equal(panels.props.children[0],profit());
- assert.equal(all(panels.props.children[1]).find(n=>n.type==='PackedSummary'),packed());
+ assert.equal(panels.props.children[0],tablePosition,'Receipt details occupy the first position');
+ assert.equal(panels.props.children[1],profit());
+ assert.equal(all(panels.props.children[2]).find(n=>n.type==='PackedSummary'),packed());
+ const overviewCss=fs.readFileSync('apps/delivery/src/invoice.css','utf8');
+ assert.match(overviewCss,/\.invoice-summaries \{[^}]*grid-template-columns:minmax\(0,1fr\)/);
+ assert.match(overviewCss,/@media screen and \(min-width:1024px\)\s*\{\s*\.invoice-summaries \{\s*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
  assert.equal(profit().props.staffId,expectedTarget);
  assert.equal(profit().props.month,'2026-10');
  assert.equal(packed().props.staffId,staff.id);
