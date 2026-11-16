@@ -82,8 +82,9 @@ h2 { font-family: inherit; font-size: 20px; margin: 0 0 4px; }
 .dashboard-kpi-count { display: block; font-size: 13px; }
 .dashboard-comparison-panel .dashboard-money-pair { display:flex; flex-wrap:nowrap; align-items:baseline; column-gap:3px; overflow-x:auto; font-size:clamp(10px,8.5cqi,22px); font-variant-numeric:tabular-nums; }
 .dashboard-money-pair > span { white-space:nowrap; }
-.dashboard-money-pair > .pos { color:var(--ok); }
-.dashboard-money-pair > .neg { color:var(--danger); }
+.dashboard-money-stacked { display:none; }
+:is(.dashboard-money-pair,.dashboard-money-stacked) .pos { color:var(--ok); }
+:is(.dashboard-money-pair,.dashboard-money-stacked) .neg { color:var(--danger); }
 .dashboard-scope-legend { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
 .dashboard-metric-pair { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .dashboard-metric-divider { color: var(--muted); }
