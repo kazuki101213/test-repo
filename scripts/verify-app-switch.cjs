@@ -41,6 +41,14 @@ if(kind==='admin'&&role!=='deliverer'){
  assert.deepEqual(active(pages()),['在庫']);
  assert.deepEqual(active(stockPages()),['予備']);
  stockPages().find(n=>text(n)==='在庫').props.onClick();await settle();assert(all(tree).some(n=>n.type==='Inventory'));
+ if(role==='admin'){
+  pages().find(n=>text(n)==='経費').props.onClick();await settle();
+  assert(all(tree).some(n=>n.type==='ExpenseList'));
+  const actions=all(tree).find(n=>n.props?.className==='app-session-actions');
+  assert.deepEqual(all(actions).filter(n=>n.type==='button'||n.type==='p').map(text),['納品アプリへ','ログアウト','検証（管理者）']);
+  const expenseStyles=fs.readFileSync('apps/admin/src/components/ExpenseSelection.css','utf8');
+  assert.match(expenseStyles,/\.layout:has\(> main > \.expense-workspace\) > \.app-navigation-bar\s*\{[^}]*align-self:\s*stretch/);
+ }
  all(tree).find(n=>n.type==='button'&&text(n)==='納品アプリへ').props.onClick();assert.deepEqual(switched,['delivery']);
 }
 if(kind==='admin'&&role==='deliverer'){assert(!all(tree).some(n=>n.type==='nav'));assert(!all(tree).some(n=>n.type==='Inventory'));}
