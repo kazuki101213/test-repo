@@ -8,7 +8,7 @@ const askulRow={...rows[1],staff_id:'staff-2',memo:'アスクル order-2/1'};
 rows[1]=askulRow;
 let cursor=0,hooks=[],pending=[],dirty=true,tree,calls=[],fail=true,release;
 const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useRef(v){return hooks[cursor++]??={current:v}},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){hooks[n]?.cleanup?.();const h=hooks[n]={deps};pending.push(()=>h.cleanup=fn())}}};
-const context={exports:{},Error,window:{matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}})},crypto:{randomUUID:()=> 'request'},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>'¥'+n}:id==='../expenses'?{expenseCategories:['固定費','変動費','外注費'],expenseCategoryLabel:x=>x}:id==='../api'?{fetchExpenses:async()=>[...rows],fetchExpenseDrafts:async()=>[],fetchExpenseStaffNames:async()=>({'staff-2':'II 久保田 真由'}),deleteExpenses:async(selected,request)=>{calls.push({selected,request});await new Promise(r=>release=r);if(fail)throw Error('通信エラー');rows=rows.filter(row=>!selected.some(s=>s.id===row.id));return selected.length}}:{default:'placeholder'}};
+const context={exports:{},Error,window:{matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}})},crypto:{randomUUID:()=> 'request'},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>'¥'+n}:id==='../expenses'?{expenseCategories:['固定費','変動費','外注費'],expenseCategoryLabel:x=>x}:id==='../api'?{fetchExpenses:async()=>[...rows],fetchExpenseDrafts:async()=>[],fetchExpenseReimbursements:async()=>[{id:'receipt',spent_on:'2099-11-01',staff_id:'staff-2',description:'精算品',category:'配送費',amount:55,approved:true,included_in_expense:true}],fetchExpenseStaffNames:async()=>({'staff-2':'II 久保田 真由'}),deleteExpenses:async(selected,request)=>{calls.push({selected,request});await new Promise(r=>release=r);if(fail)throw Error('通信エラー');rows=rows.filter(row=>!selected.some(s=>s.id===row.id));return selected.length}}:{default:'placeholder'}};
 vm.runInNewContext(compile('apps/admin/src/components/ExpenseList.tsx'),context);
 async function settle(){for(let i=0;i<20;i++){if(dirty){cursor=0;dirty=false;tree=context.exports.default({revision:0});pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
 const checks=()=>all(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox');
@@ -16,6 +16,10 @@ const remove=()=>all(tree).find(n=>n.type==='button'&&text(n)==='削除');
 const confirmation=()=>all(tree).find(n=>n.props?.onDelete&&n.props?.rows);
 (async()=>{
  await settle();assert(remove().props.disabled);assert.equal(checks().length,3);assert.equal(calls.length,0);
+ const expenses=all(tree).find(n=>n.type==='section'&&n.props['aria-label']==='経費');
+ const advances=all(tree).find(n=>n.type==='section'&&n.props['aria-label']==='立替支払い');
+ assert(text(expenses).includes('¥600')&&!text(expenses).includes('¥655'));
+ assert(text(advances).includes('経費に計上済み')&&text(advances).includes('¥55'));
  const searchBox=()=>all(tree).find(n=>n.props?.['aria-label']==='経費を検索');
  assert(all(tree).some(n=>n.type==='button'&&text(n)==='II 久保田 真由 経費2'));
  searchBox().props.onChange({target:{value:'久保田'}});await settle();assert.equal(checks().length,1);

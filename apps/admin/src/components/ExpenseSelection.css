@@ -8,6 +8,11 @@
 .layout .expense-entry-bottom .expense-hint { margin-top:0; }
 .layout .expense-entry-bottom > strong { flex:none; }
 .layout .expense-entry-bottom > strong .expense-edit { width:auto; text-align:right; white-space:nowrap; }
+@media screen and (max-width:700px) {
+ .expense-columns { gap:8px; }
+ .expense-column { padding:8px; overflow-wrap:anywhere; }
+ .layout .expense-entry-bottom { flex-wrap:wrap; }
+}
 .expense-delete-confirmation { background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:20px; width:520px; max-width:calc(100vw - 24px); max-height:85vh; overflow:auto; }
 .expense-delete-confirmation::backdrop { background:#0006; }
 .expense-delete-confirmation ul { padding-left:20px; overflow-wrap:anywhere; }

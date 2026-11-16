@@ -35,7 +35,7 @@ export function shippingMessages(payload: ShippingPayload) {
   const trade = shipping?.tradeUrl && /^https:\/\/jp\.mercari\.com\/transaction\/m\d{8,14}$/.test(shipping.tradeUrl) ? shipping.tradeUrl : null;
   const details = [shipping?.method && `配送方法：${shipping.method}`, shipping?.size && `配送サイズ：${shipping.size}`,
     shipping?.dropoff && `発送場所：${shipping.dropoff}`, shipping?.note, trade && `［メルカリ取引画面］${trade}`].filter(Boolean);
-  return [{ type: 'text', text: `発送お願いします。\n【${payload.serial}】\n${payload.sku}\n${details.length ? details.join('\n') + '\n' : ''}${supplier ? `［仕入れ先］${supplier.href}\n` : ''}［納品アプリ］${deliveryOrigin}/?itemId=${payload.itemId}` }, ...images];
+  return [{ type: 'text', text: `発送お願いします。\n【${String(payload.serial).toLowerCase()}】\n${payload.sku}\n${details.length ? details.join('\n') + '\n' : ''}${supplier ? `［仕入れ先］${supplier.href}\n` : ''}［納品アプリ］${deliveryOrigin}/?itemId=${payload.itemId}` }, ...images];
 }
 export function dispatchState(status: number): 'sent' | 'pending' | 'failed' {
   // 409 means this retry key was already accepted; never create a new key.

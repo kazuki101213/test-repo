@@ -27,7 +27,7 @@ function returnWorkDate(row: ReturnWorkRow) {
 
 const lotNumber = (sku: string | null) => {
   const match = sku?.match(/^([0-9]+[a-z]*)[-_]/i);
-  return match?.[1]?.toUpperCase() ?? null;
+  return match?.[1]?.toLowerCase() ?? null;
 };
 function resaleGroups(rows: Row[]) {
   const byLot = new Map<string, Row[]>();

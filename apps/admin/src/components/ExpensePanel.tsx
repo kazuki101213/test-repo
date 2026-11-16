@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { yen } from '@bussan/shared';
 import { fetchCards, saveExpense, updateExpense } from '../api';
-import { expenseCategories, type ExpenseInput } from '../expenses';
+import { expenseCategories, expenseCategoryLabel, type ExpenseInput } from '../expenses';
 import DateInput from './DateInput';
 
 
 export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; onClose?: () => void; initial?: ExpenseInput; template?: { id: string; category: '固定費' | '外注費'; name: string; card_id: string | null; month: string } }) {
   const [date, setDate] = useState(() => initial?.incurred_on ?? (template ? '' : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)));
-  const [category, setCategory] = useState<ExpenseInput['category']>(initial?.category === '給与' ? '外注費' : initial?.category === '諸経費' ? '変動費' : initial?.category ?? template?.category ?? '変動費');
+  const [category, setCategory] = useState<ExpenseInput['category'] | ''>(initial ? expenseCategoryLabel(initial.category) : template?.category ?? '');
   const [name, setName] = useState(initial?.name ?? template?.name ?? '');
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
   const [card, setCard] = useState(initial?.card_id ?? template?.card_id ?? '');
@@ -26,7 +26,7 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
 
   useEffect(() => {
     let active = true;
-    fetchCards().then(c => { if (active) setCards(c); })
+    fetchCards('expense').then(c => { if (active) setCards(c); })
       .catch(e => { if (active) setError(e instanceof Error ? e.message : String(e)); });
     return () => { active = false; };
   }, []);
@@ -36,6 +36,7 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
     if (saving.current) return;
     saving.current = true; setBusy(true); onBusyChange(true); setError(''); setDone('');
     try {
+      if (!category) throw new Error('経費区分を選択してください。');
       if (!amount.trim()) throw new Error('金額を入力してください。');
       if (template && date.slice(0, 7) !== template.month) throw new Error(`${template.month}の日付を入力してください。`);
       const input: ExpenseInput = {
@@ -58,7 +59,7 @@ export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, 
     {done && <div className="ok" role="status">{done}</div>}
     <form onSubmit={submit}>
       <fieldset disabled={busy} className="expense-fields registration-fields">
-        <label className="field"><span>区分</span><select value={category} onChange={e => setCategory(e.target.value as ExpenseInput['category'])}>{expenseCategories.map(c => <option key={c}>{c}</option>)}</select></label>
+        <label className="field"><span>区分</span><select required value={category} onChange={e => setCategory(e.target.value as typeof category)}><option value="" disabled>選択してください</option>{expenseCategories.map(c => <option key={c}>{c}</option>)}</select></label>
         <label className="field expense-date-field"><span>日付</span><DateInput className="expense-date-input" required value={date} onChange={e => setDate(e.target.value)} /></label>
         <label className="field expense-wide"><span>内容</span><input type="text" required maxLength={200} value={name} onChange={e => setName(e.target.value)} placeholder="梱包資材、家賃など" /></label>
         <label className="field"><span>金額（円）</span><input type="number" required step={1} value={amount} onChange={e => setAmount(e.target.value)} /></label>

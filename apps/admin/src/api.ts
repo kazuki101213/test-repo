@@ -5,7 +5,7 @@ import { getSupabase, STATUSES, usageRecordText, purchaseSourceFields, salesDest
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
-import { validateExpense, type ExpenseInput, type ExpenseDraft } from './expenses';
+import { validateExpense, type ExpenseInput, type ExpenseDraft, type ExpenseReimbursement } from './expenses';
 import { materialPurchaseWindow, type BubbleWrapEstimate, type MaterialPurchase, type MaterialWorkload, type MaterialAnalysisInput, type MaterialAnalysis } from './materialPurchases';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
@@ -103,12 +103,13 @@ export async function updateSpareAccessory(id: string, field: SpareAccessoryFiel
   if (!data) throw new Error('予備付属品が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
 
-export async function fetchCards(): Promise<{ id: string; name: string }[]> {
- return sessionRead('master:cards',30000,async()=>{
-  const { data, error } = await getSupabase()
-    .from('payment_cards').select('id, name').eq('is_active', true).order('name');
+export async function fetchCards(purpose: 'purchase' | 'expense' = 'purchase'): Promise<{ id: string; name: string }[]> {
+ return sessionRead(`master:cards:${purpose}`,30000,async()=>{
+  const query = getSupabase().from('payment_cards').select('id, name').eq('is_active', true).order('name');
+  if (purpose === 'purchase') query.eq('expense_only', false);
+  const { data, error } = await query;
   if (error) throw error;
-  const paymentOrder = ['PayPayカード', 'セゾンカード', 'アメックスカード', 'メルカリ残高', '楽天カード', '振込', '現金'];
+  const paymentOrder = ['PayPayカード', 'セゾンカード', 'アメックスカード', 'メルカリ残高', 'Amazon売上金', '楽天カード', '振込', '現金'];
   return ((data ?? []) as { id: string; name: string }[]).sort((a, b) => {
     const rank = (name: string) => { const index = paymentOrder.indexOf(name); return index < 0 ? paymentOrder.length : index; };
     return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name, 'ja');
@@ -337,6 +338,16 @@ export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
       .select('id,target_month,category,name,card_id').is('deleted_at', null).order('target_month').order('id').range(from, to);
     if (error) throw new Error(error.message);
     return (data ?? []) as ExpenseDraft[];
+  });
+}
+
+export async function fetchExpenseReimbursements(): Promise<ExpenseReimbursement[]> {
+  return readAllRows<ExpenseReimbursement>(async (from, to) => {
+    const { data, error } = await getSupabase().from('v_expense_reimbursements')
+      .select('id,spent_on,staff_id,description,category,amount,approved,included_in_expense')
+      .order('spent_on', { ascending: false }).order('id').range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as ExpenseReimbursement[];
   });
 }
 
