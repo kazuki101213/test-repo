@@ -10,7 +10,7 @@ export type ExpenseInput = {
 export type ExpenseDraft = { id: string; target_month: string; category: '固定費' | '外注費'; name: string; card_id: string | null };
 export type ExpenseReimbursement = {
   id: string; spent_on: string; staff_id: string; description: string; category: ReimbursementCategory | null;
-  amount: number; approved: boolean; included_in_expense: boolean;
+  amount: number; approved: boolean; included_in_expense: boolean; billing_month: string;
 };
 export function validateExpense(input: ExpenseInput) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.incurred_on) || !Number.isFinite(Date.parse(input.incurred_on)) || new Date(input.incurred_on).toISOString().slice(0, 10) !== input.incurred_on) throw new Error('経費日を選択してください。');

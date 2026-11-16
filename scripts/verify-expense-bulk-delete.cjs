@@ -7,8 +7,8 @@ let rows=[1,2,3].map((id,i)=>({id:String(id),incurred_on:'2099-11-01',category:[
 const askulRow={...rows[1],staff_id:'staff-2',memo:'アスクル order-2/1'};
 rows[1]=askulRow;
 let reimbursements = [
- {id:'receipt',spent_on:'2099-11-01',staff_id:'staff-2',description:'精算品',category:'配送費',amount:55,approved:true,included_in_expense:true},
- {id:'duplicate',spent_on:'2099-11-01',staff_id:'staff-2',description:'重複明細',category:'配送費',amount:55,approved:false,included_in_expense:false},
+ {id:'receipt',spent_on:'2099-11-01',billing_month:'2099-11-01',staff_id:'staff-2',description:'精算品',category:'配送費',amount:55,approved:true,included_in_expense:true},
+ {id:'duplicate',spent_on:'2099-11-01',billing_month:'2099-12-01',staff_id:'staff-2',description:'重複明細',category:'配送費',amount:55,approved:false,included_in_expense:false},
 ];
 const exclusions=[];
 let cursor=0,hooks=[],pending=[],dirty=true,tree,calls=[],fail=true,release;

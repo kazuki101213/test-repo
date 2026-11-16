@@ -3,7 +3,7 @@ import { getSupabase } from '@bussan/shared';
 
 interface Packed { id: string; lot_seq: number; purchased_at: string; packed_on: string; title: string; sku: string }
 
-export default function PackedSummary({ staffId }: { staffId: string }) {
+export default function PackedSummary({ staffId, month, monthCount }: { staffId: string; month: string; monthCount: number }) {
   const [rows, setRows] = useState<Packed[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -12,14 +12,14 @@ export default function PackedSummary({ staffId }: { staffId: string }) {
     let active = true;
     setLoading(true); setError(''); setRows([]);
     void (async () => {
-      const { data, error } = await getSupabase().rpc('packed_product_summary', { p_staff: staffId, p_month: null });
+      const { data, error } = await getSupabase().rpc('packed_product_summary', { p_staff: staffId, p_month: `${month}-01`, p_month_count: monthCount });
       if (error) throw error;
       if (active) setRows([...(data as Packed[])].sort((a, b) => (b.packed_on ?? '').localeCompare(a.packed_on ?? '')));
     })()
       .catch(e => { if (active) setError(e.message ?? String(e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [staffId]);
+  }, [staffId, month, monthCount]);
 
   return <section className="packed-summary no-print">
     <h3>納品実績</h3>

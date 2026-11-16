@@ -45,6 +45,7 @@
 .amazon-unreflected-entry { display:flex; align-items:center; justify-content:space-between; gap:10px; overflow-wrap:anywhere; }
 .amazon-unreflected-entry strong { flex:none; text-align:right; }
 .amazon-unreflected-entry small { display:block; font-weight:400; }
+.amazon-unreflected-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; }
 
 @media screen and (min-width:1024px) {
  .layout:has(> main > .expense-workspace) { display:flex; flex-direction:column; height:100dvh; }

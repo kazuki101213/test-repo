@@ -4,10 +4,13 @@ const jsx=(type,props)=>({type,props});
 function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n)}
 const staffNames={exports:{}};vm.runInNewContext(compile('packages/shared/src/staffNames.ts'),staffNames);
+const historyMonths=['2026-10','2026-09','2026-08','2026-07','2026-06','2026-05'];
 function mount(file,props,mocks){
  let hooks=[],cursor=0,pending=[],dirty=true,tree;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
  const noop=()=>{};const ctx={exports:{},window:{addEventListener:noop,removeEventListener:noop,confirm:()=>true},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:mocks[name]??{__esModule:true,default:name.split('/').at(-1)}};
+ const originalRequire=ctx.require;
+ ctx.require=name=>name==='../invoices'?{recentInvoiceMonths:()=>historyMonths,...originalRequire(name)}:originalRequire(name);
  vm.runInNewContext(compile(file),ctx);
  return {get tree(){return tree},async settle(){for(let n=0;n<40;n++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default(props);pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}};
 }
@@ -26,16 +29,25 @@ async function testScope(staff,expectedTarget,canSelect){
  const profit=()=>nodes().find(n=>n.type==='GrossProfitSummary');
  const packed=()=>nodes().find(n=>n.type==='PackedSummary');
  const tablePosition=nodes().find(n=>n.props?.className==='receipt-list-position no-print');
- const panels=nodes().find(n=>n.props?.className==='invoice-summaries no-print');
+ const panels=nodes().find(n=>n.props?.className?.startsWith('invoice-summaries no-print'));
  assert.equal(panels.props.children[0],tablePosition,'Receipt details occupy the first position');
- assert.equal(panels.props.children[1],profit());
+ assert.equal(panels.props.children[1] || undefined,profit());
  assert.equal(all(panels.props.children[2]).find(n=>n.type==='PackedSummary'),packed());
  const overviewCss=fs.readFileSync('apps/delivery/src/invoice.css','utf8');
  assert.match(overviewCss,/\.invoice-summaries \{[^}]*grid-template-columns:minmax\(0,1fr\)/);
  assert.match(overviewCss,/@media screen and \(min-width:1024px\)\s*\{\s*\.invoice-summaries \{\s*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+ assert.equal(packed().props.staffId,staff.id);
+ assert.equal(packed().props.month,'2026-05');
+ assert.equal(packed().props.monthCount,6);
+ assert.equal(nodes().find(n=>n.type==='InvoiceReceipts').props.historyMonths,historyMonths);
+ if(staff.role==='deliverer'){
+  assert.equal(profit(),undefined);
+  assert.match(panels.props.className,/invoice-summaries--without-profit/);
+  assert.match(overviewCss,/\.invoice-summaries--without-profit \{\s*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  return;
+ }
  assert.equal(profit().props.staffId,expectedTarget);
  assert.equal(profit().props.month,'2026-10');
- assert.equal(packed().props.staffId,staff.id);
 
  nodes().find(n=>n.type==='InvoiceReceipts').props.onBusyChange(false);
  await view.settle();
@@ -45,6 +57,7 @@ async function testScope(staff,expectedTarget,canSelect){
   nodes().find(n=>n.type==='select').props.onChange({target:{value:'another'}});
   await view.settle();
   assert.equal(profit().props.staffId,'another','The selected invoice assignee drives the report');
+  assert.equal(packed().props.staffId,'another');
  }
  nodes().find(n=>n.type==='MonthInput'&&n.props['aria-label']==='請求対象月').props.onChange({target:{value:'2026-09'}});
  await view.settle();
