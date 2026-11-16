@@ -80,15 +80,14 @@
   .layout .inventory-workspace.with-purchase, .layout .dashboard-workspace.with-expense { grid-template-columns:minmax(0,1fr); }
 }
 @media screen and (max-width:1023px) {
+  .dashboard-money-wide { display:none; }
+  .dashboard-money-stacked { display:grid; gap:6px; margin:0 0 4px; }
+  .dashboard-money-stacked > div { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:2px 6px; }
+  .dashboard-money-stacked dt { color:var(--muted); font-size:12px; }
+  .dashboard-money-stacked dd { margin:0; font-weight:650; white-space:nowrap; font-variant-numeric:tabular-nums; }
   .layout { grid-template-columns:minmax(0,1fr); }
   .layout > main { padding:16px 12px 64px; }
   .layout .sidebar { position:static; width:100%; height:auto; padding:12px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; border-right:0; border-bottom:1px solid var(--border); }
-  .layout .dashboard-kpis > :is(.purchase-summary-card,.stock-summary-card) { grid-column:1 / -1; }
-  .dashboard-kpis > :is(.purchase-summary-card,.stock-summary-card) .dashboard-comparison { grid-template-columns:minmax(0,1fr); gap:8px; }
-  .dashboard-kpis > :is(.purchase-summary-card,.stock-summary-card) .dashboard-comparison-panel { padding-inline:0; }
-  .dashboard-kpis > :is(.purchase-summary-card,.stock-summary-card) .dashboard-comparison-panel + .dashboard-comparison-panel {
-    padding-block-start:8px; border-inline-start:0; border-block-start:1px solid var(--border);
-  }
   .layout .sidebar h1, .layout .sidebar .who { grid-column:1/-1; width:auto; margin:0 0 4px; }
   .layout .sidebar > span:empty { display:none; }
   .layout .sidebar .nav { width:100%; }
