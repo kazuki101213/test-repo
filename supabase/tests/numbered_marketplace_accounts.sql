@@ -38,7 +38,9 @@ begin
     end loop;
     op:=app.queue_seller_operation(i.id,'listing',jsonb_build_object('expected_revision',i.updated_at,
       'title','test','description','description','price',1000,'condition','目立った傷や汚れなし',
-      'origin','千葉県','shippingMethod','test','photos',jsonb_build_array('https://drive.google.com/test')),gen_random_uuid());
+      'origin','千葉県','shippingMethod','test','photos',jsonb_build_array('https://drive.google.com/test'))
+      ||case when i.sales_channel='ヤフオク' then app.yahoo_listing_shipping(i.id,'ブルーレイレコーダー')||'{"yahoo_shipping_rule":1}'::jsonb else '{}'::jsonb end,
+      gen_random_uuid());
     if (select account_id from app.seller_operations where id=op) is distinct from i.sales_account_id then
       raise exception 'Wrong queued listing account for %',expected;
     end if;
@@ -110,7 +112,9 @@ begin
   end if;
   op:=app.queue_seller_operation(i.id,'listing',jsonb_build_object('expected_revision',i.updated_at,
     'title','test','description','description','price',1000,'condition','目立った傷や汚れなし',
-    'origin','千葉県','shippingMethod','test','photos',jsonb_build_array('https://drive.google.com/test')),gen_random_uuid());
+    'photos',jsonb_build_array('https://drive.google.com/test'))
+    ||app.yahoo_listing_shipping(i.id,'ブルーレイレコーダー')||'{"yahoo_shipping_rule":1}'::jsonb,
+    gen_random_uuid());
   if (select account_id from app.seller_operations where id=op) is distinct from 'auctions-1' then
     raise exception 'Relisting did not use the selected next account';
   end if;
@@ -160,7 +164,9 @@ begin
     end if;
     op:=app.queue_seller_operation(i.id,'listing',jsonb_build_object('expected_revision',i.updated_at,
       'title','test','description','description','price',1000,'condition','目立った傷や汚れなし',
-      'origin','千葉県','shippingMethod','test','photos',jsonb_build_array('https://drive.google.com/test')),gen_random_uuid());
+      'origin','千葉県','shippingMethod','test','photos',jsonb_build_array('https://drive.google.com/test'))
+      ||case when i.sales_channel='ヤフオク' then app.yahoo_listing_shipping(i.id,'ブルーレイレコーダー')||'{"yahoo_shipping_rule":1}'::jsonb else '{}'::jsonb end,
+      gen_random_uuid());
     if (select account_id from app.seller_operations where id=op) is distinct from next_account then
       raise exception 'Resell waited for marketplace sync before using the new account';
     end if;
