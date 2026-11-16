@@ -122,20 +122,20 @@ export default function App() {
   const inventoryTab=tab==='tasks'||tab==='fba'||tab==='spares';
   return (
     <div className={tab === 'bid-calculator' && compactBidViewport ? 'app app-bid-calculator' : 'app'}>
-      <div className="topbar">
-        <div className="app-switch-actions">
+      <header className="topbar app-navigation-bar no-print">
+        <nav className="row invoice-tabs delivery-navigation" aria-label="納品アプリのメニュー">
+          <button type="button" className="btn ghost" data-tab="tasks" disabled={invoiceNavigation === 'busy'} aria-current={inventoryTab ? 'page' : undefined} onClick={() => navigate('tasks')}>在庫</button>
+          <button type="button" className="btn ghost" data-tab="invoices" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => navigate('invoices')}>請求書・領収書</button>
+          {['admin','purchaser'].includes(session.staff.role) && <button type="button" className="btn ghost" data-tab="bid-calculator" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'bid-calculator' ? 'page' : undefined} onClick={() => navigate('bid-calculator')}>入札計算ツール</button>}
+          <button type="button" className="btn ghost" data-tab="notifications" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'notifications' ? 'page' : undefined} aria-controls="notification-settings" onClick={() => navigate('notifications')}>通知設定</button>
+        </nav>
+        <div className="app-session-actions">
           {canOpenManagement(session.staff) && <button type="button" className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => { if (canLeave()) switchApplication('management'); }}>管理アプリへ</button>}
-          <button className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button>
+          <button type="button" className="btn ghost" disabled={invoiceNavigation === 'busy'} onClick={() => void logout()}>ログアウト</button>
           <span className="who">{staffDisplayName(session.staff)}</span>
         </div>
-      </div>
+      </header>
       {error && <p className="error" role="alert">{error}</p>}
-      <nav className="row invoice-tabs delivery-navigation no-print" aria-label="納品アプリのメニュー">
-        <button className="btn ghost" data-tab="tasks" disabled={invoiceNavigation === 'busy'} aria-current={inventoryTab ? 'page' : undefined} onClick={() => navigate('tasks')}>在庫</button>
-        <button className="btn ghost" data-tab="invoices" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'invoices' ? 'page' : undefined} onClick={() => navigate('invoices')}>請求書・領収書</button>
-        {['admin','purchaser'].includes(session.staff.role) && <button className="btn ghost" data-tab="bid-calculator" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'bid-calculator' ? 'page' : undefined} onClick={() => navigate('bid-calculator')}>入札計算ツール</button>}
-        <button className="btn ghost" data-tab="notifications" disabled={invoiceNavigation === 'busy'} aria-current={tab === 'notifications' ? 'page' : undefined} aria-controls="notification-settings" onClick={() => navigate('notifications')}>通知設定</button>
-      </nav>
       {inventoryTab&&<nav className="row delivery-stock-navigation no-print" aria-label="在庫の切り替え">
         <button type="button" className="btn" aria-current={tab==='tasks'?'page':undefined} onClick={()=>navigate('tasks')}>在庫</button>
         <button type="button" className="btn" aria-current={tab==='fba'?'page':undefined} onClick={()=>navigate('fba')}>FBA納品</button>
