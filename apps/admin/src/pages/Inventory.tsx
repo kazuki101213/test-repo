@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CONDITIONS, STATUSES, yen, matchesInventoryFilters } from '@bussan/shared';
 import type { ItemStatus, PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
-import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem, updateInventoryStatus } from '../api';
+import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchInventoryReturnReason, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem, updateInventoryStatus } from '../api';
 import type { InventoryField } from '../api';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
@@ -233,6 +233,17 @@ function inventoryAccountValue(item: InventoryItem, field: 'marketplace' | 'sale
 }
 
 function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: { item: InventoryItem; staff: Staff[]; canDelete: boolean; onClose: () => void; onSaved: () => void }) {
+  const isAmazonReturn = item.marketplace === 'Amazon返品' || item.marketplace === '動作品Amazon返品';
+  const [returnReason, setReturnReason] = useState<{ id: string; text: string } | null>(null);
+  useEffect(() => {
+    if (!isAmazonReturn) return;
+    let active = true;
+    void fetchInventoryReturnReason(item.id).then(
+      reason => { if (active) setReturnReason({ id: item.id, text: reason || '記載なし' }); },
+      () => { if (active) setReturnReason({ id: item.id, text: '取得できませんでした' }); }
+    );
+    return () => { active = false; };
+  }, [item.id, isAmazonReturn]);
   const [sidebar, setSidebar] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width:1280px)').matches);
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
@@ -358,6 +369,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
   }
   return <div className="inventory-edit-overlay inventory-full-edit-container" role={sidebar ? 'region' : 'dialog'} aria-modal={sidebar ? undefined : true} aria-label="商品情報編集">
     <div className="card inventory-full-edit-panel"><h3>商品情報編集</h3><p className="sku">{item.sku}</p>
+      {isAmazonReturn && <p className="sub"><strong>返品理由</strong>　{returnReason?.id === item.id ? returnReason.text : '読み込み中…'}</p>}
       <div className="grid cols2 inventory-full-edit-fields">
         <label className="field"><span>通番号</span><input type="number" min={1} step={1} value={identity.lot_seq} onChange={event => setIdentity(current => ({ ...current, lot_seq: Number(event.target.value) }))} /></label>
         <label className="field"><span>SKU</span><input type="text" value={identity.sku} onChange={event => setIdentity(current => ({ ...current, sku: event.target.value }))} /></label>
