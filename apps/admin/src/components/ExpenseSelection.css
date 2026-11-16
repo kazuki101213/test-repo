@@ -48,7 +48,7 @@
 
 @media screen and (min-width:1024px) {
  .layout:has(> main > .expense-workspace) { display:flex; flex-direction:column; height:100dvh; }
- .layout:has(> main > .expense-workspace) > .app-navigation-bar { flex:none; }
+ .layout:has(> main > .expense-workspace) > .app-navigation-bar { flex:none; align-self:stretch; }
  .layout > main:has(> .expense-workspace) {
   display:flex; flex-direction:column; flex:1 1 auto; min-height:0; padding-bottom:14px;
  }
