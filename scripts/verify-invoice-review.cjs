@@ -43,6 +43,16 @@ const clone=value=>JSON.parse(JSON.stringify(value));
  assert.equal(saved,1);assert.equal(canonical.note,'共通の備考');assert.equal(canonical.total,2100);assert.equal(state.invoice.version,8);assert.equal(state.receiptVersion,9,'No receipt submission preserves the existing approval version');assert.equal(state.dirty,false);
  const delivery=mount('apps/delivery/src/pages/Invoices.tsx',{staff:owner,onNavigationChange(){}},{'@bussan/shared':shared,'../invoices':api.exports});await delivery.settle();await load(delivery);
  assert.equal(text(all(delivery.tree).find(n=>n.props?.className==='btn invoice-pdf-button')),'請求書PDF保存');
+ const previewGrid=all(delivery.tree).find(n=>n.props?.className==='invoice-pdf-previews');
+ const previewSources=all(previewGrid).filter(n=>n.type==='InvoiceSheet'||n.type==='ReceiptSheets');
+ assert.deepEqual(previewSources.map(n=>n.type),['InvoiceSheet','ReceiptSheets']);
+ for(const [index,source] of previewSources.entries()){
+  const previewPaper=jsx('article',{children:index});
+  const pagePreview=source.props.renderPage(previewPaper,index);
+  assert.equal(pagePreview.type,'DocumentPreview');
+  assert.equal(pagePreview.props.children,previewPaper);
+ }
+ assert.match(fs.readFileSync('apps/delivery/src/invoice.css','utf8'),/@media screen and \(min-width:1024px\)\s*\{\s*\.invoice-pdf-previews \{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
  assert.equal(child(delivery,'InvoiceExtraRows').props.lines[1].description,'追加した手当','Delivery reads the same source row saved by admin');
  assert.equal(all(delivery.tree).find(n=>n.type==='textarea'&&n.props.maxLength===2000).props.value,'共通の備考');
  child(delivery,'InvoiceExtraRows').props.onChange([...child(delivery,'InvoiceExtraRows').props.lines,{date:null,description:'納品側の追加',quantity:1,unit_price:400}]);await delivery.settle();
@@ -83,6 +93,14 @@ const clone=value=>JSON.parse(JSON.stringify(value));
  profiles[1].details.issuer_name='石川秀樹';
  canonical={...canonical,extras:[{date:'2026-10-02',description:'ヤフオク入札作業日',quantity:1,unit_price:3000},{date:'2026-10-05',description:'ヤフオク入札作業日',quantity:1,unit_price:7000}]};
  api.exports.monthlyGrossProfit=async()=>({rows:[],total:200000});
+ const approvedView=mount('apps/delivery/src/pages/Invoices.tsx',{staff:owner,onNavigationChange(){}},{
+  '@bussan/shared':shared,'../invoices':{...api.exports,findInvoice:async()=>({...clone(canonical),approved_at:'now'})},
+ });
+ await approvedView.settle();await load(approvedView);
+ assert(!text(approvedView.tree).includes('承認済み・外注費に計上済みです。'));
+ assert.equal(child(approvedView,'InvoiceReceipts').props.approved,true);
+ assert(!all(approvedView.tree).some(n=>n.type==='form'&&n.props.id==='invoice-submit-form'));
+ assert(all(approvedView.tree).some(n=>n.type==='button'&&text(n)==='請求書PDF保存'));
  const auction=mount('apps/delivery/src/pages/Invoices.tsx',{staff:admin,onNavigationChange(){},review},{'@bussan/shared':shared,'../invoices':api.exports});await auction.settle();await load(auction);
  const fee=(v,date)=>all(v.tree).find(n=>n.type==='input'&&n.props['aria-label']===date+'の料金(円)');
  assert.equal(fee(auction,'2026-10-02').props.value,3000);assert.equal(fee(auction,'2026-10-05').props.value,7000);
