@@ -13,7 +13,7 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const data = event.notification.data || {}, url = new URL(self.registration.scope);
-  if (['malfunction','action','photo_review','invoice','receipts'].includes(data.kind)) url.searchParams.set('taskKind', data.kind);
+  if (['malfunction','action','photo_review','packing_photo','invoice','receipts'].includes(data.kind)) url.searchParams.set('taskKind', data.kind);
   for (const key of ['itemId','taskId','invoiceStaffId']) {
     if (/^[0-9a-f-]{36}$/i.test(data[key] || '')) url.searchParams.set(key, data[key]);
   }
