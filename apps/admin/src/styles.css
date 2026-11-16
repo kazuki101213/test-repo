@@ -253,11 +253,8 @@ label.field > input, label.field > select, label.field > textarea { width: 100%;
 .expense-edit:hover { background: var(--surface-2); }
 .expense-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .expense-edit:disabled { opacity: .6; cursor: progress; }
-.expense-entry-top .expense-edit { width: auto; }
 .expense-month-group > h4 { margin: 12px 0 6px; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); font-size: 13px; }
 .expense-entries li { padding: 12px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
-.expense-entry-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
-.expense-entry-top time { color: var(--muted); font-size: 12px; }
 .expense-entries .expense-hint { margin-top: 4px; white-space: pre-wrap; }
 .expense-table { max-height: 40vh; }
 .expense-list .expense-table { max-height: 65vh; }
