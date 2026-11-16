@@ -4,6 +4,28 @@ export interface SellerDraft {
  title:string;description:string;price:number;condition:string;shippingMethod:string;shippingPayer:string;dispatchDays:string;origin:string;
  category:'ブルーレイレコーダー'|'テレビ'|'モニター'|'小物';listingCategory?:string;size:string;weightKg?:string;dropoff:string;auctionDays:number;closingHour:number;autoExtend:boolean;autoRelist:boolean;
 }
+export interface YahooListingShipping {
+ category:SellerDraft['category']|null;
+ shippingMethod:string;
+ origin:string;
+ dropoff:string;
+ size?:string;
+ weightKg?:string;
+ source:'fixed'|'sale'|'review';
+}
+
+export function applyYahooListingShipping(draft:SellerDraft,rule:YahooListingShipping):SellerDraft {
+ const category=rule.category??draft.category;
+ const size=rule.size??(category==='ブルーレイレコーダー'?'120':category==='モニター'||category==='テレビ'?'140':'');
+ return {...draft,category,shippingMethod:rule.shippingMethod,origin:rule.origin,dropoff:rule.dropoff,size,
+  weightKg:rule.weightKg??(['ブルーレイレコーダー','モニター','テレビ'].includes(category)?'5':undefined)};
+}
+
+export function yahooListingSizes(method:string):string[] {
+ if(method==='おてがる配送（日本郵便）')return ['60','80','100','120','140','160','170','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット'];
+ if(method==='おてがる配送（ヤマト運輸）')return ['60','80','100','120','140','160','180','200','ネコポス','宅急便コンパクト'];
+ return [];
+}
 export const SMALL_PACKAGES=[
  {name:'ネコポス',dimensions:'3辺合計60cm以内・長辺34cm以内・厚さ3cm以内・1kg以内（最小23×11.5cm）'},
  {name:'宅急便コンパクト',dimensions:'専用BOX：25×20×5cm'},
@@ -27,7 +49,7 @@ export function sellerDefaults(task:DeliveryTask,manufacturer=''):SellerDraft{
  const listingCategory=handheldGps?'ハンディGPS':yahoo&&category==='ブルーレイレコーダー'&&maker?`${category} > ${maker}`:category==='小物'?(!yahoo&&/\bVideoMic(?:ro)?\b/i.test(title.normalize('NFKC'))?'コンデンサーマイク':/ヘッドホン|ヘッドフォン|headphone/i.test(title)?'ヘッドホン':/イヤホン|earphone/i.test(title)?'イヤホン':/リモコン/.test(title)?'リモコン':/スピーカー/.test(title)?'スピーカー':/アンプ/.test(title)?'アンプ':''):category==='モニター'?'ディスプレイ・モニター':category;
  return {title:listing?.[1]||task.title,description:listing?.[2]||task.description||'',price:Math.ceil((task.planned_price||0)*(yahoo?(task.condition==='可'?.2:.35):.8)),
  condition:!task.condition?'':yahoo?task.condition==='可'?'傷や汚れあり':'やや傷や汚れあり':task.condition==='可'?'全体的に状態が悪い':task.condition==='良い'?'やや傷や汚れあり':'目立った傷や汚れなし',
- shippingMethod:yahoo?(postal?'おてがる配送（日本郵便）':'おてがる配送（ヤマト運輸）'):postal?'ゆうゆうメルカリ便':'らくらくメルカリ便',shippingPayer:yahoo?'購入者負担':'出品者負担',dispatchDays:yahoo?'2〜3日':'4〜7日',origin,category,listingCategory,weightKg:yahoo?(category==='小物'?'2':'5'):undefined,size:category==='ブルーレイレコーダー'?'100':category==='テレビ'||category==='モニター'?'140':'',dropoff,auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false};
+ shippingMethod:yahoo?(postal?'おてがる配送（日本郵便）':'おてがる配送（ヤマト運輸）'):postal?'ゆうゆうメルカリ便':'らくらくメルカリ便',shippingPayer:yahoo?'購入者負担':'出品者負担',dispatchDays:yahoo?'2〜3日':'4〜7日',origin,category,listingCategory,weightKg:yahoo&&category!=='小物'?'5':undefined,size:category==='ブルーレイレコーダー'?(yahoo?'120':'100'):category==='テレビ'||category==='モニター'?'140':'',dropoff,auctionDays:3,closingHour:23,autoExtend:true,autoRelist:false};
 }
 
 /** Manufacturer branches cannot be selected using only their parent category. */
@@ -46,7 +68,7 @@ export function sellerShippingSizes(method:string):string[]{
  if(method==='ゆうゆうメルカリ便')return ['ゆうパケット','ゆうパケットポストmini','ゆうパケットポスト','ゆうパケットプラス','ゆうパック60〜100','ゆうパック120〜170'];
  if(method==='らくらくメルカリ便')return ['ネコポス','宅急便コンパクト','宅急便60〜160','宅急便180〜200'];
  const postal=/日本郵便|ゆうゆう/.test(method);
- return ['100','140',...SMALL_PACKAGES.filter(value=>postal?value.name.startsWith('ゆう')&&value.name!=='ゆうパケットポスト':value.name==='宅急便コンパクト').map(value=>value.name)];
+ return ['100','120','140',...SMALL_PACKAGES.filter(value=>postal?value.name.startsWith('ゆう')&&value.name!=='ゆうパケットポスト':value.name==='宅急便コンパクト').map(value=>value.name)];
 }
 export function mercariShippingSize(method:string,size:string):string{
  if(method==='ゆうゆうメルカリ便'){

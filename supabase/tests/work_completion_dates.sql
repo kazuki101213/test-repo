@@ -74,6 +74,13 @@ set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 do $$declare i app.items;op uuid;payload jsonb;begin
  for i in select * from app.items where lot_seq in (998303,998304) loop
   payload:=jsonb_build_object('expected_revision',i.updated_at,'title','CI fixture','description','CI fixture','price',1000,'condition','可','origin','千葉県','shippingMethod','ゆうゆうメルカリ便','photos',jsonb_build_array('https://xgoppuqoqeppckyunnvx.supabase.co/storage/v1/object/sign/item-photos/test.jpg'),'work_completed_on',current_date-3);
+  if i.sales_channel='ヤフオク' then
+   payload:=payload||'{"yahoo_shipping_rule":1,"category":"ブルーレイレコーダー","shippingMethod":"おてがる配送（ヤマト運輸）","origin":"愛媛県","dropoff":"セブンイレブン","size":"120","weightKg":"5"}'::jsonb;
+   begin
+    perform app.queue_seller_operation(i.id,'listing',payload||'{"size":"100"}'::jsonb,gen_random_uuid());
+    raise exception 'The old Yahoo listing size was accepted';
+   exception when invalid_parameter_value then null;end;
+  end if;
   op:=app.queue_seller_operation(i.id,'listing',payload,gen_random_uuid());
   if (select packed_on from app.items where id=i.id) is not null then raise exception 'Queued listing billed early';end if;
   if not app.extension_claim_seller_operation(op,case when i.sales_channel='メルカリ' then 'mercari-2' else 'auctions-1' end) then raise exception 'Listing not claimed';end if;
@@ -89,6 +96,7 @@ do $$declare i app.items;op uuid;payload jsonb;begin
    perform app.extension_finish_listing_result_check(op,jsonb_build_object('external_id','m998303','url','https://jp.mercari.com/item/m998303','observed_at',clock_timestamp()));
   else
    perform app.extension_finish_seller_operation(op,'succeeded','{"external_id":"r998304","url":"https://page.auctions.yahoo.co.jp/jp/auction/r998304"}');
+   if app.line_fixed_shipping_size(i.id) is distinct from '120' then raise exception 'Yahoo listing size did not survive listing completion';end if;
   end if;
   if not exists(select 1 from app.items where id=i.id and status='出品中' and packed_on=current_date-3 and packed_completed_at is not null) then raise exception 'Confirmed external listing did not preserve selected date';end if;
  end loop;

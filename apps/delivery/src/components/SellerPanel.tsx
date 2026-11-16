@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,sellerShippingCodeError,mercariShippingSize,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel,marketplaceAccountLabel} from '@bussan/shared';
+import {applyYahooListingShipping,yahooListingSizes,sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,sellerShippingCodeError,mercariShippingSize,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel,marketplaceAccountLabel} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
 import {fetchSellerContext,fetchSellerOperation,fetchTask,fetchPhotoUrls,fetchProductMaker,queueSellerOperation,retryUncertainShippingCode,requestListingResultCheck,submitAmazonListing,fetchAmazonListingPending,fetchListingPhotoAnalysis,mercariShippingHandoff} from '../api';
 import type {SellerContext,ItemPhoto,SellerOperation,MercariShippingHandoffState} from '../api';
@@ -93,8 +93,14 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    const defaults=mode==='listing'?listingDraft(prepared,maker,listingSkuKey?listingSkuKey.split('\n'):[]):sellerDefaults(prepared);
    receiptPhotos.current=!!receipt;
    const selection=receipt?.photoIds.length?receipt.photoIds:images.slice(0,isAmazonSalesChannel(full.sales_channel)?6:10).map(photo=>photo.id);
-   setDraft(mode==='shipping'?sellerShippingDraft(defaults,info.shipping_defaults):mode==='listing'&&full.sales_channel==='メルカリ'
-    ?{...defaults,size:mercariShippingSize(defaults.shippingMethod,defaults.size)}:defaults);
+   let initial=defaults;
+   if(mode==='shipping')initial=sellerShippingDraft(defaults,info.shipping_defaults);
+   if(mode==='listing'&&full.sales_channel==='メルカリ')initial={...defaults,size:mercariShippingSize(defaults.shippingMethod,defaults.size)};
+   if(mode==='listing'&&full.sales_channel==='ヤフオク'){
+    const rule=info.yahoo_listing_shipping;
+    initial=rule?applyYahooListingShipping(defaults,rule):{...defaults,shippingMethod:'',size:'',weightKg:undefined,origin:'',dropoff:''};
+   }
+   setDraft(initial);
    setDescriptionSource({task:prepared,maker});setContext(info);setPhotos(images);setSelected(selection);
    if(receipt&&full.status==='商品登録前'&&full.planned_price){
     setAmazonAwaiting({date:receipt.date,requestId:receipt.requestId,photoIds:selection,expected:{sku:full.sku,price:full.planned_price}});
@@ -154,7 +160,22 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const amazonListing=mode==='listing'&&isAmazonSalesChannel(task.sales_channel);
  const categoryError=draft?sellerListingCategoryError(draft,task.sales_channel):'';
  async function descriptionSaved(){setContext(await fetchSellerContext(task.id));const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(full)onChanged(full);}
- function updateDescription(value:Partial<SellerDraft>){setDraft(current=>current?{...current,...value,...(task.sales_channel==='ヤフオク'&&value.category&&value.category!==current.category?{weightKg:value.category==='小物'?'2':'5'}:{})}:current);request.current=crypto.randomUUID();}
+ const yahooListing=mode==='listing'&&task.sales_channel==='ヤフオク';
+ const yahooRule=context?.yahoo_listing_shipping;
+ const yahooSizeLocked=yahooRule?.source==='sale'||draft?.category!=='小物';
+ const yahooNeedsWeight=/^\d+$/.test(draft?.size??'');
+ const yahooWeights=['2','5','10','15','20','25',...(['180','200'].includes(draft?.size??'')?['30']:[])];
+ const yahooShippingError=!yahooListing?'':!yahooRule?.shippingMethod?'担当者のヤフオク配送設定を確認してください。':
+  !draft||!yahooListingSizes(draft.shippingMethod).includes(draft.size)||yahooNeedsWeight&&!yahooWeights.includes(draft.weightKg??'')?'梱包後の配送サイズと重さを確認してください。':'';
+ function updateDescription(value:Partial<SellerDraft>){
+  setDraft(current=>{
+   if(!current)return current;
+   const next={...current,...value};
+   if(!yahooListing||!yahooRule||next.category===current.category)return next;
+   return applyYahooListingShipping(next,yahooRule);
+  });
+  request.current=crypto.randomUUID();
+ }
  async function beginAmazonListing(persistYear:()=>Promise<void>){if(lock.current||busy||amazonAwaiting)return;lock.current=true;setBusy(true);setError('');try{const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(!full)throw new Error('商品が見つかりません。');if(!full.asin||!/^[A-Z0-9]{10}$/.test(full.asin))throw new Error('ASINを登録してください。');if(!['ほぼ新品','非常に良い','良い','可'].includes(full.condition??''))throw new Error('コンディションを登録してください。');if(!Number.isSafeInteger(full.planned_price)||(full.planned_price??0)<1)throw new Error('予定販売価格が未登録です。管理アプリで販売予定金額を入力してください。');setAmazonConfirmation({sku:full.sku,price:full.planned_price!,persistYear});setConfirming('listing_complete');}catch(cause){setError(cause instanceof Error?cause.message:String(cause));}finally{lock.current=false;setBusy(false);}}
  async function completeAmazonListing(date:string){if(lock.current||busy||!amazonConfirmation||context?.photo_review_approved!==true||task.photo_review_approved!==true)return;lock.current=true;setBusy(true);setError('');try{const {sku,price,persistYear}=amazonConfirmation;await persistYear();const expected={sku,price};const result=await submitAmazonListing(task.id,date,request.current,selected,expected);if(!result.verified){if(result.state==='retryable'){setAmazonAwaiting(null);setAmazonNotice(result.note);return;}if(result.state==='failed')throw new Error(result.note);setAmazonAwaiting({date:result.workCompletedOn??date,requestId:result.requestId??request.current,photoIds:[...selected],expected});setAmazonNotice('Amazonに送信済みです。商品情報・写真の反映を自動確認しています。');return;}request.current=crypto.randomUUID();setAmazonNotice(result.note);const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(full)onChanged(full);}catch(cause){request.current=crypto.randomUUID();setError(cause instanceof Error?cause.message:String(cause));throw cause;}finally{lock.current=false;setBusy(false);}}
  const changedCallback=useRef(onChanged);changedCallback.current=onChanged;
@@ -195,16 +216,21 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <div className="seller-form">
     <label className="seller-short">{task.sales_channel==='ヤフオク'?'開始価格':'価格'}<input type="number" min={1} step={1} value={draft.price} disabled={disabled} onChange={event=>change('price',Number(event.target.value))}/></label>
     <label>送料負担<select value={draft.shippingPayer} disabled={disabled} onChange={event=>change('shippingPayer',event.target.value)}>{['出品者負担','購入者負担'].map(value=><option key={value}>{value}</option>)}</select></label>
-    {mercari?<>{mercariMethodSelect}{mercariSizeSelect}{dropoffSelect}</>:<label>配送方法<select value={draft.shippingMethod} disabled={disabled} onChange={event=>change('shippingMethod',event.target.value)}>{['おてがる配送（ヤマト運輸）','おてがる配送（日本郵便）'].map(value=><option key={value}>{value}</option>)}</select></label>}
-    <label className="seller-short">発送元<input value={draft.origin} disabled={disabled} onChange={event=>change('origin',event.target.value)}/></label>
+    {mercari?<>{mercariMethodSelect}{mercariSizeSelect}{dropoffSelect}</>:<label>配送方法<input value={draft.shippingMethod} readOnly/></label>}
+    <label className="seller-short">発送元<input value={draft.origin} disabled={disabled} readOnly={yahooListing} onChange={event=>change('origin',event.target.value)}/></label>
     <label className="seller-short">発送までの日数<select value={draft.dispatchDays} disabled={disabled} onChange={event=>change('dispatchDays',event.target.value)}>{['1〜2日','2〜3日','4〜7日'].map(value=><option key={value}>{value}</option>)}</select></label>
-    {task.sales_channel==='ヤフオク'&&<><label>配送サイズ<select value={draft.size} disabled={disabled} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).map(value=><option key={value}>{value}</option>)}</select></label>{/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&<label>梱包後の重さ<select value={draft.weightKg??''} disabled={disabled} onChange={event=>change('weightKg',event.target.value)}><option value="">選択</option>{['2','5','10','15','20','25'].map(value=><option key={value} value={value}>{value}kg以内</option>)}</select></label>}</>}
+    {yahooListing&&<>
+     <label>配送サイズ<select value={draft.size} disabled={disabled||yahooSizeLocked} onChange={event=>change('size',event.target.value)}><option value="">選択</option>{yahooListingSizes(draft.shippingMethod).map(value=><option key={value} value={value}>{/^\d+$/.test(value)?value+'サイズ':value}</option>)}</select></label>
+     {yahooNeedsWeight&&<label>梱包後の重さ<select value={draft.weightKg??''} disabled={disabled||yahooSizeLocked&&!!draft.weightKg} onChange={event=>change('weightKg',event.target.value)}><option value="">選択</option>{yahooWeights.map(value=><option key={value} value={value}>{value}kg以内</option>)}</select></label>}
+    </>}
     <label>出品カテゴリ<input value={draft.listingCategory??''} disabled={disabled} maxLength={200} placeholder="サイトのカテゴリ名" onChange={event=>change('listingCategory',event.target.value)}/></label>
     {task.sales_channel==='ヤフオク'&&<><label className="seller-short">終了までの日数<input type="number" min={1} max={7} value={draft.auctionDays} disabled={disabled} onChange={event=>change('auctionDays',Number(event.target.value))}/></label><label className="seller-short">終了時間帯<select value={draft.closingHour} disabled={disabled} onChange={event=>change('closingHour',Number(event.target.value))}>{Array.from({length:24},(_,hour)=><option key={hour} value={hour}>{hour}時台</option>)}</select></label><div className="seller-auction-options" role="group" aria-label="オークション設定"><label><input type="checkbox" checked={draft.autoExtend} disabled={disabled} onChange={event=>change('autoExtend',event.target.checked)}/>自動延長</label><label><input type="checkbox" checked={draft.autoRelist} disabled={disabled} onChange={event=>change('autoRelist',event.target.checked)}/>自動再出品</label></div></>}
    </div>
    {photoChooser}
    {categoryError&&<p className="error" role="alert">{categoryError}</p>}
-   <button type="button" className="btn primary" disabled={disabled||photoAnalysis.reading||!!categoryError||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||task.sales_channel==='ヤフオク'&&(!(/日本郵便/.test(draft.shippingMethod)?['100','140','ゆうパケットプラス','ゆうパケットポストmini','ゆうパケット']:['100','140','宅急便コンパクト']).includes(draft.size)||/日本郵便/.test(draft.shippingMethod)&&/^\d+$/.test(draft.size)&&!draft.weightKg)||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
+   {yahooListing&&draft.category==='小物'&&<p>{yahooRule?.source==='sale'?(yahooNeedsWeight&&!yahooRule.weightKg?'前回の配送サイズを適用しました。梱包後の重さを入力してください。':'前回の販売データを適用しました。'):'前回の販売データから、この配送会社で使えるサイズを確認できませんでした。梱包後の配送条件を入力してください。'}</p>}
+   {yahooShippingError&&<p className="error" role="alert">{yahooShippingError}</p>}
+   <button type="button" className="btn primary" disabled={disabled||photoAnalysis.reading||!!categoryError||!!yahooShippingError||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
    </>}
    {!amazonListing&&staff.role==='admin'&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
@@ -230,7 +256,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    <button type="button" className="btn primary" disabled={disabled||!message.trim()} onClick={()=>{if(window.confirm('取引相手へ送信しますか？'))void submit('message_send',{...tradePayload,body:message.trim()});}}>送信</button>
   </>}
   {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<div><label>出品済み商品のURL（任意）<input type="url" value={listingUrl} disabled={busy||!!watching} onChange={event=>setListingUrl(event.target.value)}/></label><button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button></div>}
-  {confirming&&<WorkDateConfirmation title={amazonListing?`${task.sales_channel==='FBA2'||task.sales_channel==='自己発送2'?'Amazon2':'Amazon1'}に${amazonConfirmation?.price.toLocaleString('ja-JP')??''}円で出品しますか。`:(marketplaceAccountLabel(context?.listing_account_id) ? `${marketplaceAccountLabel(context?.listing_account_id)}に出品しますか。` : '出品しますか。')} purchasedAt={task.purchased_at} savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onConfirm={async date=>{if(lock.current||disabled)return;if(!draft)throw new Error('出品内容を確認してください。');if(confirming==='listing'&&categoryError)throw new Error(categoryError);if(confirming==='listing_complete')await completeAmazonListing(date);else{lock.current=true;setBusy(true);try{const {expected_revision,...payload}={...draft,work_completed_on:date,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];}),expected_revision:context?.revision};await queueSellerOperation(task.id,'listing',{...payload,expected_revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));}finally{lock.current=false;setBusy(false);}}}}/>}
+  {confirming&&<WorkDateConfirmation title={amazonListing?`${task.sales_channel==='FBA2'||task.sales_channel==='自己発送2'?'Amazon2':'Amazon1'}に${amazonConfirmation?.price.toLocaleString('ja-JP')??''}円で出品しますか。`:(marketplaceAccountLabel(context?.listing_account_id) ? `${marketplaceAccountLabel(context?.listing_account_id)}に出品しますか。` : '出品しますか。')} purchasedAt={task.purchased_at} savedDate={task.packed_on} onCancel={()=>setConfirming(null)} onConfirm={async date=>{if(lock.current||disabled)return;if(!draft)throw new Error('出品内容を確認してください。');if(confirming==='listing'&&(categoryError||yahooShippingError))throw new Error(categoryError||yahooShippingError);if(confirming==='listing_complete')await completeAmazonListing(date);else{lock.current=true;setBusy(true);try{const {expected_revision,...payload}={...draft,work_completed_on:date,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];}),expected_revision:context?.revision};await queueSellerOperation(task.id,'listing',{...payload,...(yahooListing?{yahoo_shipping_rule:1}:{}),expected_revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));}finally{lock.current=false;setBusy(false);}}}}/>}
   <div className="seller-history" aria-live="polite">{operations.map(op=><p key={op.id}>{statusText(op)}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
  </section>;
 }
