@@ -430,7 +430,6 @@ input[type='month'] { padding: 4px 5px; border-radius: 8px; border: 1px solid va
 .btn[data-direction=back] { background:var(--workflow-back); border-color:var(--workflow-back); color:#fff; }
 
 .management-navigation { display:flex; flex-direction:column; gap:4px; }
-.management-header-actions { display:none; }
 .management-desktop-logout { display:contents; }
 
 .invoice-task-rows .listing-inventory-link { color:var(--accent); text-decoration:underline; overflow-wrap:anywhere; }

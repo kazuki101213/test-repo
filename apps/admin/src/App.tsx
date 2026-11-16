@@ -79,20 +79,20 @@ export default function App() {
 
   return (
     <div className="layout">
-      <aside className="sidebar">
-        <div className="management-header-actions">
+      <header className="sidebar app-navigation-bar">
+        <nav className="management-navigation" aria-label="管理アプリのメニュー">
+          {NAV.filter(n => canOpenManagementPage(session.staff, n.key)).map((n) => (
+            <button key={n.key} type="button" className="nav" aria-current={activeMainPage === n.key ? 'page' : undefined} data-active={activeMainPage === n.key} onClick={() => setPage(n.key)}>
+              {n.label}
+            </button>
+          ))}
+        </nav>
+        <div className="app-session-actions">
           <button type="button" className="btn ghost" onClick={() => switchApplication('delivery')}>納品アプリへ</button>
           <button type="button" className="btn ghost" onClick={() => void logout()}>ログアウト</button>
           <p className="who">{staffDisplayName(session.staff)}<span className="management-role">（{session.staff.role === 'admin' ? '管理者' : '仕入担当'}）</span></p>
         </div>
-        <nav className="management-navigation" aria-label="管理アプリのメニュー">
-        {NAV.filter(n => canOpenManagementPage(session.staff, n.key)).map((n) => (
-          <button key={n.key} className="nav" aria-current={activeMainPage === n.key ? 'page' : undefined} data-active={activeMainPage === n.key} onClick={() => setPage(n.key)}>
-            {n.label}
-          </button>
-        ))}
-        </nav>
-      </aside>
+      </header>
 
       <main>
         {error && <p className="error" role="alert">{error}</p>}

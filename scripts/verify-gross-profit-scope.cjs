@@ -35,11 +35,11 @@ async function testScope(staff,expectedTarget,canSelect){
  assert.equal(profit().props.month,'2026-10');
  assert.equal(packed().props.staffId,staff.id);
 
+ nodes().find(n=>n.type==='InvoiceReceipts').props.onBusyChange(false);
+ await view.settle();
  const [selector]=nodes().filter(n=>n.type==='select');
- assert.equal(!selector.props.disabled&&staff.role==='admin',canSelect);
+ assert.equal(!selector.props.disabled,canSelect);
  if(canSelect){
-  nodes().find(n=>n.type==='InvoiceReceipts').props.onBusyChange(false);
-  await view.settle();
   nodes().find(n=>n.type==='select').props.onChange({target:{value:'another'}});
   await view.settle();
   assert.equal(profit().props.staffId,'another','The selected invoice assignee drives the report');
