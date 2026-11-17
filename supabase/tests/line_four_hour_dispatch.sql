@@ -54,15 +54,24 @@ do $$declare prepared jsonb;request uuid;r record;counted integer:=0;calls integ
  where q.item_id=(select id from app.items where lot_seq=998772);
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
  if prepared->>'queued'<>'0' then raise exception 'Uncertain code issuance was retried';end if;
- update app.seller_operations q set status='failed',finished_at=now(),
+ update app.seller_operations q set status='failed',finished_at=now()-interval '4 hours',
    result=jsonb_build_object('phase','prepare','note','取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません')
  where q.item_id=(select id from app.items where lot_seq=998772);
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
  if prepared->>'queued'<>'1' then raise exception 'Read-only Mercari timeout did not retry';end if;
  update app.seller_operations q set status='failed',finished_at=now(),
-   result=jsonb_build_object('phase','prepare','note','取引画面の発送情報の読み込みが時間切れになりました。コードは発行していません')
+   result=jsonb_build_object('phase','prepare','note','画面確認待ち: 待機中にタブが変更されたため停止しました')
  where q.item_id=(select id from app.items where lot_seq=998772) and q.status='queued';
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
- if prepared->>'queued'<>'0' then raise exception 'Mercari timeout retried more than once';end if;
+ if prepared->>'queued'<>'0' then raise exception 'Tab change retried during the same patrol';end if;
+ update app.seller_operations q set finished_at=now()-interval '4 hours'
+ where q.item_id=(select id from app.items where lot_seq=998772);
+ prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
+ if prepared->>'queued'<>'1' then raise exception 'Tab change did not retry on the later patrol';end if;
+ update app.seller_operations q set status='failed',finished_at=now()-interval '4 hours',
+   result=jsonb_build_object('phase','shipping_code','note','画面確認待ち: 待機中にタブが変更されたため停止しました')
+ where q.item_id=(select id from app.items where lot_seq=998772) and q.status='queued';
+ prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
+ if prepared->>'queued'<>'0' then raise exception 'Potential code issuance was retried';end if;
 end $$;
 rollback;
