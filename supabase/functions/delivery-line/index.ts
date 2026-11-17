@@ -131,16 +131,16 @@ Deno.serve(async req => {
       for (const row of rows || []) {
         let state = 'cancelled', status: number | null = null;
         if (row.eligible) {
-          // Send the request even when optional photos/code are unavailable.
-          // The app link always identifies the exact product; never use an old trade's code.
+          // Build fresh media only from the current trade. Preserve any already
+          // prepared payload and retry key on transport retries.
           try {
             let payload: ShippingPayload;
             if (row.payload.media) {
               try { payload = await prepareShippingMedia({ admin, media: row.payload.media, deliveryId: row.id, QRCode }); }
-              catch (error) {
-                if (row.payload.media.automatic !== true) throw error;
-                const media = row.payload.media;
-                payload = {itemId:media.itemId,serial:media.serial,sku:media.sku,supplierUrl:media.supplierUrl,shipping:media.shipping,images:[],automatic:true};
+              catch {
+                // Nothing has been sent to LINE. Retry preparation on the existing outbox.
+                await rpc('finish_delivery_line', { p_id: row.id, p_lease: row.lease, p_state: 'pending', p_status: null });
+                continue;
               }
             } else payload = row.payload as ShippingPayload;
             const messages = shippingMessages(payload);
