@@ -5,6 +5,7 @@
   .layout .inventory-controls .inventory-registration-actions > .btn { grid-column:1; grid-row:1; }
   .layout .inventory-controls .amazon-sales-update > .btn { grid-column:2; grid-row:1; }
   .layout .inventory-controls .amazon-sales-update > :is(.sub,.error) { grid-column:1 / -1; grid-row:2; }
+  .layout .inventory-controls .amazon-listing-status { grid-column:1 / -1; }
   .layout .inventory-controls .inventory-toolbar > .inventory-search { grid-column:3; grid-row:1; grid-template-columns:88px minmax(0,1fr); gap:6px; }
   .layout .inventory-controls .inventory-search > :is(input,select) { font-size:14px; padding-inline:3px; }
   .layout .inventory-controls .inventory-toolbar > .inventory-multi-filter { grid-column:4; grid-row:1; }

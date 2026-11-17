@@ -125,6 +125,7 @@ tbody tr:hover { background: var(--surface-2); }
 .amazon-sales-update { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
 .amazon-sales-update .sub { margin: 0; }
 .amazon-sales-update .error { margin: 0; }
+.amazon-listing-status { display:flex; flex-wrap:wrap; gap:4px 18px; min-width:0; overflow-wrap:anywhere; }
 input[type='text'], input[type='number'], input[type='date'], input[type='search'],
 input[type='email'], input[type='password'], input[type='url'], select, textarea {
   padding: 4px 5px; border-radius: 8px; border: 1px solid var(--border);

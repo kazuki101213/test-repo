@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
 
 type Range = { postedAfter: string; postedBefore: string };
@@ -9,6 +9,50 @@ type ListingResult = {
   inactive?: number;
   error?: string;
 };
+type ListingStatus = {
+  account_id: 'amazon-1' | 'amazon-2';
+  snapshot_at: string | null;
+  pending: boolean;
+  last_error: string | null;
+  unknown_rows: number | null;
+  seller_count: number | null;
+  inventory_count: number;
+  amazon_only: string[] | null;
+  inventory_only: string[] | null;
+};
+const listingDate = new Intl.DateTimeFormat('ja-JP', {
+  month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo',
+});
+const listingLabel = { 'amazon-1': 'Amazon1', 'amazon-2': 'Amazon2' };
+
+function ListingSyncStatus({ row }: { row: ListingStatus }) {
+  const amazonOnly = row.amazon_only ?? [];
+  const inventoryOnly = row.inventory_only ?? [];
+  const countDiffers = row.seller_count !== row.inventory_count;
+  const hasDifferences = amazonOnly.length > 0 || inventoryOnly.length > 0 || countDiffers;
+  const outdated = row.snapshot_at !== null && Date.now() - Date.parse(row.snapshot_at) > 27 * 3600000;
+  let state = '一致';
+  if (row.last_error) state = '取得失敗';
+  else if (row.pending) state = '取得中';
+  else if (row.seller_count === null) state = '未照合';
+  else if (outdated) state = '更新遅れ';
+  else if (row.unknown_rows) state = '読み取り要確認';
+  else if (hasDifferences) state = '差分あり';
+
+  return <div className="sub">
+    <span>{listingLabel[row.account_id]} {state}
+      {row.snapshot_at && `（${listingDate.format(new Date(row.snapshot_at))}）`}
+      {row.seller_count !== null && ` セラーセントラル ${row.seller_count}件／アプリ ${row.inventory_count}件`}
+    </span>
+    {row.last_error && <div className="error">{row.last_error}</div>}
+    {!!row.unknown_rows && <div>読み取れなかったレポート行 {row.unknown_rows}件</div>}
+    {(amazonOnly.length > 0 || inventoryOnly.length > 0) && <details>
+      <summary>出品SKUの差分</summary>
+      {amazonOnly.length > 0 && <div>セラーセントラル側のみ（{amazonOnly.length}件） {amazonOnly.join('、')}</div>}
+      {inventoryOnly.length > 0 && <div>アプリ側のみ（{inventoryOnly.length}件） {inventoryOnly.join('、')}</div>}
+    </details>}
+  </div>;
+}
 const day = (date: Date) => new Date(date.getTime() + 9 * 3600000).toISOString().slice(0, 10);
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : '更新に失敗しました。';
 async function invoke(body: object, endpoint = 'amazon-payments') {
@@ -41,7 +85,29 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [listingStatus, setListingStatus] = useState<ListingStatus[]>([]);
+  const [listingStatusError, setListingStatusError] = useState(false);
   const running = useRef(false);
+  const loadListingStatus = useCallback(async () => {
+    const { data, error: failure } = await getSupabase().rpc('read_amazon_listing_sync_status');
+    if (failure) {
+      setListingStatusError(true);
+      return;
+    }
+    setListingStatus(data as ListingStatus[]);
+    setListingStatusError(false);
+  }, []);
+  useEffect(() => {
+    void loadListingStatus();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void loadListingStatus();
+    }, 5 * 60000);
+    window.addEventListener('focus', loadListingStatus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', loadListingStatus);
+    };
+  }, [loadListingStatus]);
 
   async function run() {
     if (running.current) return;
@@ -51,6 +117,7 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     const failures: string[] = [];
     try {
       const { active, inactive, pending } = await syncListings(failures);
+      void loadListingStatus();
       if (active || inactive) onApplied();
       const listingNotice = `出品中へ${active}件・出品停止へ${inactive}件反映${pending.length ? `、${pending.join('・')}の出品レポート作成中（完了後に自動反映）` : ''}`;
       setNotice(`${listingNotice}。Amazonの売上情報を確認しています…`);
@@ -106,7 +173,7 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     } catch (e) {
       setError([...failures, errorText(e)].join(' ／ '));
     } finally {
-      running.current = false; setBusy(false); onApplied();
+      running.current = false; setBusy(false); onApplied(); void loadListingStatus();
     }
   }
 
@@ -114,5 +181,10 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     <button className="btn primary" disabled={busy} onClick={() => void run()}>{busy ? '更新中…' : 'Amazon情報更新'}</button>
     {notice && <span role="status" className="sub">{notice}</span>}
     {error && <span role="alert" className="error">{error}</span>}
+    <div className="amazon-listing-status" aria-label="Amazonの出品照合状況">
+      {listingStatusError
+        ? <span role="status" className="error">Amazonの出品照合状況を取得できませんでした。</span>
+        : listingStatus.map(row => <ListingSyncStatus key={row.account_id} row={row} />)}
+    </div>
   </div>;
 }
