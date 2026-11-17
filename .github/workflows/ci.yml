@@ -47,6 +47,9 @@ jobs:
       - name: Amazon return and listing reports
         run: deno test --no-config --no-lock --node-modules-dir=none supabase/functions/amazon-fba-returns/report_test.ts supabase/functions/amazon-seller-inventory/report_test.ts
 
+      - name: Confirmed Amazon sale notifications
+        run: deno test --no-config --no-lock --node-modules-dir=none supabase/functions/amazon-sale-notices/orders_test.ts supabase/functions/delivery-push/validation_test.ts
+
       - name: Amazon seller-fulfilled order lookup
         run: deno test --no-config --no-lock --node-modules-dir=none --allow-env supabase/functions/amazon-self-shipping/index_test.ts
 

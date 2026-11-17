@@ -10,6 +10,7 @@ import Ledger from './pages/Ledger';
 import ExpenseList from './components/ExpenseList';
 import Spares from './pages/Spares';
 import { disableDevicePush } from './push';
+import { adminTaskNotice } from './taskNotice';
 
 type Page = 'dashboard' | 'inventory' | 'spares' | 'expenses' | 'products' | 'ledger';
 
@@ -30,7 +31,13 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState<Page>('dashboard');
+  const [notice] = useState(() => adminTaskNotice(globalThis.location?.search ?? ''));
+  const [saleItemId, setSaleItemId] = useState(notice?.kind === 'sale' ? notice.itemId : null);
+  const [page, setPage] = useState<Page>(() => saleItemId ? 'inventory' : 'dashboard');
+  function navigate(next: Page) {
+    setSaleItemId(null);
+    setPage(next);
+  }
   const visiblePage: Page = session && canOpenManagementPage(session.staff, page) ? page : 'inventory';
   const inventoryPage = INVENTORY_NAV.some(({ key }) => key === visiblePage);
   const activeMainPage = inventoryPage ? 'inventory' : visiblePage;
@@ -82,7 +89,7 @@ export default function App() {
       <header className="sidebar app-navigation-bar">
         <nav className="management-navigation" aria-label="管理アプリのメニュー">
           {NAV.filter(n => canOpenManagementPage(session.staff, n.key)).map((n) => (
-            <button key={n.key} type="button" className="nav" aria-current={activeMainPage === n.key ? 'page' : undefined} data-active={activeMainPage === n.key} onClick={() => setPage(n.key)}>
+            <button key={n.key} type="button" className="nav" aria-current={activeMainPage === n.key ? 'page' : undefined} data-active={activeMainPage === n.key} onClick={() => navigate(n.key)}>
               {n.label}
             </button>
           ))}
@@ -99,14 +106,14 @@ export default function App() {
         {inventoryPage && (
           <nav className="management-navigation management-inventory-navigation" aria-label="在庫の切り替え">
             {INVENTORY_NAV.filter(({ key }) => canOpenManagementPage(session.staff, key)).map(({ key, label }) => (
-              <button key={key} type="button" className="nav" aria-current={visiblePage === key ? 'page' : undefined} onClick={() => setPage(key)}>
+              <button key={key} type="button" className="nav" aria-current={visiblePage === key ? 'page' : undefined} onClick={() => navigate(key)}>
                 {label}
               </button>
             ))}
           </nav>
         )}
         {visiblePage === 'dashboard' && <Dashboard key={session.staff.id} staff={session.staff} userId={session.user.id} />}
-        {visiblePage === 'inventory' && <Inventory me={session.staff} />}
+        {visiblePage === 'inventory' && <Inventory me={session.staff} saleItemId={session.staff.role === 'admin' ? saleItemId : null} />}
         {visiblePage === 'spares' && <Spares me={session.staff} />}
         {visiblePage === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
         {visiblePage === 'products'  && <Products key={session.staff.id} me={session.staff} />}

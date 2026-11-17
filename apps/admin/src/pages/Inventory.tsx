@@ -42,11 +42,22 @@ function inventoryError(cause: unknown): string {
   return '保存できませんでした。';
 }
 
-export default function Inventory({ me }: { me: Staff }) {
+export default function Inventory({ me, saleItemId }: { me: Staff; saleItemId?: string | null }) {
 
   const [staff, setStaff] = useState<Staff[]>([]);
   const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
+  useEffect(() => {
+    if (!saleItemId) return;
+    let active = true;
+    void fetchInventoryItem(saleItemId).then(item => {
+      if (active) {
+        setQueryField('sku');
+        setQuery(item.sku);
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [saleItemId]);
   const [inventoryFilters, setInventoryFilters] = useState<InventoryFilters>({});
   const [purchaserIds, setPurchaserIds] = useState<string[]>([]);
   const [assigneeFilterIds, setAssigneeFilterIds] = useState<string[]>([]);

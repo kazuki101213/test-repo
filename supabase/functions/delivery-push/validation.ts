@@ -38,6 +38,9 @@ export function notificationPayload(row: { app_kind: string; kind: string; lot_s
       tag: `admin-malfunction-message-${row.task_id || row.item_id}`,
     };
   }
+  if (row.kind === 'sale') {
+    return { body: row.task_name || '商品が売れました。', kind: 'sale', itemId: row.item_id, tag: `admin-sale-${row.task_id}` };
+  }
   const docs = ['invoice','receipts'].includes(row.kind);
   const body = row.kind === 'malfunction' ? `【${row.lot_seq}】動作不良の報告が届きました。`
     : row.kind === 'packing_photo' ? `【${row.lot_seq}】梱包が追加されました。`
