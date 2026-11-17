@@ -1,0 +1,38 @@
+:root {
+  color-scheme: light;
+  font: 13px/1.45 system-ui, "Yu Gothic UI", sans-serif;
+  color: #172a23;
+  background: #f6f7f3;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { width: 455px; margin: 0; }
+main { padding: 14px 16px 16px; }
+header, .status-row, .actions { display: flex; align-items: center; gap: 8px; }
+header, .status-row { justify-content: space-between; }
+h1 { font-size: 18px; margin: 0 0 4px; }
+p { margin: 5px 0; }
+button, input, select { font: inherit; color: inherit; }
+button, input, select { border: 1px solid #a5b4aa; border-radius: 6px; background: white; }
+button { cursor: pointer; padding: 6px 9px; }
+button:disabled { cursor: default; opacity: .55; }
+button.link { border-color: transparent; background: transparent; color: #25563d; }
+button.primary { background: #23533c; color: white; border-color: #23533c; }
+a { color: #25563d; }
+.product-title { font-size: 15px; font-weight: 600; }
+.meta { display: flex; gap: 8px; color: #52665b; font-size: 12px; }
+.registered { color: #1d603a; font-weight: 650; }
+.status-row { margin: 6px 0; }
+.keepa { margin: 8px 0; padding: 6px 9px; background: #eaf0e9; border-radius: 7px; }
+.keepa dl { margin: 5px 0; display: grid; grid-template-columns: 1fr auto; gap: 3px 7px; }
+.keepa dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+#keepa-status:empty, #estimate:empty { display: none; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; }
+label { display: grid; gap: 3px; min-width: 0; }
+input, select { width: 100%; padding: 4px 6px; min-height: 29px; }
+#register { margin-top: 7px; width: 100%; }
+body.settings { width: auto; max-width: 560px; margin: 35px auto; }
+body.owner-popup { width: 265px; }
+#owner-status:empty { display: none; }
+.settings form { margin-top: 16px; }
+.settings .actions { margin-top: 10px; }

@@ -95,3 +95,7 @@ verify_jwt = false
 # Auth.getUser and the assigned inventory item gate the read-only Orders lookup.
 [functions.amazon-self-shipping]
 verify_jwt = false
+
+# Auth.getUser and staff role gate the read-only Amazon Product Fees API.
+[functions.amazon-catalog-estimate]
+verify_jwt = false

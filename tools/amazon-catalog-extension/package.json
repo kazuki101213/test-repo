@@ -1,0 +1,5 @@
+{
+  "name": "amazon-catalog-extension",
+  "private": true,
+  "type": "module"
+}

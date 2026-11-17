@@ -1,7 +1,5 @@
 -- Disposable database only; every fixture and scheduler stub is rolled back.
 begin;
-alter table cron.job add column schedule text;
-alter table cron.job add column command text;
 create or replace function cron.schedule(text,text,text) returns bigint language plpgsql as $$
 begin
  delete from cron.job where jobname=$1;
