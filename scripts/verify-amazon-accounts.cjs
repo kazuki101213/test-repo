@@ -1,14 +1,19 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const jsx=(type,props)=>({type,props});
 const nodes=(node,out=[])=>{if(Array.isArray(node))node.forEach(value=>nodes(value,out));else if(node&&typeof node==='object'){out.push(node);nodes(node.props?.children,out);}return out};
-const text=node=>node==null?'':Array.isArray(node)?node.map(text).join(''):typeof node==='object'?text(node.props?.children):String(node);
+const text=node=>node==null?'':Array.isArray(node)?node.map(text).join(''):typeof node==='object'?text(typeof node.type==='function'?node.type(node.props):node.props?.children):String(node);
 function mount(path,sb,props={}) {
  let hooks=[],cursor=0,dirty=true,tree;
- const react={useState(value){const i=cursor++;hooks[i]??={value};return[hooks[i].value,next=>{hooks[i].value=typeof next==='function'?next(hooks[i].value):next;dirty=true}]},useRef(value){return hooks[cursor++]??={current:value}}};
- const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{getSupabase:()=>sb}:{},Response,setTimeout:fn=>{fn();return 1},Date};
+ const effects=[];
+ const react={useState(value){const i=cursor++;hooks[i]??={value};return[hooks[i].value,next=>{hooks[i].value=typeof next==='function'?next(hooks[i].value):next;dirty=true}]},useRef(value){return hooks[cursor++]??={current:value}},
+  useCallback(callback){return hooks[cursor++]??=callback},
+  useEffect(effect){const i=cursor++;if(!hooks[i]){hooks[i]=true;effects.push(effect)}},
+ };
+ const window={setInterval(){return 1},addEventListener(){}};
+ const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{getSupabase:()=>sb}:{},Response,setTimeout:fn=>{fn();return 1},Date,window};
  const code=ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText;
  vm.runInNewContext(code,context);
- return {get tree(){return tree},async settle(){for(let i=0;i<90;i++){if(dirty){cursor=0;dirty=false;tree=context.exports.default(props)}await Promise.resolve()}}};
+ return {get tree(){return tree},async settle(){for(let i=0;i<90;i++){if(dirty){cursor=0;dirty=false;tree=context.exports.default(props);effects.splice(0).forEach(effect=>effect())}await Promise.resolve()}}};
 }
 (async()=>{
  const calls=[];
@@ -28,6 +33,13 @@ function mount(path,sb,props={}) {
 
  const actions=[];let applied=0,validDateFilter=false;
  const sync=mount('apps/admin/src/components/AmazonSalesSync.tsx',{
+  async rpc(name){
+   assert.equal(name,'read_amazon_listing_sync_status');
+   return{data:[
+    {account_id:'amazon-1',snapshot_at:null,last_error:'Amazon HTTP 403',seller_count:null},
+    {account_id:'amazon-2',snapshot_at:new Date().toISOString(),last_error:null,seller_count:2,inventory_count:2,amazon_only:['seller-only'],inventory_only:['inventory-only']},
+   ]};
+  },
   from(){return{select(){return this},not(){return this},gte(field,value){assert.equal(field,'purchased_at');assert.equal(value,'2010-01-01');validDateFilter=true;return this},order(){return this},limit(){return this},async maybeSingle(){return{data:{purchased_at:validDateFilter?new Date(Date.now()-86400000).toISOString().slice(0,10):'0026-09-13'}}}}},
   functions:{async invoke(name,{body}){
    actions.push({name,...body});
@@ -46,7 +58,11 @@ function mount(path,sb,props={}) {
    throw new Error('Unexpected action');
   }}
  },{onApplied(){applied++}});
- await sync.settle();button(sync,'Amazon情報更新').props.onClick();button(sync,'Amazon情報更新').props.onClick();await sync.settle();
+ await sync.settle();
+ assert(text(sync.tree).includes('Amazon1 取得失敗'),'Scheduled listing errors need to be visible before a manual run');
+ assert(text(sync.tree).includes('Amazon2 差分あり'),'Equal totals concealed an SKU discrepancy');
+ assert(text(sync.tree).includes('seller-only')&&text(sync.tree).includes('inventory-only'));
+ button(sync,'Amazon情報更新').props.onClick();button(sync,'Amazon情報更新').props.onClick();await sync.settle();
  assert.equal(actions.filter(row=>row.action==='accounts').length,1,'Double click restarted synchronization');
  assert(validDateFilter,'Ancient purchase date was used as the API start');
  assert(actions.filter(row=>row.postedAfter).every(row=>Date.parse(row.postedAfter)>=Date.UTC(2010,0,1)),'API request used an invalid legacy year');

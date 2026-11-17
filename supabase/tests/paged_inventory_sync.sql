@@ -124,4 +124,51 @@ do $$declare p jsonb; accessory_group text;begin
  if accessory_group is distinct from '990203aa' then raise exception 'Amazon spare group is missing from displayed rows';end if;
 end $$;
 
+-- Compare SKU sets even when the totals agree. A missing listing is only
+-- stopped after two complete reports that are outside the report cache window.
+reset role;
+update app.items set asin='B000000123',product_registered_at=now()-interval '2 days',
+  marketplace_status_observed_at=now()-interval '2 days'
+where title in ('parent grouping fixture','unrelated resale fixture');
+do $$
+declare
+  original_sku text := (select sku from app.items where title='parent grouping fixture');
+  missing_sku text := (select sku from app.items where title='unrelated resale fixture');
+  lease uuid := gen_random_uuid();
+  listings jsonb;
+  result jsonb;
+begin
+  listings := jsonb_build_array(
+    jsonb_build_object('sku',original_sku,'asin','B000000123','fulfillment','fba','state','active'),
+    '{"sku":"outside-inventory","asin":"B000000456","fulfillment":"fba","state":"active"}'::jsonb
+  );
+  update app.amazon_seller_inventory_sync set lease_id=lease,lease_until=now()+interval '3 minutes',report_id='first'
+  where account_id='amazon-2';
+  result := app.apply_seller_inventory_report('amazon-2',lease,'first',now()-interval '7 hours',listings,0);
+  if (result->>'missing_stopped')::int<>0 then raise exception 'Stopped listing on first absence';end if;
+  if not exists(select 1 from app.read_amazon_listing_sync_status() s
+    where s.account_id='amazon-2' and s.seller_count=2 and s.inventory_count=2
+      and s.amazon_only=array['outside-inventory'] and s.inventory_only=array[missing_sku]) then
+    raise exception 'Equal listing totals concealed unmatched SKUs';
+  end if;
+
+  update app.amazon_seller_inventory_sync set lease_id=lease,lease_until=now()+interval '3 minutes',report_id='cached'
+  where account_id='amazon-2';
+  result := app.apply_seller_inventory_report('amazon-2',lease,'cached',now()-interval '4 hours',listings,0);
+  if (result->>'missing_stopped')::int<>0 then raise exception 'Stopped listing inside report cache window';end if;
+
+  update app.amazon_seller_inventory_sync set lease_id=lease,lease_until=now()+interval '3 minutes',report_id='confirmed'
+  where account_id='amazon-2';
+  result := app.apply_seller_inventory_report('amazon-2',lease,'confirmed',now(),listings,0);
+  if (result->>'missing_stopped')::int<>1 or not exists(select 1 from app.items where sku=missing_sku and status='出品停止') then
+    raise exception 'Confirmed missing SKU did not stop';
+  end if;
+end $$;
+set local role authenticated;
+set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+do $$begin
+  begin perform app.read_amazon_listing_sync_status();raise exception 'Non-admin could see Amazon comparison';
+  exception when insufficient_privilege then null;end;
+end $$;
+
 rollback;

@@ -108,7 +108,8 @@ async function refresh(db: Db, accountId: AmazonAccountId, manual: boolean) {
     }
     // A complete report may contain unrelated listings; only uniquely matched local listings are changed.
     const applied = await db.rpc('apply_seller_inventory_report', {
-      p_account: accountId, p_lease: job.lease_id, p_report: job.report_id, p_snapshot: snapshotAt.toISOString(), p_rows: listings.rows,
+      p_account: accountId, p_lease: job.lease_id, p_report: job.report_id, p_snapshot: snapshotAt.toISOString(),
+      p_rows: listings.rows, p_unknown: listings.unknown,
     });
     if (applied.error || !applied.data) {
       console.error('apply_seller_inventory_report failed:', applied.error?.code);
