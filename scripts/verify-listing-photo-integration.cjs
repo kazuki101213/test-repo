@@ -36,6 +36,6 @@ function upload(files){all(tree).find(n=>n.props?.['aria-label']==='商品写真
  hooks=[];pending=[];dirty=true;props.mode='packingPhotos';row={...row,marketplace:'ヤフオク',status:'出品中',sales_channel:'メルカリ',photo_uploaded:false};await settle();
  assert.equal(readPurpose,'packing');assert(!all(tree).some(n=>n.props?.className==='btn photo-reflect'));const priorEvents=photoEvents;uploadFailAt=0;all(tree).find(n=>n.props?.['aria-label']==='梱包写真追加').props.onChange({target:{files:[{name:'packed'}],value:'file'}});await settle();assert.equal(driveCalls,5,'A complete packing batch is also saved and notifies management');assert.equal(uploadPurpose,'packing');assert.equal(photoEvents,priorEvents,'Packing evidence must not mark product photos complete');assert.equal(row.status,'出品中');
  rpcError={message:'写真の記録に失敗しました'};await assert.rejects(actualApi.exports.recordListingPhotoUpload('one'),{message:rpcError.message});
- assert.deepEqual(Array.from(constants.exports.STATUSES),["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","出品中","取引中","販売済","返品処理","動作不良"]);assert(!('出荷済' in constants.exports.STATUS_COLORS));
+ assert.deepEqual(Array.from(constants.exports.STATUSES),["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","出品中","出品停止","取引中","販売済","返品処理","動作不良"]);assert(!('出荷済' in constants.exports.STATUS_COLORS));
  console.log('Photo-only upload and partial failure preserve product registration; photos-only detail has no obsolete progress or zero-sale controls');
 })().catch(e=>{console.error(e);process.exitCode=1;});

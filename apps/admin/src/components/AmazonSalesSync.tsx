@@ -2,7 +2,13 @@ import { useRef, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
 
 type Range = { postedAfter: string; postedBefore: string };
-type ListingResult = { sku: string; state: 'waiting' | 'published' | 'changed' | 'error'; error?: string };
+type ListingResult = {
+  label: string;
+  state: 'pending' | 'completed' | 'recent' | 'error';
+  active?: number;
+  inactive?: number;
+  error?: string;
+};
 const day = (date: Date) => new Date(date.getTime() + 9 * 3600000).toISOString().slice(0, 10);
 const errorText = (cause: unknown) => cause instanceof Error ? cause.message : '更新に失敗しました。';
 async function invoke(body: object, endpoint = 'amazon-payments') {
@@ -15,31 +21,20 @@ async function invoke(body: object, endpoint = 'amazon-payments') {
 }
 
 async function syncListings(failures: string[]) {
-  let published = 0;
+  let active = 0, inactive = 0;
+  const pending: string[] = [];
   try {
-    let after: string | undefined;
-    const seen = new Set<string>();
-    do {
-      const page = await invoke({ action: 'sync-status', after }, 'amazon-listing-submit');
-      for (const row of page.results as ListingResult[]) {
-        if (row.state === 'published') published++;
-        if (row.state === 'error') failures.push(`${row.sku}: ${row.error ?? '出品状態を確認できませんでした。'}`);
+    const { accounts } = await invoke({}, 'amazon-seller-inventory');
+    for (const row of accounts as ListingResult[]) {
+      if (row.state === 'pending') pending.push(row.label);
+      if (row.state === 'error') failures.push(`${row.label}の出品照合 ${row.error ?? '出品状態を確認できませんでした。'}`);
+      if (row.state === 'completed') {
+        active += row.active ?? 0;
+        inactive += row.inactive ?? 0;
       }
-      after = page.nextAfter;
-      if (after && seen.has(after)) throw new Error('出品状態のページが重複しました。');
-      if (after) seen.add(after);
-    } while (after);
-  } catch (cause) { failures.push(`自己発送の出品照合: ${errorText(cause)}`); }
-  try {
-    const { plans } = await invoke({ action: 'listing-refresh-targets' }, 'amazon-fba-inbound');
-    for (const { id, revision } of plans as { id: string; revision: number }[]) {
-      try {
-        const result = await invoke({ action: 'refresh', id, revision }, 'amazon-fba-inbound');
-        published += result.published ?? 0;
-      } catch (cause) { failures.push(`FBAの出品照合: ${errorText(cause)}`); }
     }
-  } catch (cause) { failures.push(`FBAの出品照合: ${errorText(cause)}`); }
-  return published;
+  } catch (cause) { failures.push(`Amazonの出品照合 ${errorText(cause)}`); }
+  return { active, inactive, pending };
 }
 
 export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }) {
@@ -55,9 +50,9 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     let saved = 0;
     const failures: string[] = [];
     try {
-      const published = await syncListings(failures);
-      if (published > 0) onApplied();
-      const listingNotice = `出品中へ${published}件反映`;
+      const { active, inactive, pending } = await syncListings(failures);
+      if (active || inactive) onApplied();
+      const listingNotice = `出品中へ${active}件・出品停止へ${inactive}件反映${pending.length ? `、${pending.join('・')}の出品レポート作成中（完了後に自動反映）` : ''}`;
       setNotice(`${listingNotice}。Amazonの売上情報を確認しています…`);
       const { data: earliest, error: earliestError } = await getSupabase().from('items').select('purchased_at')
         .not('purchased_at', 'is', null).gte('purchased_at', '2010-01-01').order('purchased_at', { ascending: true }).limit(1).maybeSingle();
@@ -106,7 +101,7 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
           failures.push(`${account.label}: ${e instanceof Error ? e.message : '更新に失敗しました。'}`);
         }
       }
-      setNotice(`${failures.length ? '更新結果' : '更新完了'}（${listingNotice}、取引${saved}件取得・${processed}件照合）`);
+      setNotice(`${failures.length || pending.length ? '更新結果' : '更新完了'}（${listingNotice}、取引${saved}件取得・${processed}件照合）`);
       setError(failures.join(' ／ '));
     } catch (e) {
       setError([...failures, errorText(e)].join(' ／ '));

@@ -57,7 +57,7 @@ function* records(tsv: string): Generator<string[]> {
   if (row.length || field) yield [...row, field];
 }
 
-function readTable(tsv: string, required: string[]) {
+export function readTable(tsv: string, required: string[]) {
   const table = records(tsv.replace(/^\uFEFF/, ''));
   const header = table.next();
   const columns = (header.done ? [] : header.value).map(value => value.trim().toLowerCase());

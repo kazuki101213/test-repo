@@ -12,7 +12,7 @@ export type SalesChannel = 'FBA' | '自己発送' | 'FBA1' | 'FBA2' | '自己発
 export type ItemCondition =
   | '新品' | '再生品' | 'ほぼ新品' | '非常に良い' | '良い' | '可' | 'ジャンク';
 
-export type ItemStatus = '受取前' | '検品中' | 'Amazon返送依頼' | 'Amazon補填申請中' | '商品登録前' | '出品中' | '取引中' | '販売済' | '返品処理' | '動作不良';
+export type ItemStatus = '受取前' | '検品中' | 'Amazon返送依頼' | 'Amazon補填申請中' | '商品登録前' | '出品中' | '出品停止' | '取引中' | '販売済' | '返品処理' | '動作不良';
 
 export type WorkStream = 'テレビ' | 'ブルーレイ' | '付属品' | 'その他';
 
