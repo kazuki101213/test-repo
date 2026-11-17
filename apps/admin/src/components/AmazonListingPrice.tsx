@@ -12,7 +12,7 @@ function readPrice(id:string):Promise<ListingPrice>{return new Promise((resolve,
  pending.set(id,[...(pending.get(id)??[]),{resolve,reject}]);
  if(!timer)timer=setTimeout(()=>{timer=undefined;const batch=[...pending.entries()];pending.clear();void(async()=>{for(let start=0;start<batch.length;start+=20){const group=batch.slice(start,start+20);try{const data=await invoke({action:'read',itemIds:group.map(([key])=>key)});for(const[key,listeners]of group){const row=data.rows?.find((r:ListingPrice)=>r.id===key);for(const listener of listeners)row?listener.resolve(row):listener.reject(new Error('価格の取得結果がありません。'));}}catch(e){for(const[,listeners]of group)for(const listener of listeners)listener.reject(e instanceof Error?e:new Error('取得に失敗しました。'));}}})();},40);
  });}
-export default function AmazonListingPrice({itemId,sku,salesChannel}:{itemId:string;sku:string;salesChannel:string|null}){
+export default function AmazonListingPrice({itemId,sku,salesChannel,productUrl}:{itemId:string;sku:string;salesChannel:string|null;productUrl?:string}){
  const [listing,setListing]=useState<ListingPrice|null>(null),[value,setValue]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
  const root=useRef<HTMLDivElement>(null),lock=useRef(false),readLock=useRef(false),mounted=useRef(true);
  const supported=/^(?:FBA|自己発送|Amazon)(?:[12１２])?$/.test(salesChannel??'');
@@ -27,5 +27,7 @@ export default function AmazonListingPrice({itemId,sku,salesChannel}:{itemId:str
   finally{lock.current=false;if(mounted.current)setBusy(false);}
  }
  if(!supported)return <span>—</span>;
- return <div className="amazon-listing-price" ref={root}><form onSubmit={e=>{e.preventDefault();void save();}}><input aria-label={`${sku}のAmazon出品価格`} type="number" min={1} step={1} value={value} disabled={busy||!listing?.accountId} onChange={e=>setValue(e.target.value)} title={listing?.accountId==='amazon-2'?'Amazon2':'Amazon1'}/><button className="btn primary" type="submit" disabled={busy||!listing?.accountId||value===''}>{busy?'処理中':'反映'}</button></form>{listing?.accountId&&<small>{listing.accountId==='amazon-2'?'Amazon2':'Amazon1'}</small>}{error&&<div className="approved-price-error" role="alert">{error}<button type="button" className="inventory-cell-edit" disabled={busy} onClick={()=>void load()}>再取得</button></div>}{message&&<div role="status" className="approved-price-message">{message}</div>}</div>;
+ return <div className="amazon-listing-price" ref={root}><form onSubmit={e=>{e.preventDefault();void save();}}><input aria-label={`${sku}のAmazon出品価格`} type="number" min={1} step={1} value={value} disabled={busy||!listing?.accountId} onChange={e=>setValue(e.target.value)} title={listing?.accountId==='amazon-2'?'Amazon2':'Amazon1'}/><button className="btn primary" type="submit" disabled={busy||!listing?.accountId||value===''}>{busy?'処理中':'反映'}</button></form>
+  {productUrl ? <a className="btn ghost amazon-listing-product-link" href={productUrl} target="_blank" rel="noopener noreferrer" aria-label="Amazonの商品ページを別タブで開く">Amazon</a> : null}
+  {listing?.accountId&&<small>{listing.accountId==='amazon-2'?'Amazon2':'Amazon1'}</small>}{error&&<div className="approved-price-error" role="alert">{error}<button type="button" className="inventory-cell-edit" disabled={busy} onClick={()=>void load()}>再取得</button></div>}{message&&<div role="status" className="approved-price-message">{message}</div>}</div>;
 }
