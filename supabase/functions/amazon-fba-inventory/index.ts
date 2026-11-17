@@ -1,6 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { amazonAccountId, amazonCredentials, AmazonAccountError } from '../_shared/amazonAccounts.ts';
 
+import { amazon2Seller, reviewSoldOut } from './sold-out-review.ts';
+
 const marketplace = 'A1VC38T7YXB528';
 const endpoint = 'https://sellingpartnerapi-fe.amazon.com';
 const headers = {
@@ -33,10 +35,16 @@ export async function handler(req: Request): Promise<Response> {
     if (admin !== true) throw new SafeError(403, '有効な管理者アカウントのみ利用できます。');
     const body = await req.json().catch(() => { throw new SafeError(400, 'リクエストの形式が不正です。'); });
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new SafeError(400, 'リクエストの形式が不正です。');
+    const soldOutReview = body.action === 'review-sold-out';
+    if (soldOutReview && (body.accountId !== 'amazon-2' || typeof body.sku !== 'string' ||
+      body.sku.length > 160 || !body.sku.trim() || body.sku !== body.sku.trim() || /[\x00-\x1f\x7f]/.test(body.sku))) {
+      throw new SafeError(400, 'Amazon2の出品SKUを指定してください。');
+    }
     const nextToken = body.nextToken;
     if (nextToken !== undefined && (typeof nextToken !== 'string' || nextToken.length > 10000)) throw new SafeError(400, 'ページ指定が不正です。');
     const accountId = amazonAccountId(body.accountId);
     const credentials = amazonCredentials(accountId);
+    if (soldOutReview && credentials.sellerId !== amazon2Seller) throw new SafeError(503, 'Amazon2の販売アカウント設定が一致しません。');
     const lwa = await fetch('https://api.amazon.com/auth/o2/token', {
       method: 'POST', signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -89,6 +97,7 @@ export async function handler(req: Request): Promise<Response> {
       }
       return response.json();
     }
+    if (soldOutReview) return respond(200, await reviewSoldOut(sb, get, body.sku));
     const params = new URLSearchParams({ granularityType: 'Marketplace', granularityId: marketplace, marketplaceIds: marketplace, details: 'true' });
     if (nextToken) params.set('nextToken', nextToken);
     const inventory = await get('/fba/inventory/v1/summaries', params);
