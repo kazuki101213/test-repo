@@ -25,6 +25,10 @@ const listingDate = new Intl.DateTimeFormat('ja-JP', {
 });
 const listingLabel = { 'amazon-1': 'Amazon1', 'amazon-2': 'Amazon2' };
 
+function unavailableAmazon1Report(account: string, error?: string | null) {
+  return account === 'Amazon1' && !!error && /全出品レポート.*HTTP\s*403/.test(error);
+}
+
 function ListingSyncStatus({ row }: { row: ListingStatus }) {
   const amazonOnly = row.amazon_only ?? [];
   const inventoryOnly = row.inventory_only ?? [];
@@ -71,7 +75,7 @@ async function syncListings(failures: string[]) {
     const { accounts } = await invoke({}, 'amazon-seller-inventory');
     for (const row of accounts as ListingResult[]) {
       if (row.state === 'pending') pending.push(row.label);
-      if (row.state === 'error') failures.push(`${row.label}の出品照合 ${row.error ?? '出品状態を確認できませんでした。'}`);
+      if (row.state === 'error' && !unavailableAmazon1Report(row.label, row.error)) failures.push(`${row.label}の出品照合 ${row.error ?? '出品状態を確認できませんでした。'}`);
       if (row.state === 'completed') {
         active += row.active ?? 0;
         inactive += row.inactive ?? 0;
@@ -86,16 +90,11 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [listingStatus, setListingStatus] = useState<ListingStatus[]>([]);
-  const [listingStatusError, setListingStatusError] = useState(false);
   const running = useRef(false);
   const loadListingStatus = useCallback(async () => {
     const { data, error: failure } = await getSupabase().rpc('read_amazon_listing_sync_status');
-    if (failure) {
-      setListingStatusError(true);
-      return;
-    }
-    setListingStatus(data as ListingStatus[]);
-    setListingStatusError(false);
+    if (failure) return;
+    setListingStatus((data as ListingStatus[]).filter(row => !unavailableAmazon1Report(listingLabel[row.account_id], row.last_error)));
   }, []);
   useEffect(() => {
     void loadListingStatus();
@@ -182,9 +181,7 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     {notice && <span role="status" className="sub">{notice}</span>}
     {error && <span role="alert" className="error">{error}</span>}
     <div className="amazon-listing-status" aria-label="Amazonの出品照合状況">
-      {listingStatusError
-        ? <span role="status" className="error">Amazonの出品照合状況を取得できませんでした。</span>
-        : listingStatus.map(row => <ListingSyncStatus key={row.account_id} row={row} />)}
+      {listingStatus.map(row => <ListingSyncStatus key={row.account_id} row={row} />)}
     </div>
   </div>;
 }

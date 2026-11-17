@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Keepa APIキーの設定</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="options.js"></script>
+</head>
+<body class="settings">
+  <main>
+    <h1>Keepa APIキーの設定</h1>
+    <p>Keepaでコピーしたキーを貼り付けて保存します。キーはこのChromeの拡張機能に保存されます。</p>
+    <form id="settings-form">
+      <label>APIキー<input id="key" type="password" autocomplete="off" spellcheck="false" required></label>
+      <div class="actions">
+        <button id="save" type="submit" class="primary">保存</button>
+        <button id="remove" type="button">キーを削除</button>
+        <a href="https://keepa.com/api/dashboard" target="_blank" rel="noopener noreferrer">Keepaを開く</a>
+      </div>
+    </form>
+    <p id="settings-status" role="status"></p>
+  </main>
+</body>
+</html>
