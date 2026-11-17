@@ -24815,7 +24815,7 @@ returns boolean language sql security definer set search_path = '' as $$ select 
 notify pgrst, 'reload schema';
 
 
--- ▼▼▼ 20261117042914_admin_sale_notifications.sql ▼▼▼
+-- ▼▼▼ 20261117043800_admin_sale_notifications.sql ▼▼▼
 
 create table app.sale_notices (
   id uuid primary key default gen_random_uuid(),
