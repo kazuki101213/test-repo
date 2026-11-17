@@ -80,5 +80,21 @@ do $$declare prepared jsonb;request uuid;r record;counted integer:=0;calls integ
  where q.item_id=(select id from app.items where lot_seq=998772) and q.status='queued';
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
  if prepared->>'queued'<>'0' then raise exception 'Potential code issuance was retried';end if;
+ -- The old trade has already sent LINE and its shipping task has closed.
+ -- The new trade must get its own task even though item status stays 取引中.
+ update app.delivery_shipping_tasks set resolved_at=now()
+ where item_id=(select id from app.items where lot_seq=998771) and resolved_at is null;
+ update app.seller_listings set trade_key='m998771:next'
+ where item_id=(select id from app.items where lot_seq=998771);
+ update app.items set seller_trade_key='m998771:next' where lot_seq=998771;
+ prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
+ if not exists (
+   select 1 from app.delivery_shipping_tasks t join app.items i on i.id=t.item_id
+   join app.delivery_line_outbox o on o.task_id=t.id and o.trade_key=i.seller_trade_key
+   where i.lot_seq=998771 and t.resolved_at is null and o.state='pending'
+ ) then raise exception 'Active new trade did not recover its missing LINE request'; end if;
+ prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
+ if (select count(*) from app.delivery_shipping_tasks t join app.items i on i.id=t.item_id where i.lot_seq=998771)<>2
+ then raise exception 'LINE task recovery was not idempotent';end if;
 end $$;
 rollback;

@@ -115,13 +115,16 @@ test('Photo auto selection is private, cannot send by itself, and its failure ne
  assert.equal((await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'})).status,200);assert(f.state.calls.some(x=>x.url.endsWith('/push')));
 });
 
-test('Automatic media failure still sends one exact-item request using the same retry key',async()=>{
- const media={automatic:true,itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2392',sku:'2392-EEMM-20261002-591',supplierUrl:null,photoPaths:[],codeOperationId:null};
+test('Automatic media failure stays pending without sending an incomplete request',async()=>{
+ const media={automatic:true,itemId:'afc5bc0f-677e-4c03-b8ff-5aa806ef129b',serial:'2392',sku:'2392-EEMM-20261002-591',supplierUrl:null,photoPaths:['one.jpg'],codeOperationId:'code'};
  const retryKey='2768b1fd-64d5-4c3c-a9b7-9a9ad6a20d9c';
  const row={id:'e7ec5622-fef2-4d58-a7a9-9b53e10c2799',lease:'fixture-lease',eligible:true,recipient:'fixture-recipient',payload:{media,lineRetryKey:retryKey}};
- const f=fixture({rows:[row],mediaFail:true});await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
- const push=f.state.calls.find(x=>x.url.endsWith('/push'));assert(push);const body=JSON.parse(push.init.body);assert.equal(body.messages.length,1);assert.equal(body.to,'fixture-recipient');assert(body.messages[0].text.includes('?itemId='+media.itemId));assert.equal(push.init.headers['X-Line-Retry-Key'],retryKey);assert.equal(f.state.rpc.findLast(x=>x.name==='finish_delivery_line').args.p_state,'sent');
- const stopped=fixture({rows:[row],mediaFail:true,prepare:false});await stopped.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});assert(!stopped.state.calls.some(x=>x.url.endsWith('/push')),'Trade/assignee recheck is still mandatory');
+ const f=fixture({rows:[row],mediaFail:true});
+ await f.request('dispatch',{'x-delivery-dispatch':'private-dispatch'});
+ assert(!f.state.calls.some(x=>x.url.endsWith('/push')));
+ const finish=f.state.rpc.findLast(x=>x.name==='finish_delivery_line');
+ assert.equal(finish.args.p_state,'pending');
+ assert.equal(finish.args.p_status,null);
 });
 
 test('Invoice dispatch sends each approved amount and protected link only to its verified recipient',async()=>{

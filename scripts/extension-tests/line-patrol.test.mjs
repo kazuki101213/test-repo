@@ -3,7 +3,7 @@ const source=readFileSync(new URL('../../tools/fleamarket-extension/background.j
 const start=source.indexOf('async function runSellerWork('),end=source.indexOf('// A requested time',start);
 function fixture({patrol=true,daily=false,busy=false,job=null,manualUpdate=false,priceRun=false}={}){
  const calls=[],alarms=[],records={session:{access_token:'fixture'},diagnosticInstance:'fixture-profile',job};
- const context={sellerBusy:false,busy,Date,fetch:async()=>{throw Error('Unexpected network');},chrome:{alarms:{create:async(name,value)=>alarms.push({name,...value}),clear:async(name)=>alarms.push({clear:name})}},launchPending:async()=>false,STORE:{get:async()=>records},PRODUCTION_PLAN:{profiles:{'fixture-profile':[]}},getSettings:async()=>({mode:'tracking'}),receiptAccounts:()=>[],jstDay:()=>'2026-10-24',scheduleDue:()=>false,rpc:async()=>{},log:async()=>{},prepareAccount:x=>x,openSellerSession:async()=>{},content:async()=>{},checkRequestedPackageUpdate:async()=>manualUpdate,runSellerReadOnlyInspection:async()=>false,runSellerSaleRepair:async()=>false,runSellerFeedbackRepair:async()=>false,runDailyPriceReduction:async()=>priceRun,runOperationQueue:async()=>{},supplierQueuedOperations:async()=>{},sellerQueuedOperations:async()=>{},sellerDaily:async args=>{calls.push(args.hourly?'patrol':'daily');return {ran:args.hourly||daily};},processLineShipping:async()=>calls.push('LINE')};
+ const context={sellerBusy:false,busy,Date,fetch:async()=>{throw Error('Unexpected network');},chrome:{alarms:{create:async(name,value)=>alarms.push({name,...value}),clear:async(name)=>alarms.push({clear:name})}},launchPending:async()=>false,STORE:{get:async()=>records},PRODUCTION_PLAN:{profiles:{'fixture-profile':[]}},getSettings:async()=>({mode:'tracking'}),receiptAccounts:()=>[],jstDay:()=>'2026-10-24',scheduleDue:()=>false,rpc:async()=>{},log:async()=>{},prepareAccount:x=>x,openSellerSession:async()=>{},content:async()=>{},checkRequestedPackageUpdate:async()=>manualUpdate,runSellerReadOnlyInspection:async()=>false,runSellerSaleRepair:async()=>false,runSellerFeedbackRepair:async()=>false,runDailyPriceReduction:async()=>priceRun,runOperationQueue:async()=>{},supplierQueuedOperations:async()=>{},sellerQueuedOperations:async()=>{},sellerDaily:async args=>{calls.push(args.hourly?'patrol':'daily');return {ran:args.hourly||daily};},runLinePatrol:async(_dependencies,{pendingOnly=false}={})=>{if(pendingOnly)return false;calls.push('LINE');return true;}};
  vm.createContext(context);vm.runInContext(source.slice(start,end),context);return{calls,alarms,run:()=>context.runSellerWork({patrol})};
 }
 test('4時間アラームと1時の巡回が重なっても一覧を二重巡回しない',async()=>{const f=fixture({daily:true});await f.run();assert.deepEqual(f.calls,['daily','LINE']);assert(f.alarms.some(a=>a.clear==='fm:seller-patrol-retry'));});
@@ -13,3 +13,17 @@ test('他の処理が実行中ならサイトにアクセスせず一時的な�
 test('明示更新を読み込んだ回は販売巡回やLINE準備を重ねて起動しない',async()=>{const f=fixture({manualUpdate:true});await f.run();assert.deepEqual(f.calls,[]);});
 
 test('price work never starts another seller patrol or LINE preparation in the same tick',async()=>{const f=fixture({priceRun:true});await f.run();assert.deepEqual(f.calls,[]);});
+
+test('A skipped slot survives a worker restart and is cleared only after LINE preparation returns',async()=>{
+ const {markLinePatrolDue,runLinePatrol}=await import('../../tools/fleamarket-extension/line-shipping.js');
+ const values={},storage={get:async()=>({...values}),set:async patch=>Object.assign(values,patch)};
+ await markLinePatrolDue(storage,6e6);
+ await assert.rejects(runLinePatrol({storage},{run:async()=>{throw Error('temporary connection loss')},now:()=>6e6}));
+ assert.equal(values.linePatrolDoneAt,undefined);
+ assert.equal(await runLinePatrol({storage},{pendingOnly:true,run:async()=>assert.fail('Immediate retry'),now:()=>6e6+1000}),false);
+ let calls=0;
+ assert.equal(await runLinePatrol({storage},{pendingOnly:true,run:async()=>{calls++;},now:()=>6e6+300000}),true);
+ assert.equal(values.linePatrolDoneAt,6e6);
+ assert.equal(await runLinePatrol({storage},{pendingOnly:true,run:async()=>{calls++},now:()=>7e6}),false);
+ assert.equal(calls,1);
+});

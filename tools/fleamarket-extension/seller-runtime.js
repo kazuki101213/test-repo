@@ -410,7 +410,7 @@ export async function sellerQueuedOperations({settings,rpc,openSession,log,onlyA
   let session,result;try{session=await openSession(account);result=await checkExistingListing(session,job,account);}catch(error){result={note:error.message};await log('warning','出品済み商品の確認を停止しました：'+error.message);}finally{await session?.close();}
   try{await rpc('extension_finish_listing_result_check',{p_id:job.id,p_result:result});}catch(error){await rpc('extension_finish_listing_result_check',{p_id:job.id,p_result:{note:error.message}});}return;
  }
- if(!await rpc('extension_claim_seller_operation',{p_id:job.id,p_account_id:account.id}))return;
+ if(!await rpc('extension_claim_seller_operation',{p_id:job.id,p_account_id:account.id}))return onlyAutomaticLine?{processed:true,status:'failed'}:undefined;
  let session,status='failed',result={},mutating=false,phase='prepare',confirmationTrace=[],verifyMercariAfterCode=false;
  try{session=await openSession(account);
   if(job.kind==='listing'){

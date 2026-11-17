@@ -1,6 +1,6 @@
 import {deferredReceiptItem} from './receipt-item-errors.js';
 import {runDailyPriceReduction,ensurePriceAlarm,PRICE_POLICY} from './daily-price.js';
-import {processLineShipping} from './line-shipping.js';
+import {markLinePatrolDue,runLinePatrol} from './line-shipping.js';
 import {runSellerFeedbackRepair} from './seller-feedback-repair.js';
 import {runBuyerReceiptRepair} from './buyer-receipt-repair.js';
 import {processPurchaseSync} from './purchase-sync.js';
@@ -350,7 +350,7 @@ chrome.runtime.onMessage.addListener((m,sender,respond)=>{
 });
 chrome.runtime.onInstalled.addListener(()=>void initialize());
 chrome.runtime.onStartup.addListener(()=>void initialize().then(resumeLauncherRecovery).then(due).then(step).catch(e=>log('error',e.message)));
-chrome.alarms.onAlarm.addListener(a=>{if(['fm:seller-patrol','fm:seller-patrol-retry'].includes(a.name)){void (async()=>{if(initializationPending)await initialization.catch(()=>{});await runSellerWork({patrol:true});})().catch(e=>log('error',e.message));return;}if(a.name==='fm:work'){void (async()=>{if(initializationPending)await initialization.catch(()=>{});try{await step();if(!(await STORE.get('job')).job){await processAppPurchaseSync();await due();await step();await runSellerWork({checkQueues:false});}}finally{await syncActiveWork();}})().catch(e=>log('error',e.message));return;}if(a.name==='fm:update'){void checkPackageUpdate({runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy||sellerBusy,record:log}).catch(e=>log('error','更新確認: '+e.message));return;}if(a.name.startsWith('fm:'))void (async()=>{if(initializationPending)await initialization.catch(()=>{});if(a.name!=='fm:pulse')await schedule(a.name);await runPendingDiagnostic();if(!busy&&await recoverConnection())await applyProductionPlan();await resumeLauncherRecovery();await processPurchaseRefreshRequest();await processDesktopLaunchRequest();await repairImportedTitles();await retryYahooTrackingRepair();await retryBuyerReceiptRepair();await retryRakumaRepair();await applyRequestedReceiptTime();await inspectMercariReceiptReadinessOnce();await processAppPurchaseSync();await due();await step();await runSellerWork();})().catch(e=>log('error',e.message));});
+chrome.alarms.onAlarm.addListener(a=>{if(['fm:seller-patrol','fm:seller-patrol-retry'].includes(a.name)){void (async()=>{if(a.name==='fm:seller-patrol')try{await markLinePatrolDue(STORE,a.scheduledTime||Date.now());}catch(e){await log('error','LINE巡回の予約: '+e.message);}if(initializationPending)await initialization.catch(()=>{});await runSellerWork({patrol:true});})().catch(e=>log('error',e.message));return;}if(a.name==='fm:work'){void (async()=>{if(initializationPending)await initialization.catch(()=>{});try{await step();if(!(await STORE.get('job')).job){await processAppPurchaseSync();await due();await step();await runSellerWork({checkQueues:false});}}finally{await syncActiveWork();}})().catch(e=>log('error',e.message));return;}if(a.name==='fm:update'){void checkPackageUpdate({runtime:chrome.runtime,storage:STORE,fetchFile:fetch,busy:()=>busy||sellerBusy,record:log}).catch(e=>log('error','更新確認: '+e.message));return;}if(a.name.startsWith('fm:'))void (async()=>{if(initializationPending)await initialization.catch(()=>{});if(a.name!=='fm:pulse')await schedule(a.name);await runPendingDiagnostic();if(!busy&&await recoverConnection())await applyProductionPlan();await resumeLauncherRecovery();await processPurchaseRefreshRequest();await processDesktopLaunchRequest();await repairImportedTitles();await retryYahooTrackingRepair();await retryBuyerReceiptRepair();await retryRakumaRepair();await applyRequestedReceiptTime();await inspectMercariReceiptReadinessOnce();await processAppPurchaseSync();await due();await step();await runSellerWork();})().catch(e=>log('error',e.message));});
 void initialize().catch(e=>log('error',e.message));
 
 async function retryRakumaRepair(){
@@ -426,9 +426,11 @@ async function runSellerWork({patrol=false,checkQueues=true}={}){
  if(records.job){if(patrol)await chrome.alarms.create('fm:seller-patrol-retry',{when:Date.now()+5*60000});return;}
  if(records.authProblem||!records.session?.access_token||!PRODUCTION_PLAN.profiles[records.diagnosticInstance])return;
  const settings=await getSettings();if(settings.mode==='diagnostic')return;if(receiptAccounts(settings).length&&(!settings.receiptStartDay||jstDay()>=settings.receiptStartDay)&&scheduleDue('receipt',settings.receiptHour,records)){if(patrol)await chrome.alarms.create('fm:seller-patrol-retry',{when:Date.now()+5*60000});return;}
+ if(sellerBusy||busy)return;
  sellerBusy=true;try{
-  if(checkQueues)await runOperationQueue({scope:'supplier',storage:STORE,log,run:()=>supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log,scripting:chrome.scripting,prepareAccount})});
   const dependencies={settings,storage:STORE,rpc,log,feedbackSites:PRODUCTION_PLAN.sellerFeedbackSites||[],openSession:account=>openSellerSession(prepareAccount(account),{tabs:chrome.tabs,scripting:chrome.scripting,windows:chrome.windows,identity:(tabId,account)=>content(tabId,'identity',{account})})};
+  const resumedLine=!patrol&&await runLinePatrol(dependencies,{pendingOnly:true});
+  if(checkQueues)await runOperationQueue({scope:'supplier',storage:STORE,log,run:()=>supplierQueuedOperations({settings,rpc,tabs:chrome.tabs,content,log,scripting:chrome.scripting,prepareAccount})});
   if(await runDailyPriceReduction({...dependencies,records,profileId:records.diagnosticInstance,continueWork:async active=>{const old=await chrome.alarms.get('fm:price-work');if(active&&!old)await chrome.alarms.create('fm:price-work',{when:Date.now()+60000});if(!active&&old)await chrome.alarms.clear('fm:price-work');},fetchInspection:async()=>{try{const response=await fetch(chrome.runtime.getURL('price-inspection-request.json'),{cache:'no-store'});return response.ok?await response.json():null;}catch{return null;}}}))return;
   if(checkQueues){
    // The three diagnostic consumers share one local read per idle check.
@@ -443,7 +445,7 @@ async function runSellerWork({patrol=false,checkQueues=true}={}){
   const hourlyRecords={...records,...await STORE.get(['job','authProblem','sellerDailyAttempt','sellerHourlyAttempt','sellerObservationCache'])};
   const patrolRun=patrol&&!daily?.ran?await sellerDaily({...dependencies,records:hourlyRecords,day:jstDay(),profileId:records.diagnosticInstance,hourly:true,scheduledPatrol:true}):null;
   if(patrol&&(daily?.ran||patrolRun?.ran))await chrome.alarms.clear('fm:seller-patrol-retry');
-  if(patrol||daily?.ran)await processLineShipping(dependencies);
+  if(!resumedLine&&(patrol||daily?.ran))await runLinePatrol(dependencies);
  }finally{sellerBusy=false;}
 }
 
