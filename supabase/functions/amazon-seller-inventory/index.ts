@@ -64,6 +64,10 @@ async function refresh(db: Db, accountId: AmazonAccountId, manual: boolean) {
   let discard = false;
   let nextPollAt = new Date(Date.now() + 5 * 60000).toISOString();
   try {
+    if (job.report_id && job.last_started_at && Date.now() - Date.parse(job.last_started_at) >= 86400000) {
+      discard = true;
+      throw new InventoryReportError('全出品レポートを24時間以内に反映できませんでした。');
+    }
     const token = await tokenFor(accountId);
     if (!job.report_id) {
       const requested = await amazonReport(token, '/reports', {
@@ -81,8 +85,6 @@ async function refresh(db: Db, accountId: AmazonAccountId, manual: boolean) {
       throw new InventoryReportError('日本の全出品レポートと一致しません。');
     }
     if (report.processingStatus === 'IN_QUEUE' || report.processingStatus === 'IN_PROGRESS') {
-      discard = !!job.last_started_at && Date.now() - Date.parse(job.last_started_at) >= 86400000;
-      if (discard) throw new InventoryReportError('全出品レポートの生成が24時間を超えました。');
       await save({ next_poll_at: nextPollAt, last_error: null });
       return { state: 'pending' };
     }
