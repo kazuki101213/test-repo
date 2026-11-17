@@ -76,6 +76,7 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/delivery_all_products_catalog.sql
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/malfunction_report_photos.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_fba_customer_returns.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_fba_removal_tracking.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/admin_sale_notifications.sql"
 
 DB="$DB" "$HERE/check-app-schema.py"
 

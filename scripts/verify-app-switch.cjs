@@ -9,6 +9,7 @@ const ctx={exports:{},URL,URLSearchParams,document:{documentElement:{dataset:{ap
 vm.runInNewContext(compile('packages/shared/src/applicationSwitch.ts'),ctx);const access=ctx.exports;
 for(const role of ['admin','purchaser','deliverer']){assert.equal(access.canOpenManagement({role}),role!=='deliverer');for(const page of ['dashboard','inventory','spares','expenses','products','ledger'])assert.equal(access.canOpenManagementPage({role},page),role==='admin'||role==='purchaser'&&['inventory','spares'].includes(page))}
 assert.equal(access.initialApplication('','','management'),'management');assert.equal(access.initialApplication('?itemId=x','','management'),'delivery');assert.equal(access.initialApplication('?taskKind=invoice','','delivery'),'management');assert.equal(access.initialApplication('','#bid-calculator','management'),'delivery');assert.equal(access.initialApplication('?setup=1','','management'),'delivery');
+assert.equal(access.initialApplication('?taskKind=sale&itemId=x','','delivery'),'management');
 assert.equal(access.initialApplication('?invoiceId=approved&invoiceMonth=2026-10','','management'),'delivery');
 const osabe={code:'AA',role:'admin'};
 assert(access.opensManagementByDefault(osabe,'','',null));
@@ -23,7 +24,9 @@ ctx.document.documentElement.dataset.appHost='';access.switchApplication('delive
 async function mount(role,kind){let hooks=[],cursor=0,pending=[],dirty=true,tree,switched=[];const session={user:{id:'fixture'},staff:{id:'fixture',code:role==='admin'?'AA':role==='purchaser'?'EE':'DD',name:'検証',role}};
 const react={lazy:()=> 'BidCalculator',Suspense:'Suspense',useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
 const w={location:{hash:'',pathname:'/',search:''},sessionStorage:{getItem:()=> 'delivery'},addEventListener(){},removeEventListener(){},confirm:()=>false};
-const mocks={exports:{},window:w,URLSearchParams,require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{...access,loadSession:async()=>session,staffDisplayName:()=>session.staff.name,switchApplication:mode=>switched.push(mode)}:name.endsWith('useCompactBidViewport')?{useCompactBidViewport:()=>false}:name.endsWith('.css')?{}:{__esModule:true,default:name.split('/').at(-1)}};
+const notices={exports:{},URLSearchParams};
+vm.runInNewContext(compile('apps/admin/src/taskNotice.ts'),notices);
+const mocks={exports:{},window:w,location:w.location,URLSearchParams,require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{...access,loadSession:async()=>session,staffDisplayName:()=>session.staff.name,switchApplication:mode=>switched.push(mode)}:name==='./taskNotice'?notices.exports:name.endsWith('useCompactBidViewport')?{useCompactBidViewport:()=>false}:name.endsWith('.css')?{}:{__esModule:true,default:name.split('/').at(-1)}};
 vm.runInNewContext(compile('apps/'+kind+'/src/App.tsx'),mocks);
 async function settle(){for(let n=0;n<40;n++){if(dirty){cursor=0;dirty=false;tree=mocks.exports.default();pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
 await settle();
