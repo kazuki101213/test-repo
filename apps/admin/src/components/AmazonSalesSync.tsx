@@ -29,19 +29,19 @@ function unavailableAmazon1Report(account: string, error?: string | null) {
   return account === 'Amazon1' && !!error && /全出品レポート.*HTTP\s*403/.test(error);
 }
 
-function ListingSyncStatus({ row }: { row: ListingStatus }) {
+function listingStatusLabel(row: ListingStatus): string | null {
+  if (row.last_error) return '取得失敗';
+  if (row.pending) return '取得中';
+  if (row.seller_count === null) return '未照合';
+  if (row.snapshot_at !== null && Date.now() - Date.parse(row.snapshot_at) > 27 * 3600000) return '更新遅れ';
+  if (row.unknown_rows) return '読み取り要確認';
+  if (row.amazon_only?.length || row.inventory_only?.length || row.seller_count !== row.inventory_count) return '差分あり';
+  return null;
+}
+
+function ListingSyncStatus({ row, state }: { row: ListingStatus; state: string }) {
   const amazonOnly = row.amazon_only ?? [];
   const inventoryOnly = row.inventory_only ?? [];
-  const countDiffers = row.seller_count !== row.inventory_count;
-  const hasDifferences = amazonOnly.length > 0 || inventoryOnly.length > 0 || countDiffers;
-  const outdated = row.snapshot_at !== null && Date.now() - Date.parse(row.snapshot_at) > 27 * 3600000;
-  let state = '一致';
-  if (row.last_error) state = '取得失敗';
-  else if (row.pending) state = '取得中';
-  else if (row.seller_count === null) state = '未照合';
-  else if (outdated) state = '更新遅れ';
-  else if (row.unknown_rows) state = '読み取り要確認';
-  else if (hasDifferences) state = '差分あり';
 
   return <div className="sub">
     <span>{listingLabel[row.account_id]} {state}
@@ -176,12 +176,17 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     }
   }
 
+  const reviewableListings = listingStatus.flatMap(row => {
+    const state = listingStatusLabel(row);
+    return state ? [<ListingSyncStatus key={row.account_id} row={row} state={state} />] : [];
+  });
+
   return <div className="amazon-sales-update">
     <button className="btn primary" disabled={busy} onClick={() => void run()}>{busy ? '更新中…' : 'Amazon情報更新'}</button>
     {notice && <span role="status" className="sub">{notice}</span>}
     {error && <span role="alert" className="error">{error}</span>}
-    <div className="amazon-listing-status" aria-label="Amazonの出品照合状況">
-      {listingStatus.map(row => <ListingSyncStatus key={row.account_id} row={row} />)}
-    </div>
+    {reviewableListings.length > 0 && <div className="amazon-listing-status" aria-label="Amazonの出品照合状況">
+      {reviewableListings}
+    </div>}
   </div>;
 }
