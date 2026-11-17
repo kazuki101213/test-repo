@@ -32,7 +32,7 @@ alter table storage.objects enable row level security;
 -- CI uses plain PostgreSQL. Keep the schema checks running without executing
 -- Supabase's external scheduler or Vault integration in this disposable DB.
 create schema if not exists cron;
-create table cron.job (jobid bigint primary key, jobname text);
+create table cron.job (jobid bigint primary key, jobname text, schedule text, command text);
 create function cron.unschedule(bigint) returns boolean language sql as 'select true';
 create or replace function cron.schedule(text, text, text) returns bigint
 language sql as $$ select 1::bigint $$;
