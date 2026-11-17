@@ -1,5 +1,5 @@
 export type Account = 'FBA1' | 'FBA2';
-export type Item = {item_id:string; sku:string; asin:string; title:string; condition:string; sales_channel: 'FBA'|Account; published_at?:string};
+export type Item = {item_id:string; sku:string; asin:string; title:string; condition:string; sales_channel: 'FBA'|Account; published_at?:string; released_at?:string|null};
 export type Box = {length:number; width:number; height:number; weight:number; items:string[]};
 export type Owner = {prepOwner:'NONE'|'SELLER'; labelOwner:'SELLER'|'NONE'};
 export type Charge = {amount:number; code:string};

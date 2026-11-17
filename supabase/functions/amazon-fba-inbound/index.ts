@@ -9,7 +9,7 @@ const headers={
  'Access-Control-Allow-Methods':'POST, OPTIONS','Cache-Control':'no-store','Content-Type':'application/json',
 };
 const reply=(status:number,data:unknown)=>new Response(JSON.stringify(data),{status,headers});
-const select='id,account,staff_id,name,stage,revision,amazon_id,pending,work,created_at,received_at,fba_inbound_items(item_id,sku,asin,title,condition,sales_channel,published_at)';
+const select='id,account,staff_id,name,stage,revision,amazon_id,pending,work,created_at,received_at,fba_inbound_items(item_id,sku,asin,title,condition,sales_channel,published_at,released_at)';
 const planSelect=(plan:Plan)=>({...plan,sender:senders[plan.account]});
 const lookup=(item:Item)=>({msku:item.sku,quantity:1});
 const shipmentPath=(plan:Plan,id:string)=>planPath(plan.amazon_id!)+'/shipments/'+enc(id);
@@ -115,17 +115,28 @@ async function readReceipts(api:Amazon,plan:Plan,shipments:Shipment[]) {
  const itemBySku=new Map(plan.fba_inbound_items.map(i=>[i.sku,i]));
  for(const shipment of shipments){
   if(!shipment.confirmationId||!canCheckReceived.includes(shipment.status))continue;
-  const received:Record<string,number>={};
-  {
-   const response=await api.call('/fba/inbound/v0/shipments/'+enc(shipment.confirmationId)+'/items',
-    {});
+  const received:Record<string,number>=Object.create(null);
+  const seen=new Set<string>();
+  let nextToken:string|undefined;
+  do {
+   const response:{payload?:{ItemData?:{ShipmentId?:string;SellerSKU:string;QuantityReceived:number}[];NextToken?:unknown}}=nextToken
+    ? await api.call('/fba/inbound/v0/shipmentItems',{MarketplaceId:marketplace,QueryType:'NEXT_TOKEN',NextToken:nextToken})
+    : await api.call('/fba/inbound/v0/shipments/'+enc(shipment.confirmationId)+'/items',{});
    if(!Array.isArray(response.payload?.ItemData)) throw new WorkflowError(502,'Amazonの受領数を確認できません。');
    for(const row of response.payload.ItemData) {
-    if((row.ShipmentId&&row.ShipmentId!==shipment.confirmationId)||!itemBySku.has(row.SellerSKU)||!Number.isInteger(row.QuantityReceived))continue;
+    if((nextToken||row.ShipmentId)&&row.ShipmentId!==shipment.confirmationId)continue;
+    if(!itemBySku.has(row.SellerSKU)||!Number.isSafeInteger(row.QuantityReceived)||row.QuantityReceived<0)continue;
+    if(Object.hasOwn(received,row.SellerSKU)&&received[row.SellerSKU]!==row.QuantityReceived)
+     throw new WorkflowError(502,'Amazonの受領明細で同じSKUの数量が一致しません。');
     received[row.SellerSKU]=row.QuantityReceived;
    }
-   if(response.payload.NextToken)throw new WorkflowError(502,'Amazonから受領数の一部のみ返されました。');
-  }
+   const token=response.payload.NextToken;
+   if(token===undefined||token===null||token==='')break;
+   if(typeof token!=='string'||seen.has(token)||seen.size>=20)
+    throw new WorkflowError(502,'Amazonの受領明細の続きが確認できませんでした。');
+   seen.add(token);
+   nextToken=token;
+  } while(true);
   shipment.received=received;
  }
 }
@@ -133,7 +144,7 @@ const wasReceived=(item:Item,shipments:Shipment[])=>shipments.some(shipment=>!!s
 
 async function checkPublished(api:Amazon,plan:Plan,shipments:Shipment[]) {
  const ids:string[]=[];
- const candidates=plan.fba_inbound_items.filter(item=>!item.published_at&&wasReceived(item,shipments));
+ const candidates=plan.fba_inbound_items.filter(item=>!item.published_at&&!item.released_at&&wasReceived(item,shipments));
  for(let offset=0;offset<candidates.length;offset+=20){
   const chunk=candidates.slice(offset,offset+20);
   const inventory=await api.call('/fba/inventory/v1/summaries',{granularityType:'Marketplace',granularityId:marketplace,
@@ -236,6 +247,14 @@ export async function handler(req:Request):Promise<Response>{
    const response=await query;
    if(response.error)throw new WorkflowError(502,'納品履歴を取得できません。');
    return reply(200,{plans:(response.data as Plan[]).map(planSelect)});
+  }
+  if(action==='listing-refresh-targets'){
+   if(!admin)return reply(403,{error:'出品状態の一括更新は管理者のみ利用できます。'});
+   const {data,error}=await db.from('fba_inbound_plans').select('id,revision,fba_inbound_items!inner(item_id)')
+    .eq('stage','ready').is('pending',null).not('amazon_id','is',null)
+    .is('fba_inbound_items.published_at',null).is('fba_inbound_items.released_at',null).order('created_at');
+   if(error)throw new WorkflowError(502,'出品状態の更新対象のFBA納品を取得できません。');
+   return reply(200,{plans:data.map(({id,revision})=>({id,revision}))});
   }
   if(action==='new'){
    if(!Array.isArray(input.items)||input.items.length<1||input.items.length>100||!input.items.every(uuid)) return invalid('在庫から納品商品を選んでください。');
@@ -538,11 +557,14 @@ export async function handler(req:Request):Promise<Response>{
    const receivedAt=plan.received_at??(items.length>0&&items.every(item=>wasReceived(item,shipments))?new Date().toISOString():null);
    await patch({work:{...plan.work,shipments},received_at:receivedAt});
    const ids=await checkPublished(api,plan,shipments);
+   let reflected=0;
    if(ids.length){
     const published=await db.rpc('publish_fba_inbound_items',{p_plan:plan.id,p_items:ids});
     if(published.error)throw new WorkflowError(502,'Amazonで購入可能ですが、在庫の更新ができませんでした。もう一度確認してください。');
+    reflected=published.data??0;
    }
    plan=await read(plan.id);
+   return scheduled?reply(200,{refreshed:true,published:reflected}):reply(200,{plan:planSelect(plan),published:reflected});
   }else if(action==='label'){
    eligiblePhase(plan,'ready');
    if(!plan.work.placement?.shipmentIds.includes(input.shipment))return invalid('納品先を確認してください。');
@@ -580,7 +602,6 @@ export async function handler(req:Request):Promise<Response>{
    if(!path||plan.stage==='ready'||plan.stage==='cancelled'||plan.work.shipments?.some(s=>shipped.includes(s.status)))return invalid('確定済みの配送の取消はセラーセントラルで行ってください。');
    await start(plan.work,path+'/cancellation','PUT');
   }else return reply(400,{error:'操作を確認できません。'});
-  if(scheduled)return reply(200,{refreshed:true});
   return result();
  }catch(error){
   return error instanceof WorkflowError||error instanceof AmazonAccountError?reply(error.status,{error:error.message})

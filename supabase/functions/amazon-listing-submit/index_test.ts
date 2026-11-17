@@ -1,6 +1,23 @@
-import {handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,type ListingItem} from './index.ts';
+import {handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,observedSelfListing,type ListingItem} from './index.ts';
 import {photographSignature,samePhotograph,verifyAmazonPhotoCopies} from '../_shared/amazonImageVerification.ts';
 import jpeg from 'npm:jpeg-js@0.4.4';
+
+Deno.test('self-fulfilled status requires the matching Japan SKU, ASIN, condition and purchase availability',()=>{
+ const receipt={sku:'fixture',asin:'B012345678',item_condition:'非常に良い'};
+ const summary={marketplaceId:'A1VC38T7YXB528',asin:receipt.asin,conditionType:'used_very_good',status:['BUYABLE']};
+ const listing={sku:receipt.sku,summaries:[summary],fulfillmentAvailability:[{fulfillmentChannelCode:'DEFAULT',quantity:1}]};
+ if(!observedSelfListing(listing,receipt))throw new Error('BUYABLE self-fulfilled listing did not match');
+ for(const mismatch of [
+  null,
+  {...listing,sku:'other'},
+  {...listing,summaries:[{...summary,asin:'other'}]},
+  {...listing,summaries:[{...summary,conditionType:'used_good'}]},
+  {...listing,summaries:[{...summary,marketplaceId:'elsewhere'}]},
+  {...listing,summaries:[{...summary,status:['DISCOVERABLE']}]},
+  {...listing,fulfillmentAvailability:[{fulfillmentChannelCode:'DEFAULT',quantity:0}]},
+  {...listing,fulfillmentAvailability:[{fulfillmentChannelCode:'AMAZON_JP',quantity:1}]},
+ ])if(observedSelfListing(mismatch,receipt))throw new Error('Ambiguous or unavailable listing matched');
+});
 const assert=(v:unknown,m='assertion failed')=>{if(!v)throw Error(m)};
 const id='11111111-1111-4111-8111-111111111111',requestId='22222222-2222-4222-8222-222222222222',market='A1VC38T7YXB528';
 const item=():ListingItem=>({id,sku:'100000-AAAA-20261106-35',asin:'B015INS3IE',condition:'非常に良い',description:'説明\\n本文',planned_price:400,sales_channel:'FBA2',status:'商品登録前',is_accessory:false,deliverer_id:'staff',purchased_at:'2026-10-01'});
