@@ -435,6 +435,7 @@ export async function fetchMonthlyDetail(month: string, kind: 'purchase' | 'sale
 
 export type InventoryItem = ItemView & InventoryMarketplaceLabels & {
   inventory_parent_serial?:string|null;
+  inventory_group_serial?:string|null;
   inventory_parent_status?:string|null;
   inventory_parent_purchased_at?:string|null;
   product_row_count: number; product_cost: number; sale_row_count: number;

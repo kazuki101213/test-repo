@@ -110,4 +110,18 @@ do $$declare p jsonb;begin
  if jsonb_array_length(p->'rows')<>2 or exists(select 1 from jsonb_array_elements(p->'rows') d where d->>'title'='unrelated resale fixture') then raise exception 'Parent grouping changed staff visibility';end if;
 end $$;
 
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+update app.items set sales_channel='FBA2', status='出品中'
+where title in ('parent grouping fixture','unrelated resale fixture');
+do $$declare p jsonb; accessory_group text;begin
+ p:=app.read_inventory_page('management',
+    '{"queryField":"serial","query":"990203","states":{"status":["出品中"],"sales_channel":["FBA2"]}}',50,'{}');
+ if (p->>'total')::integer<>2 or jsonb_array_length(p->'rows')<>3 then
+   raise exception 'Amazon listing total must group the spare and preserve the other listing';
+ end if;
+ select d->>'inventory_group_serial' into strict accessory_group from jsonb_array_elements(p->'rows') d
+ where d->>'title'='parent spare fixture';
+ if accessory_group is distinct from '990203aa' then raise exception 'Amazon spare group is missing from displayed rows';end if;
+end $$;
+
 rollback;

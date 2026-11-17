@@ -19,8 +19,8 @@ export function normalizeSkuReturnSuffix(sku: string): string {
   return sku.replace(/^(\d+)([a-z]*)(?=[-_])/i, (_match, serial: string, suffix: string) => `${serial}${suffix.toLowerCase()}`);
 }
 
-export function productCount(rows: ReadonlyArray<{ lot_seq: number; sku?: string | null }>): number {
-  return new Set(rows.map(row => productSerial(row.sku, row.lot_seq))).size;
+export function productCount(rows: ReadonlyArray<{ lot_seq: number; sku?: string | null; inventory_group_serial?: string | null }>): number {
+  return new Set(rows.map(row => row.inventory_group_serial || productSerial(row.sku, row.lot_seq))).size;
 }
 
 export const inventoryRowHeight = 64;
