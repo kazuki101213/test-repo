@@ -1,3 +1,7 @@
+-- Older clean installs stored only shipment requests and had no purpose column.
+alter table app.delivery_line_outbox
+ add column if not exists purpose text not null default 'shipment';
+
 -- Rebuild a missing LINE request only for the verified active marketplace trade.
 create function app.reconcile_line_shipping_tasks(p_account_ids text[])
 returns void language plpgsql set search_path='' as $function$
