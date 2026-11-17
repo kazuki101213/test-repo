@@ -28,6 +28,13 @@ update app.items set status='取引中',seller_trade_key='m'||lot_seq||':current
 update app.delivery_line_settings set enabled=true;
 
 do $$declare prepared jsonb;request uuid;r record;counted integer:=0;calls integer;begin
+ -- An explicit trade request cannot prepare another trade or wake global delivery.
+ prepared:=app.extension_prepare_line_shipping(
+   array['mercari-1'],(select id from app.items where lot_seq=998772),'wrong-trade'
+ );
+ if prepared->>'queued'<>'0' or exists(select 1 from line_patrol_http_calls)
+   or exists(select 1 from app.seller_operations q join app.items i on i.id=q.item_id where i.lot_seq between 998771 and 998773)
+ then raise exception 'Scoped LINE preparation affected another trade'; end if;
  -- 2294b equivalent: six photos, no explicit selection, no catalog code size.
  prepared:=app.extension_prepare_line_shipping(array['mercari-1']);
  if prepared->>'queued'<>'1' then raise exception 'Photo-less fixed-size request did not prepare exactly one code: %',prepared;end if;
