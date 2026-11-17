@@ -1,9 +1,14 @@
 import {useEffect,useRef,useState} from 'react';
-import {readResourceSnapshot,noticeProductUrl,productModelText,salesChannelLabel} from '@bussan/shared';
+import {compareWorkStartedAt,readResourceSnapshot,noticeProductUrl,productModelText,salesChannelLabel} from '@bussan/shared';
 import {completeDeliveryNotice} from '../api';
 type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due';created_at?:string;tracking_recorded_at?:string|null;listing_request_title?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null;model_no?:string|null;title?:string|null;sales_channel?:string|null;sales_account_label?:string|null};
 const taskOrder={inspection:0,photo_approved:1,listing_due:1,shipping:2,photo_return:3,reply:4};
-const orderedTasks=(rows:ReturnTask[])=>[...rows].sort((a,b)=>taskOrder[a.kind]-taskOrder[b.kind]||(a.created_at??'').localeCompare(b.created_at??'')||a.id.localeCompare(b.id));
+const usesTrackingAge = (kind: ReturnTask['kind']) => kind==='inspection'||kind==='photo_approved'||kind==='listing_due';
+const orderedTasks=(rows:ReturnTask[])=>[...rows].sort((a,b)=>
+ taskOrder[a.kind]-taskOrder[b.kind]
+ ||(usesTrackingAge(a.kind)?compareWorkStartedAt(a.tracking_recorded_at,b.tracking_recorded_at):0)
+ ||(a.created_at??'').localeCompare(b.created_at??'')
+ ||a.id.localeCompare(b.id));
 const hour=3_600_000;
 const day=24*hour;
 const listingTiming={warningHours:120,overdueHours:168,dayOffset:2};

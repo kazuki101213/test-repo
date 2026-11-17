@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSupabase } from '@bussan/shared';
-import AmazonSoldOutReview from './AmazonSoldOutReview';
 
 type Range = { postedAfter: string; postedBefore: string };
 type ListingResult = {
@@ -181,10 +180,6 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     <button className="btn primary" disabled={busy} onClick={() => void run()}>{busy ? '更新中…' : 'Amazon情報更新'}</button>
     {notice && <span role="status" className="sub">{notice}</span>}
     {error && <span role="alert" className="error">{error}</span>}
-    <details>
-      <summary>Amazon2の売り切れ出品を確認</summary>
-      <AmazonSoldOutReview />
-    </details>
     <div className="amazon-listing-status" aria-label="Amazonの出品照合状況">
       {listingStatus.map(row => <ListingSyncStatus key={row.account_id} row={row} />)}
     </div>

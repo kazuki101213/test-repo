@@ -4,7 +4,7 @@ import { productSerial } from '../inventory';
 import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
 import { createPortal } from 'react-dom';
-import { getSupabase, readResourceSnapshot } from '@bussan/shared';
+import { compareWorkStartedAt, getSupabase, readResourceSnapshot } from '@bussan/shared';
 import { preparePhotoFiles, savePhotoFiles } from '../photoSave';
 import {readReviewPhotos} from '../reviewPhotos';
 import { deliveryAppUrl } from '../appUrls';
@@ -12,7 +12,12 @@ import { deliveryAppUrl } from '../appUrls';
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
 interface PurchaseReference { marketplace_item_id?: string | null; marketplace?: string | null; marketplace_url?: string | null }
 interface Item extends PurchaseReference { id: string; sku: string; title: string; lot_seq: number; sales_channel?:string|null }
-interface ListingTask extends PurchaseReference { id: string; sku: string; lot_seq: number; sales_channel: string; marketplace_item_id?: string | null }
+interface ListingTask extends PurchaseReference { id: string; created_at?: string; sku: string; lot_seq: number; sales_channel: string; marketplace_item_id?: string | null }
+
+function listingReminderDays(startedAt: string | undefined, checkedAt: number) {
+  const start = Date.parse(startedAt ?? '');
+  return Number.isFinite(start) ? Math.max(5, Math.floor((checkedAt - start) / 86400000) - 2) : 5;
+}
 
 async function listingProductIds(tasks: ListingTask[]): Promise<ListingTask[]> {
   const ids = new Map<string, PurchaseReference>();
@@ -31,7 +36,7 @@ export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=
   const noticeHandled = useRef(false);
   const [noticeMessage, setNoticeMessage] = useState('');
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [listingTasks, setListingTasks] = useState<ListingTask[]>([]);
+  const [listingTasks, setListingTasks] = useState<{rows: ListingTask[]; checkedAt: number}>({rows: [], checkedAt: 0});
   const [items, setItems] = useState<Record<string, Item>>({});
   const [selected, setSelected] = useState<Review | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -64,7 +69,7 @@ export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=
       const byId:Record<string,Item>=Object.fromEntries(rows.map(row=>[row.item_id,{...row.item,...byReference.get(row.item_id)}]));
 
       if (active) {
-        setReviews([...rows].sort((a,b)=>b.submitted_at.localeCompare(a.submitted_at))); setListingTasks(detailedListingTasks); setItems(byId); setError('');
+        setReviews([...rows].sort((a,b)=>b.submitted_at.localeCompare(a.submitted_at))); setListingTasks({rows:detailedListingTasks.sort((a,b)=>compareWorkStartedAt(a.created_at,b.created_at)||a.id.localeCompare(b.id)),checkedAt:Date.now()}); setItems(byId); setError('');
         if (mode!=='listing' && !noticeHandled.current && notice?.kind === 'photo_review') {
           noticeHandled.current = true;
           const target = rows.find(row => row.item_id === notice.itemId);
@@ -139,8 +144,8 @@ export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=
 
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
-      {listingTasks.map(task => { const sourceUrl=purchaseItemUrl(task.marketplace??null,task.marketplace_item_id??null,task.marketplace_url??null); return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task admin-task-overdue">
-        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品(5日経過)</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> {sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a>:<span>【{task.marketplace_item_id || '商品ID未登録'}】</span>}<small>{task.sku}</small></div>
+      {listingTasks.rows.map(task => { const sourceUrl=purchaseItemUrl(task.marketplace??null,task.marketplace_item_id??null,task.marketplace_url??null); return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task admin-task-overdue">
+        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品({listingReminderDays(task.created_at, listingTasks.checkedAt)}日経過)</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> {sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a>:<span>【{task.marketplace_item_id || '商品ID未登録'}】</span>}<small>{task.sku}</small></div>
         <a className="btn" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer">確認</a>
       </li>;})}
       {reviews.map(review => { const item=items[review.item_id]; const sourceUrl=purchaseItemUrl(item?.marketplace??null,item?.marketplace_item_id??null,item?.marketplace_url??null); return <li key={review.item_id} className="admin-task-card admin-simple-task admin-photo-task">

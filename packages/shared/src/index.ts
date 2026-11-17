@@ -35,3 +35,5 @@ export * from './salesChannels';
 export * from './marketplaceAccounts';
 
 export * from './askulCsv';
+
+export {compareWorkStartedAt} from './workAge';

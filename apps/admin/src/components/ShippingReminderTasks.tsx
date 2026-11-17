@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {productModelText,readResourceSnapshot} from '@bussan/shared';
+import {compareWorkStartedAt,productModelText,readResourceSnapshot} from '@bussan/shared';
 import {purchaseItemUrl} from '../purchaseUrl';
 import {productSerial} from '../inventory';
 import {deliveryAppUrl} from '../appUrls';
@@ -20,7 +20,7 @@ export default function ShippingReminderTasks({kind='shipping'}:{kind?:'shipping
   let active=true,reading=false,lastRead=-Infinity;
   async function refresh(){
    if(reading||document.visibilityState==='hidden')return;reading=true;lastRead=Date.now();
-   try{const next=await readResourceSnapshot<ShippingReminder>(kind==='inspection'?'admin_inspection_tasks':'admin_shipping_tasks');if(active){setSnapshot({rows:next,checkedAt:Date.now()});setError('');}}
+   try{const next=await readResourceSnapshot<ShippingReminder>(kind==='inspection'?'admin_inspection_tasks':'admin_shipping_tasks');if(active){setSnapshot({rows:kind==='inspection'?[...next].sort((a,b)=>compareWorkStartedAt(a.created_at,b.created_at)||a.id.localeCompare(b.id)):next,checkedAt:Date.now()});setError('');}}
    catch(cause){if(active)setError((cause as {message?:string})?.message||(kind==='inspection'?'動作確認待ちを読み込めませんでした。':'発送待ちを読み込めませんでした。'));}
    finally{reading=false;}
   }
