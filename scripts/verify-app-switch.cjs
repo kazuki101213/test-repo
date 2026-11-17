@@ -9,6 +9,7 @@ const ctx={exports:{},URL,URLSearchParams,document:{documentElement:{dataset:{ap
 vm.runInNewContext(compile('packages/shared/src/applicationSwitch.ts'),ctx);const access=ctx.exports;
 for(const role of ['admin','purchaser','deliverer']){assert.equal(access.canOpenManagement({role}),role!=='deliverer');for(const page of ['dashboard','inventory','spares','expenses','products','ledger'])assert.equal(access.canOpenManagementPage({role},page),role==='admin'||role==='purchaser'&&['inventory','spares'].includes(page))}
 assert.equal(access.initialApplication('','','management'),'management');assert.equal(access.initialApplication('?itemId=x','','management'),'delivery');assert.equal(access.initialApplication('?taskKind=invoice','','delivery'),'management');assert.equal(access.initialApplication('','#bid-calculator','management'),'delivery');assert.equal(access.initialApplication('?setup=1','','management'),'delivery');
+assert.equal(access.initialApplication('?taskKind=sale&itemId=x','','delivery'),'management');
 assert.equal(access.initialApplication('?invoiceId=approved&invoiceMonth=2026-10','','management'),'delivery');
 const osabe={code:'AA',role:'admin'};
 assert(access.opensManagementByDefault(osabe,'','',null));
