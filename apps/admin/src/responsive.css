@@ -343,3 +343,12 @@
 @media screen and (max-width:1023px) {
  .layout .inventory-toolbar { display:flex; flex-wrap:wrap; align-items:center; }
 }
+
+@media screen and (max-width:1023px) {
+ .layout .inventory-controls .inventory-registration-actions {
+  display:grid; grid-template-columns:max-content minmax(0,1fr); align-items:center;
+ }
+ .layout .inventory-controls .inventory-registration-actions .amazon-sales-update { display:contents; }
+ .layout .inventory-controls .inventory-registration-actions .amazon-sales-update > .btn { justify-self:start; }
+ .layout .inventory-controls .amazon-sales-update > :is(.sub,.error,.amazon-listing-status) { grid-column:1 / -1; }
+}

@@ -7,11 +7,12 @@ const inventory={exports:{}};vm.runInNewContext(compile('apps/admin/src/inventor
 const origin='https://test-repo-delivery.vercel.app/';
 const workflow={exports:{}};vm.runInNewContext(compile('packages/shared/src/workflow.ts'),workflow);
 const productModel={exports:{}};vm.runInNewContext(compile('packages/shared/src/productModel.ts'),productModel);
+const workAge={exports:{}};vm.runInNewContext(compile('packages/shared/src/workAge.ts'),workAge);
 const now=Date.parse('2026-11-13T03:00:00Z'),day=24*60*60*1000;
 async function render(file,resources,products=[],props={},reads=[],imports={}){
  let cursor=0,hooks=[],pending=[],dirty=true,tree;
  const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,value=>{hooks[n].value=typeof value==='function'?value(hooks[n].value):value;dirty=true;}];},useRef(value){return hooks[cursor++]??={current:value};},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((value,index)=>value!==old.deps[index])){old?.cleanup?.();const hook=hooks[n]={deps};pending.push(()=>hook.cleanup=fn());}}};
- const shared={...workflow.exports,...productModel.exports,staffDisplayName:name=>name,yen:value=>String(value),readResourceSnapshot:async name=>{reads.push(name);return resources[name]??[];},getSupabase:()=>({from:table=>{assert.equal(table,'items');const q={select:fields=>{assert(['id,marketplace_item_id,marketplace,marketplace_url','id,marketplace,marketplace_item_id,marketplace_url'].includes(fields));return q;},in:(key,ids)=>{assert.equal(key,'id');assert(ids.length<=200);return Promise.resolve({data:products.filter(row=>ids.includes(row.id)),error:null});}};return q;}})};
+ const shared={...workflow.exports,...workAge.exports,...productModel.exports,staffDisplayName:name=>name,yen:value=>String(value),readResourceSnapshot:async name=>{reads.push(name);return resources[name]??[];},getSupabase:()=>({from:table=>{assert.equal(table,'items');const q={select:fields=>{assert(['id,marketplace_item_id,marketplace,marketplace_url','id,marketplace,marketplace_item_id,marketplace_url'].includes(fields));return q;},in:(key,ids)=>{assert.equal(key,'id');assert(ids.length<=200);return Promise.resolve({data:products.filter(row=>ids.includes(row.id)),error:null});}};return q;}})};
  const context={exports:{},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='react-dom'?{createPortal:node=>node}:name==='@bussan/shared'?shared:name==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){},pending:false,confirmation:null})}:name==='../inventory'?inventory.exports:name==='../appUrls'?{deliveryAppUrl:origin}:name==='../taskNotice'?{adminTaskNotice:()=>null}:name==='../purchaseUrl'?{purchaseItemUrl:()=>null}:{},document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},window:{setInterval:()=>1,clearInterval(){},addEventListener(){},removeEventListener(){}}};
  const originalRequire=context.require;context.require=name=>imports[name]??originalRequire(name);
  context.Date={now:()=>now,parse:Date.parse};
@@ -27,11 +28,11 @@ function inventoryLink(nodes,label,item){
 }
 (async()=>{
  const listingId='11111111-1111-4111-8111-111111111111';
- const listingNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{listing_tasks:[{id:listingId,lot_seq:2395,sku:'2395-EE',sales_channel:'ヤフオク'},{id:'mercari-item',lot_seq:1856,sku:'1856b-EE',sales_channel:'メルカリ'}]},[{id:listingId,marketplace_item_id:'m1245892718'},{id:'mercari-item',marketplace_item_id:'m987654321'}]);
+ const listingNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{listing_tasks:[{id:'mercari-item',lot_seq:1856,sku:'1856b-EE',sales_channel:'メルカリ',created_at:new Date(now-7*day).toISOString()},{id:listingId,lot_seq:2395,sku:'2395-EE',sales_channel:'ヤフオク',created_at:new Date(now-10*day).toISOString()}]},[{id:listingId,marketplace_item_id:'m1245892718'},{id:'mercari-item',marketplace_item_id:'m987654321'}]);
  inventoryLink(listingNodes,'出品する商品の在庫を開く',listingId);
  const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
  const details=listingNodes.filter(n=>n.props?.className==='task-action-details listing-task-details');
- assert.deepEqual(JSON.parse(JSON.stringify(details.map(n=>n.props.children.filter(v=>typeof v==='object').map(text)))),[['ヤフオク出品(5日経過)','【2395】','【m1245892718】','2395-EE'],['メルカリ出品(5日経過)','【1856b】','【m987654321】','1856b-EE']]);
+ assert.deepEqual(JSON.parse(JSON.stringify(details.map(n=>n.props.children.filter(v=>typeof v==='object').map(text)))),[['ヤフオク出品(8日経過)','【2395】','【m1245892718】','2395-EE'],['メルカリ出品(5日経過)','【1856b】','【m987654321】','1856b-EE']]);
  const mercariLink=details[1].props.children.find(n=>n?.type==='a');assert.equal(new URL(mercariLink.props.href).searchParams.get('itemId'),'mercari-item');
  const many=Array.from({length:201},(_,n)=>({id:'task'+n,lot_seq:n,sku:'SKU'+n,sales_channel:'ヤフオク'}));
  const manyNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{listing_tasks:many},many.map(t=>({id:t.id,marketplace_item_id:'ID'+t.id})));
@@ -57,9 +58,9 @@ function inventoryLink(nodes,label,item){
  assert.equal(shippingNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,3,'Shipping reminders open the existing shipping flow');
  const inspectionRows=[3*day,4*day-1,4*day,5*day].map((age,index)=>({id:'inspect'+(index+1),item_id:'inspect'+(index+1),sku:'2500-INSPECTION',lot_seq:2500,sales_channel:'FBA2',marketplace:'ヤフオク',purchase_account_label:'ヤフオク1',marketplace_item_id:'product1',model_no:'BDZ-ZW1700',created_at:new Date(now-age).toISOString(),waiting_for_parts:index>=2}));
  const inspectionNodes=await render('apps/admin/src/components/ShippingReminderTasks.tsx',{admin_inspection_tasks:inspectionRows},[],{kind:'inspection'});
- inventoryLink(inspectionNodes,'動作確認する商品の在庫を開く','inspect1');
+ inventoryLink(inspectionNodes,'動作確認する商品の在庫を開く','inspect4');
  assert.deepEqual(inspectionNodes.filter(n=>n.type==='strong').map(text),[
-  '動作確認ヤフオク1(2日経過)','動作確認ヤフオク1(2日経過)','動作確認ヤフオク1(3日経過)※','動作確認ヤフオク1(4日経過)※',
+  '動作確認ヤフオク1(4日経過)※','動作確認ヤフオク1(3日経過)※','動作確認ヤフオク1(2日経過)','動作確認ヤフオク1(2日経過)',
  ]);
  assert(inspectionNodes.some(n=>n.type==='small'&&text(n)==='BDZ-ZW1700、2500-INSPECTION'));
  assert.equal(inspectionNodes.filter(n=>n.type==='a'&&n.props.children==='確認').length,inspectionRows.length);
