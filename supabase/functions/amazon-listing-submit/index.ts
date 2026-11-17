@@ -9,7 +9,17 @@ export type ListingItem={id:string;sku:string;asin:string|null;condition:string|
 const columns='id,sku,asin,condition,description,planned_price,sales_channel,status,is_accessory,deliverer_id,purchased_at';
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const conditionTypes:Record<string,string>={'ほぼ新品':'used_like_new','非常に良い':'used_very_good','良い':'used_good','可':'used_acceptable'};
+const selfChannels=['自己発送','自己発送1','自己発送2'];
 export function accountFor(channel:string|null):AmazonAccountId{if(channel==='FBA2'||channel==='自己発送2')return'amazon-2';if(['FBA','FBA1','自己発送','自己発送1'].includes(channel??''))return'amazon-1';throw new SafeError(422,'Amazonの販売先を選択してください。');}
+export function observedSelfListing(listing:Obj|null,receipt:Obj) {
+ if(!listing||listing.sku!==receipt.sku)return false;
+ const summary=Array.isArray(listing.summaries)?listing.summaries.find((row:Obj)=>row.marketplaceId===marketplace):null;
+ return summary?.asin===receipt.asin && !!conditionTypes[receipt.item_condition] &&
+  summary?.conditionType===conditionTypes[receipt.item_condition] &&
+  Array.isArray(summary.status)&&summary.status.includes('BUYABLE') &&
+  Array.isArray(listing.fulfillmentAvailability)&&listing.fulfillmentAvailability.some((row:Obj)=>
+   row.fulfillmentChannelCode==='DEFAULT'&&Number.isSafeInteger(row.quantity)&&row.quantity>0);
+}
 export function listingBody(item:ListingItem,catalog?:Obj|null){
  if(!item.asin||!/^[0-9A-Z]{10}$/.test(item.asin)||!conditionTypes[item.condition??'']||!Number.isSafeInteger(item.planned_price)||(item.planned_price??0)<1)throw new SafeError(422,'ASIN・コンディション・予定販売価格を確認してください。');
  const attributes:Obj={merchant_suggested_asin:[{value:item.asin,marketplace_id:marketplace}],condition_type:[{value:conditionTypes[item.condition!],marketplace_id:marketplace}],purchasable_offer:[{audience:'ALL',currency:'JPY',marketplace_id:marketplace,our_price:[{schedule:[{value_with_tax:item.planned_price}]}]}],fulfillment_availability:[/^FBA/.test(item.sales_channel??'')?{fulfillment_channel_code:'AMAZON_JP'}:{fulfillment_channel_code:'DEFAULT',quantity:1}]};
@@ -206,6 +216,37 @@ async function amazon(id:AmazonAccountId){
  }
  return{sellerId:credentials.sellerId,diagnosePrice,inspectFba,submitPriceFeed,priceFeedStatus,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),inspect:(sku:string)=>call(sku,'GET'),patchPrice:(sku:string,body:Obj,preview=false)=>call(sku,'PATCH',body,preview),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview),patchImages:(sku:string,images:Obj,listing:Obj,preview=false)=>call(sku,'PATCH',{productType:photoProductType(listing),patches:imagePatches(images,listing)},preview)};
 }
+async function syncSelfListingStatus(db:any,body:Obj) {
+ if((body.requestId!==undefined&&!uuid(body.requestId))||(body.after!==undefined&&!uuid(body.after)))
+  throw new SafeError(400,'出品状態の照合対象を確認できません。');
+ let query=db.from('amazon_listing_submissions')
+  .select('request_id,item_id,sku,asin,account_id,seller_id,sales_channel,item_condition,items!inner(sku,status,sold_on)')
+  .in('sales_channel',selfChannels).in('state',['accepted','uncertain','submitting','verified'])
+  .eq('items.status','商品登録前').is('items.sold_on',null);
+ if(body.requestId)query=query.eq('request_id',body.requestId);
+ if(body.after)query=query.gt('request_id',body.after);
+ const pageSize=5;
+ const {data,error}=await query.order('request_id').limit(pageSize+1);
+ if(error||!Array.isArray(data))throw new SafeError(503,'自己発送の出品受付履歴を確認できませんでした。');
+ const accounts=new Map<AmazonAccountId,Promise<Awaited<ReturnType<typeof amazon>>>>();
+ const results=await Promise.all(data.slice(0,pageSize).map(async (receipt:Obj)=>{
+  const sku=String(receipt.items.sku);
+  try {
+   const accountId=accountFor(receipt.sales_channel);
+   if(receipt.account_id!==accountId)throw new SafeError(409,'受付時のAmazonアカウントが一致しません。');
+   if(!accounts.has(accountId))accounts.set(accountId,amazon(accountId));
+   const api=await accounts.get(accountId)!;
+   if(api.sellerId!==receipt.seller_id)throw new SafeError(409,'受付時のAmazon出品者が一致しません。');
+   if(!observedSelfListing(await api.get(receipt.sku),receipt))return {sku,state:'waiting'};
+   const {data:applied,error:applyError}=await db.rpc('apply_observed_amazon_self_listing',{
+    p_request_id:receipt.request_id,p_expected_sku:sku,
+   });
+   if(applyError)throw new SafeError(503,'Amazonで購入可能ですが、在庫への反映に失敗しました。');
+   return {sku,state:applied===true?'published':'changed'};
+  }catch(error){return{sku,state:'error',error:error instanceof SafeError||error instanceof AmazonAccountError?error.message:'Amazonの照合に失敗しました。'};}
+ }));
+ return {results,nextAfter:data.length>pageSize?data[pageSize-1].request_id:undefined};
+}
 // Operator read-only inspection is bound to an existing, non-cancelled receipt.
 // The private project dispatcher authenticates it; normal user routes retain Auth.getUser.
 export async function inspectReceipt(svc:any,input:Obj,connect=amazon){
@@ -276,6 +317,15 @@ export async function handler(req:Request):Promise<Response>{
  const respond=(status:number,body:unknown)=>new Response(JSON.stringify(body),{status,headers});
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers});if(req.method!=='POST')return respond(405,{error:'POSTのみ利用できます。'});
  try{
+  const options={auth:{persistSession:false,autoRefreshToken:false},db:{schema:'app'}};
+  if(req.headers.has('x-amazon-cron-token')){
+   const svc=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,options);
+   const {data,error}=await svc.rpc('verify_amazon_cron_token',{p_token:req.headers.get('x-amazon-cron-token')});
+   if(error||data!==true)throw new SafeError(401,'定期処理の認証が必要です。');
+   const body=await req.json().catch(()=>null);
+   if(body?.action!=='sync-status'||!uuid(body.requestId))throw new SafeError(400,'定期処理の照合対象を指定してください。');
+   return respond(200,await syncSelfListingStatus(svc,body));
+  }
   if(req.headers.has('x-delivery-dispatch')){
    const svc=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false},db:{schema:'app'}});
    const {data:config,error}=await svc.rpc('delivery_push_config');
@@ -284,10 +334,16 @@ export async function handler(req:Request):Promise<Response>{
    return respond(200,await(input?.action==='reconcile-receipt'?reconcileReceipt(svc,input):['repair-receipt-price','repair-receipt-price-feed'].includes(input?.action)?repairReceiptPrice(svc,input):inspectReceipt(svc,input)));
   }
   const authorization=req.headers.get('authorization')??'';if(!/^Bearer\s+\S+$/i.test(authorization))throw new SafeError(401,'ログインが必要です。');
-  const options={auth:{persistSession:false,autoRefreshToken:false},db:{schema:'app'}};
   const sb=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_ANON_KEY')!,{...options,global:{headers:{Authorization:authorization}}});
   const {data:user,error:authError}=await sb.auth.getUser(authorization.replace(/^Bearer\s+/i,''));if(authError||!user.user)throw new SafeError(401,'ログインが無効です。');
-  const body=await req.json().catch(()=>null);if(!body||!['submit','resume','check'].includes(body.action)||!uuid(body.itemId))throw new SafeError(400,'対象商品の指定が不正です。');
+  const body=await req.json().catch(()=>null);
+  if(body?.action==='sync-status'){
+   const {data:admin,error}=await sb.rpc('is_admin');
+   if(error||admin!==true)throw new SafeError(403,'出品状態の一括更新は管理者のみ利用できます。');
+   const svc=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,options);
+   return respond(200,await syncSelfListingStatus(svc,body));
+  }
+  if(!body||!['submit','resume','check'].includes(body.action)||!uuid(body.itemId))throw new SafeError(400,'対象商品の指定が不正です。');
   const {data:item,error:itemError}=await sb.from('items').select(columns).eq('id',body.itemId).single();if(itemError||!item)throw new SafeError(404,'商品が見つかりません。');
   const [{data:staffId,error:staffError},{data:admin}]=await Promise.all([sb.rpc('current_staff_id'),sb.rpc('is_admin')]);
   const {data:staff,error:activeError}=await sb.from('staff').select('is_active').eq('id',staffId).single();

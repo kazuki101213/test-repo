@@ -15,6 +15,7 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
  let plan:Plan={id,account:'FBA2',name:'担当者2026/11/7',staff_id:'own',stage:'draft',revision:0,created_at:'',amazon_id:null,pending:null,work:{},
   fba_inbound_items:[{item_id:itemId,sku,asin,title:'商品',condition:'非常に良い',sales_channel:'FBA2'}]};
  let received=0,available=0,buyable=false,published=0,remoteCalls=0,failAfterCreate=false,ambiguousPacking=false,staff='own';
+ let receiptPages:'single'|'paged'|'repeated'='single';
  let prepCategory='NONE',inventoryChanged=false,prepRejected=false,labelRequired=false,packingReadRejected=false;
  let liveSku=sku,aliasOwner=itemId;
  let packingFees:unknown=[],extraPackingChoice=false,packingAccepted=false;
@@ -116,7 +117,18 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
    return json({payload:{DownloadURL:'https://labels.s3.amazonaws.com/test.pdf'}});
   }
   if(path.endsWith('/trackingDetails'))equal(body.trackingDetails.spdTrackingDetail.spdTrackingItems,[{boxId:'box',trackingId:'ABCD12345'}]);
-  if(path.endsWith('/FBA123/items'))return json({payload:{ItemData:[{SellerSKU:sku,QuantityReceived:received}]}});
+  if(path.endsWith('/FBA123/items'))return json({payload:receiptPages==='single'
+   ? {ItemData:[{SellerSKU:sku,QuantityReceived:received}]}
+   : {ItemData:[],NextToken:'received-next'}});
+  if(path==='/fba/inbound/v0/shipmentItems'){
+   equal(url.searchParams.get('QueryType'),'NEXT_TOKEN');
+   equal(url.searchParams.get('MarketplaceId'),market);
+   equal(url.searchParams.get('NextToken'),'received-next');
+   return json({payload:{ItemData:[
+    {ShipmentId:'different-shipment',SellerSKU:sku,QuantityReceived:7},
+    {ShipmentId:'FBA123',SellerSKU:sku,QuantityReceived:received},
+   ],...(receiptPages==='repeated'?{NextToken:'received-next'}:{})}});
+  }
   if(path==='/fba/inventory/v1/summaries')return json({payload:{inventorySummaries:[{sellerSku:sku,asin,inventoryDetails:{fulfillableQuantity:available}}]}});
   if(path.includes('/listings/2021-08-01/items/A3E7BXJWH9TP11/'))return json({sku,summaries:[{asin,marketplaceId:market,status:buyable?['BUYABLE']:['DISCOVERABLE']}]});
   if(method!=='GET')return json({operationId:'operation-id'},202);
@@ -268,7 +280,8 @@ Deno.test('FBA2 draft resumes through confirmed small parcel shipment, labels an
   plan.fba_inbound_items.pop();
   available=1;await scheduled('refresh');equal(published,0);
   const receivedAt=plan.received_at;assert(receivedAt,'Confirmed receipt hides the plan even when the listing is not buyable');
-  buyable=true;const result=await scheduled('refresh');equal(await result.json(),{refreshed:true});equal(published,1);
+  buyable=true;receiptPages='repeated';await scheduled('refresh',502);equal(published,0);
+  receiptPages='paged';const result=await scheduled('refresh');equal(await result.json(),{refreshed:true,published:1});equal(published,1);
   await send('refresh');equal(published,1);equal(plan.received_at,receivedAt);
  }finally{
   globalThis.fetch=original;for(const key of Object.keys(env))Deno.env.delete(key);

@@ -30,7 +30,18 @@ function mount(path,sb,props={}) {
  const sync=mount('apps/admin/src/components/AmazonSalesSync.tsx',{
   from(){return{select(){return this},not(){return this},gte(field,value){assert.equal(field,'purchased_at');assert.equal(value,'2010-01-01');validDateFilter=true;return this},order(){return this},limit(){return this},async maybeSingle(){return{data:{purchased_at:validDateFilter?new Date(Date.now()-86400000).toISOString().slice(0,10):'0026-09-13'}}}}},
   functions:{async invoke(name,{body}){
-   assert.equal(name,'amazon-payments');actions.push({...body});
+   actions.push({...body});
+   if(name==='amazon-listing-submit'){
+    assert.equal(body.action,'sync-status');
+    return{data:body.after?{results:[{sku:'self',state:'published'}]}:{nextAfter:'next-listing',results:[{sku:'pending',state:'waiting'}]}};
+   }
+   if(name==='amazon-fba-inbound'){
+    if(body.action==='listing-refresh-targets')return{data:{plans:[{id:'plan1',revision:1},{id:'plan2',revision:2}]}};
+    assert.equal(body.action,'refresh');
+    if(body.id==='plan1')return{error:{context:new Response(JSON.stringify({error:'受領明細を確認できません。'}))}};
+    assert.equal(body.revision,2);return{data:{published:2}};
+   }
+   assert.equal(name,'amazon-payments');
    if(body.action==='accounts')return{data:{accounts:[{id:'amazon-1',label:'Amazon1',hasConfiguration:true},{id:'amazon-2',label:'Amazon2',hasConfiguration:true}]}};
    if(body.accountId==='amazon-1')return{error:{context:new Response(JSON.stringify({error:'認可を確認してください。'}))}};
    if(body.action==='sync')return{data:{saved:1,nextToken:body.nextToken?undefined:'second-next'}};
@@ -46,6 +57,10 @@ function mount(path,sb,props={}) {
  assert(actions.some(row=>row.action==='sync'&&row.accountId==='amazon-2'&&row.nextToken==='second-next'),'Second account pagination missing');
  assert(actions.some(row=>row.action==='history'&&row.accountId==='amazon-2'&&row.offset===100),'Second account history paging missing');
  assert(actions.some(row=>row.action==='reconcile'&&row.accountId==='amazon-2'&&row.transactionId==='only-second'));
+ assert.equal(actions[0].action,'sync-status');
+ assert(actions.some(row=>row.action==='sync-status'&&row.after==='next-listing'));
+ assert(text(sync.tree).includes('出品中へ3件反映'));
+ assert(text(sync.tree).includes('受領明細を確認できません。'),'Failed FBA plan was hidden');
  assert(text(sync.tree).includes('Amazon1: 認可を確認してください。'),'Failed account was hidden');assert(applied>=1);
  console.log('Amazon account switch clears rows/tokens; sync, history and reconciliation preserve account; one failure does not block the other.');
 })().catch(error=>{console.error(error);process.exitCode=1});
