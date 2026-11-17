@@ -171,4 +171,51 @@ do $$begin
   exception when insufficient_privilege then null;end;
 end $$;
 
+reset role;
+update app.items
+set memo='fixture purchase note',malfunction_comment='fixture fault report',
+    malfunction_reported_by=deliverer_id,malfunction_reported_at=now()-interval '2 hours'
+where title in ('parent grouping fixture','unrelated resale fixture');
+insert into app.item_comments(item_id,author_id,body,created_at)
+select i.id,author.id,fixture.body,now()-fixture.age
+from app.items i
+cross join (values ('DD','fixture earlier deliverer message',interval '3 hours'),
+                   ('AA','fixture later admin message',interval '10 minutes'),
+                   ('HH','fixture unrelated deliverer message',interval '5 minutes'),
+                   ('DD',E' \n\t',interval '1 minute')) as fixture(code,body,age)
+join app.staff author on author.code=fixture.code
+where i.title='parent grouping fixture';
+
+set local role authenticated;
+set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
+do $$declare page jsonb;begin
+  page:=app.read_inventory_page('management','{"queryField":"serial","query":"990203"}',50,'{}');
+  if (select count(*) from jsonb_array_elements(page->'rows') d
+      where d->>'title' in ('parent grouping fixture','unrelated resale fixture')
+        and d->>'memo'='fixture purchase note' and d->>'latest_comment'='fixture fault report')<>2 then
+    raise exception 'Assignee report did not appear, or an unrelated/blank message displaced it';
+  end if;
+end $$;
+
+reset role;
+insert into app.item_comments(item_id,author_id,body,created_at)
+select id,deliverer_id,'fixture newer deliverer message',now()-interval '30 minutes'
+from app.items where title='parent grouping fixture';
+set local role authenticated;
+do $$declare page jsonb;begin
+  page:=app.read_inventory_page('management','{"queryField":"serial","query":"990203"}',50,'{}');
+  if not exists(select 1 from jsonb_array_elements(page->'rows') d
+                where d->>'title'='parent grouping fixture'
+                  and d->>'latest_comment'='fixture newer deliverer message') then
+    raise exception 'Newer assignee message did not take precedence';
+  end if;
+end $$;
+set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
+do $$begin
+  if exists(select 1 from app.v_inventory_display
+            where title='unrelated resale fixture' and latest_comment is not null) then
+    raise exception 'A different assignee could see the fault report through the inventory view';
+  end if;
+end $$;
+
 rollback;
