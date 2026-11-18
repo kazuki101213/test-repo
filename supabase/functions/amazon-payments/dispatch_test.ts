@@ -35,7 +35,7 @@ Deno.test('Planned, Amazon-fulfilled, unrelated, duplicate and cancelled package
   ]) equal(orderDispatchEvidence(bad, now), []);
 });
 
-function database(allowWrite = true) {
+function database(allowWrite = true, aliases: { item_id: string; sku: string }[] = [], aliasFailure = false) {
   const writes: Record<string, unknown>[] = [];
   const rows = [{
     id: 'inventory-01', sku, asin, sales_channel: '自己発送2', status: '取引中',
@@ -45,7 +45,7 @@ function database(allowWrite = true) {
     equal(name, 'apply_amazon_self_dispatch');
     writes.push(values);
     return { data: allowWrite, error: null };
-  }, from() {
+  }, from(table: string) {
     const filters: Record<string, unknown> = {};
     const query = {
       select: () => query,
@@ -53,6 +53,11 @@ function database(allowWrite = true) {
       is: (name: string, value: unknown) => { filters[name] = value; return query; },
       not: () => query, order: () => query,
       range: async () => {
+        if (table === 'item_sku_aliases') {
+          equal(filters.item_id, ['inventory-01']);
+          return aliasFailure ? { data: null, error: new Error('read failed') } : { data: aliases, error: null };
+        }
+        equal(table, 'items');
         equal(filters.sales_channel, ['自己発送2']);
         return { data: rows, error: null };
       },
@@ -88,5 +93,45 @@ Deno.test('Checks all pages and skips an SKU linked to two orders', async () => 
       : Response.json({ orders: [order()], pagination: { nextToken: 'page-2' } }),
   });
   equal(result, { checked: 1, updated: [] });
+  equal(writes, []);
+});
+
+Deno.test('2490: matches the original Amazon SKU and writes using the current inventory SKU', async () => {
+  const alias = '123456789';
+  const { db, writes } = database(true, [{ item_id: 'inventory-01', sku: alias }]);
+  const sample = order();
+  sample.orderItems[0].product.sellerSku = alias;
+  const result = await syncDispatchDates({ db, accountId: 'amazon-2', token: 'test-token', now,
+    fetcher: async () => Response.json({ orders: [sample] }),
+  });
+  equal(result, { checked: 1, updated: [{ sku: alias, shippedAt, shippedOn: '2026-11-12' }] });
+  equal(writes.length, 1);
+  equal(writes[0].p_sku, sku);
+  equal(writes[0].p_item, 'inventory-01');
+});
+Deno.test('Different orders across current and original SKU cannot select a dispatch date', async () => {
+  const alias = '123456789';
+  const { db, writes } = database(true, [{ item_id: 'inventory-01', sku: alias }]);
+  const other = order();
+  other.orderId = '124-1234567-1234567';
+  other.orderItems[0].product.sellerSku = alias;
+  const result = await syncDispatchDates({ db, accountId: 'amazon-2', token: 'test-token', now,
+    fetcher: async () => Response.json({ orders: [order(), other] }),
+  });
+  equal(result, { checked: 1, updated: [] });
+  equal(writes, []);
+});
+Deno.test('Alias lookup failure stops the sync without recording a dispatch', async () => {
+  const { db, writes } = database(true, [], true);
+  let calls = 0;
+  try {
+    await syncDispatchDates({ db, accountId: 'amazon-2', token: 'test-token', now,
+      fetcher: async () => { calls++; return Response.json({ orders: [order()] }); },
+    });
+    throw Error('Expected alias lookup failure');
+  } catch (error) {
+    equal((error as Error).message, 'Amazonの旧SKUとの紐づけを確認できません。');
+  }
+  equal(calls, 0);
   equal(writes, []);
 });

@@ -85,9 +85,27 @@ export async function syncDispatchDates({
     if (data.length < 500) break;
   }
   for (const sku of duplicates) inventory.delete(sku);
+  const rowsById = new Map([...inventory.values()].map(row => [row.id, row]));
+  const ids = [...rowsById.keys()];
+  for (let start = 0; start < ids.length; start += 500) {
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await db.from('item_sku_aliases').select('item_id,sku')
+        .in('item_id', ids.slice(start, start + 500)).order('sku').range(offset, offset + 499);
+      if (error || !data) throw Error('Amazonの旧SKUとの紐づけを確認できません。');
+      for (const alias of data as { item_id: string; sku: string }[]) {
+        const row = rowsById.get(alias.item_id);
+        if (!row || !alias.sku) continue;
+        const existing = inventory.get(alias.sku);
+        if (existing && existing.id !== row.id) duplicates.add(alias.sku);
+        else inventory.set(alias.sku, row);
+      }
+      if (data.length < 500) break;
+    }
+  }
+  for (const sku of duplicates) inventory.delete(sku);
 
   const updated: { sku: string; shippedAt: string; shippedOn: string }[] = [];
-  if (!inventory.size) return { checked: 0, updated };
+  if (!rowsById.size) return { checked: 0, updated };
 
   const params = new URLSearchParams({
     marketplaceIds: marketplace,
@@ -97,7 +115,7 @@ export async function syncDispatchDates({
     lastUpdatedBefore: new Date(now - 3 * 60000).toISOString(),
     maxResultsPerPage: '100',
   });
-  const candidates = new Map<string, DispatchEvidence>();
+  const candidates = new Map<string, { row: Inventory; evidence: DispatchEvidence }>();
   const ambiguous = new Set<string>();
   const tokens = new Set<string>();
   let pageToken: string | undefined;
@@ -116,11 +134,11 @@ export async function syncDispatchDates({
         const row = inventory.get(evidence.sku);
         if (!row || row.asin !== evidence.asin || evidence.orderedOn < row.purchased_at ||
             (row.sold_on && evidence.orderedOn !== row.sold_on)) continue;
-        const previous = candidates.get(evidence.sku);
-        if (previous && (previous.orderId !== evidence.orderId || previous.shippedAt !== evidence.shippedAt)) {
-          ambiguous.add(evidence.sku);
+        const previous = candidates.get(row.id)?.evidence;
+        if (previous && (previous.orderId !== evidence.orderId || previous.shippedAt !== evidence.shippedAt || previous.sku !== evidence.sku)) {
+          ambiguous.add(row.id);
         }
-        candidates.set(evidence.sku, evidence);
+        candidates.set(row.id, { row, evidence });
       }
     }
     pageToken = body.pagination?.nextToken;
@@ -129,9 +147,8 @@ export async function syncDispatchDates({
     if (pageToken) tokens.add(pageToken);
   } while (pageToken);
 
-  for (const evidence of candidates.values()) {
-    if (ambiguous.has(evidence.sku)) continue;
-    const row = inventory.get(evidence.sku)!;
+  for (const { row, evidence } of candidates.values()) {
+    if (ambiguous.has(row.id)) continue;
     const { data, error } = await db.rpc('apply_amazon_self_dispatch', {
       p_item: row.id, p_account: accountId, p_sku: row.sku, p_asin: row.asin,
       p_status: row.status, p_updated_at: row.updated_at, p_shipped_on: evidence.shippedOn,
@@ -139,5 +156,5 @@ export async function syncDispatchDates({
     if (error) throw Error('Amazon自己発送の出荷日を保存できません。再実行できます。');
     if (data === true) updated.push({ sku: evidence.sku, shippedAt: evidence.shippedAt, shippedOn: evidence.shippedOn });
   }
-  return { checked: inventory.size, updated };
+  return { checked: rowsById.size, updated };
 }
