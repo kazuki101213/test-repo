@@ -1,4 +1,4 @@
-import {canonicalModelUpdatePending,handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,observedSelfListing,validateRegisteredOffer,catalogModelNamePatch,repairCatalogModelName,type ListingItem} from './index.ts';
+import {hasRecordedCanonicalModel,handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,observedSelfListing,validateRegisteredOffer,revalidateAsinOffer,type ListingItem} from './index.ts';
 import {photographSignature,samePhotograph,verifyAmazonPhotoCopies,prepareImageDecoder,validateJpegDimensions,amazonComparisonImageUrl} from '../_shared/amazonImageVerification.ts';
 import jpeg from 'npm:jpeg-js@0.4.4';
 
@@ -306,43 +306,11 @@ Deno.test('Amazon copies use the same asset at bounded comparison resolution wit
  let blocked=false;try{amazonComparisonImageUrl('https://evil.example/images/I/71example.jpg')}catch{blocked=true}assert(blocked);
 });
 
-Deno.test('Canonical model preview uses one Amazon catalog model number for the matching ASIN only',()=>{
- const remote:any={...listing(),issues:[{code:'100095',severity:'ERROR',attributeNames:['model_name']}]};
- const catalog={asin:item().asin,attributes:{model_number:[{value:'2B-C10BW1',marketplace_id:market}]}};
- const patch=catalogModelNamePatch(remote,catalog);assert(patch?.patches[0].value[0].value==='2B-C10BW1');
- assert(catalogModelNamePatch(remote,{...catalog,asin:'B000000000'})===null);
- assert(catalogModelNamePatch({...remote,attributes:{...remote.attributes,model_name:[{value:'own model'}]}},catalog)===null);
- assert(catalogModelNamePatch(remote,{...catalog,attributes:{model_number:[{value:'2B-C10BW1'},{value:'ambiguous'}]}})===null);
-});
-
-Deno.test('Canonical model repair is guarded, keeps offer terms, and never repeats uncertain writes',async()=>{
- for(const variant of ['success','priced','buyable','stock','wrongPrice','concurrent','timeout','invalidPreview','changedItem','alreadyReserved']){
-  const i=item();const r:any={request_id:requestId,state:'accepted',sku:i.sku,asin:i.asin,note:variant==='alreadyReserved'?'Amazon型番補正:pending':'waiting'};
-  const original:any={...listing(i),offers:[],issues:[{code:'100095',severity:'ERROR',attributeNames:['model_name']}]};original.summaries[0].status=['DISCOVERABLE'];
-  if(variant==='priced'||variant==='wrongPrice')original.offers=[{marketplaceId:market,offerType:'B2C',price:{currencyCode:'JPY',amount:variant==='wrongPrice'?'1':String(i.planned_price)}}];
-  if(variant==='buyable')original.summaries[0].status.push('BUYABLE');
-  if(variant==='stock')original.fulfillmentAvailability=[{quantity:1}];
-  let writes=0,previews=0;
-  const svc:any={from(table:string){let update:any,filters:any={};const q:any={select(){return q},eq(k:string,v:any){filters[k]=v;return q},is(k:string,v:any){filters[k]=v;return q},update(v:any){update=v;return q},single:async()=>({data:{...i,planned_price:variant==='changedItem'?1:i.planned_price}}),maybeSingle:async()=>{if(variant==='concurrent')return{data:null};assert(filters.note===r.note);Object.assign(r,update);return{data:{request_id:requestId}}},then(resolve:any){Object.assign(r,update);return Promise.resolve({}).then(resolve)}};return q;}};
-  const api:any={catalog:async()=>({asin:i.asin,attributes:{model_number:[{value:'2B-C10BW1',marketplace_id:market}]}}),patchModelName:async(sku:string,body:any,preview:boolean)=>{
-   assert(sku===i.sku&&body.patches.length===1&&body.patches[0].path==='/attributes/model_name');
-   if(preview){previews++;return{status:variant==='invalidPreview'?'INVALID':'VALID'};}
-   assert(r.note.startsWith('Amazon型番補正:'));writes++;if(variant==='timeout')throw Error('timeout');return{status:'ACCEPTED',submissionId:'model-only'};
-  }};
-  let changed=false;try{changed=await repairCatalogModelName(svc,r,i,original,api);}catch{assert(['timeout','changedItem'].includes(variant));}
-  assert(writes===(['success','priced','timeout'].includes(variant)?1:0),variant);
-  if(['success','priced'].includes(variant))assert(changed&&r.note.includes('accepted'));
-  if(variant==='timeout')assert(r.note.includes('uncertain'));
-  if(['success','priced','timeout','alreadyReserved'].includes(variant)){assert(!(await repairCatalogModelName(svc,r,i,original,api)));assert(writes===(variant==='alreadyReserved'?0:1));}
-  assert(i.planned_price===400&&i.asin===item().asin&&i.sku===item().sku);
- }
-});
-
-Deno.test('An accepted canonical correction remains pending until the old Amazon issue clears, without completing or excusing other errors',()=>{
+Deno.test('Only a recorded canonical contribution can be revalidated as an offer without excusing other errors',()=>{
  const i=item(),r:any={sku:i.sku,asin:i.asin,note:'Amazon型番補正:'+JSON.stringify({state:'accepted',sku:i.sku,asin:i.asin,attribute:'model_name',value:'2B-C10BW1',submissionId:'accepted'})};
  const remote:any={...listing(i),issues:[{code:'100095',severity:'ERROR',attributeNames:['model_name']}]};
  remote.attributes.model_name=[{value:'2B-C10BW1',marketplace_id:market}];
- assert(canonicalModelUpdatePending(remote,r,i));
+ assert(hasRecordedCanonicalModel(remote,r,i));
  for(const variant of ['unaccepted','wrongSku','wrongValue','otherError','enforced','wrongPrice','cleared']){
   const rr=structuredClone(r),copy=structuredClone(remote);
   if(variant==='unaccepted')rr.note=rr.note.replace('"state":"accepted"','"state":"uncertain"');
@@ -352,6 +320,66 @@ Deno.test('An accepted canonical correction remains pending until the old Amazon
   if(variant==='enforced')copy.issues[0].enforcements={actions:[{action:'LISTING_SUPPRESSED'}]};
   if(variant==='wrongPrice')copy.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax=1;
   if(variant==='cleared')copy.issues=[];
-  assert(!canonicalModelUpdatePending(copy,rr,i),variant);
+  assert(!hasRecordedCanonicalModel(copy,rr,i),variant);
  }
+});
+
+Deno.test('ASIN offer revalidation checks the current schema, preserves selected photos and sales terms, and reserves a single real submission',async()=>{
+ for(const variant of ['success','timeout','concurrent','restricted','invalidPreview','wrongSku','wrongPrice','wrongAsin','foreignPhoto','duplicatePhoto','unapproved','wrongSeller','buyable','stock','changedItem','unsupportedField']){
+  const i=item(),remote:any=listing(i);
+  remote.summaries[0].status=['DISCOVERABLE'];
+  if(variant==='buyable')remote.summaries[0].status.push('BUYABLE');
+  if(variant==='stock')remote.fulfillmentAvailability=[{quantity:1}];
+  const r:any={request_id:requestId,item_id:id,state:'accepted',sku:i.sku,asin:i.asin,price:i.planned_price,item_condition:i.condition,sales_channel:i.sales_channel,description:i.description,seller_id:'seller',photo_ids:[photoId],note:'waiting'};
+  if(variant==='wrongAsin')r.asin='B000000000';
+  if(variant==='foreignPhoto')r.photo_ids=['foreign'];
+  if(variant==='duplicatePhoto')r.photo_ids=[photoId,photoId];
+  let reads=0,writes=0,previews=0;
+  const svc:any={rpc:async()=>({data:variant!=='unapproved'}),storage:{from:()=>({createSignedUrls:async(paths:string[])=>{assert(paths.join(',')==='photo.jpg');return{data:[{signedUrl:photoUrl}]};}})},from(table:string){let update:any,filters:any={};const q:any={select(){return q},eq(k:string,v:any){filters[k]=v;return q},is(k:string,v:any){filters[k]=v;return q},update(v:any){update=v;return q},single:async()=>{reads++;return{data:{...i,planned_price:variant==='changedItem'&&reads>1?1:i.planned_price}}},maybeSingle:async()=>{if(!update)return{data:r};if(variant==='concurrent'||filters.note!==r.note)return{data:null};Object.assign(r,update);return{data:{request_id:requestId}}},then(resolve:any){if(table==='item_photos')return Promise.resolve({data:[{id:photoId,storage_path:'photo.jpg'}]}).then(resolve);if(update&&filters.note===r.note)Object.assign(r,update);return Promise.resolve({}).then(resolve)}};return q;}};
+  const api:any={sellerId:variant==='wrongSeller'?'other':'seller',get:async()=>remote,offerPlan:async()=>({restrictions:variant==='restricted'?[{reason:'approval'}]:[],productType:'PRODUCT',requirements:'LISTING_OFFER_ONLY',rootProperties:variant==='unsupportedField'?[]:Object.keys({...listingBody(i).attributes,...offerImages([photoUrl])})}),put:async(sku:string,payload:any,preview:boolean)=>{
+   assert(sku===i.sku&&payload.productType==='PRODUCT'&&payload.requirements==='LISTING_OFFER_ONLY');
+   assert(payload.attributes.merchant_suggested_asin[0].value===i.asin&&payload.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax===i.planned_price);
+   assert(payload.attributes.fulfillment_availability[0].fulfillment_channel_code==='AMAZON_JP');
+   assert(payload.attributes.main_offer_image_locator[0].media_location===photoUrl&&!('model_name'in payload.attributes)&&!('variation_theme'in payload.attributes));
+   if(preview){previews++;return{status:variant==='invalidPreview'?'INVALID':'VALID',sku};}
+   assert(r.note.startsWith('AmazonASIN再検証:'));writes++;if(variant==='timeout')throw Error('timeout');return{status:'ACCEPTED',submissionId:'asin-only'};
+  }};
+  const input={action:'revalidate-asin-offer',itemId:id,requestId,expectedSku:variant==='wrongSku'?'changed':i.sku,expectedPrice:variant==='wrongPrice'?1:i.planned_price};
+  let result:any;try{result=await revalidateAsinOffer(svc,input,async()=>api);}catch{assert(!['success','concurrent'].includes(variant),variant);}
+  assert(writes===(['success','timeout'].includes(variant)?1:0),variant);
+  if(['success','timeout'].includes(variant)){assert(r.note.includes(variant==='success'?'accepted':'uncertain'));await revalidateAsinOffer(svc,input,async()=>api);assert(writes===1);}
+  if(variant==='success')assert(result.written&&result.photoCount===1);
+ }
+});
+Deno.test('A known model contribution is read-only and needs a fresh valid ASIN-offer preview; unknown or enforced catalog errors stay blocked',async()=>{
+ const i=item(),r={sku:i.sku,asin:i.asin,note:'Amazon型番補正:'+JSON.stringify({state:'accepted',sku:i.sku,asin:i.asin,attribute:'model_name',value:'2B-C10BW1',submissionId:'accepted'})};
+ for(const variant of ['valid','invalid','enforced','unrecorded','wrongValue']){
+  const remote:any=listing(i);remote.summaries[0].status=['DISCOVERABLE'];remote.issues=[{code:'100095',severity:'ERROR',attributeNames:['model_name']}];
+  remote.attributes.model_name=[{value:variant==='wrongValue'?'wrong':'2B-C10BW1',marketplace_id:market}];
+  if(variant==='enforced')remote.issues[0].enforcements={actions:[{action:'LISTING_SUPPRESSED'}]};
+  let previews=0;const before=JSON.stringify(remote);
+  const result=await validateRegisteredOffer(remote,i,{put:async(sku,body,preview)=>{assert(preview===true&&body.requirements==='LISTING_OFFER_ONLY'&&!('model_name'in body.attributes));previews++;return{sku,status:variant==='invalid'?'INVALID':'VALID'};}},variant==='unrecorded'?undefined:r);
+  assert(JSON.stringify(remote)===before);
+  assert((!!result&&verifiedListing(result,i))===(variant==='valid'),variant);
+  assert(previews===(['valid','invalid'].includes(variant)?1:0),variant);
+ }
+});
+
+Deno.test('Inspection compares the receipt-selected photos in their saved order rather than the first six uploaded files',async()=>{
+ const i=item(),photos=Array.from({length:8},(_,n)=>({id:'p'+n,storage_path:'photo'+n+'.jpg'})),ids=['p0','p2','p1','p3','p4','p6'];
+ const r={item_id:id,request_id:requestId,state:'accepted',sku:i.sku,asin:i.asin,price:i.planned_price,item_condition:i.condition,sales_channel:i.sales_channel,seller_id:'seller',photo_ids:ids};
+ const svc:any={from(table:string){const q:any={select(){return q},eq(){return q},order(){return q},maybeSingle:async()=>({data:r}),single:async()=>({data:i}),then(resolve:any){return Promise.resolve({data:photos}).then(resolve)}};return q;},storage:{from:()=>({createSignedUrls:async(paths:string[])=>{assert(paths.join(',')==='photo0.jpg,photo2.jpg,photo1.jpg,photo3.jpg,photo4.jpg,photo6.jpg');return{data:paths.map(path=>({signedUrl:'https://test.supabase.co/'+path}))};}})}};
+ const result=await inspectReceipt(svc,{action:'inspect-receipt',itemId:id,requestId,includePhotos:true},async()=>({sellerId:'seller',get:async()=>listing(i)})as any);
+ assert(result.photoEvidence?.photoIds.join(',')===ids.join(','));
+});
+
+Deno.test('A recorded model correction cannot deadlock FBA registration when a fresh ASIN offer and its selected photos are verified',async()=>{
+ const i=item(),remote:any=listing(i);
+ remote.summaries[0].status=['DISCOVERABLE'];remote.issues=[{code:'100095',severity:'ERROR',attributeNames:['model_name']}];
+ remote.attributes.model_name=[{value:'2B-C10BW1',marketplace_id:market}];
+ const r:any={request_id:requestId,item_id:id,state:'accepted',sku:i.sku,asin:i.asin,price:i.planned_price,item_condition:i.condition,sales_channel:i.sales_channel,description:i.description,seller_id:'seller',photo_ids:[photoId],note:'Amazon型番補正:'+JSON.stringify({state:'accepted',sku:i.sku,asin:i.asin,attribute:'model_name',value:'2B-C10BW1',submissionId:'model-only'})};
+ let previews=0;
+ const svc:any={rpc:async(name:string)=>{assert(name==='listing_photos_approved');return{data:true};},storage:{from:()=>({createSignedUrls:async()=>({data:[{signedUrl:photoUrl}]})})},from(table:string){let update:any;const q:any={select(){return q},eq(){return q},in(){return q},order(){return q},update(value:any){update=value;return q},maybeSingle:async()=>({data:r}),single:async()=>({data:i}),then(resolve:any){if(update)Object.assign(r,update);return Promise.resolve(table==='item_photos'?{data:[{id:photoId,storage_path:'photo.jpg'}]}:{}).then(resolve)}};return q;}};
+ const result=await reconcileReceipt(svc,{itemId:id,requestId,expectedSku:i.sku,expectedPrice:i.planned_price},async()=>({sellerId:'seller',get:async()=>remote,put:async(sku:string,payload:any,preview:boolean)=>{assert(preview===true&&payload.requirements==='LISTING_OFFER_ONLY'&&!('model_name'in payload.attributes));previews++;return{status:'VALID',sku};},catalog:async()=>{throw Error('must not repair catalog facts')}})as any);
+ assert(result.verified&&r.state==='verified'&&!!r.photos_verified_at&&previews===1);
 });
