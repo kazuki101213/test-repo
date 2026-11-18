@@ -16,7 +16,7 @@ export const CONDITIONS: ItemCondition[] = [
 
 export const WORK_STREAMS: WorkStream[] = ['テレビ', 'ブルーレイ', '付属品', 'その他'];
 
-export const STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","出品中","出品停止","取引中","販売済","返品処理","動作不良"];
+export const STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","出品中","取引中","販売済","返品処理","動作不良"];
 
 export const HELD_STATUSES: ItemStatus[] = ["受取前","検品中","Amazon返送依頼","Amazon補填申請中","商品登録前","動作不良"];
 
@@ -28,7 +28,6 @@ export const STATUS_COLORS: Record<ItemStatus,string> = {
   'Amazon補填申請中': '#f9a8d4',
   '商品登録前': '#93c5fd',
   '出品中': '#34d399',
-  '出品停止': '#94a3b8',
   '取引中': '#7dd3fc',
   '販売済': '#22c55e',
   '返品処理': '#f87171',

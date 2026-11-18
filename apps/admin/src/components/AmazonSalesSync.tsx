@@ -69,7 +69,7 @@ async function invoke(body: object, endpoint = 'amazon-payments') {
 }
 
 async function syncListings(failures: string[]) {
-  let active = 0, inactive = 0;
+  let active = 0;
   const pending: string[] = [];
   try {
     const { accounts } = await invoke({}, 'amazon-seller-inventory');
@@ -78,11 +78,10 @@ async function syncListings(failures: string[]) {
       if (row.state === 'error' && !unavailableAmazon1Report(row.label, row.error)) failures.push(`${row.label}の出品照合 ${row.error ?? '出品状態を確認できませんでした。'}`);
       if (row.state === 'completed') {
         active += row.active ?? 0;
-        inactive += row.inactive ?? 0;
       }
     }
   } catch (cause) { failures.push(`Amazonの出品照合 ${errorText(cause)}`); }
-  return { active, inactive, pending };
+  return { active, pending };
 }
 
 export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }) {
@@ -115,10 +114,10 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
     let saved = 0;
     const failures: string[] = [];
     try {
-      const { active, inactive, pending } = await syncListings(failures);
+      const { active, pending } = await syncListings(failures);
       void loadListingStatus();
-      if (active || inactive) onApplied();
-      const listingNotice = `出品中へ${active}件・在庫切れへ${inactive}件反映${pending.length ? `、${pending.join('・')}の出品レポート作成中（完了後に自動反映）` : ''}`;
+      if (active) onApplied();
+      const listingNotice = `出品中へ${active}件反映${pending.length ? `、${pending.join('・')}の出品レポート作成中（完了後に自動反映）` : ''}`;
       setNotice(`${listingNotice}。Amazonの売上情報を確認しています…`);
       const { data: earliest, error: earliestError } = await getSupabase().from('items').select('purchased_at')
         .not('purchased_at', 'is', null).gte('purchased_at', '2010-01-01').order('purchased_at', { ascending: true }).limit(1).maybeSingle();

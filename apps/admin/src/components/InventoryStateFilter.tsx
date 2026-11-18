@@ -18,11 +18,6 @@ export default function InventoryStateFilter({ value, onChange, purchaser, assig
   return <details ref={container} className="inventory-multi-filter">
     <summary>フィルター{count > 0 ? `（${count}）` : ''}</summary>
     <div className="inventory-multi-filter-panel">
-      <div className="toolbar inventory-filter-shortcuts">
-        <button type="button" className="btn" aria-pressed={value.status?.length===1&&value.status[0]==='出品停止'}
-          data-active={value.status?.length===1&&value.status[0]==='出品停止'}
-          onClick={()=>onChange({...value,status:value.status?.length===1&&value.status[0]==='出品停止'?[]:['出品停止']})}>在庫切れのみ</button>
-      </div>
       <button type="button" className="btn" onClick={() => { onChange({}); purchaser?.onChange([]); assignee?.onChange([]); }}>すべて解除</button>
       {assigneeGroups.map(({ label, filter }) => filter && <fieldset className="inventory-assignee-filter" key={label}>
         <legend>{label}</legend>
