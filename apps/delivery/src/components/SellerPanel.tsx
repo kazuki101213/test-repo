@@ -31,7 +31,7 @@ function statusText(op:SellerOperation){
  return ({queued:'拡張機能の実行待ち',running:'実行中',succeeded:'完了',failed:'停止',uncertain:'結果の確認が必要'} as const)[op.status];
 }
 
-function MercariShippingHandoff({itemId,tradeKey,disabled}:{itemId:string;tradeKey:string;disabled:boolean}){
+function MarketplaceShippingHandoff({itemId,tradeKey,disabled}:{itemId:string;tradeKey:string;disabled:boolean}){
  const [state,setState]=useState<MercariShippingHandoffState|null>(null);
  const [saving,setSaving]=useState(false);
  const [error,setError]=useState('');
@@ -292,8 +292,8 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    {mercariPost?<p>メルカリの取引画面で専用資材のコードを読み取り、郵便ポストへ投函してください。 <a href={`https://jp.mercari.com/transaction/${encodeURIComponent(context?.listing?.external_id??'')}`} target="_blank" rel="noreferrer">取引画面を開く</a></p>:/ゆうパケットポストmini/.test(draft.size)?<>
     <button type="button" className="btn" disabled={disabled||!!sellerShippingError(draft)} onClick={()=>setCamera(true)}>専用資材のコードを読む</button>{camera&&<PackageCamera onRead={onRead} onClose={()=>setCamera(false)}/>}
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}{operationProgress(['shipping_code','register_package','ship_notice'])}
-   </>:<><div className="seller-shipping-actions"><button type="button" className="btn" data-direction="forward" disabled={busy||!!codeIssue||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button>{mercari&&<MercariShippingHandoff key={task.id+':'+trade} itemId={task.id} tradeKey={trade} disabled={disabled}/>}</div>{operationProgress(['shipping_code','register_package','ship_notice'])}{codeIssue&&!sellerShippingError(draft)&&<p className="error" role="alert">{codeIssue}</p>}{qr&&!codeIssue&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
-   {mercari&&(mercariPost||/ゆうパケットポストmini/.test(draft.size))&&<div className="seller-shipping-actions"><MercariShippingHandoff key={task.id+':'+trade} itemId={task.id} tradeKey={trade} disabled={disabled}/></div>}
+   </>:<><div className="seller-shipping-actions"><button type="button" className="btn" data-direction="forward" disabled={busy||!!codeIssue||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button>{<MarketplaceShippingHandoff key={task.id+':'+trade} itemId={task.id} tradeKey={trade} disabled={disabled}/>}</div>{operationProgress(['shipping_code','register_package','ship_notice'])}{codeIssue&&!sellerShippingError(draft)&&<p className="error" role="alert">{codeIssue}</p>}{qr&&!codeIssue&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
+   {(mercariPost||/ゆうパケットポストmini/.test(draft.size))&&<div className="seller-shipping-actions"><MarketplaceShippingHandoff key={task.id+':'+trade} itemId={task.id} tradeKey={trade} disabled={disabled}/></div>}
    {staff.role==='admin'&&<LineShippingSettings key={task.id+':'+trade} itemId={task.id} draft={draft}/>}
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>{operationProgress(['message_sync'])}

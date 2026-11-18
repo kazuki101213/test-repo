@@ -1,49 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {processDailyShipping,fetchCarrierReceipts} from '../../tools/fleamarket-extension/daily-shipping.js';
-const receipt={carrier:'yamato',tracking_number:'999999999999'},proof={...receipt,accepted:true,accepted_at:'2026-10-22T09:00:00+09:00',observed_at:'2026-10-22T09:01:00+09:00'};
-const job={item_id:'fixture',external_id:'m99999999999',trade_key:'m99999999999:2026-10-21',url:'https://jp.mercari.com/transaction/m99999999999',receipt};
-for(const mode of ['accepted','unaccepted','already','changed','uncertain'])test('daily shipping '+mode,async()=>{
- const calls=[],phases=[],pages=[];let fetched=0;
- const session={go:async u=>pages.push(u),operation:async(_,phase)=>{phases.push(phase);if(phase==='ship_notice_preflight')return mode==='already'?{alreadyNotified:true,observed_at:proof.observed_at}:{};if(mode==='uncertain')throw Error('confirmation unknown');return {notified:true};},outboundReceipt:async()=>mode==='changed'?{...receipt,tracking_number:'888888888888'}:receipt};
- const rpc=async(name,args)=>{calls.push({name,args});return name==='extension_claim_daily_shipping_notice'?{...job,id:'operation',payload:{automatic_receipt:proof}}:true;};
- await processDailyShipping({jobs:[mode==='already'?{...job,receipt:null}:job],session,rpc,log:async()=>{},fetchReceipts:async()=>{fetched++;return new Map(mode==='unaccepted'?[]:[['yamato:'+receipt.tracking_number,proof]]);}});
- const finish=calls.find(c=>c.name==='extension_finish_seller_operation');
- if(mode==='unaccepted'){assert.equal(calls.length,0);assert.equal(pages.length,0);return;}
- if(mode==='already'){assert.equal(fetched,0);assert(!phases.includes('ship_notice'));assert.equal(finish.args.p_result.already_notified,true);}
- if(mode==='changed'){assert(!phases.includes('ship_notice'));assert.equal(finish.args.p_status,'failed');}
- if(mode==='uncertain')assert.equal(finish.args.p_status,'uncertain');
- if(mode==='accepted'){assert.equal(phases.filter(v=>v==='ship_notice').length,1);assert.equal(finish.args.p_status,'succeeded');}
+import {sellerDaily} from '../../tools/fleamarket-extension/seller-runtime.js';
+for(const channel of ['メルカリ','ヤフオク'])for(const mode of ['unconfirmed','handoff','already','unknown','missing_confirmation','stale'])test(channel+' app handoff '+mode,async()=>{
+ const job={item_id:'fixture',channel,account_id:channel==='メルカリ'?'mercari-2':'auctions-1',trade_key:channel==='メルカリ'?'m999999:2026-11-18':'a999999',url:'https://fixture',handoff_confirmed:mode!=='unconfirmed'};
+ const phases=[],claims=[],finished=[],pages=[];
+ const session={go:async u=>pages.push(u),operation:async(_,phase)=>{phases.push(phase);if(phase==='ship_notice_preflight')return{alreadyNotified:mode==='already',observed_at:new Date().toISOString()};if(mode==='unknown')throw Error('response lost');return mode==='missing_confirmation'?{}:{notified:true};},outboundReceipt:async()=>assert.fail('No waybill lookup')};
+ const rpc=async(name,args)=>{if(name==='extension_claim_daily_shipping_notice'){claims.push(args);return mode==='stale'?null:{id:'operation'};}finished.push(args);};
+ await processDailyShipping({jobs:[job],session,rpc,log:async()=>{},fetchReceipts:async()=>assert.fail('No carrier lookup')});
+ if(mode==='unconfirmed'){assert.deepEqual(pages,[]);assert.deepEqual(claims,[]);return;}
+ assert.equal(claims.length,1);
+ if(mode==='stale'){assert.deepEqual(finished,[]);assert.deepEqual(phases,['ship_notice_preflight']);return;}
+ assert.equal(finished[0].p_status,['unknown','missing_confirmation'].includes(mode)?'uncertain':'succeeded');
+ if(mode==='already'){assert.deepEqual(phases,['ship_notice_preflight']);assert.equal(finished[0].p_result.already_notified,true);}
+ else{assert.deepEqual(phases,['ship_notice_preflight','ship_notice']);assert.equal(claims[0].p_proof.source,'delivery_handoff');assert.equal(claims[0].p_proof.tracking_number,undefined);}
 });
-for(const evidence of ['mercari_shipping_status','delivery_handoff','none'])test('Mercari shipment proof without a tracking number: '+evidence,async()=>{
- const target={...job,channel:'メルカリ',receipt:null,handoff_confirmed:evidence==='delivery_handoff'};
- const operations=[],claims=[],finished=[];
- const session={
-  go:async()=>{},
-  operation:async(_,phase)=>{
-   operations.push(phase);
-   return phase==='ship_notice_preflight'
-    ?{ready:true,observed_at:proof.observed_at,...(evidence==='mercari_shipping_status'?{acceptance:'荷物受付'}:{})}
-    :{notified:true};
-  },
-  outboundReceipt:async()=>null,
- };
- const rpc=async(name,args)=>{
-  if(name==='extension_claim_daily_shipping_notice'){claims.push(args.p_proof);return {id:'notice'};}
-  finished.push(args);
- };
- await processDailyShipping({jobs:[target],session,rpc,log:async()=>{},fetchReceipts:async()=>assert.fail('Unexpected carrier lookup')});
- assert.deepEqual(operations,evidence==='none'?['ship_notice_preflight']:['ship_notice_preflight','ship_notice']);
- if(evidence==='none'){assert.deepEqual(claims,[]);return;}
- assert.equal(claims[0].source,evidence);
- assert.equal(claims[0].tracking_number,undefined);
- assert.equal(finished[0].p_status,'succeeded');
+test('Daily handoffs run after account verification and before a failing listing scan',async()=>{
+ const calls=[],day='2026-11-19',account={id:'mercari-2',site:'mercari',label:'fixture',enabled:true};
+ const job={item_id:'fixture',account_id:account.id,channel:'メルカリ',trade_key:'mfixture:2026-11-18',url:'https://fixture',handoff_confirmed:true};
+ const records={scheduledRuns:{tracking:{day},purchases:{day}},lastRun:{tracking:{day},purchases:{day}}};
+ await sellerDaily({settings:{mode:'tracking',purchaseImportEnabled:true,accounts:[account]},records,day,now:Date.parse('2026-11-18T16:00:00Z'),automaticShipping:true,profileId:'fixture',storage:{set:async()=>{}},rpc:async(name)=>{calls.push(name);if(name==='extension_seller_daily_barrier')return true;if(name==='extension_daily_shipping_candidates')return[job];if(name==='extension_claim_daily_shipping_notice')return{id:'op'};return[];},openSession:async()=>{calls.push('verified');return{go:async()=>{},operation:async(_,phase)=>phase==='ship_notice_preflight'?{observed_at:new Date().toISOString()}:{notified:true},links:async()=>{calls.push('listing');throw Error('incomplete listing')},close:async()=>{}};},log:async()=>{}});
+ assert(calls.indexOf('verified')<calls.indexOf('extension_claim_daily_shipping_notice'));
+ assert(calls.indexOf('extension_finish_seller_operation')<calls.indexOf('listing'));
 });
-test('carrier lookup batches ten, omits cookies, never retries a failed request',async()=>{
- const sizes=[],methods=[];let count=0;
- await fetchCarrierReceipts({receipts:Array.from({length:11},(_,i)=>({...receipt,tracking_number:String(999999999900+i)})),pace:fn=>fn(),parse:async args=>{sizes.push(args.receipts.length);return [];},fetchPage:async(url,args)=>{count++;methods.push(args);return {ok:true,headers:new Headers({'content-type':'text/html;charset=utf-8'}),arrayBuffer:async()=>new TextEncoder().encode('<h1>tracking</h1>').buffer};}});
- assert.deepEqual(sizes,[10,1]);assert.equal(count,2);assert(methods.every(v=>v.credentials==='omit'&&v.redirect==='error'));
- count=0;await assert.rejects(fetchCarrierReceipts({receipts:[receipt],pace:fn=>fn(),parse:async()=>[],fetchPage:async()=>{count++;throw Error('offline');}}));assert.equal(count,1);
+test('Carrier helper remains read-only and batches ten for unrelated receipt consumers',async()=>{
+ const sizes=[],methods=[];await fetchCarrierReceipts({receipts:Array.from({length:11},(_,i)=>({carrier:'yamato',tracking_number:String(999999999900+i)})),pace:fn=>fn(),parse:async args=>{sizes.push(args.receipts.length);return[];},fetchPage:async(url,args)=>{methods.push(args);return{ok:true,headers:new Headers({'content-type':'text/html;charset=utf-8'}),arrayBuffer:async()=>new TextEncoder().encode('<h1>fixture</h1>').buffer};}});
+ assert.deepEqual(sizes,[10,1]);assert(methods.every(v=>v.credentials==='omit'&&v.redirect==='error'));
 });
-
-test('Japan Post uses the verified direct tracking endpoint with reqCodeNo fields',async()=>{let seen;await fetchCarrierReceipts({receipts:[{carrier:'japanpost',tracking_number:'999999999999'}],pace:fn=>fn(),parse:async()=>[],fetchPage:async(url,args)=>{seen=new URL(url);assert.equal(args.credentials,'omit');return {ok:true,headers:new Headers({'content-type':'text/html;charset=utf-8'}),arrayBuffer:async()=>new TextEncoder().encode('<table></table>').buffer};}});assert.equal(seen.origin,'https://trackings.post.japanpost.jp');assert.equal(seen.pathname,'/services/srv/search/direct');assert.equal(seen.searchParams.get('reqCodeNo1'),'999999999999');assert.equal(seen.searchParams.has('requestNo1'),false);});

@@ -75,70 +75,31 @@ export async function fetchCarrierReceipts({receipts,parse,fetchPage=fetch,pace=
  return proofs;
 }
 
-export async function processDailyShipping({jobs,session,rpc,log,fetchReceipts=fetchCarrierReceipts}){
- const pending=[];
- async function finish(job,proof,alreadyNotified=false){
-  const operation=await rpc('extension_claim_daily_shipping_notice',{
-   p_item_id:job.item_id,p_trade_key:job.trade_key,p_expected_updated_at:job.expected_updated_at,p_proof:proof,
-  });
-  if(!operation)return;
-  let status='failed',result,submitting=false;
-  try{
-   if(alreadyNotified)result={notified:true,already_notified:true,note:'サイトで発送通知済みを確認しました。再送していません'};
-   else{
-    if(proof.tracking_number){
-     const current=await session.outboundReceipt(job);
-     if(current?.carrier!==proof.carrier||current?.tracking_number!==proof.tracking_number)throw Error('発送する荷物が変更されたため通知しません');
-    }
-    submitting=true;
-    result=await session.operation(operation,'ship_notice');
-   }
-   status='succeeded';
-   result={...result,automatic:true,receipt:proof};
-  }catch(error){
-   status=submitting?'uncertain':'failed';
-   result={automatic:true,note:error.message};
-  }
-  await rpc('extension_finish_seller_operation',{p_id:operation.id,p_status:status,p_result:result});
-  if(status!=='succeeded')await log('error','自動発送通知を停止しました：'+result.note);
- }
-
+export async function processDailyShipping({jobs,session,rpc,log}){
  for(const job of jobs){
-  try{
-   const mercari=job.channel==='メルカリ';
-   let receipt=job.receipt;
-   if(mercari||!shippingReceiptValid(receipt)){
-    await session.go(job.url);
-    const state=await session.operation(job,'ship_notice_preflight');
-    if(state.alreadyNotified){
-     await finish(job,{already_notified:true,observed_at:state.observed_at},true);
-     continue;
-    }
-    if(mercari&&(job.handoff_confirmed||state.acceptance)){
-     const proof=job.handoff_confirmed
-      ?{source:'delivery_handoff',accepted:true,observed_at:state.observed_at}
-      :{source:'mercari_shipping_status',status:state.acceptance,accepted:true,observed_at:state.observed_at};
-     await finish(job,proof);
-     continue;
-    }
-    receipt=await session.outboundReceipt(job);
-   }
-   if(shippingReceiptValid(receipt))pending.push({...job,...receipt,trade_key:job.trade_key});
-   else await log('info','自動発送通知：'+job.inventory_sku+' は荷物を預けた記録を確認できず保留しました');
-  }catch(error){await log('warning','自動発送通知の確認を保留しました：'+error.message);}
- }
- if(!pending.length)return;
-
- let proofs;
- try{proofs=await fetchReceipts({receipts:pending,parse:args=>session.parseCarrierReceipts(args)});}
- catch(error){await log('warning','配送会社の確認を翌日に回します：'+error.message);return;}
- for(const job of pending){
-  const proof=proofs.get(job.carrier+':'+job.tracking_number);
-  if(!proof){await log('info','自動発送通知：'+job.inventory_sku+' は配送会社の引受記録を確認できず保留しました');continue;}
+  if(job.handoff_confirmed!==true)continue;
+  let operation,submitting=false;
   try{
    await session.go(job.url);
    const state=await session.operation(job,'ship_notice_preflight');
-   await finish(job,state.alreadyNotified?{already_notified:true,observed_at:state.observed_at}:proof,!!state.alreadyNotified);
-  }catch(error){await log('warning','自動発送通知を保留しました：'+error.message);}
+   const proof=state.alreadyNotified
+    ?{already_notified:true,observed_at:state.observed_at}
+    :{source:'delivery_handoff',accepted:true,observed_at:state.observed_at};
+   operation=await rpc('extension_claim_daily_shipping_notice',{
+    p_item_id:job.item_id,p_trade_key:job.trade_key,p_expected_updated_at:job.expected_updated_at,p_proof:proof,
+   });
+   if(!operation)continue;
+   let result;
+   if(state.alreadyNotified)result={notified:true,already_notified:true,note:'サイトで発送通知済みを確認しました。再送していません'};
+   else{
+    submitting=true;
+    result=await session.operation(operation,'ship_notice');
+    if(result?.notified!==true)throw Error('発送通知の完了表示を確認できません');
+   }
+   await rpc('extension_finish_seller_operation',{p_id:operation.id,p_status:'succeeded',p_result:{...result,automatic:true,receipt:proof}});
+  }catch(error){
+   if(operation)await rpc('extension_finish_seller_operation',{p_id:operation.id,p_status:submitting?'uncertain':'failed',p_result:{automatic:true,note:error.message}});
+   await log('warning','自動発送通知を保留しました：'+error.message);
+  }
  }
 }

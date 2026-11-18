@@ -253,6 +253,7 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
   const remember=row=>{if(['出品中','取引中','支払い待ち'].includes(row.status))cache[row.external_id]={fingerprint:sellerObservationFingerprint(row),checkedAt:now};};
   try{
    session=await openSession(account);
+   if(!hourly&&!repair&&shippingJobs.some(j=>j.account_id===account.id))await processDailyShipping({jobs:shippingJobs.filter(j=>j.account_id===account.id),session,rpc,log});
    const queue=[],seen=new Set(),processed=new Set(),pending=[],feedbackRows=new Map(),fullScan=baselines[account.id]!=='serial-case-v2';
    let registeredRun=0,salesStopped=false,salesSeen=false,batches=0;const auctionSaleIds=new Set();
    const salePhase=phase=>phase==='売却済み'||phase==='売上金管理';
@@ -310,7 +311,6 @@ export async function sellerDaily({settings,records,day,profileId,storage,rpc,op
    }
    // Daily lifecycle: shipping -> buyer feedback -> final sales reconciliation.
    // Lists above are shared preflight evidence; never add a second marketplace scan.
-   if(!hourly&&!repair&&shippingJobs.some(j=>j.account_id===account.id))await processDailyShipping({jobs:shippingJobs.filter(j=>j.account_id===account.id),session,rpc,log});
    let feedbackChecks={};
    if(!repair&&feedbackSites.includes(account.site)&&feedbackRows.size){
     const feedback=await processSellerFeedback({account,rows:[...feedbackRows.values()],session,rpc,storage,log,now});
