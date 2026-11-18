@@ -68,7 +68,12 @@ export async function validateRegisteredOffer(listing:Obj|null,item:ListingItem,
  if(!listing||!Array.isArray(listing.issues)||!listing.issues.some((issue:Obj)=>inheritedCatalogIssue(issue,listing)))return listing;
  const candidate={...listing,issues:listing.issues.filter((issue:Obj)=>!inheritedCatalogIssue(issue,listing))};
  const summary=listing.summaries?.find((s:Obj)=>s.marketplaceId===marketplace);
- if(!verifiedListing(candidate,item)||effectivePrice(listing)!==item.planned_price||
+ const fbaBeforeReceipt=/^FBA/.test(item.sales_channel??'')&&Array.isArray(listing.offers)&&listing.offers.length===0&&
+  Array.isArray(summary?.status)&&summary.status.includes('DISCOVERABLE')&&!summary.status.includes('BUYABLE')&&
+  (listing.fulfillmentAvailability??[]).every((row:Obj)=>!row.quantity);
+ // No live offer/price exists before FBA inventory is received. The submitted
+ // JPY price and FBA channel must still match, and Amazon must validate this offer.
+ if(!verifiedListing(candidate,item)||effectivePrice(listing)!==item.planned_price&&!fbaBeforeReceipt||
    !Array.isArray(summary?.status)||!summary.status.some((status:string)=>['DISCOVERABLE','BUYABLE'].includes(status)))return listing;
  const payload=listingBody(item,{attributes:listing.attributes});
  const preview=await api.put(item.sku,payload,true);

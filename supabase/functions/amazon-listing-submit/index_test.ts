@@ -1,5 +1,5 @@
 import {handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,observedSelfListing,validateRegisteredOffer,type ListingItem} from './index.ts';
-import {photographSignature,samePhotograph,verifyAmazonPhotoCopies} from '../_shared/amazonImageVerification.ts';
+import {photographSignature,samePhotograph,verifyAmazonPhotoCopies,prepareImageDecoder,validateJpegDimensions,amazonComparisonImageUrl} from '../_shared/amazonImageVerification.ts';
 import jpeg from 'npm:jpeg-js@0.4.4';
 
 Deno.test('self-fulfilled status requires the matching Japan SKU, ASIN, condition and purchase availability',()=>{
@@ -24,6 +24,7 @@ const item=():ListingItem=>({id,sku:'100000-AAAA-20261106-35',asin:'B015INS3IE',
 const photoId='55555555-5555-4555-8555-555555555555',photoUrl='https://test.supabase.co/storage/v1/object/sign/item-photos/photo.jpg?token=test';
 const listing=(i=item())=>({sku:i.sku,summaries:[{marketplaceId:market,productType:'HVAC_AIR_FILTER',asin:i.asin,conditionType:'used_very_good'}],offers:[{marketplaceId:market,offerType:'B2C',price:{currencyCode:'JPY',amount:i.planned_price}}],attributes:{...listingBody(i).attributes,...offerImages([photoUrl])},issues:[]});
 Deno.test('Amazon recompressed and resized photographs verify by content, including legacy submitted order',async()=>{
+ await prepareImageDecoder();
  const raster=(size:number,reverse=false)=>{const data=new Uint8Array(size*size*4);for(let y=0;y<size;y++)for(let x=0;x<size;x++){const k=(y*size+x)*4;data[k]=reverse?20:210;data[k+1]=x<size/2?40:150;data[k+2]=y<size/2?220:20;data[k+3]=255;}return{data,width:size,height:size};};
  const one=raster(192),two=raster(192,true);assert(!samePhotograph(photographSignature(one),photographSignature(two)));
  const bytes=new Map([['https://approved.example/a.jpg',jpeg.encode(one,95).data],['https://approved.example/b.jpg',jpeg.encode(two,95).data],['https://m.media-amazon.com/a.jpg',jpeg.encode(raster(96),50).data],['https://m.media-amazon.com/b.jpg',jpeg.encode(raster(96,true),50).data]]);
@@ -253,4 +254,54 @@ Deno.test('offer validation preserves real, attributed, mixed and enforced error
   assert(result===remote,'keep blocking error for '+variant);
   assert(previews===(variant.startsWith('preview')?1:0),'preview guard '+variant);
  }
+});
+
+Deno.test('2474 and 2489: pre-inbound FBA can validate an inherited model error without a live price',async()=>{
+ const i={...item(),sales_channel:'FBA2'};
+ const remote:any={...listing(),offers:[],fulfillmentAvailability:[],issues:[{code:'100095',severity:'ERROR',attributeNames:['model_name']}]};
+ remote.attributes=listingBody(i).attributes;
+ remote.summaries[0].status=['DISCOVERABLE'];
+ const before=JSON.stringify(remote);let previews=0;
+ const result=await validateRegisteredOffer(remote,i,{put:async(sku,body,preview)=>{
+  assert(preview===true&&sku===i.sku);
+  assert(body.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax===i.planned_price);
+  assert(!Object.hasOwn(body.attributes,'model_name'));
+  previews++;return{status:'VALID',sku};
+ }});
+ assert(previews===1&&!!result&&verifiedListing(result,i));
+ assert(JSON.stringify(remote)===before);
+});
+Deno.test('A missing FBA live price never excuses active stock, FBM, uncertain offers, wrong submitted price or enforcement',async()=>{
+ for(const variant of ['buyable','stock','fbm','missingOffers','submittedPrice','enforced']){
+  const i={...item(),sales_channel:'FBA2'};
+  const remote:any={...listing(),offers:[],fulfillmentAvailability:[],issues:[{code:'100095',severity:'ERROR',attributeNames:['model_name']}]};
+  remote.attributes=listingBody(i).attributes;remote.summaries[0].status=['DISCOVERABLE'];
+  if(variant==='buyable')remote.summaries[0].status.push('BUYABLE');
+  if(variant==='stock')remote.fulfillmentAvailability=[{fulfillmentChannelCode:'AMAZON_JP',quantity:1}];
+  if(variant==='fbm')i.sales_channel='自己発送2';
+  if(variant==='missingOffers')delete remote.offers;
+  if(variant==='submittedPrice')remote.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax=1;
+  if(variant==='enforced')remote.issues[0].enforcements={actions:[{action:'LISTING_SUPPRESSED'}]};
+  let calls=0;
+  const result=await validateRegisteredOffer(remote,i,{put:async()=>{calls++;throw Error('must not bypass real error')}});
+  assert(result===remote&&calls===0,variant);
+ }
+});
+
+Deno.test('Native image decoding rejects missing, truncated and oversized JPEG dimensions before allocation',()=>{
+ for(const bytes of [
+  new Uint8Array([1,2,3]),
+  new Uint8Array([255,216,255,192,0,8,8,255,255,255,255,0]),
+  new Uint8Array([255,216,255,192,0,20,8,1]),
+ ]){
+  let rejected=false;try{validateJpegDimensions(bytes)}catch{rejected=true}assert(rejected);
+ }
+ const data=new Uint8Array(64*64*4).fill(100);
+ validateJpegDimensions(jpeg.encode({data,width:64,height:64},80).data);
+});
+
+Deno.test('Amazon copies use the same asset at bounded comparison resolution without changing submitted photos',()=>{
+ assert(amazonComparisonImageUrl('https://m.media-amazon.com/images/I/71example._SL1500_.jpg')==='https://m.media-amazon.com/images/I/71example._SL256_.jpg');
+ assert(amazonComparisonImageUrl('https://m.media-amazon.com/images/I/71example.jpg')==='https://m.media-amazon.com/images/I/71example._SL256_.jpg');
+ let blocked=false;try{amazonComparisonImageUrl('https://evil.example/images/I/71example.jpg')}catch{blocked=true}assert(blocked);
 });
