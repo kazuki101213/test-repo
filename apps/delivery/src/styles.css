@@ -342,3 +342,6 @@ textarea { min-height: 80px; resize: vertical; }
 @media(max-width:640px) { .delivery-return-details { flex-direction:column; } }
 
 @media(min-width:641px) { .delivery-shipping-task .delivery-return-details { flex-direction:row; gap:0; } }
+
+.task-product-links { display:inline-flex; flex-flow:row wrap; align-items:baseline; gap:0 8px; min-width:0; max-width:100%; }
+.task-product-links > a,.task-product-links > span { overflow-wrap:anywhere; }

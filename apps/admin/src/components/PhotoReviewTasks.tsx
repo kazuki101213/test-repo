@@ -1,5 +1,6 @@
+import {withTaskPurchaseProducts,type TaskPurchaseReferences} from '@bussan/shared';
+import TaskProductLinks from './TaskProductLinks';
 import ReturnReasonDialog from './ReturnReasonDialog';
-import { purchaseItemUrl } from '../purchaseUrl';
 import { productSerial } from '../inventory';
 import { useEffect, useRef, useState } from 'react';
 import { adminTaskNotice } from '../taskNotice';
@@ -10,7 +11,7 @@ import {readReviewPhotos} from '../reviewPhotos';
 import { deliveryAppUrl } from '../appUrls';
 
 interface Review { item_id: string; drive_folder_id: string; submitted_at: string; exported_photo_count: number }
-interface PurchaseReference { marketplace_item_id?: string | null; marketplace?: string | null; marketplace_url?: string | null }
+interface PurchaseReference extends TaskPurchaseReferences { marketplace_item_id?: string | null; marketplace?: string | null; marketplace_url?: string | null }
 interface Item extends PurchaseReference { id: string; sku: string; title: string; lot_seq: number; sales_channel?:string|null }
 interface ListingTask extends PurchaseReference { id: string; created_at?: string; sku: string; lot_seq: number; sales_channel: string; marketplace_item_id?: string | null }
 
@@ -28,7 +29,7 @@ async function listingProductIds(tasks: ListingTask[]): Promise<ListingTask[]> {
     if (error) throw error;
     for (const row of data ?? []) ids.set(row.id, row);
   }
-  return tasks.map(task => ({ ...task, ...ids.get(task.id) }));
+  return withTaskPurchaseProducts(tasks.map(task => ({ ...task, ...ids.get(task.id) })));
 }
 
 export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=0}:{mode?:'all'|'photos'|'listing';onReviewed?:()=>void;refreshRevision?:number}={}) {
@@ -144,12 +145,12 @@ export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=
 
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
-      {listingTasks.rows.map(task => { const sourceUrl=purchaseItemUrl(task.marketplace??null,task.marketplace_item_id??null,task.marketplace_url??null); return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task admin-task-overdue">
-        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品({listingReminderDays(task.created_at, listingTasks.checkedAt)}日経過)</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> {sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{task.marketplace_item_id || '商品ID未登録'}】</a>:<span>【{task.marketplace_item_id || '商品ID未登録'}】</span>}<small>{task.sku}</small></div>
+      {listingTasks.rows.map(task => { return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task admin-task-overdue">
+        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品({listingReminderDays(task.created_at, listingTasks.checkedAt)}日経過)</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> <TaskProductLinks products={task.purchase_products} fallback={task}/><small>{task.sku}</small></div>
         <a className="btn" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer">確認</a>
       </li>;})}
-      {reviews.map(review => { const item=items[review.item_id]; const sourceUrl=purchaseItemUrl(item?.marketplace??null,item?.marketplace_item_id??null,item?.marketplace_url??null); return <li key={review.item_id} className="admin-task-card admin-simple-task admin-photo-task">
-        <div className="task-action-details"><strong>写真確認{item?.sales_channel&&<span style={{fontWeight:400}}>（{item.sales_channel}販売用）</span>}</strong><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(review.item_id)} target="_blank" rel="noopener noreferrer">【{item?productSerial(item.sku,item.lot_seq):'通番号確認中'}】</a>{sourceUrl?<a href={sourceUrl} target="_blank" rel="noopener noreferrer">【{item?.marketplace_item_id||'商品ID未登録'}】</a>:<span>【{item?.marketplace_item_id||'商品ID未登録'}】</span>}<small>{item?.sku||'SKU確認中'}</small></div>
+      {reviews.map(review => { const item=items[review.item_id]; return <li key={review.item_id} className="admin-task-card admin-simple-task admin-photo-task">
+        <div className="task-action-details"><strong>写真確認{item?.sales_channel&&<span style={{fontWeight:400}}>（{item.sales_channel}販売用）</span>}</strong><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(review.item_id)} target="_blank" rel="noopener noreferrer">【{item?productSerial(item.sku,item.lot_seq):'通番号確認中'}】</a><TaskProductLinks products={item?.purchase_products} fallback={item??{}}/><small>{item?.sku||'SKU確認中'}</small></div>
         <span className="admin-photo-count">写真 {review.exported_photo_count}枚</span><button type="button" className="btn" onClick={() => setSelected(review)}>確認</button>
       </li>;})}
     {rejecting&&selected&&<ReturnReasonDialog label="写真確認：NG（差し戻し）" onSubmit={reject} onCancel={()=>setRejecting(false)}/> }

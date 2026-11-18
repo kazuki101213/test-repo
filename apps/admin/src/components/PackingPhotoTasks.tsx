@@ -1,9 +1,11 @@
+import {withTaskPurchaseProducts,type TaskPurchaseReferences} from '@bussan/shared';
+import TaskProductLinks from './TaskProductLinks';
 import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {getSupabase,noticeProductUrl,readResourceSnapshot} from '@bussan/shared';
+import {getSupabase,readResourceSnapshot} from '@bussan/shared';
 import {deliveryAppUrl} from '../appUrls';
 import {adminTaskNotice} from '../taskNotice';
-type Task={id:string;item_id:string;sku:string;lot_seq:number;marketplace:string|null;marketplace_item_id:string|null;marketplace_url:string|null;submitted_at:string;photo_count:number};
+type Task=TaskPurchaseReferences&{id:string;item_id:string;sku:string;lot_seq:number;marketplace:string|null;marketplace_item_id:string|null;marketplace_url:string|null;submitted_at:string;photo_count:number};
 type Photo={id:string;url:string};
 export default function PackingPhotoTasks(){
  const [rows,setRows]=useState<Task[]>([]),[selected,setSelected]=useState<Task|null>(null);
@@ -15,7 +17,7 @@ export default function PackingPhotoTasks(){
   async function refresh(){
    if(reading)return;reading=true;lastRead=Date.now();
    try{
-    const tasks=await readResourceSnapshot<Task>('packing_photos');
+    const tasks=await withTaskPurchaseProducts(await readResourceSnapshot<Task>('packing_photos'));
     if(active){
      setRows(tasks);setError('');
      const notice=adminTaskNotice();
@@ -56,11 +58,10 @@ export default function PackingPhotoTasks(){
   finally{closing.current=false;setBusy(false);}
  }
  return <>{rows.map(row=>{
-  const source=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   return <li key={row.id} className="admin-task-card admin-simple-task">
    <div className="task-action-details"><strong>梱包が追加されました。</strong>
     <a href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.item_id)}>【{row.sku.match(/^(\d+[a-z]*)(?:[-_]|$)/i)?.[1]?.toLowerCase()||row.lot_seq}】</a>
-    {source?<a href={source} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<small>{row.sku}</small>
+    <TaskProductLinks products={row.purchase_products} fallback={row}/><small>{row.sku}</small>
    </div><button type="button" className="btn" onClick={()=>setSelected(row)}>確認</button>
   </li>;
  })}{error&&!selected&&<li className="error" role="alert">{error}</li>}

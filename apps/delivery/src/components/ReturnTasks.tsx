@@ -1,7 +1,9 @@
+import {withTaskPurchaseProducts,type TaskPurchaseReferences} from '@bussan/shared';
+import TaskProductLinks from './TaskProductLinks';
 import {useEffect,useRef,useState} from 'react';
-import {compareWorkStartedAt,readResourceSnapshot,noticeProductUrl,productModelText,salesChannelLabel} from '@bussan/shared';
+import {compareWorkStartedAt,readResourceSnapshot,productModelText,salesChannelLabel} from '@bussan/shared';
 import {completeDeliveryNotice} from '../api';
-type ReturnTask={id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due';created_at?:string;tracking_recorded_at?:string|null;listing_request_title?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null;model_no?:string|null;title?:string|null;sales_channel?:string|null;sales_account_label?:string|null};
+type ReturnTask=TaskPurchaseReferences&{id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due';created_at?:string;tracking_recorded_at?:string|null;listing_request_title?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null;model_no?:string|null;title?:string|null;sales_channel?:string|null;sales_account_label?:string|null};
 const taskOrder={inspection:0,photo_approved:1,listing_due:1,shipping:2,photo_return:3,reply:4};
 const usesTrackingAge = (kind: ReturnTask['kind']) => kind==='inspection'||kind==='photo_approved'||kind==='listing_due';
 const orderedTasks=(rows:ReturnTask[])=>[...rows].sort((a,b)=>
@@ -70,7 +72,7 @@ export default function ReturnTasks({staffId}:{staffId:string}){
    if(reading){if(force)queued=true;return;}
    if(!force&&Date.now()-lastRead<60000)return;
    reading=true;lastRead=Date.now();
-   try{const next=await readResourceSnapshot<ReturnTask>('delivery_work_tasks');if(active){setRows(next.filter(row=>!completed.current.has(row.id)));setNow(Date.now());setError('');}}
+   try{const next=await withTaskPurchaseProducts(await readResourceSnapshot<ReturnTask>('delivery_work_tasks'));if(active){setRows(next.filter(row=>!completed.current.has(row.id)));setNow(Date.now());setError('');}}
    catch(cause){if(active)setError((cause as {message?:string})?.message||'やることを読み込めませんでした。');}
    finally{reading=false;if(queued&&active){queued=false;void refresh(true);}}
   }
@@ -106,7 +108,6 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   const tone=timing?.tone;
   if(row.kind==='listing_due'&&!tone)return null;
   const title=displayTaskTitle(row)+(timing&&timing.days>0?`(${timing.days}日経過)`:'');
-  const productUrl=noticeProductUrl(row.marketplace,row.marketplace_item_id,row.marketplace_url);
   const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);
   const model=row.kind==='inspection'
    ? productModelText({model_no:row.model_no??null,title:row.title??'',marketplace:row.marketplace??''})
@@ -114,7 +115,7 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')} data-deadline={tone}>
   <div className="delivery-return-content"><strong>{title}</strong>
    <div className="delivery-return-details"><a href={inventoryUrl}>【{row.sku.match(/^(\d+[a-z]*)(?:[-_]|$)/i)?.[1]?.toLowerCase()||row.lot_seq}】</a>
-    {productUrl?<a href={productUrl} target="_blank" rel="noopener noreferrer">【{row.marketplace_item_id}】</a>:<span>【{row.marketplace_item_id||'商品ID未登録'}】</span>}<span>{model&&model!=='—'?`${model}、${row.sku}`:row.sku}</span></div>
+    <TaskProductLinks products={row.purchase_products} fallback={row}/><span>{model&&model!=='—'?`${model}、${row.sku}`:row.sku}</span></div>
   </div>
   {row.kind==='reply'?<button type="button" className="btn" disabled={pending.includes(row.id)} onClick={()=>void complete(row)}>{pending.includes(row.id)?'更新中…':'確認'}</button>:<a className="btn" href={inventoryUrl}>確認</a>}
  </li>;})}</>;

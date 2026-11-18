@@ -1,3 +1,5 @@
+import {withTaskPurchaseProducts,type TaskPurchaseReferences} from '@bussan/shared';
+import TaskProductLinks from './TaskProductLinks';
 import ReturnReasonDialog from './ReturnReasonDialog';
 import { useTaskConfirmation } from './TaskConfirmation';
 import MalfunctionReportPhotos from './MalfunctionReportPhotos';
@@ -5,7 +7,6 @@ import { productSerial } from '../inventory';
 import { readResourceSnapshot } from '@bussan/shared';
 import { managementWorkflowButtons, staffDisplayName, workflowButtonDirection } from '@bussan/shared';
 import { deliveryAppUrl } from '../appUrls';
-import { purchaseItemUrl } from '../purchaseUrl';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { adminTaskNotice } from '../taskNotice';
@@ -26,7 +27,7 @@ const RETURN_TEMPLATES = {
 } as const;
 type TaskKind = typeof TASK_TEMPLATES[number];
 type ReplyTemplate = TaskKind | keyof typeof RETURN_TEMPLATES;
-interface MalfunctionTask {
+interface MalfunctionTask extends TaskPurchaseReferences {
   status: ItemStatus; id: string; sku: string; lot_seq: number; title: string; asin: string | null; marketplace_item_id: string | null;
   purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
   supplier_refund_pending?: boolean;
@@ -40,7 +41,7 @@ interface TaskComment {
   item_comment_photos?: { id: string; storage_path: string; sort_order: number }[];
   photos?: { id: string; url: string }[];
 }
-interface ActionTask {
+interface ActionTask extends TaskPurchaseReferences {
   id: string; item_id: string; task_kind: TaskKind; task_completed_at: string | null; created_at: string;
   lot_seq: number; marketplace_item_id: string | null; sku: string;
 }
@@ -265,13 +266,14 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       readResourceSnapshot<MalfunctionTask & {maker:string|null;people:{id:string|null;name:string|null}[]}>('malfunctions'),
       staff.role==='admin'?readResourceSnapshot<ActionTask & {id:string;created_at:string}>('actions'):Promise.resolve([]),
     ]);
+    const [detailedTasks,detailedActions] = await Promise.all([withTaskPurchaseProducts(tasks),withTaskPurchaseProducts(actions)]);
     const references = tasks.length ? await getSupabase().from('items')
       .select('id,marketplace,marketplace_item_id,marketplace_url').in('id', tasks.map(row => row.id))
       : { data: [], error: null };
     if(!alive.current)return;
     setPurchaseSources(new Map((references.data ?? []).map(row => [row.id, row as PurchaseSource])));
-    setRows([...tasks].sort((a,b)=>b.malfunction_reported_at.localeCompare(a.malfunction_reported_at)));
-    setActionTasks(actions.filter(task=>task.task_kind!=='仕入先確認'&&!task.task_kind.includes('ヤフオク')).sort((a,b)=>b.created_at.localeCompare(a.created_at)));
+    setRows([...detailedTasks].sort((a,b)=>b.malfunction_reported_at.localeCompare(a.malfunction_reported_at)));
+    setActionTasks(detailedActions.filter(task=>task.task_kind!=='仕入先確認'&&!task.task_kind.includes('ヤフオク')).sort((a,b)=>b.created_at.localeCompare(a.created_at)));
     setError(references.error ? '仕入先リンクを取得できませんでした。次回更新時に再取得します。' : '');
     setLoaded(true);
     };
@@ -357,19 +359,16 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     {error && <li className="error" role="alert">動作不良タスク：{error}</li>}
     {!error && rows.length === 0 && actionTasks.length === 0 && <li className="muted">動作不良の報告はありません。</li>}
     {actionTasks.map(task => <li id={`admin-action-${task.id}`} key={'action-' + task.id} className="malfunction-task-row admin-task-card admin-simple-task">
-      <div className="task-action-details supplier-task-details"><strong>{task.task_kind}</strong><a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.item_id)} target="_blank" rel="noopener noreferrer" aria-label="仕入先確認商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a><a href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.item_id)+'&openMessages=1'} target="_blank" rel="noopener noreferrer" aria-label="仕入先確認のメッセージを開く">【{task.marketplace_item_id || '商品ID未登録'}】</a><small>{task.sku}</small></div>
+      <div className="task-action-details supplier-task-details"><strong>{task.task_kind}</strong><a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.item_id)} target="_blank" rel="noopener noreferrer" aria-label="仕入先確認商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a><TaskProductLinks products={task.purchase_products} fallback={task}/><small>{task.sku}</small></div>
       <button type="button" className="btn" disabled={busy !== null || pending} onClick={() => ask('仕入先確認：完了', () => completeTask(task.id))}>{busy === task.id ? '更新中…' : '完了'}</button>
     </li>)}
     {rows.map(row => {
       const source = purchaseSources.get(row.id);
       const purchaseId = source?.marketplace_item_id ?? row.marketplace_item_id;
-      const sourceUrl = purchaseItemUrl(source?.marketplace ?? null, purchaseId, source?.marketplace_url ?? null);
       const id = `admin-malfunction-${row.id}`;
       const key = 'malfunction-' + row.id;
       const inventoryLink = <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.id)} target="_blank" rel="noopener noreferrer" aria-label="報告商品の在庫を開く">【{productSerial(row.sku,row.lot_seq)}】</a>;
-      const purchaseLink = sourceUrl
-        ? <a href={sourceUrl} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く">【{purchaseId || '商品ID未登録'}】</a>
-        : <span>【{purchaseId || '商品ID未登録'}】</span>;
+      const purchaseLink = <TaskProductLinks products={row.purchase_products} fallback={{...row,...source}}/>;
       if (row.supplier_refund_pending) {
         return <li id={id} key={key} className="malfunction-task-row admin-task-card">
           <div className="task-action-details supplier-refund-details">
