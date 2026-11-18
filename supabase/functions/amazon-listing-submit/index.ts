@@ -203,14 +203,14 @@ export async function reconcileReceipt(svc:any,input:Obj,connect=amazon){
   return waiting('Amazonに送信済みです。商品写真の取り込みを確認中です。');
  }
  const {data:latest,error:latestError}=await svc.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'Amazon確認中に商品情報が変更されています。');
- const now=new Date().toISOString();const {error:saveError}=await svc.from('amazon_listing_submissions').update({state:'verified',verified_at:now,photo_ids:ids,photo_fingerprint:fingerprint,photos_verified_at:now}).eq('request_id',r.request_id).in('state',['accepted','uncertain','submitting','verified']);
+ const now=new Date().toISOString();const {error:saveError}=await svc.from('amazon_listing_submissions').update({state:'verified',...(r.verified_at?{}:{verified_at:now}),photo_ids:ids,photo_fingerprint:fingerprint,photos_verified_at:now}).eq('request_id',r.request_id).in('state',['accepted','uncertain','submitting','verified']);
  if(saveError)throw new SafeError(503,'登録確認を保存できません。');
  // FBA registration and inbound completion are separate workflow steps.
  // Verifying the offer and its photographs must not complete FBA delivery work.
- if(/^FBA/.test(item.sales_channel??''))return{verified:true,state:'verified',note:'Amazonへの商品登録を確認しました。FBA納品手続きが完了するまでは商品登録前です。',requestId:r.request_id,workCompletedOn:r.work_completed_on};
+ if(/^FBA/.test(item.sales_channel??''))return{verified:true,state:'verified',verifiedAt:r.verified_at??now,note:'Amazonへの商品登録を確認しました。FBA納品手続きが完了するまでは商品登録前です。',requestId:r.request_id,workCompletedOn:r.work_completed_on};
  const {error:completeError}=await svc.rpc('complete_verified_amazon_listing',{p_request_id:r.request_id,p_expected_sku:item.sku});
  if(completeError)throw new SafeError(409,'Amazon登録は確認済みですが、アプリへの反映に失敗しました。再度結果を確認してください。');
- return{verified:true,state:'verified',note:'Amazonへの登録を確認しました。',requestId:r.request_id,workCompletedOn:r.work_completed_on};
+ return{verified:true,state:'verified',verifiedAt:r.verified_at??now,note:'Amazonへの登録を確認しました。',requestId:r.request_id,workCompletedOn:r.work_completed_on};
 }
 async function amazon(id:AmazonAccountId){
  const credentials=amazonCredentials(id),expected=id==='amazon-2'?'A3E7BXJWH9TP11':'A1WI3OGPE43N2T';if(credentials.sellerId!==expected)throw new SafeError(503,'販売先とAmazon出品者IDの設定が一致しません。');

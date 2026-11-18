@@ -70,16 +70,21 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
     purchaserIds, delivererIds:effectiveDelivererIds, from:purchasedFrom, to:purchasedTo,
     sort:!allProducts&&filter==='all'?'serial':undefined,
   });
-  const tasks=inventory.rows,loading=inventory.loading;
+  const loading=inventory.loading;
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [completedListing,setCompletedListing]=useState<{itemId:string;filterKey:string;rows:DeliveryInventoryRow[]}|null>(null);
+  const filterKey=JSON.stringify([staff.id,allProducts,filter,query,queryField,inventoryFilters,purchaserIds,effectiveDelivererIds,purchasedFrom,purchasedTo]);
+  const activeCompletion=completedListing?.itemId===expandedId&&completedListing.filterKey===filterKey?completedListing:null;
+  const tasks=useMemo(()=>activeCompletion?[...inventory.rows,...activeCompletion.rows.filter(row=>!inventory.rows.some(current=>current.id===row.id))]:inventory.rows,[inventory.rows,activeCompletion]);
   const detailRevision = 0;
   const deepLinkItemId = new URLSearchParams(window.location.search).get('itemId');
   const deepLinkHandled = useRef(false);
   const toggleExpanded = (id: string) => setExpandedId(current => current === id ? null : id);
-  const updateTask = useCallback((updated: DeliveryTask) => {
+  const updateTask = useCallback((updated: DeliveryTask,keepVisible=false) => {
+    if(keepVisible)setCompletedListing({itemId:updated.id,filterKey,rows:tasks.filter(row=>baseSerialNumber(row)===baseSerialNumber(updated)).map(row=>row.id===updated.id?{...row,...updated}:row)});
     window.dispatchEvent(new CustomEvent('delivery-item-workflow-changed',{detail:updated}));
     inventory.updateRow(updated);
-  }, [inventory.updateRow]);
+  }, [inventory.updateRow,tasks,filterKey]);
 
   useEffect(()=>{
     if(!deepLinkItemId||deepLinkHandled.current)return;
@@ -125,12 +130,13 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
       task: members.find(t => !t.is_accessory) ?? members[0],
       members,
     })).filter(({ task: t, members }) => {
+      if(activeCompletion&&members.some(member=>member.id===activeCompletion.itemId))return true;
       if (queryField !== 'deliverer' && q && !members.some(member => matchesDeliverySearch(deliverySearchValue(member, queryField, originalIds), queryField, query))) return false;
       if (!members.some(member => matchesInventoryFilters(member, inventoryFilters))) return false;
       return filter === 'all' || members.some(member=>groupedStatuses?groupedStatuses.includes(member.status):member.status===filter);
     });
     return { rows, originalIds };
-  }, [tasks, filter, groupedStatuses, query, queryField, staff.role, staff.code, effectiveDelivererIds.join(','), inventoryFilters]);
+  }, [tasks, filter, groupedStatuses, query, queryField, staff.role, staff.code, effectiveDelivererIds.join(','), inventoryFilters,activeCompletion]);
   const shownRows = shown.rows;
   const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
   function selectState(next: Filter) {

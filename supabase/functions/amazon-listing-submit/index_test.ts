@@ -383,3 +383,18 @@ Deno.test('A recorded model correction cannot deadlock FBA registration when a f
  const result=await reconcileReceipt(svc,{itemId:id,requestId,expectedSku:i.sku,expectedPrice:i.planned_price},async()=>({sellerId:'seller',get:async()=>remote,put:async(sku:string,payload:any,preview:boolean)=>{assert(preview===true&&payload.requirements==='LISTING_OFFER_ONLY'&&!('model_name'in payload.attributes));previews++;return{status:'VALID',sku};},catalog:async()=>{throw Error('must not repair catalog facts')}})as any);
  assert(result.verified&&r.state==='verified'&&!!r.photos_verified_at&&previews===1);
 });
+
+Deno.test('The completion timestamp is written once and returned unchanged on subsequent registration checks',async()=>{
+ for(const existing of [null,'2026-11-01T00:00:00.000Z']){
+  const i=item(),r:any={request_id:requestId,item_id:id,state:existing?'verified':'accepted',verified_at:existing,sku:i.sku,asin:i.asin,price:i.planned_price,item_condition:i.condition,sales_channel:i.sales_channel,description:i.description,seller_id:'seller',photo_ids:[photoId]};
+  const updates:any[]=[];
+  const svc:any={rpc:async()=>({data:true}),storage:{from:()=>({createSignedUrls:async()=>({data:[{signedUrl:photoUrl}]})})},from(table:string){let update:any;const q:any={select(){return q},eq(){return q},in(){return q},order(){return q},update(value:any){update=value;updates.push(value);return q},maybeSingle:async()=>({data:r}),single:async()=>({data:i}),then(resolve:any){if(update)Object.assign(r,update);return Promise.resolve(table==='item_photos'?{data:[{id:photoId,storage_path:'photo.jpg'}]}:{}).then(resolve)}};return q;}};
+  const connect=async()=>({sellerId:'seller',get:async()=>listing(i)})as any;
+  const input={itemId:id,requestId,expectedSku:i.sku,expectedPrice:i.planned_price};
+  const first=await reconcileReceipt(svc,input,connect),firstTime=r.verified_at;
+  assert(first.verified&&'verifiedAt'in first&&first.verifiedAt===firstTime&&!!firstTime);
+  if(existing)assert(!Object.hasOwn(updates[0],'verified_at')&&firstTime===existing);
+  const second=await reconcileReceipt(svc,input,connect);
+  assert('verifiedAt'in second&&second.verifiedAt===firstTime&&r.verified_at===firstTime&&!Object.hasOwn(updates[updates.length-1],'verified_at'));
+ }
+});

@@ -345,3 +345,5 @@ textarea { min-height: 80px; resize: vertical; }
 
 .task-product-links { display:inline-flex; flex-flow:row wrap; align-items:baseline; gap:0 8px; min-width:0; max-width:100%; }
 .task-product-links > a,.task-product-links > span { overflow-wrap:anywhere; }
+
+.operation-progress{margin-top:10px;padding:10px 12px;border:1px solid var(--border,#cfc6b5);border-radius:8px;line-height:1.6;overflow-wrap:anywhere}.operation-progress strong{display:block}.operation-progress[data-phase=complete]{background:#edf3e9;color:#35543b}.operation-progress[data-phase=failed]{background:#fae9e5;color:#8d3b2e}.operation-progress time{font-variant-numeric:tabular-nums}

@@ -424,11 +424,11 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  if(error)throw error;
  announceReturnTaskChange();
 }
-export interface AmazonListingResult {verified:boolean;state:string;note:string;requestId?:string;workCompletedOn?:string;}
-export async function fetchAmazonListingPending(itemId:string):Promise<{requestId:string;date:string;photoIds:string[]}|null>{
- const {data,error}=await getSupabase().from('amazon_listing_submissions').select('request_id,work_completed_on,photo_ids').eq('item_id',itemId).in('state',['submitting','accepted','uncertain','verified']).order('created_at',{ascending:false}).limit(1).maybeSingle();
+export interface AmazonListingResult {verified:boolean;state:string;note:string;requestId?:string;workCompletedOn?:string;verifiedAt?:string;}
+export async function fetchAmazonListingPending(itemId:string):Promise<{requestId:string;date:string;photoIds:string[];state:string;verifiedAt:string|null;sku:string;asin:string;price:number;condition:string;salesChannel:string;description:string}|null>{
+ const {data,error}=await getSupabase().from('amazon_listing_submissions').select('request_id,work_completed_on,photo_ids,state,verified_at,sku,asin,price,item_condition,sales_channel,description').eq('item_id',itemId).in('state',['submitting','accepted','uncertain','verified']).order('created_at',{ascending:false}).limit(1).maybeSingle();
  if(error)throw error;
- return data?{requestId:data.request_id,date:data.work_completed_on,photoIds:data.photo_ids??[]}:null;
+ return data?{requestId:data.request_id,date:data.work_completed_on,photoIds:data.photo_ids??[],state:data.state,verifiedAt:data.verified_at,sku:data.sku,asin:data.asin,price:data.price,condition:data.item_condition,salesChannel:data.sales_channel,description:data.description}:null;
 }
 export async function submitAmazonListing(itemId:string,date:string,requestId:string,photoIds:string[],expected?:{sku:string;price:number},resume=false):Promise<AmazonListingResult>{
  const {data,error}=await getSupabase().functions.invoke('amazon-listing-submit',{body:{action:resume?'resume':'submit',itemId,workCompletedOn:date,requestId,photoIds,expectedSku:expected?.sku,expectedPrice:expected?.price}});
@@ -465,7 +465,7 @@ export async function submitMalfunctionReport(task:Pick<DeliveryTask,'id'|'statu
  if(error)throw error;
  announceReturnTaskChange();
 }
-export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;}
+export interface SellerOperation {id:string;kind:string;trade_key?:string|null;status:'queued'|'running'|'succeeded'|'failed'|'uncertain';result:Record<string,unknown>;created_at:string;finished_at?:string|null;}
 export interface SellerContext {photo_review_approved?:boolean;revision:string;listing_account_id?:string|null;assignee?:string|null;yahoo_listing_shipping?:import('@bussan/shared').YahooListingShipping|null;shipping_defaults?:Partial<Pick<import('@bussan/shared').SellerDraft,'shippingMethod'|'size'|'weightKg'|'dropoff'|'category'>>|null;listing:{external_id:string;url:string;trade_key:string|null}|null;operations:SellerOperation[];}
 export async function fetchSellerContext(itemId:string):Promise<SellerContext>{
  const {data,error}=await getSupabase().rpc('seller_operation_context',{p_item_id:itemId});if(error)throw error;return data as SellerContext;
