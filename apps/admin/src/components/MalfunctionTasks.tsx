@@ -10,6 +10,7 @@ import { deliveryAppUrl } from '../appUrls';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { adminTaskNotice } from '../taskNotice';
+import { malfunctionMaker } from '../malfunctionMaker';
 import { getSupabase } from '@bussan/shared';
 import type { Staff, ItemStatus, InventoryAction } from '@bussan/shared';
 
@@ -28,7 +29,7 @@ const RETURN_TEMPLATES = {
 type TaskKind = typeof TASK_TEMPLATES[number];
 type ReplyTemplate = TaskKind | keyof typeof RETURN_TEMPLATES;
 interface MalfunctionTask extends TaskPurchaseReferences {
-  status: ItemStatus; id: string; sku: string; lot_seq: number; title: string; asin: string | null; marketplace_item_id: string | null;
+  maker: string | null; status: ItemStatus; id: string; sku: string; lot_seq: number; title: string; asin: string | null; marketplace_item_id: string | null;
   purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
   supplier_refund_pending?: boolean;
   supplier_refund_event_id?: string | null;
@@ -96,6 +97,8 @@ async function fetchCommentRows(itemId: string): Promise<TaskComment[]> {
 
 function MalfunctionConversation({ item, staff, onReplied, actions }: { item: MalfunctionTask; staff: Staff; onReplied: () => Promise<void>; actions: ReactNode }) {
   const { ask, pending, confirmation } = useTaskConfirmation();
+  const maker=malfunctionMaker(item.maker);
+  const auctionTemplates=AUCTION_TEMPLATES.filter(template=>template==='ヤフオク その他'||!!maker&&template.startsWith(maker));
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [authors, setAuthors] = useState<Map<string, string>>(new Map());
   const [draft, setDraft] = useState('');
@@ -211,7 +214,7 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
     </div>)}
     </div>
     <div className="task-template-row"><select aria-label="返信の定型文" value={kind} disabled={busy || pending || loadingTemplatePhotos} onChange={event => void chooseTemplate(event.target.value as ReplyTemplate | '')}>
-      <option value="">定型文選択</option>{(item.status === '動作不良' ? [...TASK_TEMPLATES, ...Object.keys(RETURN_TEMPLATES)] : AUCTION_TEMPLATES).map(value => <option key={value} value={value}>{value}</option>)}
+      <option value="">定型文選択</option>{(item.status === '動作不良' ? ['仕入先確認', ...auctionTemplates, ...Object.keys(RETURN_TEMPLATES)] : auctionTemplates).map(value => <option key={value} value={value}>{value}</option>)}
     </select><button type="button" className="btn task-reply-send" disabled={(!draft.trim() && photos.length === 0) || busy || pending || loadingTemplatePhotos}
       onClick={() => ask('納品担当者とのメッセージ：送信', sendReply)}>{busy ? '送信中…' : '送信'}</button></div>
     <div className="task-reply-editor"><textarea ref={replyEditor} aria-label="納品担当者への返信" value={draft} disabled={busy || pending} onChange={event => setDraft(event.target.value)}
@@ -238,7 +241,7 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
           replyEditor.current?.scrollIntoView({ block: 'center' });
           replyEditor.current?.focus();
         });
-      }}><option value="">種類を選択</option>{AUCTION_TEMPLATES.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+      }}><option value="">種類を選択</option>{auctionTemplates.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
       <button type="button" className="btn" onClick={() => setChoosingYahooInstruction(false)}>閉じる</button>
     </dialog>
     {confirmation}
@@ -263,7 +266,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
     if(pendingRefresh.current)return pendingRefresh.current;
     const load=async()=>{
     const [tasks,actions] = await Promise.all([
-      readResourceSnapshot<MalfunctionTask & {maker:string|null;people:{id:string|null;name:string|null}[]}>('malfunctions'),
+      readResourceSnapshot<MalfunctionTask & {people:{id:string|null;name:string|null}[]}>('malfunctions'),
       staff.role==='admin'?readResourceSnapshot<ActionTask & {id:string;created_at:string}>('actions'):Promise.resolve([]),
     ]);
     const [detailedTasks,detailedActions] = await Promise.all([withTaskPurchaseProducts(tasks),withTaskPurchaseProducts(actions)]);
