@@ -1,4 +1,5 @@
-import {useRef,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
+import {initialMalfunctionNote} from '../malfunctionReport';
 import {deliveryWorkflowButtons,sendsSupplierReturnMessage,workflowButtonDirection} from '@bussan/shared';
 import type {DeliveryTask,InventoryAction,ProductPanel,WorkflowButton} from '@bussan/shared';
 import {performInventoryAction,submitMalfunctionReport,completeSupplierReturn,completeDeliveryWork,completeDeliveryCompensation} from '../api';
@@ -10,6 +11,9 @@ const panels=new Set(['photos','packingPhotos','description','messages','comment
 const isReversal=(button:WorkflowButton)=>button.key.endsWith('_cancel')||button.key==='resell';
 export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void;onPanel?:(panel:ProductPanel)=>void}){
  const [busy,setBusy]=useState(false),[form,setForm]=useState<WorkflowButton|null>(null),[note,setNote]=useState('');
+ const [reportTemplate,setReportTemplate]=useState(''),[loadingReportTemplate,setLoadingReportTemplate]=useState(false);
+ const templateRequest=useRef(0),noteEdited=useRef(false);
+ useEffect(()=>()=>{templateRequest.current++;},[task.id]);
  const [confirming,setConfirming]=useState<WorkflowButton|null>(null);
  const [hasPhysicalDamage,setHasPhysicalDamage]=useState(false);
  const [photos,setPhotos]=useState<ReportAttachment[]>([]);
@@ -54,14 +58,28 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
   if(button.key==='listing_complete'){onPanel?.('listing');return;}
   if(panels.has(button.key)){onPanel?.(button.key as ProductPanel);return;}
   request.current=crypto.randomUUID();
+  const generation=++templateRequest.current;noteEdited.current=false;setReportTemplate('');setLoadingReportTemplate(false);
   setPhotos([]);setHasPhysicalDamage(false);
   if(isReversal(button)){setForm(null);setNote('');setConfirming(button);return;}
-  if(button.note){setForm(button);setNote('');}else setConfirming(button);
+  if(button.note){
+   setForm(button);setNote('');
+   if(button.key==='report'&&button.label==='動作不良'){
+    setLoadingReportTemplate(true);
+    void initialMalfunctionNote(task).then(template=>{
+     if(templateRequest.current!==generation)return;
+     setReportTemplate(template);
+     if(!noteEdited.current)setNote(template);
+    }).catch(cause=>{
+     if(templateRequest.current===generation)onError('動作確認項目を取得できませんでした。内容を入力するか、開き直してください。'+(cause instanceof Error?' '+cause.message:''));
+    }).finally(()=>{if(templateRequest.current===generation)setLoadingReportTemplate(false);});
+   }
+  }else setConfirming(button);
  }
  return <div className="workflow-controls" aria-label={`${task.sku}の操作`}>
   <div className="workflow-buttons">{photoButtons.length>0?<><div className="workflow-photo-buttons">{photoButtonContent}</div>{buttons.filter(button=>!besidePhoto.includes(button.key)).map(renderButton)}</>:buttons.map(renderButton)}</div>
   {form&&buttons.some(button=>button.key===form.key)&&<div className="workflow-action-form">
-   <label>{form.key==='report'?form.label+'の内容':'理由'}<textarea value={note} maxLength={2000} disabled={busy} onChange={event=>setNote(event.target.value)} /></label>
+   <label>{form.key==='report'?form.label+'の内容':'理由'}<textarea value={note} maxLength={2000} rows={reportTemplate?10:undefined} disabled={busy} onChange={event=>{noteEdited.current=true;setNote(event.target.value);}} /></label>
+   {loadingReportTemplate&&<p className="muted" role="status">確認項目を準備中…</p>}
    {form.key==='report'&&<label className="workflow-damage-option"><input type="checkbox" checked={hasPhysicalDamage} disabled={busy} onChange={event=>{setHasPhysicalDamage(event.target.checked);request.current=crypto.randomUUID();}}/>破損あり</label>}
    <div className="workflow-report-actions">
    {form.key==='report'&&<><input ref={photoInput} type="file" accept="image/*" multiple hidden aria-label="報告写真を選択" disabled={busy} onChange={event=>{
@@ -70,9 +88,9 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
     if(selected.some(file=>!file.type.startsWith('image/'))){onError('画像ファイルを選択してください。');return;}
     request.current=crypto.randomUUID();setPhotos(current=>[...current,...selected.map(file=>({id:'',file}))].map(photo=>({...photo,id:crypto.randomUUID()})));onError(null);
    }}/><button type="button" className="btn workflow-report-photo" aria-label={`写真を追加（${photos.length}枚）`} title="報告写真を追加" disabled={busy} onClick={()=>photoInput.current?.click()}><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h4l2-3h6l2 3h4v15H3z"/><circle cx="12" cy="13" r="4"/></svg>{photos.length>0&&<span>{photos.length}</span>}</button></>}
-   <button type="button" className="btn primary" disabled={busy||!note.trim()&&!(form.key==='report'&&hasPhysicalDamage)} onClick={()=>setConfirming(form)}>{busy?'更新中…':form.key==='report'?'仕入担当者に報告':'確定'}</button>
+   <button type="button" className="btn primary" disabled={busy||loadingReportTemplate||(!note.trim()||note.trim()===reportTemplate.trim())&&!(form.key==='report'&&hasPhysicalDamage)} onClick={()=>setConfirming(form)}>{busy?'更新中…':form.key==='report'?'仕入担当者に報告':'確定'}</button>
    </div>
-   <button type="button" className="btn ghost" disabled={busy} onClick={()=>{setForm(null);setNote('');setPhotos([]);setHasPhysicalDamage(false);}}>閉じる</button>
+   <button type="button" className="btn ghost" disabled={busy} onClick={()=>{templateRequest.current++;setLoadingReportTemplate(false);setReportTemplate('');setForm(null);setNote('');setPhotos([]);setHasPhysicalDamage(false);}}>閉じる</button>
    {form.key==='report'&&photos.length>0&&<ul className="workflow-report-photo-list">{photos.map((photo,index)=><li key={photo.id}>写真{index+1}：{photo.file.name}<button type="button" className="btn ghost" disabled={busy} aria-label={`写真${index+1}を外す`} onClick={()=>{request.current=crypto.randomUUID();setPhotos(current=>current.filter(entry=>entry.id!==photo.id).map(entry=>({...entry,id:crypto.randomUUID()})));}}>外す</button></li>)}</ul>}
   </div>}
   {confirming?.key==='supplier_return_complete'&&<WorkDateConfirmation title="返品完了" purchasedAt={task.purchased_at}
