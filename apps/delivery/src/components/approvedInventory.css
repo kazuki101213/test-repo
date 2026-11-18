@@ -24,6 +24,7 @@
 .delivery-people > div { min-width:0; }
 .delivery-people small { display:none; }
 .delivery-people .inventory-label { font-size:11px; padding:1px 5px; line-height:17px; }
+.delivery-people > :last-child > .inventory-label { max-width:none; white-space:nowrap; }
 .approved-delivery-card .purchaser-comment > span:last-child { white-space:pre-wrap; overflow-wrap:anywhere; }
 .delivery-accessory-title { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
 .delivery-accessory-title > strong { font-size:16px; line-height:21px; }
@@ -53,7 +54,7 @@
   --delivery-column-gap:16px;
   --delivery-bundled-gap:100px;
   --delivery-main-min:590px;
-  --delivery-bundled-min:244px;
+  --delivery-bundled-min:270px;
   --delivery-main-column:minmax(var(--delivery-main-min),1.7fr);
   --delivery-bundled-column:minmax(var(--delivery-bundled-min),.9fr);
   --delivery-action-limit:calc(100% - var(--delivery-main-min) - var(--delivery-bundled-min) - var(--delivery-bundled-gap) - var(--delivery-column-gap));
@@ -67,7 +68,7 @@
  .delivery-head-action { display:flex; justify-content:space-between; align-items:center; gap:var(--control-gap); align-self:stretch; }
  .delivery-head-action > .delivery-fba-actions { justify-content:flex-end; align-self:flex-end; margin-left:auto; }
  .delivery-head-main { display:grid; grid-template-columns:minmax(310px,1fr) minmax(120px,.4fr) minmax(135px,.5fr); gap:12px; }
- .delivery-head-bundled { display:grid; grid-template-columns:minmax(130px,1fr) minmax(100px,.7fr); gap:12px; }
+ .delivery-head-bundled { display:grid; grid-template-columns:minmax(130px,1fr) minmax(128px,.7fr); gap:12px; }
  .approved-delivery-body { display:grid; gap:8px var(--delivery-column-gap); min-height:112px; padding:0 12px; align-items:center; }
  .amazon-self-shipping {
   grid-template-columns:var(--delivery-main-column) var(--delivery-bundled-column) var(--delivery-action-column);
@@ -83,7 +84,7 @@
  .delivery-identity-text { flex:1; }
  .delivery-main-dates { font-size:12px; }
  .delivery-main-dates .purchaser-comment { max-height:51px; overflow:auto; }
- .delivery-bundled-record { display:grid; grid-template-columns:minmax(130px,1fr) minmax(100px,.7fr); column-gap:12px; padding:8px 0; min-height:112px; align-content:center; }
+ .delivery-bundled-record { display:grid; grid-template-columns:minmax(130px,1fr) minmax(128px,.7fr); column-gap:12px; padding:8px 0; min-height:112px; align-content:center; }
  .delivery-bundled-record .delivery-accessory-identity { grid-column:1; grid-row:1; }
  .delivery-bundled-record .delivery-people { grid-column:2; grid-row:1/4; align-self:center; }
  .delivery-bundled-record .delivery-accessory-details { grid-column:1; grid-row:2; }
@@ -183,7 +184,7 @@
  .delivery-tracking-id { gap:6px; }
  .delivery-tracking-id > .task-item-id-line { font-size:11px; }
  .delivery-main-info > .delivery-people { order:2; }
- .delivery-people { width:100%; grid-template-columns:minmax(0,1.25fr) minmax(0,1.25fr) minmax(max-content,.9fr) minmax(0,.9fr); gap:5px; margin:8px 0 9px; }
+ .delivery-people { width:100%; grid-template-columns:minmax(0,1.25fr) minmax(0,1.25fr) minmax(max-content,.9fr) minmax(max-content,.9fr); gap:5px; margin:8px 0 9px; }
  .delivery-people small { display:block; color:var(--muted); font-size:10px; line-height:15px; margin-bottom:3px; }
  .delivery-people .inventory-label { font-size:10px; padding:2px 3px; line-height:16px; }
  .delivery-people > :nth-child(3) > .inventory-label { white-space:nowrap; }
