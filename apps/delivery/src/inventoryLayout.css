@@ -54,7 +54,8 @@
   .inventory-workflow-footer > [data-status="動作不良"] { order:3; }
   .inventory-workflow-footer > [data-status="返品処理"] { order:4; }
   .inventory-workflow-footer > [data-status="Amazon補填申請中"] { order:6; }
-  .inventory-workflow-footer > [data-status="all"] { order:8; }
+  .inventory-workflow-footer > [data-status="出品停止"] { order:8; }
+  .inventory-workflow-footer > [data-status="all"] { order:9; }
   .task-product-summary { display:block; }
   .task-product-summary .task-card-overview { grid-template-columns:minmax(0,1fr); gap:8px; }
   .task-product-summary .task-photo-action { grid-column:1; grid-row:1; justify-items:start; }
@@ -181,7 +182,7 @@
 }
 
 @media (max-width:1279px) {
- .inventory-workflow-footer > .inventory-all-products { order:9; grid-column:1; }
+ .inventory-workflow-footer > .inventory-all-products { order:10; grid-column:1; }
 }
 
 @media screen and (max-width:359px) {
@@ -228,6 +229,7 @@
   }
   .inventory-workflow-footer > .inventory-all-products { grid-column:2; grid-row:1; }
   .inventory-workflow-footer > [data-status="all"] { grid-column:2; grid-row:2; }
+  .inventory-workflow-footer > [data-status="出品停止"] { grid-column:2; grid-row:3; }
   .inventory-workflow-footer > [data-status="動作不良"] { grid-column:1; grid-row:1; }
   .inventory-workflow-footer > [data-status="返品処理"] { grid-column:1; grid-row:2; }
   .inventory-workflow-footer > [data-status="Amazon補填申請中"] { grid-column:1; grid-row:3; }

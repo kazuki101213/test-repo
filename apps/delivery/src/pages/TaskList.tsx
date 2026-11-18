@@ -24,7 +24,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 const FOOTER_FILTERS: { key: Filter; label: string }[] = [
   {key:'動作不良',label:'動作不良'}, {key:'Amazon補填申請中',label:'Amazon補填申請中'},
-  {key:'返品処理',label:'返品処理'}, {key:'all',label:'すべて'},
+  {key:'返品処理',label:'返品処理'}, {key:'出品停止',label:'在庫切れ'}, {key:'all',label:'すべて'},
 ];
 
 function serialNumber(task: DeliveryTask): string {
@@ -135,6 +135,7 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
   const canOperate = (task: DeliveryTask) => staff.role === 'admin' || task.deliverer_id === staff.id;
   function selectState(next: Filter) {
     setAllProducts(false);setFilter(next);setExpandedId(null);
+    if(next!=='all')setInventoryFilters(current=>({...current,status:[]}));
   }
   function clearFilters() {
     setQueryField('serial');

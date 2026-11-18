@@ -22,6 +22,7 @@ const tone=(backgroundColor:string,color:string):InventoryLabelStyle=>({backgrou
 export function inventoryStatusStyle(status:string):InventoryLabelStyle {
   if(['受取前','検品中','商品登録前'].includes(status))return tone('#fff6d9','#78601b');
   if(['出品中','取引中'].includes(status))return tone('#dce9d3','#456439');
+  if(status==='出品停止')return tone('#e5e7eb','#4b5563');
   if(status==='動作不良')return tone('#f8dfc8','#91572a');
   if(status==='返品処理')return tone('#dce7f1','#3c6085');
   if(['Amazon返品依頼','Amazon返送依頼','Amazon補填申請中'].includes(status))return tone('#eadcec','#78507d');
