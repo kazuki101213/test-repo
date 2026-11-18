@@ -1,5 +1,8 @@
 .reimbursement-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:4px 8px; }
 .expense-entry-top { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; column-gap:8px; }
+.expense-posted .expense-entry-top { grid-template-columns:max-content minmax(0,1fr) auto; }
+.expense-entry-payment { min-width:0; color:var(--muted); font-size:12px; }
+.layout .expense-entry-payment .expense-edit { width:100%; min-width:0; min-height:24px; padding-block:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .expense-entry-top time { min-width:0; color:var(--muted); font-size:12px; }
 .expense-entry-top time .expense-edit { width:auto; min-height:24px; padding-block:0; }
 .expense-entry-name .expense-edit { padding-top:0; }

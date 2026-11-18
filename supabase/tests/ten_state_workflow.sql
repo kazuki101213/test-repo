@@ -27,13 +27,16 @@ update workflow_probe set status='商品登録前' where probe_id=4;
 update workflow_probe set status='販売済' where probe_id=5;
 update workflow_probe set status='出品中' where probe_id=5;
 update workflow_probe set shipped_on=current_date where probe_id=1;
-update workflow_probe set status='出品停止' where probe_id=6;
+do $$begin
+ begin update workflow_probe set status='出品停止' where probe_id=6;raise exception 'Retired state accepted';exception when invalid_parameter_value then null;end;
+end $$;
+update workflow_probe set status='取引中' where probe_id=6;
 update workflow_probe set packed_on=current_date where probe_id=6;
 do $$begin
 if (select status from workflow_probe where probe_id=1)<>'受取前' then raise exception 'Shipping still changes status';end if;
 if (select status from workflow_probe where probe_id=4)<>'商品登録前' then raise exception 'Compensation exit failed';end if;
 if not exists(select 1 from workflow_probe where probe_id=5 and status='販売済' and sold_on=(now() at time zone 'Asia/Tokyo')::date and sold_price=0 and payout_amount=0) then raise exception 'Explicit zero sale or protection failed';end if;
-if (select status from workflow_probe where probe_id=6)<>'出品停止' then raise exception 'Amazon listing state overwritten by packing';end if;
+if (select status from workflow_probe where probe_id=6)<>'取引中' then raise exception 'FBA transaction overwritten by packing';end if;
 if enum_range(null::app.item_status)::text[]<>array['受取前','検品中','Amazon返送依頼','Amazon補填申請中','商品登録前','出品中','出品停止','取引中','販売済','返品処理','動作不良'] then raise exception 'Inventory states/order mismatch';end if;
 if pg_get_viewdef('app.v_delivery_tasks'::regclass,true) like '%ARRAY[%item_status%' then raise exception 'Legacy delivery whitelist remains';end if;
 end $$;

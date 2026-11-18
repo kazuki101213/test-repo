@@ -163,3 +163,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_listing_reconciliation.sql
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/marketplace_code_shipping_date.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/fba_completion_dispatch_date.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_self_dispatch_write.sql"
+
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/partial_photo_delete_review.sql"

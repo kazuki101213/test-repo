@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { yen } from '@bussan/shared';
-import { deleteExpenses, excludeExpenseReimbursements, fetchExpenses, fetchExpenseDrafts, fetchExpenseReimbursements, fetchExpenseStaffNames, importAskulExpenses, updateExpenseField, type ExpenseField } from '../api';
+import { deleteExpenses, excludeExpenseReimbursements, fetchCards, fetchExpenses, fetchExpenseDrafts, fetchExpenseReimbursements, fetchExpenseStaffNames, importAskulExpenses, updateExpenseField, type ExpenseField } from '../api';
 import type { ExpenseInput, ExpenseDraft, ExpenseReimbursement } from '../expenses';
 import { expenseCategories, expenseCategoryLabel } from '../expenses';
 import ExpensePanel from './ExpensePanel';
@@ -55,6 +55,21 @@ export function ExpenseTable({ rows }: { rows: ExpenseInput[] }) {
 
 export default function ExpenseList({ revision }: { revision: number }) {
   const [rows, setRows] = useState<ExpenseInput[]>([]);
+  const [cards, setCards] = useState<{ id: string; name: string }[]>([]);
+  const [cardsError, setCardsError] = useState('');
+  const [cardsLoading, setCardsLoading] = useState(true);
+  const [cardsRevision, setCardsRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setCardsLoading(true); setCardsError('');
+    fetchCards('expense').then(data => { if (active) setCards(data); })
+      .catch(cause => { if (active) setCardsError(cause instanceof Error ? cause.message : String(cause)); })
+      .finally(() => { if (active) setCardsLoading(false); });
+    return () => { active = false; };
+  }, [cardsRevision]);
+  const paymentLabel = (row: ExpenseInput) => row.card_id
+    ? cards.find(card => card.id === row.card_id)?.name || '支払い方法を確認'
+    : '未指定';
   const [reimbursements, setReimbursements] = useState<ExpenseReimbursement[]>([]);
   const [reimbursementStatus, setReimbursementStatus] = useState<{ loading: boolean; error?: string }>({loading:true});
   const staffNames = useExpenseStaffNames(reimbursements.length > 0 || rows.some(row => row.staff_id));
@@ -107,7 +122,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setExpenseBusy(false); }
   }
-  const editCell = (row: ExpenseInput, field: ExpenseField, label: string) => <button type="button" className="expense-edit" disabled={expenseBusy || !!selectionAction} onClick={() => { setFieldEdit({ row, field, value: field === 'category' ? expenseCategoryLabel(row.category) : String(row[field]) }); setError(''); }}>{label}</button>;
+  const editCell = (row: ExpenseInput, field: ExpenseField, label: string) => <button type="button" className="expense-edit" aria-label={field === 'card_id' ? row.name + 'の支払い方法を編集' : undefined} disabled={expenseBusy || !!selectionAction} onClick={() => { setFieldEdit({ row, field, value: field === 'category' ? expenseCategoryLabel(row.category) : String(row[field] ?? '') }); setError(''); }}>{label}</button>;
   useEffect(() => {
     let active = true;
     setLoading(true); setError('');
@@ -168,6 +183,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
             return <li key={month} className="expense-month-group"><h4>{expenseMonthTitle(month, entries)}</h4><ul className="expense-entries">{entries.map(row => <li key={row.id}>
             <div className="expense-entry-top">
               <time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time>
+              <span className="expense-entry-payment" title={paymentLabel(row)}>{editCell(row, 'card_id', paymentLabel(row))}</span>
               <label className="expense-selection"><input type="checkbox" aria-label={`${row.incurred_on} ${row.name}を選択`} checked={selected.has(row.id)} disabled={loading || expenseBusy || !!selectionAction} onChange={e => { const checked = e.currentTarget.checked; setSelected(current => toggleSelection(current, row.id, checked)); }} /></label>
             </div>
             <div className="expense-entry-name">{editCell(row, 'name', expenseContentLabel(row, staffNames))}</div>
@@ -223,11 +239,13 @@ export default function ExpenseList({ revision }: { revision: number }) {
       <AmazonUnreflectedPayments onReflected={() => setSavedRevision(value => value + 1)} />
     </div>
   {fieldEdit && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="経費の項目を編集"><div className="card inventory-comment-panel">
-    <h3>{{ incurred_on: '日付', category: '区分', name: '内容', amount: '金額' }[fieldEdit.field]}を編集</h3>
+    <h3>{{ incurred_on: '日付', category: '区分', name: '内容', amount: '金額', card_id: '支払い方法' }[fieldEdit.field]}を編集</h3>
     <label className="field"><span>{fieldEdit.row.name}</span>{fieldEdit.field === 'category' ? <select value={fieldEdit.value} onChange={e => setFieldEdit(current => current && { ...current, value: e.target.value })}>{expenseCategories.map(value => <option key={value} value={value}>{value}</option>)}</select>
+      : fieldEdit.field === 'card_id' ? <select autoFocus aria-label="支払い方法" disabled={expenseBusy || cardsLoading} value={fieldEdit.value} onChange={e => setFieldEdit(current => current && { ...current, value: e.target.value })}><option value="">未指定</option>{fieldEdit.row.card_id && !cards.some(card => card.id === fieldEdit.row.card_id) && <option value={fieldEdit.row.card_id} disabled>登録済みの支払い方法</option>}{cards.map(card => <option key={card.id} value={card.id}>{card.name}</option>)}</select>
       : <input autoFocus type={fieldEdit.field === 'incurred_on' ? 'date' : fieldEdit.field === 'amount' ? 'number' : 'text'} value={fieldEdit.value} onChange={e => setFieldEdit(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveField(); }} />}</label>
+    {fieldEdit.field === 'card_id' && cardsError && <div className="error" role="alert">{cardsError}<button type="button" className="btn" disabled={cardsLoading} onClick={() => setCardsRevision(value => value + 1)}>支払い方法を再読み込み</button></div>}
     {error && <div className="error" role="alert">{error}</div>}
-    <div className="toolbar"><button className="btn primary" disabled={expenseBusy} onClick={() => void saveField()}>保存</button><button className="btn" disabled={expenseBusy} onClick={() => setFieldEdit(null)}>閉じる</button></div>
+    <div className="toolbar"><button className="btn primary" disabled={expenseBusy || (fieldEdit.field === 'card_id' && (cardsLoading || !!cardsError))} onClick={() => void saveField()}>保存</button><button className="btn" disabled={expenseBusy} onClick={() => setFieldEdit(null)}>閉じる</button></div>
   </div></div>}
   {askulImportOpen && <AskulExpenseImport onClose={() => setAskulImportOpen(false)} onSaved={result => {
     setAskulImportOpen(false);

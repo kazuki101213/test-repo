@@ -70,7 +70,8 @@ function mount(path,sb,props={}) {
  assert(actions.some(row=>row.action==='history'&&row.accountId==='amazon-2'&&row.offset===100),'Second account history paging missing');
  assert(actions.some(row=>row.action==='reconcile'&&row.accountId==='amazon-2'&&row.transactionId==='only-second'));
  assert.equal(actions[0].name,'amazon-seller-inventory');
- assert(text(sync.tree).includes('出品中へ3件・出品停止へ1件反映'));
+ assert(text(sync.tree).includes('出品中へ3件反映'));
+ assert(!text(sync.tree).includes('出品停止へ'),'Retired inventory state must not be reported');
  assert(text(sync.tree).includes('Amazon1の出品照合 レポートを取得できません。'),'Failed listing account was hidden');
  assert(text(sync.tree).includes('Amazon1: 認可を確認してください。'),'Failed account was hidden');assert(applied>=1);
  console.log('Amazon account switch clears rows/tokens; sync, history and reconciliation preserve account; one failure does not block the other.');

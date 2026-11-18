@@ -685,15 +685,17 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
   }
 }
 
-export type ExpenseField = 'incurred_on' | 'category' | 'name' | 'amount';
+export type ExpenseField = 'incurred_on' | 'category' | 'name' | 'amount' | 'card_id';
 export async function updateExpenseField(row: ExpenseInput, field: ExpenseField, value: string): Promise<void> {
   const text = value.trim();
-  const next = field === 'amount' ? Number(text) : text;
+  const next = field === 'amount' ? Number(text) : field === 'card_id' ? text || null : text;
   if (field === 'amount' && (!text || !Number.isSafeInteger(Number(text)))) throw new Error('金額は整数で入力してください。');
   const revised = { ...row, [field]: next } as ExpenseInput;
   validateExpense(revised);
-  const { data, error } = await getSupabase().from('expenses').update({ [field]: next })
-    .eq('id', row.id).is('deleted_at', null).eq(field, row[field]).select('id').maybeSingle();
+  let request = getSupabase().from('expenses').update({ [field]: next })
+    .eq('id', row.id).is('deleted_at', null);
+  request = row[field] === null ? request.is(field, null) : request.eq(field, row[field]);
+  const { data, error } = await request.select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('明細が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }

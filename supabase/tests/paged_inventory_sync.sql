@@ -125,7 +125,7 @@ do $$declare p jsonb; accessory_group text;begin
 end $$;
 
 -- Compare SKU sets even when the totals agree. A missing listing is only
--- stopped after two complete reports that are outside the report cache window.
+-- observed without changing business state, even after repeated complete reports.
 reset role;
 update app.items set asin='B000000123',product_registered_at=now()-interval '2 days',
   marketplace_status_observed_at=now()-interval '2 days'
@@ -160,8 +160,8 @@ begin
   update app.amazon_seller_inventory_sync set lease_id=lease,lease_until=now()+interval '3 minutes',report_id='confirmed'
   where account_id='amazon-2';
   result := app.apply_seller_inventory_report('amazon-2',lease,'confirmed',now(),listings,0);
-  if (result->>'missing_stopped')::int<>1 or not exists(select 1 from app.items where sku=missing_sku and status='出品停止') then
-    raise exception 'Confirmed missing SKU did not stop';
+  if (result->>'missing_stopped')::int<>0 or not exists(select 1 from app.items where sku=missing_sku and status='出品中') then
+    raise exception 'Missing SKU changed business state without confirmed order';
   end if;
 end $$;
 set local role authenticated;
