@@ -1,4 +1,4 @@
-import {handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,observedSelfListing,validateRegisteredOffer,type ListingItem} from './index.ts';
+import {canonicalModelUpdatePending,handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,observedSelfListing,validateRegisteredOffer,catalogModelNamePatch,repairCatalogModelName,type ListingItem} from './index.ts';
 import {photographSignature,samePhotograph,verifyAmazonPhotoCopies,prepareImageDecoder,validateJpegDimensions,amazonComparisonImageUrl} from '../_shared/amazonImageVerification.ts';
 import jpeg from 'npm:jpeg-js@0.4.4';
 
@@ -304,4 +304,54 @@ Deno.test('Amazon copies use the same asset at bounded comparison resolution wit
  assert(amazonComparisonImageUrl('https://m.media-amazon.com/images/I/71example._SL1500_.jpg')==='https://m.media-amazon.com/images/I/71example._SL256_.jpg');
  assert(amazonComparisonImageUrl('https://m.media-amazon.com/images/I/71example.jpg')==='https://m.media-amazon.com/images/I/71example._SL256_.jpg');
  let blocked=false;try{amazonComparisonImageUrl('https://evil.example/images/I/71example.jpg')}catch{blocked=true}assert(blocked);
+});
+
+Deno.test('Canonical model preview uses one Amazon catalog model number for the matching ASIN only',()=>{
+ const remote:any={...listing(),issues:[{code:'100095',severity:'ERROR',attributeNames:['model_name']}]};
+ const catalog={asin:item().asin,attributes:{model_number:[{value:'2B-C10BW1',marketplace_id:market}]}};
+ const patch=catalogModelNamePatch(remote,catalog);assert(patch?.patches[0].value[0].value==='2B-C10BW1');
+ assert(catalogModelNamePatch(remote,{...catalog,asin:'B000000000'})===null);
+ assert(catalogModelNamePatch({...remote,attributes:{...remote.attributes,model_name:[{value:'own model'}]}},catalog)===null);
+ assert(catalogModelNamePatch(remote,{...catalog,attributes:{model_number:[{value:'2B-C10BW1'},{value:'ambiguous'}]}})===null);
+});
+
+Deno.test('Canonical model repair is guarded, keeps offer terms, and never repeats uncertain writes',async()=>{
+ for(const variant of ['success','priced','buyable','stock','wrongPrice','concurrent','timeout','invalidPreview','changedItem','alreadyReserved']){
+  const i=item();const r:any={request_id:requestId,state:'accepted',sku:i.sku,asin:i.asin,note:variant==='alreadyReserved'?'Amazon型番補正:pending':'waiting'};
+  const original:any={...listing(i),offers:[],issues:[{code:'100095',severity:'ERROR',attributeNames:['model_name']}]};original.summaries[0].status=['DISCOVERABLE'];
+  if(variant==='priced'||variant==='wrongPrice')original.offers=[{marketplaceId:market,offerType:'B2C',price:{currencyCode:'JPY',amount:variant==='wrongPrice'?'1':String(i.planned_price)}}];
+  if(variant==='buyable')original.summaries[0].status.push('BUYABLE');
+  if(variant==='stock')original.fulfillmentAvailability=[{quantity:1}];
+  let writes=0,previews=0;
+  const svc:any={from(table:string){let update:any,filters:any={};const q:any={select(){return q},eq(k:string,v:any){filters[k]=v;return q},is(k:string,v:any){filters[k]=v;return q},update(v:any){update=v;return q},single:async()=>({data:{...i,planned_price:variant==='changedItem'?1:i.planned_price}}),maybeSingle:async()=>{if(variant==='concurrent')return{data:null};assert(filters.note===r.note);Object.assign(r,update);return{data:{request_id:requestId}}},then(resolve:any){Object.assign(r,update);return Promise.resolve({}).then(resolve)}};return q;}};
+  const api:any={catalog:async()=>({asin:i.asin,attributes:{model_number:[{value:'2B-C10BW1',marketplace_id:market}]}}),patchModelName:async(sku:string,body:any,preview:boolean)=>{
+   assert(sku===i.sku&&body.patches.length===1&&body.patches[0].path==='/attributes/model_name');
+   if(preview){previews++;return{status:variant==='invalidPreview'?'INVALID':'VALID'};}
+   assert(r.note.startsWith('Amazon型番補正:'));writes++;if(variant==='timeout')throw Error('timeout');return{status:'ACCEPTED',submissionId:'model-only'};
+  }};
+  let changed=false;try{changed=await repairCatalogModelName(svc,r,i,original,api);}catch{assert(['timeout','changedItem'].includes(variant));}
+  assert(writes===(['success','priced','timeout'].includes(variant)?1:0),variant);
+  if(['success','priced'].includes(variant))assert(changed&&r.note.includes('accepted'));
+  if(variant==='timeout')assert(r.note.includes('uncertain'));
+  if(['success','priced','timeout','alreadyReserved'].includes(variant)){assert(!(await repairCatalogModelName(svc,r,i,original,api)));assert(writes===(variant==='alreadyReserved'?0:1));}
+  assert(i.planned_price===400&&i.asin===item().asin&&i.sku===item().sku);
+ }
+});
+
+Deno.test('An accepted canonical correction remains pending until the old Amazon issue clears, without completing or excusing other errors',()=>{
+ const i=item(),r:any={sku:i.sku,asin:i.asin,note:'Amazon型番補正:'+JSON.stringify({state:'accepted',sku:i.sku,asin:i.asin,attribute:'model_name',value:'2B-C10BW1',submissionId:'accepted'})};
+ const remote:any={...listing(i),issues:[{code:'100095',severity:'ERROR',attributeNames:['model_name']}]};
+ remote.attributes.model_name=[{value:'2B-C10BW1',marketplace_id:market}];
+ assert(canonicalModelUpdatePending(remote,r,i));
+ for(const variant of ['unaccepted','wrongSku','wrongValue','otherError','enforced','wrongPrice','cleared']){
+  const rr=structuredClone(r),copy=structuredClone(remote);
+  if(variant==='unaccepted')rr.note=rr.note.replace('"state":"accepted"','"state":"uncertain"');
+  if(variant==='wrongSku')rr.sku='other';
+  if(variant==='wrongValue')copy.attributes.model_name[0].value='different';
+  if(variant==='otherError')copy.issues.push({code:'90220',severity:'ERROR'});
+  if(variant==='enforced')copy.issues[0].enforcements={actions:[{action:'LISTING_SUPPRESSED'}]};
+  if(variant==='wrongPrice')copy.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax=1;
+  if(variant==='cleared')copy.issues=[];
+  assert(!canonicalModelUpdatePending(copy,rr,i),variant);
+ }
 });
