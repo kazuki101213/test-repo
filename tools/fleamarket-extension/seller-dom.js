@@ -447,7 +447,10 @@ export async function sellerDomOperation({job,phase,files=[],categoryResolved=fa
   if(payload.automatic_receipt){
    const proof=payload.automatic_receipt,observed=Date.parse(proof.observed_at);
    if(proof.accepted!==true||!Number.isFinite(observed)||Date.now()-observed>300000||observed>Date.now()+30000)throw Error('発送確認が古くなりました。通知していません');
-   if(proof.source==='mercari_shipping_status'||proof.source==='delivery_handoff'){
+   if(proof.source==='delivery_handoff'){
+    if(!['メルカリ','ヤフオク'].includes(job.channel))throw Error('対象取引の発送確認ではありません');
+    tradeGuard();
+   }else if(proof.source==='mercari_shipping_status'){
     if(job.channel!=='メルカリ'||location.pathname!=='/transaction/'+job.external_id)throw Error('対象取引の発送確認ではありません');
     if(proof.source==='mercari_shipping_status'&&(!proof.status||mercariAcceptance()!==proof.status))throw Error('取引画面で荷物の受付を再確認できません');
    }
