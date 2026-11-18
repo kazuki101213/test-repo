@@ -1,7 +1,7 @@
 import { askulExpenseBatchSize, catalogProductCategory, staffDisplayName, type AskulExpenseInput } from '@bussan/shared';
 import {sessionRead} from '@bussan/shared';
 import { purchaseItemUrl } from './purchaseUrl';
-import { getSupabase, STATUSES, usageRecordText, purchaseSourceFields, salesDestinationFields } from '@bussan/shared';
+import { getSupabase, STATUSES, inventoryStatusText, usageRecordText, purchaseSourceFields, salesDestinationFields } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
@@ -681,7 +681,7 @@ export async function updateInventoryItem(item: InventoryItem, fields: Inventory
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
   if (fields.status !== item.status && data.status !== fields.status) {
-    throw new Error(`販売状態は「${data.status}」のままです。在庫を読み直して、販売日・追跡番号などの記録を確認してください。`);
+    throw new Error(`販売状態は「${inventoryStatusText(data.status)}」のままです。在庫を読み直して、販売日・追跡番号などの記録を確認してください。`);
   }
 }
 

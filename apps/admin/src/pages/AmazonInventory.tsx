@@ -41,7 +41,7 @@ export default function AmazonInventory() {
         <tbody>{result.rows.map(row => <tr key={row.sku}><td>{row.sku}</td><td>{row.asin}</td><td>{row.name}</td><td>{row.total}</td><td>{row.fulfillable ?? '不明'}</td><td>{row.reserved ?? '不明'}</td><td>{row.status?.join(' / ') || '取得結果なし'}</td></tr>)}</tbody>
       </table></div>
       {result.rows.length === 0 && <p>このページにFBA在庫はありません。</p>}
-      <p className="sub">BUYABLE: 購入可能 ／ DISCOVERABLE: 検索表示対象。状態が取得できない場合は出品停止とは判定しません。</p>
+      <p className="sub">BUYABLE: 購入可能 ／ DISCOVERABLE: 検索表示対象。状態が取得できない場合は在庫切れとは判定しません。</p>
     </>}
   </>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { INVENTORY_FILTER_GROUPS } from '@bussan/shared';
+import { INVENTORY_FILTER_GROUPS, inventoryStatusText } from '@bussan/shared';
 import type { InventoryFilters } from '@bussan/shared';
 
 type AssigneeFilter = { value: string[]; options: { id: string; name: string }[]; onChange: (ids: string[]) => void };
@@ -31,7 +31,7 @@ export default function InventoryStateFilter({ value, onChange, purchaser, assig
         {group.values.map(option => <label key={option}><input type="checkbox" checked={value[group.field]?.includes(option) ?? false} onChange={event => {
           const selected = value[group.field] ?? [];
           onChange({ ...value, [group.field]: event.target.checked ? [...selected, option] : selected.filter(item => item !== option) });
-        }} /><span>{option}</span></label>)}
+        }} /><span>{group.field==='status'?inventoryStatusText(option):option}</span></label>)}
       </fieldset>)}
     </div>
   </details>;

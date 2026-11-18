@@ -1,3 +1,4 @@
+import {inventoryStatusText} from '@bussan/shared';
 import {useEffect,useRef,useState} from 'react';
 import {applyYahooListingShipping,yahooListingSizes,sellerDefaults,sellerListingCategoryError,sellerShippingDraft,sellerShippingPlaces,sellerShippingSizes,sellerShippingError,sellerShippingCodeError,mercariShippingSize,SMALL_PACKAGES,canViewDeliveryAssignee,isAmazonSalesChannel,marketplaceAccountLabel} from '@bussan/shared';
 import type {DeliveryTask,Staff,SellerDraft} from '@bussan/shared';
@@ -202,7 +203,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     {order>=0&&<div className="seller-photo-order"><button type="button" className="btn" aria-label={`写真${order+1}を前へ`} title="前へ" disabled={disabled||order===0} onClick={()=>movePhoto(photo.id,-1)}>←</button><button type="button" className="btn" aria-label={`写真${order+1}を後へ`} title="後へ" disabled={disabled||order===selected.length-1} onClick={()=>movePhoto(photo.id,1)}>→</button></div>}
    </div>;})}</div></>;
  const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key)?.result.messages;
- if(mode==='listing'&&task.status!=='商品登録前')return <section className="task-detail-inline seller-panel"><p>現在の状態：{task.status}</p>{context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}</section>;
+ if(mode==='listing'&&task.status!=='商品登録前')return <section className="task-detail-inline seller-panel"><p>現在の状態：{inventoryStatusText(task.status)}</p>{context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}</section>;
  return <section className={`task-detail-inline seller-panel${mode==='listing'&&!amazonListing?' seller-listing-layout':''}`} aria-label={`${task.sku}の${mode==='listing'?'出品':mode==='shipping'?'発送':'取引メッセージ'}`}>
   {mode!=='listing'&&<button type="button" className="btn ghost" onClick={onClose}>閉じる</button>}
   {error&&!(amazonListing&&draft&&descriptionSource)&&<p className="error" role="alert">{error}</p>}

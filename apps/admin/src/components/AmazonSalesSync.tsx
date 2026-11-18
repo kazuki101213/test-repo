@@ -118,7 +118,7 @@ export default function AmazonSalesSync({ onApplied }: { onApplied: () => void }
       const { active, inactive, pending } = await syncListings(failures);
       void loadListingStatus();
       if (active || inactive) onApplied();
-      const listingNotice = `出品中へ${active}件・出品停止へ${inactive}件反映${pending.length ? `、${pending.join('・')}の出品レポート作成中（完了後に自動反映）` : ''}`;
+      const listingNotice = `出品中へ${active}件・在庫切れへ${inactive}件反映${pending.length ? `、${pending.join('・')}の出品レポート作成中（完了後に自動反映）` : ''}`;
       setNotice(`${listingNotice}。Amazonの売上情報を確認しています…`);
       const { data: earliest, error: earliestError } = await getSupabase().from('items').select('purchased_at')
         .not('purchased_at', 'is', null).gte('purchased_at', '2010-01-01').order('purchased_at', { ascending: true }).limit(1).maybeSingle();

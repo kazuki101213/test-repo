@@ -1,5 +1,5 @@
 import ColoredLabel from './ColoredLabel';
-import { productModelText } from '@bussan/shared';
+import { productModelText, inventoryStatusText } from '@bussan/shared';
 import { useEffect, useRef, useState } from 'react';
 import { fetchWorkloadDetail, type DashboardScope, type WorkloadItem, type WorkloadMetric } from '../api';
 import { productSerial } from '../inventory';
@@ -32,7 +32,7 @@ export default function WorkloadDetail({ delivererId, name, metric, scope, scope
           <td>{productSerial(row.sku, row.lot_seq)}</td>
           <td className="detail-description">{productModelText(row)}<div className="expense-hint">{row.sku}</div></td>
           <td><ColoredLabel value={row.sales_channel || '—'} /></td>
-          <td>{row.status}</td><td>{row.purchased_at || '—'}</td><td>{row.packed_on || '—'}</td><td>{row.shipped_on || '—'}</td>
+          <td>{inventoryStatusText(row.status)}</td><td>{row.purchased_at || '—'}</td><td>{row.packed_on || '—'}</td><td>{row.shipped_on || '—'}</td>
         </tr>)}</tbody>
       </table></div>}
     </>}

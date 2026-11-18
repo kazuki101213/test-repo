@@ -7,7 +7,7 @@ import { usePurchaseDrafts } from '../hooks/usePurchaseDrafts';
 import ColoredSelect from '../components/ColoredSelect';
 import DateInput from '../components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CONDITIONS, STATUSES, yen, matchesInventoryFilters } from '@bussan/shared';
+import { CONDITIONS, STATUSES, yen, matchesInventoryFilters, inventoryStatusText } from '@bussan/shared';
 import type { ItemStatus, PurchaseDraft, Staff, InventoryFilters } from '@bussan/shared';
 import type { InventoryEdit, InventoryItem } from '../api';
 import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryItem, fetchInventoryPaymentCard, fetchInventoryReturnReason, fetchPurchaseDrafts, fetchStaff, updateInventoryField, updateInventoryItem, updateInventoryStatus } from '../api';
@@ -312,7 +312,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
   const numberFields = new Set<keyof InventoryEdit>(['cost_amount','planned_price','planned_payout','sold_price','payout_amount','refund_amount','inventory_refund_amount','amazon_refund_amount','non_amazon_refund_amount']);
   function optionsFor(field: keyof InventoryEdit): EditOption[] | null {
     if (field === 'is_accessory') return [{ value: 'false', label: '本体' }, { value: 'true', label: '付属品' }];
-    if (field === 'status') return STATUSES.map(value => ({ value, label: value }));
+    if (field === 'status') return STATUSES.map(value => ({ value, label: inventoryStatusText(value) }));
     if (field === 'marketplace') return marketplaceSelectOptions(PURCHASE_SOURCES, purchaseSource).map(value => ({ value, label: value }));
     if (field === 'sales_channel') return marketplaceSelectOptions(SALES_DESTINATIONS, salesDestination).map(value => ({ value, label: value }));
     if (field === 'condition') return CONDITIONS.map(value => ({ value, label: value }));
@@ -432,7 +432,7 @@ function InventoryFieldDialog({ item, field, staff, onClose, onSaved, onFullEdit
     && (!recordingSale || (!!sale.date && !!sale.price));
   const dateFields = new Set<InventoryField>(['purchased_at', 'packed_on', 'shipped_on', 'sold_on']);
   const numberFields = new Set<InventoryField>(['lot_seq', 'product_no', 'cost_amount', 'planned_price', 'planned_payout', 'sold_price', 'payout_amount', 'refund_amount', 'inventory_refund_amount', 'amazon_refund_amount', 'non_amazon_refund_amount']);
-  const options: EditOption[] | null = field === 'status' ? STATUSES.map(v => ({ value: v, label: v }))
+  const options: EditOption[] | null = field === 'status' ? STATUSES.map(v => ({ value: v, label: inventoryStatusText(v) }))
     : field === 'is_accessory' ? [{ value: 'false', label: '本体' }, { value: 'true', label: '付属品' }]
     : field === 'marketplace' ? marketplaceSelectOptions(PURCHASE_SOURCES, String(initial)).map(v => ({ value: v, label: v }))
     : field === 'sales_channel' ? marketplaceSelectOptions(SALES_DESTINATIONS, String(initial)).map(v => ({ value: v, label: v }))

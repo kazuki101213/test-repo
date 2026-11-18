@@ -1,3 +1,4 @@
+import {inventoryStatusText} from '@bussan/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { InventoryItem } from '../api';
@@ -15,7 +16,8 @@ export default function InventoryColumnFilter({ field, anchor, items, current, o
   const searchInput = useRef<HTMLInputElement>(null);
   const options = useMemo(() => [...new Set([...items.map(i => columnValue(column.value(i))), ...(current?.values ?? [])])]
     .sort((a, b) => column.kind === 'number' && a && b ? Number(a) - Number(b) : a.localeCompare(b, 'ja', { numeric: true })), [items, column, current]);
-  const shown = options.filter(value => (value || '未設定').normalize('NFKC').toLocaleLowerCase().includes(search.normalize('NFKC').toLocaleLowerCase()));
+  const labelFor = (value:string) => field==='status'?inventoryStatusText(value):value;
+  const shown = options.filter(value => (labelFor(value) || '未設定').normalize('NFKC').toLocaleLowerCase().includes(search.normalize('NFKC').toLocaleLowerCase()));
   useEffect(() => {
     searchInput.current?.focus();
     const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !anchor.contains(event.target as Node)) onClose(); };
@@ -51,7 +53,7 @@ export default function InventoryColumnFilter({ field, anchor, items, current, o
       {shown.slice(0, limit).map(value => <label key={value}><input type="checkbox" checked={draft.values?.includes(value) ?? false} onChange={e => {
         const checked = e.target.checked;
         setDraft(d => ({ ...d, values: checked ? [...new Set([...(d.values ?? []), value])] : (d.values ?? []).filter(v => v !== value) }));
-      }} /><span>{value || '未設定'}</span></label>)}
+      }} /><span>{labelFor(value) || '未設定'}</span></label>)}
       {!shown.length && <p>一致する候補がありません。</p>}
       {shown.length > limit && <button type="button" className="btn" onClick={() => setLimit(n => n + 100)}>さらに表示</button>}
     </div>
