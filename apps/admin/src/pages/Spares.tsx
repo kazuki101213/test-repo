@@ -323,7 +323,7 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
             : <input autoFocus type={numeric ? 'number' : 'text'} min={numeric ? 0 : undefined} step={numeric ? 1 : undefined} value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />}
       </label>
       {error && <div className="error" role="alert">{error}</div>}
-      <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
+      <div className="toolbar inventory-edit-actions"><button className="btn primary" disabled={busy} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
     </div>
   </div>;
 }
