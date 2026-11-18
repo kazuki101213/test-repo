@@ -1,4 +1,4 @@
-import {handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,observedSelfListing,type ListingItem} from './index.ts';
+import {handler,listingBody,verifiedListing,offerImages,verifiedImages,listingIssueMessage,inspectReceipt,effectivePrice,receiptPricePatch,repairReceiptPrice,reconcileReceipt,observedSelfListing,validateRegisteredOffer,type ListingItem} from './index.ts';
 import {photographSignature,samePhotograph,verifyAmazonPhotoCopies} from '../_shared/amazonImageVerification.ts';
 import jpeg from 'npm:jpeg-js@0.4.4';
 
@@ -206,4 +206,51 @@ Deno.test('Amazon catalog markup issue identifies the attribute without recommen
  assert(listingIssueMessage(offerIssue,'B07WZK3RJR')==='100339：noncompliant markup');
  const existingContribution={...remote,attributes:{...body.attributes,product_accolade:[{value:'old'}]}};
  assert(listingIssueMessage(existingContribution,'B07WZK3RJR')==='100339：noncompliant markup');
+});
+
+
+Deno.test('catalog-only variation and model errors need a valid offer preview and do not change catalog attributes',async()=>{
+ for(const [code,name] of [['90244','variation_theme'],['100095','model_name']]){
+  const original:any={...listing(),issues:[{code,severity:'ERROR',attributeNames:[name],message:'catalog metadata'}]};
+  original.summaries[0].status=['DISCOVERABLE'];
+  const before=JSON.stringify(original);
+  let previews=0;
+  const result=await validateRegisteredOffer(original,item(),{put:async(sku,body,preview)=>{
+   assert(preview===true&&sku===item().sku,'only validate the existing SKU');
+   assert(body.requirements==='LISTING_OFFER_ONLY');
+   assert(!Object.hasOwn(body.attributes,name),'do not invent product metadata');
+   assert(body.attributes.purchasable_offer[0].our_price[0].schedule[0].value_with_tax===400);
+   previews++;return{status:'VALID',sku};
+  }});
+  assert(previews===1&&result&&verifiedListing(result,item()));
+  assert(JSON.stringify(original)===before,'keep original errors for diagnostics');
+  assert(await validateRegisteredOffer(result,item(),{put:async()=>{throw Error('no second preview needed')}})===result);
+ }
+});
+Deno.test('offer validation preserves real, attributed, mixed and enforced errors',async()=>{
+ for(const variant of ['ownAttribute','otherField','otherCode','otherError','enforced','unrecognizedEnforcement','wrongAsin','wrongPrice','noStatus','previewInvalid','previewError','previewSku','previewMissing']){
+  const i=item();
+  const remote:any={...listing(),issues:[{code:'90244',severity:'ERROR',attributeNames:['variation_theme']}]};
+  remote.summaries[0].status=['DISCOVERABLE'];
+  if(variant==='ownAttribute')remote.attributes.variation_theme=[{name:'INVALID'}];
+  if(variant==='otherField')remote.issues[0].attributeNames=['model_number'];
+  if(variant==='otherCode')remote.issues[0].code='100339';
+  if(variant==='otherError')remote.issues.push({code:'90220',severity:'ERROR',attributeNames:['batteries_included']});
+  if(variant==='enforced')remote.issues[0].enforcements={actions:[{action:'LISTING_SUPPRESSED'}]};
+  if(variant==='unrecognizedEnforcement')remote.issues[0].enforcements={};
+  if(variant==='wrongAsin')remote.summaries[0].asin='B000000000';
+  if(variant==='wrongPrice')remote.offers[0].price.amount=100;
+  if(variant==='noStatus')delete remote.summaries[0].status;
+  let previews=0;
+  const result=await validateRegisteredOffer(remote,i,{put:async()=>{
+   previews++;
+   if(variant==='previewInvalid')return{status:'INVALID'};
+   if(variant==='previewError')return{status:'VALID',issues:[{severity:'ERROR',code:'90220'}]};
+   if(variant==='previewSku')return{status:'VALID',sku:'other'};
+   if(variant==='previewMissing')return null;
+   throw Error('must not validate a non-catalog error');
+  }});
+  assert(result===remote,'keep blocking error for '+variant);
+  assert(previews===(variant.startsWith('preview')?1:0),'preview guard '+variant);
+ }
 });

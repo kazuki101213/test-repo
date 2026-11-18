@@ -55,6 +55,27 @@ export function verifiedListing(listing:Obj,item:ListingItem):boolean{
  const activePrice=/^FBA/.test(item.sales_channel??'')||effectivePrice(listing)===item.planned_price;
  return activePrice&&listing.sku===item.sku&&summary?.asin===item.asin&&summary?.conditionType===conditionTypes[item.condition??'']&&schedules?.length===1&&schedules[0].value_with_tax===item.planned_price&&!schedules[0].start_at&&!schedules[0].end_at&&(attributes.fulfillment_availability??[]).some((v:Obj)=>v.fulfillment_channel_code===(/^FBA/.test(item.sales_channel??'')?'AMAZON_JP':'DEFAULT'))&&issues(listing).length===0;
 }
+// Old catalog metadata can produce errors on offer-only listings despite a valid
+// offer. Exempt only these exact inherited fields after Amazon validates the offer.
+export function inheritedCatalogIssue(issue:Obj,listing:Obj):boolean {
+ const names=Array.isArray(issue.attributeNames)?issue.attributeNames:[issue.attributeName].filter(Boolean);
+ const name=String(issue.code)==='90244'?'variation_theme':String(issue.code)==='100095'?'model_name':null;
+ return issue.severity==='ERROR'&&!!name&&names.length===1&&names[0]===name&&
+  !Object.hasOwn(listing.attributes??{},name)&&
+  (issue.enforcements===undefined||Array.isArray(issue.enforcements?.actions)&&issue.enforcements.actions.length===0);
+}
+export async function validateRegisteredOffer(listing:Obj|null,item:ListingItem,api:{put:(sku:string,body:Obj,preview:boolean)=>Promise<Obj|null>}):Promise<Obj|null>{
+ if(!listing||!Array.isArray(listing.issues)||!listing.issues.some((issue:Obj)=>inheritedCatalogIssue(issue,listing)))return listing;
+ const candidate={...listing,issues:listing.issues.filter((issue:Obj)=>!inheritedCatalogIssue(issue,listing))};
+ const summary=listing.summaries?.find((s:Obj)=>s.marketplaceId===marketplace);
+ if(!verifiedListing(candidate,item)||effectivePrice(listing)!==item.planned_price||
+   !Array.isArray(summary?.status)||!summary.status.some((status:string)=>['DISCOVERABLE','BUYABLE'].includes(status)))return listing;
+ const payload=listingBody(item,{attributes:listing.attributes});
+ const preview=await api.put(item.sku,payload,true);
+ if(!preview||!['VALID','ACCEPTED'].includes(preview.status)||issues(preview).length||
+   preview.sku!==undefined&&preview.sku!==item.sku)return listing;
+ return candidate;
+}
 export function effectivePrice(listing:Obj):number|null{
  const offers=(listing.offers??[]).filter((v:Obj)=>v.marketplaceId===marketplace&&v.offerType==='B2C'&&v.price?.currencyCode==='JPY');
  if(offers.length!==1)return null;
@@ -141,6 +162,7 @@ export async function reconcileReceipt(svc:any,input:Obj,connect=amazon){
   remote=await api.get(r.sku);
  }
  if(!remote)return waiting('同じSKUでAmazonに送信済みです。登録結果を確認中です。');
+ remote=(await validateRegisteredOffer(remote,target,api))!;
  if(issues(remote).length)throw new SafeError(422,'Amazonの商品登録にエラーがあります。'+listingIssueMessage(remote,r.asin));
  if(!verifiedListing(remote,target))return waiting(verificationNote(remote));
  let fingerprint=await photoFingerprint(images),photosVerified=verifiedImages(remote,images)||r.photo_fingerprint===fingerprint&&!!r.photos_verified_at&&Date.now()-Date.parse(r.photos_verified_at)<600000;
@@ -214,7 +236,7 @@ async function amazon(id:AmazonAccountId){
   if(!response.ok)throw new SafeError(response.status>=500?502:response.status,'Amazon登録APIがエラーになりました（HTTP '+response.status+'）。'+(issues(data).join(' ')||'アカウントの権限・状態を確認してください。'));
   if(!data||typeof data!=='object')throw new SafeError(502,'Amazonの登録結果を確認できません。');return data as Obj;
  }
- return{sellerId:credentials.sellerId,diagnosePrice,inspectFba,submitPriceFeed,priceFeedStatus,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),inspect:(sku:string)=>call(sku,'GET'),patchPrice:(sku:string,body:Obj,preview=false)=>call(sku,'PATCH',body,preview),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview),patchImages:(sku:string,images:Obj,listing:Obj,preview=false)=>call(sku,'PATCH',{productType:photoProductType(listing),patches:imagePatches(images,listing)},preview)};
+ return{sellerId:credentials.sellerId,diagnosePrice,inspectFba,submitPriceFeed,priceFeedStatus,catalog:async(asin:string)=>{const params=new URLSearchParams({marketplaceIds:marketplace,includedData:'attributes,productTypes'});const r=await fetch(endpoint+'/catalog/2022-04-01/items/'+encodeURIComponent(asin)+'?'+params,{headers:{'x-amz-access-token':token.access_token,'user-agent':'BussanDelivery/1.0'},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new SafeError(502,'Amazonの商品情報を取得できません（HTTP '+r.status+'）。');return await r.json() as Obj;},get:(sku:string)=>call(sku,'GET'),inspect:(sku:string)=>call(sku,'GET'),patchPrice:(sku:string,body:Obj,preview=false)=>call(sku,'PATCH',body,preview),put:(sku:string,body:Obj,preview=false)=>call(sku,'PUT',body,preview),patchImages:(sku:string,images:Obj,listing:Obj,preview=false)=>call(sku,'PATCH',{productType:photoProductType(listing),patches:imagePatches(images,listing)},preview)};
 }
 async function syncSelfListingStatus(db:any,body:Obj) {
  if((body.requestId!==undefined&&!uuid(body.requestId))||(body.after!==undefined&&!uuid(body.after)))
@@ -267,6 +289,15 @@ export async function inspectReceipt(svc:any,input:Obj,connect=amazon){
   const attributeText=JSON.stringify(attribute??null);
   catalogAccolade={present:attribute!==undefined,containsMarkup:/<\/?[a-z][^>]*>|&lt;\/?[a-z]|javascript:/i.test(attributeText)};
  }
+ let catalogIssues:Obj|undefined;
+ if(input.inspectCatalogIssues===true){
+  const catalog=await api.catalog(receipt.asin);
+  if(catalog.asin!==receipt.asin)throw new SafeError(409,'商品カタログのASINが一致しません。');
+  const fields=['model_name','model_number','variation_theme','parentage_level','child_parent_sku_relationship','color','size','style','item_name'];
+  catalogIssues={productTypes:catalog.productTypes,catalogAttributes:Object.fromEntries(fields.filter(key=>catalog.attributes?.[key]).map(key=>[key,catalog.attributes[key]])),ownAttributes:Object.fromEntries(fields.filter(key=>original?.attributes?.[key]).map(key=>[key,original!.attributes[key]]))};
+  const preview=await api.put(receipt.sku,listingBody({...current,sku:receipt.sku},catalog),true);
+  catalogIssues.offerPreview={status:preview?.status,issues:preview?.issues};
+ }
  const pricing=input.includePricing===true?await api.diagnosePrice(receipt.sku,receipt.asin,receipt.item_condition):undefined;
  const repair=typeof receipt.note==='string'&&receipt.note.startsWith('Amazon価格補正:')?JSON.parse(receipt.note.slice('Amazon価格補正:'.length)):null;
  const fba=input.includeFba===true&&/^FBA/.test(receipt.sales_channel)?await api.inspectFba(receipt.sku):undefined;
@@ -274,7 +305,7 @@ export async function inspectReceipt(svc:any,input:Obj,connect=amazon){
  let history:Obj[]|undefined,photoEvidence:Obj|undefined;
  if(input.includeHistory===true){const {data:rows,error}=await svc.from('amazon_listing_submissions').select('request_id,sku,state').eq('item_id',receipt.item_id).order('created_at',{ascending:false}).limit(20);if(error)throw new SafeError(503,'過去の登録履歴を確認できません。');history=[];for(const row of rows??[]){if(row.sku===receipt.sku)continue;history.push({...row,remote:summarize(await read(row.sku))});}}
  if(input.includePhotos===true){const {data:photos,error}=await svc.from('item_photos').select('id,storage_path').eq('item_id',receipt.item_id).eq('photo_kind','product').order('sort_order').order('created_at').limit(6);if(error)throw new SafeError(503,'写真を確認できません。');if(photos?.length){const {data:signed,error}=await svc.storage.from('item-photos').createSignedUrls(photos.map((p:Obj)=>p.storage_path),600);if(error||signed?.some((p:Obj)=>!p.signedUrl))throw new SafeError(503,'写真の照合に失敗しました。');const images=offerImages(signed.map((p:Obj)=>p.signedUrl));photoEvidence={copiedImages:original?await verifyAmazonPhotoCopies(original,images,true):null,photoIds:photos.map((p:Obj)=>p.id),originalVerified:!!original&&verifiedImages(original,images),currentVerified:!!currentListing&&verifiedImages(currentListing,images),slots:Object.entries(original?.attributes??{}).filter(([key])=>/image_locator/.test(key)).map(([slot,values]:[string,any])=>({slot,entries:values.map((value:Obj)=>({keys:Object.keys(value),marketplace:value.marketplace_id,host:(()=>{try{return new URL(value.media_location).hostname}catch{return null}})(),matches:photos.filter((p:Obj)=>typeof value.media_location==='string'&&decodeURI(value.media_location).includes(p.storage_path)).map((p:Obj)=>p.id)}))}))};}}
- return{receipt:{requestId:receipt.request_id,sku:receipt.sku,asin:receipt.asin,price:receipt.price,condition:receipt.item_condition,channel:receipt.sales_channel,state:receipt.state},current:{id:current.id,sku:current.sku,asin:current.asin,price:current.planned_price,condition:current.condition,channel:current.sales_channel,status:current.status},original:summarize(original),currentListing:summarize(currentListing),pricing,feed,history,photoEvidence,fba,catalogAccolade};
+ return{receipt:{requestId:receipt.request_id,sku:receipt.sku,asin:receipt.asin,price:receipt.price,condition:receipt.item_condition,channel:receipt.sales_channel,state:receipt.state},current:{id:current.id,sku:current.sku,asin:current.asin,price:current.planned_price,condition:current.condition,channel:current.sales_channel,status:current.status},original:summarize(original),currentListing:summarize(currentListing),pricing,feed,history,photoEvidence,fba,catalogAccolade,catalogIssues};
 }
 // Explicit operator repair of an existing receipt, never used by automatic resume.
 // A durable compare-and-set reservation prevents retries from repeating a PATCH.
@@ -365,7 +396,7 @@ export async function handler(req:Request):Promise<Response>{
   if(body.action==='check'){
    let target=item;
    if(operation&&sameReceiptContent(item,operation)&&operation.seller_id===api.sellerId&&operation.sku!==item.sku){const {data:alias,error}=await svc.from('item_sku_aliases').select('item_id').eq('sku',operation.sku).maybeSingle();if(error||alias?.item_id!==item.id)throw new SafeError(409,'Amazon登録SKUと在庫の対応を確認できません。');target={...item,sku:operation.sku};}
-   const remote=await api.get(target.sku);return respond(200,{accountId,exists:!!remote,verified:!!remote&&verifiedListing(remote,target),state:operation?.state??null,note:remote?listingIssueMessage(remote,target.asin??'')||'AmazonにSKUの登録があります。':'AmazonにこのSKUはまだ登録されていません。'});
+   const remote=await validateRegisteredOffer(await api.get(target.sku),target,api);return respond(200,{accountId,exists:!!remote,verified:!!remote&&verifiedListing(remote,target),state:operation?.state??null,note:remote?listingIssueMessage(remote,target.asin??'')||'AmazonにSKUの登録があります。':'AmazonにこのSKUはまだ登録されていません。'});
   }
   const remote=await api.get(item.sku);
   if(item.status!=='商品登録前')throw new SafeError(409,'Amazonに登録がない場合は、出品完了を取り消してから出品してください。');
