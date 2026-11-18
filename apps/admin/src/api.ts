@@ -782,7 +782,7 @@ export async function updateInventoryStatus(
   if (error) throw error;
   if (!data) throw new Error('他の画面で変更されたか、編集権限がありません。在庫を読み直してください。');
   if (data.status !== status) {
-    throw new Error(`現在の商品情報では「${status}」に変更できません。商品情報編集で販売日・追跡番号などの記録を確認してください。`);
+    throw new Error(`現在の商品情報では「${inventoryStatusText(status)}」に変更できません。商品情報編集で販売日・追跡番号などの記録を確認してください。`);
   }
 }
 
