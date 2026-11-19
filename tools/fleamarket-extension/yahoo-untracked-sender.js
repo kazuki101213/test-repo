@@ -18,16 +18,20 @@
   }
   function parse(text) {
     const lines = String(text || '').normalize('NFKC').split(/\r?\n/).map(norm).filter(Boolean);
-    const shipping = lines.some(line => /^(?:(?:配送|発送)方法|配送の方法)[：:]?\s*定形外郵便(?:$|[（( ])/.test(line)
-      || /^定形外郵便(?:$|[（( ])/.test(line));
-    if (!shipping) return { shippingMethod: null, senderName: null, senderPrefectureCity: null };
+    const methods = ['定形外郵便', '普通郵便'];
+    const shippingMethod = lines.map(line => {
+      const match = line.match(/^(?:(?:配送|発送)方法|配送の方法)[：:]?\s*(定形外郵便|普通郵便)(?:$|[（( ])/)
+        || line.match(/^(定形外郵便|普通郵便)(?:$|[（( ])/);
+      return match?.[1] || null;
+    }).find(Boolean);
+    if (!shippingMethod || !methods.includes(shippingMethod)) return { shippingMethod: null, senderName: null, senderPrefectureCity: null };
     const sellerStart = lines.findIndex(line => /^(?:出品者情報|出品者の情報|出品者情報を確認)$/.test(line));
-    if (sellerStart < 0) return { shippingMethod: '定形外郵便', senderName: null, senderPrefectureCity: null };
+    if (sellerStart < 0) return { shippingMethod, senderName: null, senderPrefectureCity: null };
     const end = lines.findIndex((line, index) => index > sellerStart && /^(?:落札者情報|購入者情報|お届け先|配送先情報)$/.test(line));
     const sellerLines = lines.slice(sellerStart + 1, end < 0 ? sellerStart + 40 : end);
     const senderName = labelValue(sellerLines, /^(?:出品者)?(?:氏名|名前|お名前)[：:]?\s*(.*)$/);
     const address = labelValue(sellerLines, /^(?:出品者)?(?:住所|所在地|発送元住所)[：:]?\s*(.*)$/);
-    return { shippingMethod: '定形外郵便', senderName: senderName || null, senderPrefectureCity: prefectureCity(address) || null };
+    return { shippingMethod, senderName: senderName || null, senderPrefectureCity: prefectureCity(address) || null };
   }
   globalThis.FleaYahooUntrackedSender = Object.freeze({ parse, prefectureCity });
 })();

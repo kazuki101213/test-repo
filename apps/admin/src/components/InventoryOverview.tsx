@@ -44,8 +44,8 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
    const moneyField=(label:string,value:number|null|undefined,key:InventoryField)=>field(label,button(key,yen(value??null)));
    const badge=accessory?accessoryDisplayLabel(i):(counts.get(serialOf(i))?'付属品'+counts.get(serialOf(i))+'点':'付属品同梱');
    const profitClass=(n:number|null|undefined)=>n!=null&&n<0?'approved-loss':'approved-profit';
-   const trackingContext=i.untracked_shipping_method==='定形外郵便'&&!i.tracking_no
-    ? <span className="inventory-untracked-tracking">定形外郵便（追跡番号なし）<br/>氏名：{i.untracked_sender_name||'未取得'}<br/>住所：{i.untracked_sender_prefecture_city||'未取得'}</span>
+   const trackingContext=['定形外郵便','普通郵便'].includes(i.untracked_shipping_method||'')&&!i.tracking_no
+    ? <span className="inventory-untracked-tracking">{i.untracked_shipping_method}（追跡番号なし）<br/>氏名：{i.untracked_sender_name||'未取得'}<br/>住所：{i.untracked_sender_prefecture_city||'未取得'}</span>
     : button('tracking_no',i.tracking_no||'—','approved-tracking');
    return <div key={i.id} className={`approved-inventory-row approved-record${accessory?' approved-accessory':''}${separate?' approved-separate':''}`} role="row" data-item-id={i.id} data-item-status={i.status} data-kind={accessory?(separate?'separate':'bundled'):'body'} style={{backgroundColor:bg}}>
     <div className="approved-identity" role="cell">
