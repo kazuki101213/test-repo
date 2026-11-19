@@ -64,7 +64,10 @@
     for(const m of text.normalize('NFKC').matchAll(/(?:追跡番号|お問い合わせ番号|お問合せ番号|問い合わせ番号|問合せ番号|送り状番号|伝票番号)[：:\s]*([0-9][0-9\s\-－]{6,26}[0-9])/g)) {
       const n=m[1].replace(/[\s\-－]/g,'');if(/^\d{8,20}$/.test(n)) nums.add(n);
     }
-    return {itemId:id,role:seller?'seller':buyer?'buyer':'unknown',state:completed?'completed':buyer?'pending':'unknown',trackingNo:nums.size===1?[...nums][0]:null,trackingAmbiguous:nums.size>1,receiptControls:buttons.filter(t=>RECEIPT.test(t))};
+    const untrackedSender=a.site==='auctions'&&buyer&&!completed
+      ? globalThis.FleaYahooUntrackedSender?.parse(scope.innerText)
+      : null;
+    return {itemId:id,role:seller?'seller':buyer?'buyer':'unknown',state:completed?'completed':buyer?'pending':'unknown',trackingNo:nums.size===1?[...nums][0]:null,trackingAmbiguous:nums.size>1,...(untrackedSender?.shippingMethod?{untrackedShippingMethod:untrackedSender.shippingMethod,senderName:untrackedSender.senderName,senderPrefectureCity:untrackedSender.senderPrefectureCity}:{}),receiptControls:buttons.filter(t=>RECEIPT.test(t))};
   }
   function messageContext(a,recipe){
     const problem=authProblem();if(problem)return {auth:problem};

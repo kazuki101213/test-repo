@@ -6,6 +6,7 @@
 .approved-record { min-height:128px; }
 .approved-record .inventory-cell-edit { display:inline; width:auto; font:inherit; color:inherit; padding:0; border:0; border-radius:0; background:transparent; min-width:0; max-width:100%; text-align:left; overflow:visible; overflow-wrap:anywhere; cursor:pointer; }
 .approved-record .inventory-cell-edit > span { display:inline-block; white-space:normal; overflow:visible; text-overflow:clip; }
+.inventory-untracked-tracking { display:block; white-space:normal; overflow-wrap:anywhere; line-height:1.35; }
 .approved-record .reference-value { display:inline-flex; flex-wrap:nowrap; align-items:baseline; gap:3px; }
 .approved-heading-line { display:flex; flex-wrap:wrap; gap:4px; }
 .approved-record .inventory-cell-edit:hover { text-decoration:underline; }

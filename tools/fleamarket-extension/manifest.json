@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "フリマ取引サポート",
-  "version": "0.1.331",
-  "description": "購入履歴の仕入れリスト連携、取引メッセージ同期・送信、追跡番号照合を支援します。",
+  "version": "0.1.332",
+  "description": "購入履歴の仕入れリスト連携、取引メッセージ同期・送信、追跡番号・定形外郵便情報の確認を支援します。",
   "minimum_chrome_version": "120",
   "permissions": [
     "storage",
@@ -59,6 +59,7 @@
         "https://web.fril.jp/*"
       ],
       "js": [
+        "yahoo-untracked-sender.js",
         "content.js"
       ],
       "run_at": "document_idle"

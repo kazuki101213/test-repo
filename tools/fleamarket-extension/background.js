@@ -199,6 +199,17 @@ async function step(){if(sellerBusy)return;if(await launchPending())return;if(bu
     const match=await rpc(job.kind==='receipt'?'marketplace_receipt_context':'marketplace_extension_probe',{p_marketplace:SITES[a.site].db[0],p_item_id:tx.itemId});
     if(job.kind==='tracking'){
       if(job.settings.mode==='diagnostic'||!trackingEnabled(r)){if(job.settings.mode!=='diagnostic'&&!trackingEnabled(r))await task(a,'画面確認待ち','追跡番号','追跡画面の実地確認が未完了のため登録を保留しています',tx.itemId);await log('info','診断: 更新せず照合',{account:a.label,itemId:tx.itemId,count:match.count,trackingNo:tx.trackingNo,sku:match.items.map(x=>x.sku),inventoryStatus:match.items.map(x=>({sku:x.sku,inspected:!!x.inspected_at,trackingPresent:!!x.tracking_no})),eligibleForReceipt:eligible(match.items,tx).ok});}
+      else if(a.site==='auctions'&&tx.untrackedShippingMethod==='定形外郵便'){
+        if(match.count!==1||!tx.senderName||!tx.senderPrefectureCity){
+          const reason=match.count!==1?'ヤフオク在庫が1件に一致しません':'定形外郵便の出品者氏名または都道府県・市を確認できません';
+          const result=await rpc('reconcile_marketplace_tracking',{p_marketplace:SITES[a.site].db[0],p_account_label:a.label,p_marketplace_item_id:tx.itemId,p_site_tracking_no:null,p_confirmation_status:null,p_details:'Chrome拡張機能; 処理種別=定形外郵便の発送者情報; '+reason});
+          await log('warning',result.status||reason,{account:a.label,itemId:tx.itemId,sku:match.items.map(x=>x.sku)});
+        }else{
+          const result=await rpc('record_untracked_shipping_sender',{p_marketplace_item_id:tx.itemId,p_account_label:a.label,p_sender_name:tx.senderName,p_sender_prefecture_city:tx.senderPrefectureCity,p_shipping_method:tx.untrackedShippingMethod});
+          if(result.result==='recorded')job.counts.updated++;
+          await log(result.result==='recorded'||result.result==='already_recorded'?'info':'warning',result.result==='recorded'?'定形外郵便の発送者情報を登録しました':result.result,{account:a.label,itemId:tx.itemId,sku:result.sku});
+        }
+      }
       else{const result=await rpc('reconcile_marketplace_tracking',{p_marketplace:SITES[a.site].db[0],p_account_label:a.label,p_marketplace_item_id:tx.itemId,p_site_tracking_no:tx.trackingAmbiguous?null:tx.trackingNo,p_confirmation_status:null,p_details:'Chrome拡張機能; 購入者側・未完了確認済み'+(tx.trackingAmbiguous?'; サイトに複数の追跡番号があり要確認':'')});if(result.result==='updated')job.counts.updated++;await log('info',result.status||result.result,{account:a.label,itemId:tx.itemId,sku:result.sku});}
     }else{
       const check=eligible(match.items,tx);if(!check.ok){job.counts.skipped++;await log('info',check.reason,{account:a.label,itemId:tx.itemId});if(match.count!==1)await task(a,'受け取り連絡保留','受け取り連絡',check.reason,tx.itemId);}
