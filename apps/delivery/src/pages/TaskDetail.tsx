@@ -44,7 +44,14 @@ export default function TaskDetail({
   const [marketplaceError, setMarketplaceError] = useState('');
   const selectedSupplierAccount = marketplaceConversation.account_id || supplierAccount;
 
+  // Parent callbacks may change identity after every row update; reading them through refs
+  // keeps reload (and the effect that runs it) from re-fetching the detail in a loop.
+  const onChangedRef = useRef(onChanged);
+  onChangedRef.current = onChanged;
+  const onOpenedRef = useRef(onOpened);
+  onOpenedRef.current = onOpened;
   const reload = useCallback(async () => {
+    const onChanged = onChangedRef.current, onOpened = onOpenedRef.current;
     try {
       const [t, c, p, review] = await Promise.all([
         fetchTask(itemId, canViewDeliveryAssignee(staff)), mode === 'comments' ? fetchComments(itemId) : Promise.resolve([]), photoMode ? fetchPhotoUrls(itemId,purpose) : Promise.resolve([]), mode === 'photos' ? fetchPhotoReview(itemId) : Promise.resolve(null),
@@ -59,7 +66,7 @@ export default function TaskDetail({
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [itemId, onChanged, onOpened, staff.code, staff.role, mode]);
+  }, [itemId, staff.code, staff.role, mode]);
 
   useEffect(() => { void reload(); }, [reload]);
   const detailRevision = useRef(latestTask?.detail_revision);
