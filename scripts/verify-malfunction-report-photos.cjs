@@ -15,9 +15,9 @@ async function apiTest(){
 }
 async function workflowTest(){
  let cursor=0,hooks=[],tree,sends=0,changed=0,error=null,fail=true;
- const react={useState(initial){const n=cursor++;hooks[n]??={value:initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;}];},useRef:initial=>hooks[cursor++]??={current:initial}};
+ const react={useState(initial){const n=cursor++;hooks[n]??={value:initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;}];},useRef:initial=>hooks[cursor++]??={current:initial},useEffect(){}};
  const shared={exports:{}};vm.runInNewContext(compile('packages/shared/src/workflow.ts'),shared);
- const ctx={exports:{},crypto:require('node:crypto').webcrypto,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared.exports:id==='./WorkflowConfirmation'?{default:'confirm'}:{performInventoryAction:async()=>{throw Error('Photos must use the atomic report API');},submitMalfunctionReport:async(task,note,request,photos,damage)=>{sends++;assert.equal(note,'写真付き報告');assert.equal(photos.length,1);assert.equal(damage,true);if(fail)throw Error('Drive failure');}}};
+ const ctx={exports:{},crypto:require('node:crypto').webcrypto,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?shared.exports:id==='../malfunctionReport'?{initialMalfunctionNote:async()=>''}:id==='./WorkflowConfirmation'?{default:'confirm'}:{performInventoryAction:async()=>{throw Error('Photos must use the atomic report API');},submitMalfunctionReport:async(task,note,request,photos,damage)=>{sends++;assert.equal(note,'写真付き報告');assert.equal(photos.length,1);assert.equal(damage,true);if(fail)throw Error('Drive failure');}}};
  vm.runInNewContext(compile('apps/delivery/src/components/WorkflowControls.tsx'),ctx);
  const render=()=>{cursor=0;tree=ctx.exports.default({task:{id:'item',sku:'1-test',status:'検品中',marketplace:'メルカリ'},onChanged:async()=>{changed++;},onError:e=>error=e});};
  render();all(tree).find(n=>n.props?.['data-action']==='report').props.onClick();render();all(tree).find(n=>n.type==='textarea').props.onChange({target:{value:'写真付き報告'}});render();
@@ -30,7 +30,7 @@ async function workflowTest(){
 }
 async function managerTest(){
  let cursor=0,hooks=[],tree,reads=0,resolveRead;
- const react={useState(initial){const n=cursor++;hooks[n]??={value:initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;}];},useRef:initial=>hooks[cursor++]??={current:initial}};
+ const react={useState(initial){const n=cursor++;hooks[n]??={value:initial};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;}];},useRef:initial=>hooks[cursor++]??={current:initial},useEffect(){}};
  const sb={rpc:async(name,args)=>{assert.equal(name,'read_malfunction_report_photos');assert.equal(args.p_item_id,'item');reads++;return new Promise(resolve=>{resolveRead=resolve;});}};
  const context={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:{getSupabase:()=>sb}};
  vm.runInNewContext(compile('apps/admin/src/components/MalfunctionReportPhotos.tsx'),context);

@@ -25,8 +25,8 @@ for(const saved of [null,'商品名（メルカリ）\n【2410】BDP-S6700 SONY\
  if(saved)assert.equal(draft.description,'保存済み本文');
 }
 const ubp=listingDraft({...base,title:'UBP-X700',model_no:'UBP-X700',description_template:'小物',description:'商品名（メルカリ）\n保存済み名\n\n説明文\n保存済み本文'},'SONY');assert.equal(ubp.category,'ブルーレイレコーダー');assert.equal(ubp.listingCategory,'ブルーレイレコーダー');assert.equal(ubp.description,'保存済み本文');
-const jsx=(type,props)=>({type,props}),react={useState:v=>[v,()=>{}],useRef:v=>({current:v})};
-const Controls=load('apps/delivery/src/components/WorkflowControls.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':workflow}).default;
+const jsx=(type,props)=>({type,props}),react={useState:v=>[v,()=>{}],useRef:v=>({current:v}),useEffect(){}};
+const Controls=load('apps/delivery/src/components/WorkflowControls.tsx',{'react':react,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':workflow,'../malfunctionReport':{initialMalfunctionNote:async()=>''}}).default;
 function all(n){return !n||typeof n!=='object'?[]:Array.isArray(n)?n.flatMap(all):[n,...all(typeof n.type==='function'?n.type(n.props):n.props?.children)];}
 for(const channel of ['FBA','自己発送','メルカリ','ヤフオク'])for(const approval of [undefined,false,true]){
  const tree=Controls({task:{...base,sales_channel:channel,photo_review_approved:approval},onChanged:async()=>{},onError:()=>{}});
@@ -37,17 +37,18 @@ for(const channel of ['FBA','自己発送','メルカリ','ヤフオク'])for(co
 async function panelCheck(approved,saved,uncertain=false,channel='メルカリ'){
  let cursor=0,hooks=[],pending=[],tree,dirty=true,queued,checks=0,finished=false,changed=[];const checkOperation=()=>({id:'uncertain-op',kind:'listing',status:finished?'succeeded':'uncertain',created_at:'2026-01-01T00:00:00Z',result:checks&&!finished?{read_check_state:'queued',read_check_requested_at:new Date().toISOString()}:{}});
  const hookReact={useRef(v){return hooks[cursor++]??={current:v};},useState(v){const n=cursor++;hooks[n]??={value:v};return[hooks[n].value,next=>{hooks[n].value=typeof next==='function'?next(hooks[n].value):next;dirty=true;}];},useEffect(fn,deps){const n=cursor++;if(!hooks[n]||deps.some((v,i)=>v!==hooks[n].deps[i])){const previous=hooks[n];hooks[n]={deps};pending.push(()=>{previous?.cleanup?.();hooks[n].cleanup=fn();});}}};
- const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,...channels,...require('./marketplace-account-modules.cjs'),canViewDeliveryAssignee:()=>false},'./DescriptionEditor':{default:({embedded})=>jsx('div',{children:[jsx('input',{maxLength:128,value:embedded.value.title,disabled:embedded.disabled}),jsx('textarea',{maxLength:5000,value:embedded.value.description,disabled:embedded.disabled})]})},'../listingDraft':{listingDraft},'../api':{
+ const Panel=load('apps/delivery/src/components/SellerPanel.tsx',{'react':hookReact,'react/jsx-runtime':{jsx,jsxs:jsx},'@bussan/shared':{...seller,...channels,...require('./marketplace-account-modules.cjs'),canViewDeliveryAssignee:()=>false},'./DescriptionEditor':{default:({embedded})=>jsx('div',{children:[jsx('input',{maxLength:128,value:embedded.value.title,disabled:embedded.disabled}),jsx('textarea',{maxLength:5000,value:embedded.value.description,disabled:embedded.disabled})]})},'../listingDraft':{listingDraft},'./OperationProgress':load('apps/delivery/src/components/OperationProgress.tsx',{'react/jsx-runtime':{jsx,jsxs:jsx}}),'../api':{
   fetchTask:async()=>{for(let i=0;i<4;i++)await Promise.resolve();return {...base,sales_channel:channel,description:saved,status:finished?'出品中':base.status};},fetchSellerContext:async()=>({revision:'one',operations:uncertain?[checkOperation()]:[],photo_review_approved:approved,
    yahoo_listing_shipping:channel==='ヤフオク'?{category:'ブルーレイレコーダー',shippingMethod:'おてがる配送（日本郵便）',origin:'千葉県',dropoff:'ローソン',size:'120',weightKg:'5',source:'fixed'}:null}),
   fetchPhotoUrls:async()=>[1,2,3].map(n=>({id:String(n),url:'photo'+n})),fetchProductMaker:async()=>'東芝',requestListingResultCheck:async id=>{assert.equal(id,base.id);checks++;},fetchSellerOperation:async()=>{throw Error('Extra polling RPC');},queueSellerOperation:async(id,kind,payload)=>{queued={id,kind,payload};}
  }}).default;
  const props={mode:'listing',task:{...base,sales_channel:channel,photo_review_approved:approved},staff:{id:'MM',name:'株式会社吉光'},listingSkus:[base.sku],onChanged(task){changed.push(task);},onClose(){}};
- async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=Panel(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
+ async function settle(){for(let i=0;i<60;i++){if(dirty){cursor=0;dirty=false;tree=Panel(props);pending.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
  await settle();
  if(approved&&!uncertain){const field=all(tree).find(n=>n.type==='input'&&n.props.maxLength===200),original=field.props.value;field.props.onChange({target:{value:' '}});await settle();assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='出品').props.disabled,true);assert(all(tree).some(n=>n.props?.role==='alert'&&String(n.props.children).includes('出品カテゴリを入力')));assert.equal(queued,undefined);field.props.onChange({target:{value:original}});await settle();}
  if(channel==='ヤフオク'&&approved&&!uncertain){const field=all(tree).find(n=>n.type==='input'&&n.props.maxLength===200),original=field.props.value;field.props.onChange({target:{value:'ブルーレイレコーダー'}});await settle();assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='出品').props.disabled,true);assert(all(tree).some(n=>n.props?.role==='alert'&&String(n.props.children).includes('メーカーまで指定')));field.props.onChange({target:{value:original}});await settle();}
- assert.equal(all(tree).some(n=>n.type==='button'&&n.props.children==='閉じる'),false);
+ // Since fa8d414 the listing panel has its own close button.
+ assert.equal(all(tree).some(n=>n.type==='button'&&n.props.children==='閉じる'),true);
  const title=all(tree).find(n=>n.type==='input'&&n.props.maxLength===128);
  const body=all(tree).find(n=>n.type==='textarea'&&n.props.maxLength===5000);
  assert(title&&body);assert.equal(title.props.disabled,!approved||uncertain);
