@@ -6,10 +6,11 @@ declare parent uuid;child uuid;duplicate uuid;same_purchase uuid;late_child uuid
 begin
  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,marketplace_item_id)
  values(990951,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'receipt parent fixture',100,'ヤフフリ','メルカリ','123','accessory-todo-parent') returning id into parent;
+ -- Accessories carry tracking numbers so the 2026-11-19 hold rule lets the parent reach 検品中.
  -- Distinct suffixes survive both parent-tail and accessory-tail SKU synchronization.
- insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory,parent_item_id)
+ insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory,parent_item_id,tracking_no)
  select (990952+n)::text||repeat('a',n+1)||'-AADD-'||to_char(current_date-n,'YYYYMMDD')||'-1',990952+n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-n,'receipt accessory fixture',10+n,
- market::app.marketplace,'メルカリ',purchase,true,parent
+ market::app.marketplace,'メルカリ',purchase,true,parent,'fixture-accessory'
  from (values (0,'ヤフフリ','accessory-todo-child'),(1,'PayPayフリマ','accessory-todo-child'),(2,'PayPayフリマ','accessory-todo-parent'),(3,'メルカリ','accessory-todo-own')) f(n,market,purchase);
  select id into child from app.items where lot_seq=990952;
  select id into duplicate from app.items where lot_seq=990953;
@@ -27,8 +28,8 @@ begin
  if exists(select 1 from app.v_receipt_evaluation_tasks where item_id in(parent,child,duplicate)) then raise exception 'Cancelled parent still ready';end if;
  if not exists(select 1 from app.v_receipt_evaluation_tasks where item_id=own_child) then raise exception 'Own inspected accessory lost task';end if;
  update app.items set inspected_at=now() where id=parent;
- insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory)
- values('990956aaaaa-AADD-'||to_char(current_date-10,'YYYYMMDD')||'-1',990956,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'linked later fixture',14,'ラクマ','メルカリ','accessory-todo-late',true) returning id into late_child;
+ insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,marketplace_item_id,is_accessory,tracking_no)
+ values('990956aaaaa-AADD-'||to_char(current_date-10,'YYYYMMDD')||'-1',990956,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'linked later fixture',14,'ラクマ','メルカリ','accessory-todo-late',true,'fixture-accessory') returning id into late_child;
  if exists(select 1 from app.receipt_evaluation_tasks where item_id=late_child) then raise exception 'Unlinked child enqueued';end if;
  update app.items set parent_item_id=parent where id=late_child;
  if not exists(select 1 from app.v_receipt_evaluation_tasks where item_id=late_child and is_accessory) then raise exception 'Later linked purchase omitted';end if;
