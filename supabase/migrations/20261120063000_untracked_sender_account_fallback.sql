@@ -4,31 +4,31 @@
 -- メルカリは購入者画面に出品者の氏名・住所を出さないため、アカウント名で記録できるようにする。
 alter table app.items add column if not exists untracked_sender_account text;
 
+-- create or replace view は列を末尾にしか足せないため、最上位の FROM の直前（選択列の最後）に追加する。
+-- 本番と新規DBで列の並びが違っても動くよう、特定の列名には依存しない。
 do $migration$
 declare
+  target record;
   definition text;
-  old text;
-  new text;
+  anchor constant text := E'\n   FROM ';
+  at integer;
 begin
-  definition := pg_get_viewdef('app.v_inventory_display'::regclass, true);
-  if strpos(definition, 'AS untracked_sender_account') = 0 then
-    old := E'END AS untracked_sender_name\n';
-    new := E'END AS untracked_sender_name,\n        CASE WHEN app.current_role() IN (''admin'',''purchaser'') THEN raw.untracked_sender_account END AS untracked_sender_account\n';
-    if length(definition) - length(replace(definition, old, '')) <> length(old) then
-      raise exception 'v_inventory_display sender name anchor is missing or ambiguous';
+  for target in
+    select * from (values
+      ('app.v_inventory_display', E',\n        CASE WHEN app.current_role() IN (''admin'',''purchaser'') THEN raw.untracked_sender_account END AS untracked_sender_account'),
+      ('app.v_items', E',\n    NULL::text AS untracked_sender_account')
+    ) as t(view_name, projection)
+  loop
+    definition := pg_get_viewdef(target.view_name::regclass, true);
+    if strpos(definition, 'AS untracked_sender_account') = 0 then
+      if (length(definition) - length(replace(definition, anchor, ''))) <> length(anchor) then
+        raise exception '% top-level FROM anchor is missing or ambiguous', target.view_name;
+      end if;
+      at := strpos(definition, anchor);
+      execute format('create or replace view %s as ', target.view_name)
+        || left(definition, at - 1) || target.projection || substr(definition, at);
     end if;
-    execute 'create or replace view app.v_inventory_display as ' || replace(definition, old, new);
-  end if;
-
-  definition := pg_get_viewdef('app.v_items'::regclass, true);
-  if strpos(definition, 'AS untracked_sender_account') = 0 then
-    old := E'NULL::text AS untracked_sender_name\n   FROM app.items i';
-    new := E'NULL::text AS untracked_sender_name,\n    NULL::text AS untracked_sender_account\n   FROM app.items i';
-    if strpos(definition, old) = 0 then
-      raise exception 'v_items sender name anchor is missing';
-    end if;
-    execute 'create or replace view app.v_items as ' || replace(definition, old, new);
-  end if;
+  end loop;
 end
 $migration$;
 
