@@ -24,4 +24,9 @@ assert.equal(hasTypedInput([{isConnected:true,value:'説明文の下書き'}]),t
 assert.equal(hasTypedInput([{isConnected:true,value:'   '}]),false);
 assert.equal(hasTypedInput([{isConnected:false,value:'閉じた欄'}]),false,'閉じた欄は対象外');
 assert.equal(hasTypedInput([{isConnected:true,isContentEditable:true,textContent:'メモ'}]),true);
+// 確認の仕組みが使えない環境でも、画面の起動を止めない。
+assert.equal(typeof ctx.exports.startReleaseRefresh(),'function');
+const bare={exports:{},URL,window:{},document:{documentElement:{}}};
+vm.runInNewContext(compile('packages/shared/src/releaseRefresh.ts'),bare);
+assert.equal(typeof bare.exports.startReleaseRefresh(),'function');
 console.log('verify-release-refresh: ok');

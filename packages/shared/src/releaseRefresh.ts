@@ -45,9 +45,15 @@ export function shouldReloadForRelease(state: {current: string | null; latest: s
     && state.now - state.lastActivity >= RELEASE_IDLE_MS && !state.typedInput;
 }
 
-/** アプリ起動時に1回呼ぶ。 */
+/** アプリ起動時に1回呼ぶ。確認の仕組みが使えない環境では何もしない（画面の起動は妨げない）。 */
 export function startReleaseRefresh(): () => void {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
+  try { return startWatching(); } catch { return () => {}; }
+}
+
+function startWatching(): () => void {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || typeof fetch !== 'function'
+    || typeof document.querySelectorAll !== 'function' || typeof document.addEventListener !== 'function'
+    || typeof window.addEventListener !== 'function' || typeof window.setInterval !== 'function') return () => {};
   const current = entryScriptFromDocument(document);
   if (!current) return () => {};
   let latest: string | null = null, lastActivity = Date.now(), checking = false;
