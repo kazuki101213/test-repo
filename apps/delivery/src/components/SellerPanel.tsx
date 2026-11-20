@@ -70,6 +70,8 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  const [photoAnalysis,setPhotoAnalysis]=useState<{message:string;accessories:string[];overview?:string;reading?:boolean}>({message:'',accessories:[]});
  const photosEdited=useRef(false);
  const receiptPhotos=useRef(false);
+ // Read the parent callback through a ref so a new identity does not restart the operation watcher.
+ const onChangedRef=useRef(onChanged);onChangedRef.current=onChanged;
  const [listingUrl,setListingUrl]=useState('');
  const [confirming,setConfirming]=useState<'listing'|'listing_complete'|null>(null);
  const [amazonConfirmation,setAmazonConfirmation]=useState<{sku:string;price:number;persistYear:()=>Promise<void>}|null>(null);
@@ -146,11 +148,11 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
  useEffect(()=>{if(!watching)return;let active=true,inFlight=false;
   async function refresh(){if(!active||inFlight||document.visibilityState!=='visible')return;if(Date.now()-Date.parse(checking(watching!)?String(watching!.result.read_check_requested_at):watching!.created_at)>600000){setError('実行結果の確認が必要です。自動再実行はしません。');return;}inFlight=true;
    try{const state=checking(watching!)?{status:'uncertain'}:await fetchSellerOperation(watching!.id);if(!active)return;
-    if(checking(watching!)||!['queued','running'].includes(state.status)){const info=await fetchSellerContext(task.id);if(!active)return;const finished=info.operations.find(op=>op.id===watching!.id&&op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(!active)return;if(full){lastFinished.current=finished.id;onChanged(full,finished.kind==='listing');}}setContext(info);}
+    if(checking(watching!)||!['queued','running'].includes(state.status)){const info=await fetchSellerContext(task.id);if(!active)return;const finished=info.operations.find(op=>op.id===watching!.id&&op.status==='succeeded');if(finished&&lastFinished.current!==finished.id){const full=await fetchTask(task.id,canViewDeliveryAssignee(staff));if(!active)return;if(full){lastFinished.current=finished.id;onChangedRef.current(full,finished.kind==='listing');}}setContext(info);}
    }catch(cause){if(active)setError(deliveryErrorMessage(cause));}finally{inFlight=false;}
   }
   const timer=window.setInterval(()=>void refresh(),15000);return()=>{active=false;window.clearInterval(timer);};
- },[watching?.id,watching?.result.read_check_state,watching?.result.read_check_requested_at,task.id,staff.role,staff.code,onChanged]);
+ },[watching?.id,watching?.result.read_check_state,watching?.result.read_check_requested_at,task.id,staff.role,staff.code]);
  useEffect(()=>{setCode('');setCamera(false);setMessage('');},[context?.listing?.trade_key]);
  const operations=context?.operations??[],latestShipping=operations.find(op=>op.kind==='shipping_code'&&op.trade_key===context?.listing?.trade_key),latestCode=latestShipping?.status==='succeeded'?latestShipping:undefined;
  useEffect(()=>{let active=true;const value=latestCode?.result.qr_code;if(typeof value!=='string'){setQr('');return;}if(value.startsWith('data:image/png;base64,')){setQr(value);return;}void import('qrcode').then(module=>module.toDataURL(value,{width:260,margin:2})).then(url=>{if(active)setQr(url);}).catch(()=>{if(active)setError('配送コードを表示できません');});return()=>{active=false;};},[latestCode?.id]);

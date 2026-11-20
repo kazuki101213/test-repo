@@ -80,11 +80,17 @@ export default function TaskList({ staff,selectedIds=[],onSelectionChange,onFbaD
   const deepLinkItemId = new URLSearchParams(window.location.search).get('itemId');
   const deepLinkHandled = useRef(false);
   const toggleExpanded = (id: string) => setExpandedId(current => current === id ? null : id);
+  // Keep updateTask stable: an open detail reloads whenever this callback changes,
+  // and each reload updates the rows, so depending on rows here re-fetches in a loop.
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const filterKeyRef = useRef(filterKey);
+  filterKeyRef.current = filterKey;
   const updateTask = useCallback((updated: DeliveryTask,keepVisible=false) => {
-    if(keepVisible)setCompletedListing({itemId:updated.id,filterKey,rows:tasks.filter(row=>baseSerialNumber(row)===baseSerialNumber(updated)).map(row=>row.id===updated.id?{...row,...updated}:row)});
+    if(keepVisible)setCompletedListing({itemId:updated.id,filterKey:filterKeyRef.current,rows:tasksRef.current.filter(row=>baseSerialNumber(row)===baseSerialNumber(updated)).map(row=>row.id===updated.id?{...row,...updated}:row)});
     window.dispatchEvent(new CustomEvent('delivery-item-workflow-changed',{detail:updated}));
     inventory.updateRow(updated);
-  }, [inventory.updateRow,tasks,filterKey]);
+  }, [inventory.updateRow]);
 
   useEffect(()=>{
     if(!deepLinkItemId||deepLinkHandled.current)return;
