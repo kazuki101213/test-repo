@@ -1,5 +1,6 @@
 import React from 'react';
 import '@bussan/shared/controlViewport';
+import { startReleaseRefresh } from '@bussan/shared/releaseRefresh';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import './responsive.css';
@@ -11,6 +12,7 @@ import PasswordSetup from './components/PasswordSetup';
 
 // Capture the invite/recovery route before the auth SDK consumes the URL fragment.
 document.title = '管理アプリ';
+startReleaseRefresh();
 const setup = new URLSearchParams(location.search).get('setup') === '1'
   || ['invite', 'recovery'].includes(new URLSearchParams(location.hash.slice(1)).get('type') ?? '');
 
