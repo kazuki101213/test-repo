@@ -1,6 +1,8 @@
 import { initialApplication, applicationModeKey } from '../../../packages/shared/src/applicationSwitch';
 import '@bussan/shared/controlViewport';
+import { startReleaseRefresh } from '@bussan/shared/releaseRefresh';
 document.documentElement.dataset.appHost = 'unified';
+startReleaseRefresh();
 let stored: string | null = null;
 try { stored = window.sessionStorage.getItem(applicationModeKey); } catch { /* Use the delivery entry when storage is unavailable. */ }
 const mode = initialApplication(location.search, location.hash, stored);

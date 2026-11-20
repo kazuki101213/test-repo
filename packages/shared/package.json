@@ -11,7 +11,8 @@
     "./calendar.css": "./src/calendar.css",
     "./controls.css": "./src/controls.css",
     "./inventory-status.css": "./src/inventory-status.css",
-    "./controlViewport": "./src/controlViewport.ts"
+    "./controlViewport": "./src/controlViewport.ts",
+    "./releaseRefresh": "./src/releaseRefresh.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

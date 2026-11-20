@@ -1,5 +1,6 @@
 import {invalidateReadCache} from './readCache';
 import {clearPhotoUrlCache} from './photoUrlCache';
+import {createGuardedFetch} from './requestGuard';
 import { createClient, type User } from '@supabase/supabase-js';
 import type { Staff } from './types';
 
@@ -8,6 +9,8 @@ function createAppClient(url: string, key: string) {
     // テーブル・ビュー・RPC はすべて app スキーマに置いている
     db: { schema: 'app' },
     auth: { persistSession: true, autoRefreshToken: true },
+    // 画面の不具合で同じ読み込みが連発しても、DBを占有しないよう間を空ける
+    global: { fetch: createGuardedFetch() },
   });
 }
 
