@@ -2,8 +2,8 @@ begin;
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at,product_registered_at)
 select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'four-account sales fixture',1000,'ヤフオク','FBA','123456',now(),now()
 from generate_series(996110,996118) n;
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
-select 996110,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'linked accessory',100,'ヤフオク',true;
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,tracking_no)
+select 996110,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'linked accessory',100,'ヤフオク',true,'fixture-accessory';
 set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 do $$declare account text; serial integer:=996110; ext text; row jsonb; result text; v_plan jsonb; before_count integer:=(select count(*) from app.items);begin

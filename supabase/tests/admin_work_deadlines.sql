@@ -105,14 +105,15 @@ do $$ declare payload jsonb; begin
     then raise exception 'Fully received inspection family still marked as waiting'; end if;
 end $$;
 reset role;
+-- Since the 2026-11-19 hold rule, a body returns to 受取前 while a linked accessory lacks tracking.
+-- The parent status change also realigns accessory serials, so check it inside a savepoint.
+savepoint accessory_tracking_removed;
 update app.items set tracking_no=null where lot_seq=997633;
-set local role authenticated;
-do $$ declare payload jsonb; begin
-  payload:=app.read_resource_snapshot('admin_inspection_tasks');
-  if not exists(select 1 from jsonb_array_elements(payload->'rows') r
-    where r->>'lot_seq'='997617' and r->'waiting_for_parts'='true'::jsonb)
-    then raise exception 'Accessory without a tracking number did not mark its body'; end if;
+do $$ begin
+  if (select status from app.items where marketplace_item_id='m997617' and not is_accessory) is distinct from '受取前'
+    then raise exception 'Accessory without a tracking number did not hold its body'; end if;
 end $$;
+rollback to accessory_tracking_removed;
 
 reset role;
 savepoint accessory_work_completion;

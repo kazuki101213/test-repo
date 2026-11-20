@@ -5,8 +5,8 @@ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_
 select n,(select id from app.staff where code='AA'),(select id from app.staff where code=case when n=990201 then 'DD' else 'HH' end),current_date,'paged inventory fixture',1000,'ヤフオク','メルカリ','123456' from generate_series(990201,990202) n;
 -- An explicit suffix tests separate management groups without relying on the
 -- old workflow-sync bug to rewrite the accessory's purchase SKU into suffix a.
-insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
-select '990201a-AADD-'||to_char(current_date,'YYYYMMDD')||'-10',990201,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'paged accessory fixture',100,'ヤフオク',true;
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,tracking_no)
+select '990201a-AADD-'||to_char(current_date,'YYYYMMDD')||'-10',990201,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'paged accessory fixture',100,'ヤフオク',true,'fixture-accessory';
 update app.items set purchased_at=current_date-30 where lot_seq=990202;
 do $$
 declare
@@ -86,8 +86,8 @@ insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,c
 select '990203aa-AADD-20261001-100',990203,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),'2026-10-01','parent grouping fixture',1000,'ヤフオク';
 insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace)
 select '990203b-AAHH-20261001-100',990203,(select id from app.staff where code='AA'),(select id from app.staff where code='HH'),'2026-10-01','unrelated resale fixture',1000,'ヤフオク';
-insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,parent_item_id)
-select '990203aaaaa-AADD-20261002-10',990203,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),'2026-10-02','parent spare fixture',100,'ヤフオク',true,(select id from app.items where title='parent grouping fixture');
+insert into app.items(sku,lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,parent_item_id,tracking_no)
+select '990203aaaaa-AADD-20261002-10',990203,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),'2026-10-02','parent spare fixture',100,'ヤフオク',true,(select id from app.items where title='parent grouping fixture'),'fixture-accessory';
 do $$declare p jsonb; q jsonb; key text;begin
  select lower(app.product_serial(sku,lot_seq)) into key from app.items where title='parent grouping fixture';
  p:=app.read_inventory_page('delivery',jsonb_build_object('queryField','sku','query',(select sku from app.items where title='parent grouping fixture')),1,'{}');

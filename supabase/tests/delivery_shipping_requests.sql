@@ -4,8 +4,8 @@ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_
 select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'shipping request fixture',1000,'PayPayフリマ',
  case n when 998421 then 'メルカリ'::app.sales_channel when 998422 then 'ヤフオク'::app.sales_channel when 998423 then '自己発送'::app.sales_channel else 'FBA'::app.sales_channel end,
  'fixture',now(),now(),'出品中' from generate_series(998421,998424) n;
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
- select 998421,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'linked accessory fixture',100,'PayPayフリマ',true;
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,tracking_no)
+ select 998421,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'linked accessory fixture',100,'PayPayフリマ',true,'fixture-accessory';
 create temporary table shipping_probe as select id,lot_seq from app.items where lot_seq between 998421 and 998424 and not is_accessory;
 grant select on shipping_probe to authenticated;
 insert into app.delivery_push_subscriptions(staff_id,endpoint,p256dh,auth,base_url,created_at,app_kind)

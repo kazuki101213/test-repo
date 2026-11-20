@@ -437,6 +437,7 @@ export type InventoryItem = ItemView & InventoryMarketplaceLabels & {
   untracked_sender_prefecture_city?: string | null;
   untracked_sender_name?: string | null;
   untracked_shipping_method?: string | null;
+  untracked_sender_account?: string | null;
   inventory_parent_serial?:string|null;
   inventory_group_serial?:string|null;
   inventory_parent_status?:string|null;

@@ -48,8 +48,9 @@ set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no)
 select 990091,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'workflow regression',1000,'ヤフオク','メルカリ','123456';
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
-select 990091,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'accessory regression',100,'ヤフオク',true;
+-- 付属品に追跡番号が無いと本体が受取前に留まる（2026-11-19の保持ルール）ため、付属品にも番号を入れる。
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,tracking_no)
+select 990091,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date,'accessory regression',100,'ヤフオク',true,'123457';
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 select app.report_item_malfunction((select id from app.items where lot_seq=990091 and not is_accessory),'mistaken report');
 do $$begin

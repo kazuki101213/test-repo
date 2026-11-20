@@ -8,6 +8,14 @@ import InventoryPhotos from './InventoryPhotos';
 import './inventoryOverview.css';
 
 type Props={items:InventoryItem[];canPrice:boolean;openPhotosFor:string|null;heading:(field:string)=>ReactNode;onEdit:(item:InventoryItem,field:InventoryField)=>void;onFullEdit:(item:InventoryItem)=>void;onComment:(item:InventoryItem)=>void;onTogglePhotos:(itemId:string)=>void};
+// 追跡番号なし郵便：氏名と住所が分かれば「定形外郵便（氏名、住所）」、分からない・匿名なら「定形外郵便（アカウント名）」。
+export function untrackedPostageLabel(i:{untracked_shipping_method?:string|null;untracked_sender_name?:string|null;untracked_sender_prefecture_city?:string|null;untracked_sender_account?:string|null}){
+  const method=i.untracked_shipping_method||'';
+  const name=i.untracked_sender_name?.trim(),city=i.untracked_sender_prefecture_city?.trim(),account=i.untracked_sender_account?.trim();
+  if(name&&city)return `${method}（${name}、${city}）`;
+  return `${method}（${account||name||'未取得'}）`;
+}
+
 export default function InventoryOverview({items,canPrice,openPhotosFor,heading,onEdit,onFullEdit,onComment,onTogglePhotos}:Props){
  const serialOf=(i:InventoryItem)=>i.is_accessory&&!isSeparateAccessory(i)&&i.inventory_parent_serial?i.inventory_parent_serial.toLowerCase():(i as InventoryItem&{inventory_group_serial?:string}).inventory_group_serial?.toLowerCase()||inventorySerial(i);
  const parents=new Map(items.filter(i=>!i.is_accessory).map(i=>[serialOf(i),i]));
@@ -45,7 +53,7 @@ export default function InventoryOverview({items,canPrice,openPhotosFor,heading,
    const badge=accessory?accessoryDisplayLabel(i):(counts.get(serialOf(i))?'付属品'+counts.get(serialOf(i))+'点':'付属品同梱');
    const profitClass=(n:number|null|undefined)=>n!=null&&n<0?'approved-loss':'approved-profit';
    const trackingContext=['定形外郵便','普通郵便'].includes(i.untracked_shipping_method||'')&&!i.tracking_no
-    ? <span className="inventory-untracked-tracking">{i.untracked_shipping_method==='定形外郵便'?'定型外郵便':i.untracked_shipping_method}({i.untracked_sender_name||'未取得'}、{i.untracked_sender_prefecture_city||'未取得'})</span>
+    ? <span className="inventory-untracked-tracking">{untrackedPostageLabel(i)}</span>
     : button('tracking_no',i.tracking_no||'—','approved-tracking');
    return <div key={i.id} className={`approved-inventory-row approved-record${accessory?' approved-accessory':''}${separate?' approved-separate':''}`} role="row" data-item-id={i.id} data-item-status={i.status} data-kind={accessory?(separate?'separate':'bundled'):'body'} style={{backgroundColor:bg}}>
     <div className="approved-identity" role="cell">

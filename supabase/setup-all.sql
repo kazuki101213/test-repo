@@ -26224,3 +26224,852 @@ end $function$;
 notify pgrst,'reload schema';
 
 
+-- ▼▼▼ 20261119080348_untracked_mail_sender_details.sql ▼▼▼
+
+alter table app.items
+  add column if not exists untracked_shipping_method text,
+  add column if not exists untracked_sender_name text,
+  add column if not exists untracked_sender_prefecture_city text;
+
+do $migration$
+declare
+  definition text;
+  old text;
+  new text;
+begin
+  definition := pg_get_viewdef('app.v_inventory_display'::regclass, true);
+  old := 'END AS marketplace_item_id';
+  new := $projection$END AS marketplace_item_id,
+    CASE WHEN app.current_role() IN ('admin','purchaser') THEN raw.seller_name END AS seller_name,
+    CASE WHEN app.current_role() IN ('admin','purchaser') THEN raw.seller_address END AS seller_address,
+    raw.untracked_shipping_method,
+    CASE WHEN app.current_role() IN ('admin','purchaser') THEN raw.untracked_sender_name END AS untracked_sender_name,
+    CASE WHEN app.current_role() IN ('admin','purchaser') THEN raw.untracked_sender_prefecture_city END AS untracked_sender_prefecture_city$projection$;
+  if length(definition) - length(replace(definition, old, '')) <> length(old) then
+    raise exception 'v_inventory_display projection anchor is missing or ambiguous';
+  end if;
+  execute 'create or replace view app.v_inventory_display as ' || replace(definition, old, new);
+end
+$migration$;
+
+create or replace function app.record_untracked_shipping_sender(
+  p_marketplace_item_id text,
+  p_account_label text,
+  p_sender_name text,
+  p_sender_prefecture_city text,
+  p_shipping_method text
+) returns jsonb
+language plpgsql security invoker set search_path = pg_catalog, app
+as $function$
+declare
+  v_item app.items%rowtype;
+  v_count integer;
+  v_name text := nullif(btrim(p_sender_name), '');
+  v_city text := nullif(btrim(p_sender_prefecture_city), '');
+begin
+  if auth.uid() is null or not app.is_admin() then
+    raise exception '管理者認証が必要です' using errcode = '42501';
+  end if;
+  if p_account_label not in ('ヤフオク1', 'ヤフオク2')
+    or p_shipping_method <> '定形外郵便'
+    or v_name is null or length(v_name) > 100 or v_name ~ E'[\\r\\n]'
+    or v_city is null or length(v_city) > 40
+    or v_city !~ '^(北海道|東京都|京都府|大阪府|.{2,3}県)[^0-9０-９]{1,15}(市|区|町|村)$' then
+    raise exception '定形外郵便の発送者情報が不正です' using errcode = '22023';
+  end if;
+
+  select count(*)::integer into v_count
+  from app.items where marketplace = 'ヤフオク' and marketplace_item_id = p_marketplace_item_id;
+  if v_count <> 1 then
+    return jsonb_build_object('result', case when v_count = 0 then 'not_found' else 'ambiguous' end, 'count', v_count);
+  end if;
+
+  select * into v_item from app.items
+  where marketplace = 'ヤフオク' and marketplace_item_id = p_marketplace_item_id
+  for update;
+
+  if nullif(btrim(v_item.tracking_no), '') is not null or v_item.sold_on is not null
+    or v_item.status in ('販売済', '返品処理') then
+    return jsonb_build_object('result', 'not_eligible', 'sku', v_item.sku);
+  end if;
+  if (v_item.untracked_sender_name is not null and v_item.untracked_sender_name <> v_name)
+    or (v_item.untracked_sender_prefecture_city is not null and v_item.untracked_sender_prefecture_city <> v_city)
+    or (v_item.untracked_shipping_method is not null and v_item.untracked_shipping_method <> p_shipping_method) then
+    return jsonb_build_object('result', 'conflict', 'sku', v_item.sku);
+  end if;
+  if v_item.untracked_sender_name = v_name and v_item.untracked_sender_prefecture_city = v_city
+    and v_item.untracked_shipping_method = p_shipping_method then
+    return jsonb_build_object('result', 'already_recorded', 'sku', v_item.sku);
+  end if;
+
+  update app.items
+  set untracked_sender_name = v_name,
+      untracked_sender_prefecture_city = v_city,
+      untracked_shipping_method = p_shipping_method
+  where id = v_item.id;
+
+  return jsonb_build_object('result', 'recorded', 'sku', v_item.sku);
+end
+$function$;
+
+revoke all on function app.record_untracked_shipping_sender(text,text,text,text,text) from public, anon;
+grant execute on function app.record_untracked_shipping_sender(text,text,text,text,text) to authenticated;
+
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261119080610_limit_sender_details_visibility.sql ▼▼▼
+
+do $migration$
+declare
+  definition text;
+  old text;
+  new text;
+begin
+  definition := pg_get_viewdef('app.v_items'::regclass, true);
+  old := E'i.seller_name,\n    i.seller_address,\n    i.untracked_shipping_method';
+  new := E'NULL::text AS seller_name,\n    NULL::text AS seller_address,\n    NULL::text AS untracked_shipping_method';
+  if strpos(definition, old) > 0 then
+    execute 'create or replace view app.v_items as ' || replace(definition, old, new);
+  end if;
+
+  definition := pg_get_viewdef('app.v_inventory_display'::regclass, true);
+  old := E'raw.seller_name,\n    raw.seller_address,\n    raw.untracked_shipping_method';
+  new := $projection$CASE WHEN app.current_role() IN ('admin','purchaser') THEN raw.seller_name END AS seller_name,
+    CASE WHEN app.current_role() IN ('admin','purchaser') THEN raw.seller_address END AS seller_address,
+    raw.untracked_shipping_method$projection$;
+  if strpos(definition, old) > 0 then
+    execute 'create or replace view app.v_inventory_display as ' || replace(definition, old, new);
+  end if;
+end
+$migration$;
+
+
+-- ▼▼▼ 20261119080810_limit_sender_details_visibility.sql ▼▼▼
+
+do $migration$
+declare
+  definition text;
+  old text;
+  new text;
+begin
+  definition := pg_get_viewdef('app.v_items'::regclass, true);
+  old := E'i.seller_name,\n    i.seller_address,\n    i.untracked_shipping_method';
+  new := E'NULL::text AS seller_name,\n    NULL::text AS seller_address,\n    NULL::text AS untracked_shipping_method';
+  if strpos(definition, old) > 0 then
+    execute 'create or replace view app.v_items as ' || replace(definition, old, new);
+  end if;
+
+  definition := pg_get_viewdef('app.v_inventory_display'::regclass, true);
+  old := E'raw.seller_name,\n    raw.seller_address,\n    raw.untracked_shipping_method';
+  new := $projection$CASE WHEN app.current_role() IN ('admin','purchaser') THEN raw.seller_name END AS seller_name,
+    CASE WHEN app.current_role() IN ('admin','purchaser') THEN raw.seller_address END AS seller_address,
+    raw.untracked_shipping_method$projection$;
+  if strpos(definition, old) > 0 then
+    execute 'create or replace view app.v_inventory_display as ' || replace(definition, old, new);
+  end if;
+end
+$migration$;
+
+
+-- ▼▼▼ 20261119081731_isolate_untracked_sender_city.sql ▼▼▼
+
+alter table app.items
+  add column if not exists untracked_sender_name text,
+  add column if not exists untracked_sender_prefecture_city text;
+
+do $migration$
+declare
+  definition text;
+  old text;
+  new text;
+begin
+  definition := pg_get_viewdef('app.v_inventory_display'::regclass, true);
+  if strpos(definition, 'AS untracked_sender_prefecture_city') = 0 then
+    old := E'raw.untracked_shipping_method\n';
+    new := E'raw.untracked_shipping_method,\n        CASE WHEN app.current_role() IN (''admin'',''purchaser'') THEN raw.untracked_sender_name END AS untracked_sender_name,\n        CASE WHEN app.current_role() IN (''admin'',''purchaser'') THEN raw.untracked_sender_prefecture_city END AS untracked_sender_prefecture_city\n';
+    if strpos(definition, old) = 0 then
+      raise exception 'v_inventory_display shipping projection anchor is missing';
+    end if;
+    execute 'create or replace view app.v_inventory_display as ' || replace(definition, old, new);
+  end if;
+
+  definition := pg_get_viewdef('app.v_items'::regclass, true);
+  old := E'NULL::text AS untracked_shipping_method\n   FROM app.items i';
+  new := E'NULL::text AS untracked_shipping_method,\n    NULL::text AS untracked_sender_prefecture_city\n   FROM app.items i';
+  if strpos(definition, old) > 0 then
+    new := E'NULL::text AS untracked_shipping_method,\n    NULL::text AS untracked_sender_name,\n    NULL::text AS untracked_sender_prefecture_city\n   FROM app.items i';
+    execute 'create or replace view app.v_items as ' || replace(definition, old, new);
+  elsif strpos(definition, 'AS untracked_sender_prefecture_city') = 0 then
+    old := E'i.updated_at\n   FROM app.items i';
+    new := E'i.updated_at,\n    NULL::text AS seller_name,\n    NULL::text AS seller_address,\n    NULL::text AS untracked_shipping_method,\n    NULL::text AS untracked_sender_name,\n    NULL::text AS untracked_sender_prefecture_city\n   FROM app.items i';
+    if strpos(definition, old) = 0 then
+      raise exception 'v_items security projection anchor is missing';
+    end if;
+    execute 'create or replace view app.v_items as ' || replace(definition, old, new);
+  end if;
+end
+$migration$;
+
+create or replace function app.record_untracked_shipping_sender(
+  p_marketplace_item_id text,
+  p_account_label text,
+  p_sender_name text,
+  p_sender_prefecture_city text,
+  p_shipping_method text
+) returns jsonb
+language plpgsql security invoker set search_path = pg_catalog, app
+as $function$
+declare
+  v_item app.items%rowtype;
+  v_count integer;
+  v_name text := nullif(btrim(p_sender_name), '');
+  v_city text := nullif(btrim(p_sender_prefecture_city), '');
+begin
+  if auth.uid() is null or not app.is_admin() then
+    raise exception '管理者認証が必要です' using errcode = '42501';
+  end if;
+  if p_account_label not in ('ヤフオク1', 'ヤフオク2')
+    or p_shipping_method <> '定形外郵便'
+    or v_name is null or length(v_name) > 100 or v_name ~ E'[\\r\\n]'
+    or v_city is null or length(v_city) > 40
+    or v_city !~ '^(北海道|東京都|京都府|大阪府|.{2,3}県)[^0-9０-９]{1,15}(市|区|町|村)$' then
+    raise exception '定形外郵便の発送者情報が不正です' using errcode = '22023';
+  end if;
+
+  select count(*)::integer into v_count
+  from app.items where marketplace = 'ヤフオク' and marketplace_item_id = p_marketplace_item_id;
+  if v_count <> 1 then
+    return jsonb_build_object('result', case when v_count = 0 then 'not_found' else 'ambiguous' end, 'count', v_count);
+  end if;
+
+  select * into v_item from app.items
+  where marketplace = 'ヤフオク' and marketplace_item_id = p_marketplace_item_id
+  for update;
+
+  if nullif(btrim(v_item.tracking_no), '') is not null or v_item.sold_on is not null
+    or v_item.status in ('販売済', '返品処理') then
+    return jsonb_build_object('result', 'not_eligible', 'sku', v_item.sku);
+  end if;
+  if (v_item.untracked_sender_name is not null and v_item.untracked_sender_name <> v_name)
+    or (v_item.untracked_sender_prefecture_city is not null and v_item.untracked_sender_prefecture_city <> v_city)
+    or (v_item.untracked_shipping_method is not null and v_item.untracked_shipping_method <> p_shipping_method) then
+    return jsonb_build_object('result', 'conflict', 'sku', v_item.sku);
+  end if;
+  if v_item.untracked_sender_name = v_name and v_item.untracked_sender_prefecture_city = v_city
+    and v_item.untracked_shipping_method = p_shipping_method then
+    return jsonb_build_object('result', 'already_recorded', 'sku', v_item.sku);
+  end if;
+
+  update app.items
+  set untracked_sender_name = v_name,
+      untracked_sender_prefecture_city = v_city,
+      untracked_shipping_method = p_shipping_method
+  where id = v_item.id;
+
+  return jsonb_build_object('result', 'recorded', 'sku', v_item.sku);
+end
+$function$;
+
+revoke all on function app.record_untracked_shipping_sender(text,text,text,text,text) from public, anon;
+grant execute on function app.record_untracked_shipping_sender(text,text,text,text,text) to authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261119082026_isolate_untracked_sender_name.sql ▼▼▼
+
+alter table app.items add column if not exists untracked_sender_name text;
+
+do $migration$
+declare
+  definition text;
+  old text;
+  new text;
+begin
+  definition := pg_get_viewdef('app.v_inventory_display'::regclass, true);
+  if strpos(definition, 'AS untracked_sender_name') = 0 then
+    old := E'AS untracked_sender_prefecture_city\n';
+    new := E'AS untracked_sender_prefecture_city,\n        CASE WHEN app.current_role() IN (''admin'',''purchaser'') THEN raw.untracked_sender_name END AS untracked_sender_name\n';
+    if strpos(definition, old) = 0 then
+      raise exception 'v_inventory_display city projection anchor is missing';
+    end if;
+    execute 'create or replace view app.v_inventory_display as ' || replace(definition, old, new);
+  end if;
+
+  definition := pg_get_viewdef('app.v_items'::regclass, true);
+  if strpos(definition, 'AS untracked_sender_name') = 0 then
+    old := E'NULL::text AS untracked_sender_prefecture_city\n   FROM app.items i';
+    new := E'NULL::text AS untracked_sender_prefecture_city,\n    NULL::text AS untracked_sender_name\n   FROM app.items i';
+    if strpos(definition, old) = 0 then
+      raise exception 'v_items city projection anchor is missing';
+    end if;
+    execute 'create or replace view app.v_items as ' || replace(definition, old, new);
+  end if;
+end
+$migration$;
+
+create or replace function app.record_untracked_shipping_sender(
+  p_marketplace_item_id text,
+  p_account_label text,
+  p_sender_name text,
+  p_sender_prefecture_city text,
+  p_shipping_method text
+) returns jsonb
+language plpgsql security invoker set search_path = pg_catalog, app
+as $function$
+declare
+  v_item app.items%rowtype;
+  v_count integer;
+  v_name text := nullif(btrim(p_sender_name), '');
+  v_city text := nullif(btrim(p_sender_prefecture_city), '');
+begin
+  if auth.uid() is null or not app.is_admin() then
+    raise exception '管理者認証が必要です' using errcode = '42501';
+  end if;
+  if p_account_label not in ('ヤフオク1', 'ヤフオク2')
+    or p_shipping_method <> '定形外郵便'
+    or v_name is null or length(v_name) > 100 or v_name ~ E'[\\r\\n]'
+    or v_city is null or length(v_city) > 40
+    or v_city !~ '^(北海道|東京都|京都府|大阪府|.{2,3}県)[^0-9０-９]{1,15}(市|区|町|村)$' then
+    raise exception '定形外郵便の発送者情報が不正です' using errcode = '22023';
+  end if;
+
+  select count(*)::integer into v_count
+  from app.items where marketplace = 'ヤフオク' and marketplace_item_id = p_marketplace_item_id;
+  if v_count <> 1 then
+    return jsonb_build_object('result', case when v_count = 0 then 'not_found' else 'ambiguous' end, 'count', v_count);
+  end if;
+
+  select * into v_item from app.items
+  where marketplace = 'ヤフオク' and marketplace_item_id = p_marketplace_item_id
+  for update;
+
+  if nullif(btrim(v_item.tracking_no), '') is not null or v_item.sold_on is not null
+    or v_item.status in ('販売済', '返品処理') then
+    return jsonb_build_object('result', 'not_eligible', 'sku', v_item.sku);
+  end if;
+  if (v_item.untracked_sender_name is not null and v_item.untracked_sender_name <> v_name)
+    or (v_item.untracked_sender_prefecture_city is not null and v_item.untracked_sender_prefecture_city <> v_city)
+    or (v_item.untracked_shipping_method is not null and v_item.untracked_shipping_method <> p_shipping_method) then
+    return jsonb_build_object('result', 'conflict', 'sku', v_item.sku);
+  end if;
+  if v_item.untracked_sender_name = v_name and v_item.untracked_sender_prefecture_city = v_city
+    and v_item.untracked_shipping_method = p_shipping_method then
+    return jsonb_build_object('result', 'already_recorded', 'sku', v_item.sku);
+  end if;
+
+  update app.items
+  set untracked_sender_name = v_name,
+      untracked_sender_prefecture_city = v_city,
+      untracked_shipping_method = p_shipping_method
+  where id = v_item.id;
+
+  return jsonb_build_object('result', 'recorded', 'sku', v_item.sku);
+end
+$function$;
+
+revoke all on function app.record_untracked_shipping_sender(text,text,text,text,text) from public, anon;
+grant execute on function app.record_untracked_shipping_sender(text,text,text,text,text) to authenticated;
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261119150000_hold_linked_items_until_accessory_tracking.sql ▼▼▼
+
+CREATE OR REPLACE FUNCTION app.items_sync_status()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'app'
+AS $function$
+declare
+ explicit_change boolean:=false;
+ parent_status app.item_status;
+ missing_accessory_tracking boolean:=false;
+begin
+ if new.marketplace in ('Amazon返品','動作品Amazon返品') then new.cost_amount:=0;end if;
+
+ -- Terminal states always take precedence over receipt tracking.
+ if new.sold_on is not null then new.status:='販売済';return new;end if;
+ if new.status='返品処理' or new.returned_on is not null then new.status:='返品処理';return new;end if;
+
+ -- Linked accessories stay at 受取前 until their own tracking is recorded.
+ -- Once tracking exists, they continue to inherit the parent item's state.
+ if new.is_accessory and new.parent_item_id is not null
+    and not app.is_standalone_accessory_serial(new.sku,new.lot_seq) then
+   if nullif(btrim(new.tracking_no),'') is null and new.status<>'販売済' then
+     new.status:='受取前';return new;
+   end if;
+   select status into parent_status from app.items where id=new.parent_item_id;
+   if found and new.status<>'販売済' then new.status:=parent_status;return new;end if;
+ end if;
+
+ -- A parent item cannot leave 受取前 while a linked accessory has no tracking.
+ if not new.is_accessory
+    and new.status in ('受取前','検品中','商品登録前','出品中')
+    and new.status<>'販売済' then
+   select exists (
+     select 1 from app.items a
+     where a.parent_item_id=new.id and a.is_accessory
+       and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+       and nullif(btrim(a.tracking_no),'') is null
+       and a.sold_on is null and a.returned_on is null
+   ) into missing_accessory_tracking;
+   if missing_accessory_tracking then new.status:='受取前';return new;end if;
+ end if;
+
+ if tg_op='UPDATE' then explicit_change:=new.status is distinct from old.status;end if;
+ if explicit_change then
+   if new.marketplace_status_observed_at is not distinct from old.marketplace_status_observed_at then new.marketplace_status_observed_at:=now();end if;
+   if new.status='販売済' then
+     new.sold_on:=(now() at time zone 'Asia/Tokyo')::date;
+     new.sold_price:=0;new.payout_amount:=0;return new;
+   elsif new.status='Amazon返送依頼' then new.return_request_completed_at:=null;return new;
+   elsif new.status='検品中' then
+     if new.marketplace not in ('Amazon返品','動作品Amazon返品') and nullif(btrim(new.tracking_no),'') is null then raise exception '検品中にするには追跡番号を登録してください' using errcode='22023';end if;
+     if new.marketplace in ('Amazon返品','動作品Amazon返品') then new.return_request_completed_at:=coalesce(new.return_request_completed_at,now());end if;
+     new.inspected_at:=null;new.product_registered_at:=null;
+     return new;
+   elsif new.status='商品登録前' then
+     new.product_registered_at:=null;new.inspected_at:=coalesce(new.inspected_at,now());
+     new.malfunction_resolved_at:=case when new.malfunction_reported then coalesce(new.malfunction_resolved_at,now()) else new.malfunction_resolved_at end;
+     return new;
+   elsif new.status='出品停止' then raise exception 'この販売状態は廃止されました。在庫を再読み込みしてください。' using errcode='22023'; elsif new.status='出品中' then
+     new.product_registered_at:=coalesce(new.product_registered_at,now());return new;
+   elsif new.status='動作不良' then new.malfunction_reported:=true;new.malfunction_resolved_at:=null;return new;
+   elsif new.status in ('取引中','Amazon補填申請中') then return new;
+ end if;
+ end if;
+ -- These stages require a business decision, not a shipping/photo timestamp.
+ if tg_op='UPDATE' and new.sales_channel is not distinct from old.sales_channel
+ and new.status in ('取引中','Amazon補填申請中')
+ and new.malfunction_reported is not distinct from old.malfunction_reported then return new;end if;
+ if tg_op='UPDATE' and not explicit_change and new.status='出品中'
+ and new.product_registered_at is not distinct from old.product_registered_at
+ and new.sales_channel is not distinct from old.sales_channel
+ and not coalesce(new.malfunction_reported and new.malfunction_resolved_at is null,false) then return new;end if;
+ if new.malfunction_reported and new.malfunction_resolved_at is null then new.status:='動作不良';
+ elsif new.product_registered_at is not null then new.status:='出品中';
+ elsif new.inspected_at is not null or (new.malfunction_resolved_at is not null and new.sales_channel='ヤフオク') then new.status:='商品登録前';
+ elsif new.marketplace in ('Amazon返品','動作品Amazon返品') then
+   new.status:=case when new.return_request_completed_at is not null then '検品中'::app.item_status else 'Amazon返送依頼'::app.item_status end;
+ elsif nullif(btrim(new.tracking_no),'') is not null then new.status:='検品中';
+ else new.status:='受取前';end if;
+ return new;
+end $function$;
+
+CREATE OR REPLACE FUNCTION app.hold_parent_until_linked_accessories_tracked()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'app'
+AS $function$
+declare
+ target_parent uuid;
+begin
+ if tg_op='UPDATE' and old.parent_item_id is not null
+    and old.parent_item_id is distinct from new.parent_item_id then
+   target_parent:=old.parent_item_id;
+   update app.items p set status='受取前'
+   where p.id=target_parent and not p.is_accessory
+     and p.status in ('検品中','商品登録前','出品中')
+     and p.sold_on is null and p.returned_on is null
+     and exists (
+       select 1 from app.items a where a.parent_item_id=p.id and a.is_accessory
+         and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+         and nullif(btrim(a.tracking_no),'') is null
+         and a.sold_on is null and a.returned_on is null
+     );
+ end if;
+
+ if new.is_accessory and new.parent_item_id is not null
+    and not app.is_standalone_accessory_serial(new.sku,new.lot_seq)
+    and nullif(btrim(new.tracking_no),'') is null then
+   update app.items p set status='受取前'
+   where p.id=new.parent_item_id and not p.is_accessory
+     and p.status in ('検品中','商品登録前','出品中')
+     and p.sold_on is null and p.returned_on is null;
+ end if;
+ return new;
+end $function$;
+
+DROP TRIGGER IF EXISTS items_hold_parent_until_linked_accessories_tracked ON app.items;
+CREATE TRIGGER items_hold_parent_until_linked_accessories_tracked
+ AFTER INSERT OR UPDATE OF parent_item_id,is_accessory,tracking_no,sku,lot_seq ON app.items
+ FOR EACH ROW EXECUTE FUNCTION app.hold_parent_until_linked_accessories_tracked();
+
+-- Put existing active parent/accessory groups with missing accessory tracking at 受取前.
+UPDATE app.items p SET status='受取前'
+WHERE NOT p.is_accessory
+  AND p.status IN ('検品中','商品登録前','出品中')
+  AND p.sold_on IS NULL AND p.returned_on IS NULL
+  AND EXISTS (
+    SELECT 1 FROM app.items a WHERE a.parent_item_id=p.id AND a.is_accessory
+      AND NOT app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+      AND NULLIF(BTRIM(a.tracking_no),'') IS NULL
+      AND a.sold_on IS NULL AND a.returned_on IS NULL
+  );
+
+UPDATE app.items a SET status='受取前'
+WHERE a.is_accessory AND a.parent_item_id IS NOT NULL
+  AND NOT app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+  AND NULLIF(BTRIM(a.tracking_no),'') IS NULL
+  AND a.sold_on IS NULL AND a.returned_on IS NULL
+  AND a.status IS DISTINCT FROM '受取前';
+
+
+-- ▼▼▼ 20261119150500_secure_linked_accessory_tracking_hold_trigger.sql ▼▼▼
+
+ALTER FUNCTION app.hold_parent_until_linked_accessories_tracked() SECURITY DEFINER;
+ALTER FUNCTION app.hold_parent_until_linked_accessories_tracked() SET search_path = pg_catalog, app;
+
+
+-- ▼▼▼ 20261119185025_allow_user_image_sender_confirmation.sql ▼▼▼
+
+do $migration$
+declare
+  definition text;
+  old text := 'p_account_label not in (''ヤフオク1'', ''ヤフオク2'')';
+  new text := 'p_account_label not in (''ヤフオク1'', ''ヤフオク2'', ''利用者提供画像'')';
+begin
+  definition := pg_get_functiondef('app.record_untracked_shipping_sender(text,text,text,text,text)'::regprocedure);
+  if strpos(definition, old) = 0 then
+    if strpos(definition, new) > 0 then return; end if;
+    raise exception 'sender RPC account-label validation anchor is missing';
+  end if;
+  execute replace(definition, old, new);
+end
+$migration$;
+
+comment on function app.record_untracked_shipping_sender(text,text,text,text,text)
+  is 'Admin-only. For Yahoo Auctions standard mail, stores seller name and prefecture/city in dedicated fields. p_account_label is a registered Yahoo account label or 利用者提供画像 when manually verified from a user-provided image.';
+
+
+-- ▼▼▼ 20261119185121_allow_trusted_database_rpc_operator.sql ▼▼▼
+
+do $migration$
+declare
+  definition text;
+  old text := 'if auth.uid() is null or not app.is_admin() then';
+  new text := 'if current_user <> ''postgres'' and (auth.uid() is null or not app.is_admin()) then';
+begin
+  definition := pg_get_functiondef('app.record_untracked_shipping_sender(text,text,text,text,text)'::regprocedure);
+  if strpos(definition, old) = 0 then
+    if strpos(definition, new) > 0 then return; end if;
+    raise exception 'sender RPC authorization anchor is missing';
+  end if;
+  execute replace(definition, old, new);
+end
+$migration$;
+
+
+-- ▼▼▼ 20261119203000_support_regular_mail_sender_details.sql ▼▼▼
+
+create or replace function app.record_untracked_shipping_sender(
+  p_marketplace_item_id text,
+  p_account_label text,
+  p_sender_name text,
+  p_sender_prefecture_city text,
+  p_shipping_method text
+) returns jsonb
+language plpgsql security invoker set search_path = pg_catalog, app
+as $function$
+declare
+  v_item app.items%rowtype;
+  v_count integer;
+  v_name text := nullif(btrim(p_sender_name), '');
+  v_city text := nullif(btrim(p_sender_prefecture_city), '');
+begin
+  if current_user <> 'postgres' and (auth.uid() is null or not app.is_admin()) then
+    raise exception '管理者認証が必要です' using errcode = '42501';
+  end if;
+  if p_account_label not in ('ヤフオク1', 'ヤフオク2', '利用者提供画像')
+    or p_shipping_method not in ('定形外郵便', '普通郵便')
+    or v_name is null or length(v_name) > 100 or v_name ~ E'[\\r\\n]'
+    or v_city is null or length(v_city) > 40
+    or v_city !~ '^(北海道|東京都|京都府|大阪府|.{2,3}県)[^0-9０-９]{1,15}(市|区|町|村)$' then
+    raise exception '追跡番号なし郵便の発送者情報が不正です' using errcode = '22023';
+  end if;
+
+  select count(*)::integer into v_count
+  from app.items where marketplace = 'ヤフオク' and marketplace_item_id = p_marketplace_item_id;
+  if v_count <> 1 then
+    return jsonb_build_object('result', case when v_count = 0 then 'not_found' else 'ambiguous' end, 'count', v_count);
+  end if;
+
+  select * into v_item from app.items
+  where marketplace = 'ヤフオク' and marketplace_item_id = p_marketplace_item_id
+  for update;
+
+  if nullif(btrim(v_item.tracking_no), '') is not null or v_item.sold_on is not null
+    or v_item.status in ('販売済', '返品処理') then
+    return jsonb_build_object('result', 'not_eligible', 'sku', v_item.sku);
+  end if;
+  if (v_item.untracked_sender_name is not null and v_item.untracked_sender_name <> v_name)
+    or (v_item.untracked_sender_prefecture_city is not null and v_item.untracked_sender_prefecture_city <> v_city)
+    or (v_item.untracked_shipping_method is not null and v_item.untracked_shipping_method <> p_shipping_method) then
+    return jsonb_build_object('result', 'conflict', 'sku', v_item.sku);
+  end if;
+  if v_item.untracked_sender_name = v_name and v_item.untracked_sender_prefecture_city = v_city
+    and v_item.untracked_shipping_method = p_shipping_method then
+    return jsonb_build_object('result', 'already_recorded', 'sku', v_item.sku);
+  end if;
+
+  update app.items
+  set untracked_sender_name = v_name,
+      untracked_sender_prefecture_city = v_city,
+      untracked_shipping_method = p_shipping_method
+  where id = v_item.id;
+
+  return jsonb_build_object('result', 'recorded', 'sku', v_item.sku);
+end
+$function$;
+
+revoke all on function app.record_untracked_shipping_sender(text,text,text,text,text) from public, anon;
+grant execute on function app.record_untracked_shipping_sender(text,text,text,text,text) to authenticated;
+comment on function app.record_untracked_shipping_sender(text,text,text,text,text)
+  is 'Admin-only. For Yahoo Auctions untracked standard or regular mail, stores seller name and prefecture/city in dedicated fields. p_account_label is a registered Yahoo account label or 利用者提供画像 when manually verified from a user-provided image.';
+notify pgrst, 'reload schema';
+
+
+-- ▼▼▼ 20261120035542_line_supplier_url_only_when_valid.sql ▼▼▼
+
+-- LINE発送依頼の本文に入れる仕入れ先URLは、送信側（delivery-line）の許可リストに合うhttpsのURLだけにする。
+-- marketplace_url にURL以外（Amazon返品の付属品メモ等）が入っていると、送信側で new URL() が失敗し
+-- LINEを送らずに failed になっていた（1156b, 2026-11-20）。URLでなければ仕入れ先行を省いて送る。
+do $migration$
+declare
+  source text := pg_get_functiondef('app.line_shipping_media(uuid)'::regprocedure);
+  old_text text := $old$'supplierUrl',i.marketplace_url,$old$;
+  new_text text := $new$'supplierUrl',case when i.marketplace_url ~ '^https://(auctions\.yahoo\.co\.jp|page\.auctions\.yahoo\.co\.jp|paypayfleamarket\.yahoo\.co\.jp|jp\.mercari\.com|item\.mercari\.com|fril\.jp|item\.fril\.jp|www\.amazon\.co\.jp|amazon\.co\.jp)(/[^[:space:]]*)?$' then i.marketplace_url end,$new$;
+begin
+  if strpos(source, old_text) = 0 then
+    raise exception 'Expected supplierUrl expression not found';
+  end if;
+  execute replace(source, old_text, new_text);
+end;
+$migration$;
+
+
+-- ▼▼▼ 20261120035545_clear_stale_return_shipment.sql ▼▼▼
+
+-- Amazon返品の個体は、返品前のFBA出荷日（shipped_on <= amazon_returned_on）を残す設計。
+-- メルカリ・ヤフオクの発送処理（LINE発送依頼の作成・発送コード日付の記録・発送依頼の補完）は
+-- 「shipped_on is null」で未発送を判定するため、返品個体が売れても発送依頼が作られなかった（1156b, 2026-11-20）。
+-- フリマで取引中になった時点で、返品前の古い出荷日だけを空にする。返品後に出荷し直した日付（返品日より後）は触らない。
+create or replace function app.clear_stale_return_shipment()
+returns trigger language plpgsql set search_path = pg_catalog, app as $$
+begin
+  if new.status = '取引中' and new.sold_on is null
+     and app.sales_channel_family(new.sales_channel) in ('メルカリ', 'ヤフオク')
+     and new.amazon_returned_on is not null
+     and new.shipped_on is not null and new.shipped_on <= new.amazon_returned_on then
+    new.shipped_on := null;
+  end if;
+  return new;
+end $$;
+revoke all on function app.clear_stale_return_shipment() from public, anon, authenticated;
+
+drop trigger if exists items_clear_stale_return_shipment on app.items;
+create trigger items_clear_stale_return_shipment
+before insert or update of status, sales_channel, shipped_on on app.items
+for each row execute function app.clear_stale_return_shipment();
+
+-- 既存の該当行（2026-11-20時点では1156bのみ。手動で空にし済み）を同じ規則で揃える。
+update app.items set shipped_on = null
+where status = '取引中' and sold_on is null
+  and app.sales_channel_family(sales_channel) in ('メルカリ', 'ヤフオク')
+  and amazon_returned_on is not null and shipped_on is not null and shipped_on <= amazon_returned_on;
+
+
+-- ▼▼▼ 20261120052000_release_parent_when_accessories_tracked.sql ▼▼▼
+
+-- 付属品に追跡番号が無い間は本体を受取前に留める（2026-11-19の保持ルール）。
+-- ただし、紐づく付属品がすべて追跡番号あり、または追跡番号なし郵便（定形外・普通郵便）として記録済みになったら、
+-- 本体を通常の状態判定（追跡番号あり→検品中など）へ自動で戻す。2470が番号入力後も受取前に残った（2026-11-20）。
+create or replace function app.hold_parent_until_linked_accessories_tracked()
+returns trigger language plpgsql security definer set search_path to 'pg_catalog', 'app' as $function$
+begin
+ if tg_op='UPDATE' and old.parent_item_id is not null
+    and old.parent_item_id is distinct from new.parent_item_id then
+   update app.items p set status='受取前'
+   where p.id=old.parent_item_id and not p.is_accessory
+     and p.status in ('検品中','商品登録前','出品中')
+     and p.sold_on is null and p.returned_on is null
+     and exists (
+       select 1 from app.items a where a.parent_item_id=p.id and a.is_accessory
+         and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+         and nullif(btrim(a.tracking_no),'') is null and a.untracked_shipping_method is null
+         and a.sold_on is null and a.returned_on is null
+     );
+ end if;
+
+ if new.is_accessory and new.parent_item_id is not null
+    and not app.is_standalone_accessory_serial(new.sku,new.lot_seq) then
+   if nullif(btrim(new.tracking_no),'') is null and new.untracked_shipping_method is null then
+     update app.items p set status='受取前'
+     where p.id=new.parent_item_id and not p.is_accessory
+       and p.status in ('検品中','商品登録前','出品中')
+       and p.sold_on is null and p.returned_on is null;
+   elsif not exists (
+       select 1 from app.items a where a.parent_item_id=new.parent_item_id and a.is_accessory and a.id<>new.id
+         and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+         and nullif(btrim(a.tracking_no),'') is null and a.untracked_shipping_method is null
+         and a.sold_on is null and a.returned_on is null) then
+     -- Re-run the normal status calculation on the parent (tracking_no → 検品中, etc.).
+     update app.items p set tracking_no=p.tracking_no
+     where p.id=new.parent_item_id and not p.is_accessory and p.status='受取前'
+       and p.sold_on is null and p.returned_on is null
+       and (nullif(btrim(p.tracking_no),'') is not null or p.untracked_shipping_method is not null);
+   end if;
+ end if;
+ return new;
+end $function$;
+
+drop trigger if exists items_hold_parent_until_linked_accessories_tracked on app.items;
+create trigger items_hold_parent_until_linked_accessories_tracked
+after insert or update of parent_item_id, is_accessory, tracking_no, untracked_shipping_method, sku, lot_seq on app.items
+for each row execute function app.hold_parent_until_linked_accessories_tracked();
+
+-- 既存の保持中のうち、付属品がすべて揃っている本体を通常判定へ戻す。
+update app.items p set tracking_no=p.tracking_no
+where not p.is_accessory and p.status='受取前' and p.sold_on is null and p.returned_on is null
+  and (nullif(btrim(p.tracking_no),'') is not null or p.untracked_shipping_method is not null)
+  and exists (select 1 from app.items a where a.parent_item_id=p.id and a.is_accessory
+    and not app.is_standalone_accessory_serial(a.sku,a.lot_seq))
+  and not exists (select 1 from app.items a where a.parent_item_id=p.id and a.is_accessory
+    and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+    and nullif(btrim(a.tracking_no),'') is null and a.untracked_shipping_method is null
+    and a.sold_on is null and a.returned_on is null);
+
+
+-- ▼▼▼ 20261120055000_count_untracked_mail_as_accessory_tracking.sql ▼▼▼
+
+-- 付属品が追跡番号なし郵便（定形外・普通郵便）として記録済みなら、追跡番号ありと同じに扱う。
+-- items_sync_status の保持判定が tracking_no だけを見ていたため、2476・2487が受取前に残った（2026-11-20）。
+do $migration$
+declare
+  source text := pg_get_functiondef('app.items_sync_status()'::regprocedure);
+  old_acc text := $o$if nullif(btrim(new.tracking_no),'') is null and new.status<>'販売済' then$o$;
+  new_acc text := $n$if nullif(btrim(new.tracking_no),'') is null and new.untracked_shipping_method is null and new.status<>'販売済' then$n$;
+  old_par text := $o$       and nullif(btrim(a.tracking_no),'') is null
+       and a.sold_on is null and a.returned_on is null
+   ) into missing_accessory_tracking;$o$;
+  new_par text := $n$       and nullif(btrim(a.tracking_no),'') is null and a.untracked_shipping_method is null
+       and a.sold_on is null and a.returned_on is null
+   ) into missing_accessory_tracking;$n$;
+begin
+  if strpos(source, old_acc) = 0 or strpos(source, old_par) = 0 then
+    raise exception 'Expected accessory tracking checks not found';
+  end if;
+  source := replace(source, old_acc, new_acc);
+  source := replace(source, old_par, new_par);
+  execute source;
+end;
+$migration$;
+
+update app.items p set tracking_no=p.tracking_no
+where not p.is_accessory and p.status='受取前' and p.sold_on is null and p.returned_on is null
+  and (nullif(btrim(p.tracking_no),'') is not null or p.untracked_shipping_method is not null)
+  and exists (select 1 from app.items a where a.parent_item_id=p.id and a.is_accessory
+    and not app.is_standalone_accessory_serial(a.sku,a.lot_seq))
+  and not exists (select 1 from app.items a where a.parent_item_id=p.id and a.is_accessory
+    and not app.is_standalone_accessory_serial(a.sku,a.lot_seq)
+    and nullif(btrim(a.tracking_no),'') is null and a.untracked_shipping_method is null
+    and a.sold_on is null and a.returned_on is null);
+
+
+-- ▼▼▼ 20261120063000_untracked_sender_account_fallback.sql ▼▼▼
+
+-- 追跡番号なし郵便（定形外・普通郵便）の表示ルール（2026-11-20 利用者指定）
+--   氏名と住所が分かる場合：定形外郵便（氏名、住所）
+--   分からない・匿名の場合：定形外郵便（相手のアカウント名）
+-- メルカリは購入者画面に出品者の氏名・住所を出さないため、アカウント名で記録できるようにする。
+alter table app.items add column if not exists untracked_sender_account text;
+
+-- create or replace view は列を末尾にしか足せないため、最上位の FROM の直前（選択列の最後）に追加する。
+-- 本番と新規DBで列の並びが違っても動くよう、特定の列名には依存しない。
+do $migration$
+declare
+  target record;
+  definition text;
+  anchor constant text := E'\n   FROM ';
+  at integer;
+begin
+  for target in
+    select * from (values
+      ('app.v_inventory_display', E',\n        CASE WHEN app.current_role() IN (''admin'',''purchaser'') THEN raw.untracked_sender_account END AS untracked_sender_account'),
+      ('app.v_items', E',\n    NULL::text AS untracked_sender_account')
+    ) as t(view_name, projection)
+  loop
+    definition := pg_get_viewdef(target.view_name::regclass, true);
+    if strpos(definition, 'AS untracked_sender_account') = 0 then
+      if (length(definition) - length(replace(definition, anchor, ''))) <> length(anchor) then
+        raise exception '% top-level FROM anchor is missing or ambiguous', target.view_name;
+      end if;
+      at := strpos(definition, anchor);
+      execute format('create or replace view %s as ', target.view_name)
+        || left(definition, at - 1) || target.projection || substr(definition, at);
+    end if;
+  end loop;
+end
+$migration$;
+
+create or replace function app.record_untracked_shipping_account(
+  p_marketplace text,
+  p_marketplace_item_id text,
+  p_account_label text,
+  p_sender_account text,
+  p_shipping_method text
+) returns jsonb
+language plpgsql set search_path = pg_catalog, app
+as $function$
+declare
+  v_item app.items%rowtype;
+  v_count integer;
+  v_account text := nullif(btrim(p_sender_account), '');
+begin
+  if current_user <> 'postgres' and (auth.uid() is null or not app.is_admin()) then
+    raise exception '管理者認証が必要です' using errcode = '42501';
+  end if;
+  if p_marketplace not in ('メルカリ', 'ヤフオク')
+    or p_account_label not in ('メルカリ1', 'メルカリ2', 'ヤフオク1', 'ヤフオク2', '利用者提供画像')
+    or p_shipping_method not in ('定形外郵便', '普通郵便')
+    or v_account is null or length(v_account) > 100 or v_account ~ E'[\\r\\n]' then
+    raise exception '追跡番号なし郵便のアカウント名が不正です' using errcode = '22023';
+  end if;
+
+  select count(*)::integer into v_count
+  from app.items where marketplace::text = p_marketplace and marketplace_item_id = p_marketplace_item_id;
+  if v_count <> 1 then
+    return jsonb_build_object('result', case when v_count = 0 then 'not_found' else 'ambiguous' end, 'count', v_count);
+  end if;
+
+  select * into v_item from app.items
+  where marketplace::text = p_marketplace and marketplace_item_id = p_marketplace_item_id
+  for update;
+
+  if nullif(btrim(v_item.tracking_no), '') is not null or v_item.sold_on is not null
+    or v_item.status in ('販売済', '返品処理') then
+    return jsonb_build_object('result', 'not_eligible', 'sku', v_item.sku);
+  end if;
+  if (v_item.untracked_shipping_method is not null and v_item.untracked_shipping_method <> p_shipping_method)
+    or (v_item.untracked_sender_account is not null and v_item.untracked_sender_account <> v_account) then
+    return jsonb_build_object('result', 'conflict', 'sku', v_item.sku);
+  end if;
+  if v_item.untracked_shipping_method = p_shipping_method and v_item.untracked_sender_account = v_account then
+    return jsonb_build_object('result', 'already_recorded', 'sku', v_item.sku);
+  end if;
+
+  update app.items
+  set untracked_shipping_method = p_shipping_method,
+      untracked_sender_account = v_account
+  where id = v_item.id;
+
+  return jsonb_build_object('result', 'recorded', 'sku', v_item.sku);
+end
+$function$;
+
+revoke all on function app.record_untracked_shipping_account(text, text, text, text, text) from public, anon;
+grant execute on function app.record_untracked_shipping_account(text, text, text, text, text) to authenticated;
+notify pgrst, 'reload schema';
+
+
