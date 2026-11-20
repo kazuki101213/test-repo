@@ -1,6 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),assert=require('node:assert/strict');
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-const shared={exports:require('./marketplace-account-modules.cjs')};
+const presentation={exports:{}};vm.runInNewContext(compile('packages/shared/src/inventoryPresentation.ts'),presentation);
+const shared={exports:{...require('./marketplace-account-modules.cjs'),inventoryStatusText:presentation.exports.inventoryStatusText}};
 const match=shared.exports.matchesInventoryFilters;
 assert(match({marketplace:'Amazon返品',sales_channel:'FBA',status:'受取前'},{marketplace:['Amazon返品','ヤフオク'],sales_channel:['FBA','自己発送'],status:['受取前','販売済']}));
 assert(!match({marketplace:'動作品Amazon返品',sales_channel:'FBA'},{marketplace:['Amazon返品']}));

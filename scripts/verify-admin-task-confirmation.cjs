@@ -32,7 +32,8 @@ const render=()=>{rt.reset();return context.exports.useTaskConfirmation();};
  const other=template.exports.templateBody('ヤフオク その他',item);assert(other.startsWith(prefix));assert(other.includes('付属品はすべてつけてください。'));assert(!other.includes('予備としてください'));
  const returnTemplates=[['返送依頼(ヤフオク)','着払いでお願いします。'],['返送依頼(メルカリ)','返品くんで返品お願いします。']];
  for(const [name,body] of returnTemplates) assert.equal(template.exports.templateBody(name,item),prefix+body);
- const conversationRuntime=runtime();const conversation={exports:{},require:id=>id==='react'?conversationRuntime.react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){throw Error('Unexpected send');},pending:false,confirmation:null})}:id==='../inventory'?inventory.exports:{}};
+ const maker={exports:{}};vm.runInNewContext(compile('apps/admin/src/malfunctionMaker.ts'),maker);
+ const conversationRuntime=runtime();const conversation={exports:{},require:id=>id==='react'?conversationRuntime.react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='./TaskConfirmation'?{useTaskConfirmation:()=>({ask(){throw Error('Unexpected send');},pending:false,confirmation:null})}:id==='../inventory'?inventory.exports:id==='../malfunctionMaker'?maker.exports:{}};
  vm.runInNewContext(compile('apps/admin/src/components/MalfunctionTasks.tsx','\nexport { MalfunctionConversation };'),conversation);
  for(const status of ['Amazon補填申請中','動作不良']){
   const controls=status==='動作不良'?['supplier_check','send_back']:['complete_compensation_report','send_back'];

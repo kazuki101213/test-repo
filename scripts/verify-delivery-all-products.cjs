@@ -42,8 +42,9 @@ assert.equal(filterControls.props.children[0],detailedFilter());
 assert.equal(filterControls.props.children[1].props['aria-label'],'仕入日の期間');
 assert.equal(filterControls.props.children[2],button(tree,'全て解除'));
 detailedFilter().props.onChange({status:['検品中','販売済'],marketplace:['ヤフオク']});tree=render();
-button(tree,'作業中').props.onClick();tree=render();assert.deepEqual(Array.from(filters.states.status),['検品中']);assert.deepEqual(Array.from(filters.states.marketplace),['ヤフオク']);
-detailedFilter().props.onChange({status:['販売済']});tree=render();button(tree,'販売中').props.onClick();tree=render();assert.equal(filters.status,'出品中');assert.deepEqual(Array.from(filters.states.status),['販売済']);assert.equal(nodes(tree).filter(n=>n.type===TaskCard).length,0,'Disjoint group and detailed state return no inventory');
+// Since 883e686 a group button replaces the detailed state choice but keeps the other detailed filters.
+button(tree,'作業中').props.onClick();tree=render();assert.deepEqual(Array.from(filters.states.status),['受取前','検品中','商品登録前']);assert.deepEqual(Array.from(filters.states.marketplace),['ヤフオク']);
+detailedFilter().props.onChange({status:['販売済']});tree=render();button(tree,'販売中').props.onClick();tree=render();assert.equal(filters.status,'all');assert.deepEqual(Array.from(filters.states.status),['出品中','取引中']);assert.deepEqual(Array.from(filters.states.marketplace??[]),[]);
 const change=(label,value)=>nodes(tree).find(n=>n.props['aria-label']===label).props.onChange({target:{value}});
 change('検索項目','sku');tree=render();change('在庫を検索','100');tree=render();
 change('仕入日・開始日','2026-11-01');tree=render();change('仕入日・終了日','2026-11-09');tree=render();
