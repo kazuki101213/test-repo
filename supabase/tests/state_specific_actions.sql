@@ -3,8 +3,8 @@ set local role authenticated;
 set local request.jwt.claim.sub='11111111-1111-1111-1111-111111111111';
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,marketplace_item_id,purchase_account_id)
 select 992001,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-5,'state action regression',1000,'ヤフオク','メルカリ','123456','x1200000001','auctions-2';
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
-select 992001,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-5,'state action accessory',100,'ヤフオク',true;
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,tracking_no)
+select 992001,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-5,'state action accessory',100,'ヤフオク',true,'fixture-accessory';
 set local request.jwt.claim.sub='22222222-2222-2222-2222-222222222222';
 do $$declare v_item uuid:=(select id from app.items where lot_seq=992001 and not is_accessory);request uuid:=gen_random_uuid();begin
  perform app.perform_inventory_action(v_item,'inspection_complete','検品中',null,request);

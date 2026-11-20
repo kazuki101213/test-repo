@@ -2,8 +2,8 @@
 begin;
 insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,tracking_no,inspected_at)
 select n,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'work completion fixture',1000,'ヤフオク',case n when 998301 then 'FBA'::app.sales_channel when 998302 then '自己発送'::app.sales_channel when 998304 then 'ヤフオク'::app.sales_channel else 'メルカリ'::app.sales_channel end,'fixture',now() from generate_series(998301,998308) n;
-insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory)
-select 998301,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'work completion linked accessory',100,'ヤフオク',true;
+insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,is_accessory,tracking_no)
+select 998301,(select id from app.staff where code='AA'),(select id from app.staff where code='DD'),current_date-10,'work completion linked accessory',100,'ヤフオク',true,'fixture-accessory';
 insert into app.item_photos(item_id,storage_path) select id,'test/work-'||lot_seq||'.jpg' from app.items where lot_seq between 998301 and 998304 and not is_accessory;
 insert into app.photo_reviews(item_id,drive_folder_id,exported_photo_count,approved_at) select id,'fixture',1,now() from app.items where lot_seq between 998301 and 998304 and not is_accessory;
 update app.items set status='動作不良',supplier_contact_requested_at=clock_timestamp() where lot_seq in (998305,998306);
