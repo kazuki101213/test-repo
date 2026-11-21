@@ -381,7 +381,7 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
             <small>{row.sku}</small>
           </div>
           <button type="button" className="btn" disabled={busy !== null || pending || !row.supplier_refund_event_id}
-            onClick={() => ask(`【${productSerial(row.sku,row.lot_seq)}】の返金を仕入先から受け取りましたか？`, () => completeMalfunctionTask(row))}>完了</button>
+            onClick={() => ask(`【${productSerial(row.sku,row.lot_seq)}】の返金を仕入先から受け取りましたか？完了すると仕入金額の全額を返金額として記録します。`, () => completeMalfunctionTask(row))}>完了</button>
         </li>;
       }
       const controls = (staff.role === 'admin' || staff.role === 'purchaser') && (
