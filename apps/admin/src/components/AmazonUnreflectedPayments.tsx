@@ -77,7 +77,7 @@ export default function AmazonUnreflectedPayments({ onReflected, drafts = [], dr
             <strong>{row.amount != null ? formatter.format(row.amount) + '円' : '金額未入力'}</strong>
           </div>
           <div className="amazon-unreflected-actions">
-            <button type="button" className="btn primary" disabled={busyId !== null || draftsDisabled} aria-label={`${row.name}の金額と日付を入力`} onClick={() => onDraft?.(row)}>反映</button>
+            <button type="button" className="btn primary" disabled={busyId !== null || draftsDisabled} aria-label={`${row.name}の金額と日付を入力`} onClick={() => onDraft?.(row)}>編集</button>
             <button type="button" className="btn" disabled={busyId !== null || draftsDisabled} onClick={() => void removeDraft(row)}>削除</button>
           </div>
         </li>)}
