@@ -3,8 +3,8 @@ import TaskProductLinks from './TaskProductLinks';
 import {useEffect,useRef,useState} from 'react';
 import {compareWorkStartedAt,readResourceSnapshot,productModelText,salesChannelLabel} from '@bussan/shared';
 import {completeDeliveryNotice} from '../api';
-type ReturnTask=TaskPurchaseReferences&{id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due';created_at?:string;tracking_recorded_at?:string|null;listing_request_title?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null;model_no?:string|null;title?:string|null;sales_channel?:string|null;sales_account_label?:string|null};
-const taskOrder={inspection:0,photo_approved:1,listing_due:1,shipping:2,photo_return:3,reply:4};
+type ReturnTask=TaskPurchaseReferences&{id:string;item_id:string;kind:'photo_return'|'photo_approved'|'reply'|'shipping'|'inspection'|'listing_due'|'return_request';created_at?:string;tracking_recorded_at?:string|null;listing_request_title?:string|null;reason?:string|null;sku:string;lot_seq:number;marketplace_item_id:string|null;marketplace:string|null;marketplace_url:string|null;model_no?:string|null;title?:string|null;sales_channel?:string|null;sales_account_label?:string|null};
+const taskOrder={inspection:0,return_request:0,photo_approved:1,listing_due:1,shipping:2,photo_return:3,reply:4};
 const usesTrackingAge = (kind: ReturnTask['kind']) => kind==='inspection'||kind==='photo_approved'||kind==='listing_due';
 const orderedTasks=(rows:ReturnTask[])=>[...rows].sort((a,b)=>
  taskOrder[a.kind]-taskOrder[b.kind]
@@ -16,6 +16,8 @@ const day=24*hour;
 const listingTiming={warningHours:120,overdueHours:168,dayOffset:2};
 const taskTimings={
  inspection:{warningHours:48,overdueHours:72,dayOffset:1},
+ // 返送依頼（2026-11-21 ユーザー指定）：動作確認と同じ表示。依頼した日から数える。
+ return_request:{warningHours:48,overdueHours:72,dayOffset:1},
  photo_approved:listingTiming,
  listing_due:listingTiming,
  shipping:{warningHours:12,overdueHours:24,dayOffset:0},
@@ -24,7 +26,7 @@ const taskTimings={
 };
 function taskTiming(row:ReturnTask,now:number){
  const timing=taskTimings[row.kind];
- const started=Date.parse((row.kind==='shipping'?row.created_at:row.tracking_recorded_at)??'');
+ const started=Date.parse((row.kind==='shipping'||row.kind==='return_request'?row.created_at:row.tracking_recorded_at)??'');
  if(!timing||!Number.isFinite(started))return null;
  const warning=started+timing.warningHours*hour;
  const overdue=started+timing.overdueHours*hour;
@@ -37,7 +39,7 @@ function taskTiming(row:ReturnTask,now:number){
   nextAt:now>=overdue?nextDay:Math.min(overdue,nextDay),
  };
 }
-const taskTitle={inspection:'動作確認お願いします。',photo_approved:'出品お願いします。',listing_due:'出品お願いします。',shipping:'発送お願いします。',reply:'動作不良への返信があります。',photo_return:'商品写真の修正お願いします。'};
+const taskTitle={inspection:'動作確認お願いします。',photo_approved:'出品お願いします。',listing_due:'出品お願いします。',shipping:'発送お願いします。',reply:'動作不良への返信があります。',return_request:'返送お願いします。',photo_return:'商品写真の修正お願いします。'};
 function displayTaskTitle(row:ReturnTask){
  switch(row.kind){
   case 'photo_approved':
@@ -85,6 +87,7 @@ export default function ReturnTasks({staffId}:{staffId:string}){
     if(row.item_id!==item.id)return true;
     switch(row.kind){
      case 'inspection':return ['受取前','検品中'].includes(item.status)&&!item.inspected&&!item.malfunction_reported;
+     case 'return_request':return item.status==='動作不良';
      case 'listing_due':return pendingWorkStatuses.includes(item.status)&&!item.listed_on&&!item.sold_on;
      case 'photo_approved':return item.status==='商品登録前'&&!item.product_registered_at&&!item.sold_on;
      case 'shipping':return ['取引中','販売済'].includes(item.status)&&!item.shipped_on;
@@ -108,8 +111,8 @@ export default function ReturnTasks({staffId}:{staffId:string}){
   const tone=timing?.tone;
   if(row.kind==='listing_due'&&!tone)return null;
   const title=displayTaskTitle(row)+(timing&&timing.days>0?`(${timing.days}日経過)`:'');
-  const inventoryUrl='?itemId='+encodeURIComponent(row.item_id);
-  const model=row.kind==='inspection'
+  const inventoryUrl='?itemId='+encodeURIComponent(row.item_id)+(row.kind==='return_request'?'&openComments=1':'');
+  const model=row.kind==='inspection'||row.kind==='return_request'
    ? productModelText({model_no:row.model_no??null,title:row.title??'',marketplace:row.marketplace??''})
    : '';
   return <li key={row.id} className={'delivery-return-task'+(row.kind==='shipping'?' delivery-shipping-task':'')} data-deadline={tone}>

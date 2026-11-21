@@ -187,6 +187,8 @@ function MalfunctionConversation({ item, staff, onReplied, actions }: { item: Ma
         p_comment_id: commentId, p_item_id: item.id, p_body: body || '写真を送信しました。',
         p_task_kind: kind && !(kind in RETURN_TEMPLATES) ? kind : null,
         p_photo_paths: paths,
+        // 返送依頼の定型文は、納品アプリに「返送お願いします。」として出す（2026-11-21 ユーザー指定）。
+        p_return_request: !!kind && kind in RETURN_TEMPLATES,
       });
       if (insertError) throw insertError;
       saved = true;
