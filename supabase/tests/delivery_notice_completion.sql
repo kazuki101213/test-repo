@@ -7,7 +7,7 @@ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_
 set local role postgres;
 update app.items set malfunction_reported_at=now()-interval '4 days' where lot_seq=996813;
 insert into app.photo_reviews(item_id,drive_folder_id,exported_photo_count,submitted_at,approved_at,approved_by)
- select id,'fixture_folder',1,now()-interval '3 days',now()-interval '2 days',purchaser_id from app.items where lot_seq=996813;
+ select id,'fixture_folder',1,now()-interval '3 days',now()-interval '1 day',purchaser_id from app.items where lot_seq=996813;
 insert into app.item_comments(id,item_id,author_id,body,created_at)
  select '99681300-0000-0000-0000-000000000001',id,purchaser_id,'以前の動作不良への返信',now()-interval '1 day' from app.items where lot_seq=996813;
 insert into app.delivery_return_tasks(id,item_id,kind,reason,source_at,actor_id,created_at)
