@@ -6,6 +6,9 @@
 .invoice-task-rows > .admin-task-card .task-action-details > strong { flex-basis:100%; margin:0; line-height:20px; }
 .invoice-task-rows > .admin-task-card .task-action-details > small { display:inline; margin:0; font:inherit; overflow-wrap:anywhere; }
 .invoice-task-rows > .admin-task-card .task-action-details > a,.invoice-task-rows > .admin-task-card .task-action-details > span { margin:0; min-width:0; overflow-wrap:anywhere; }
+/* 1行目：見出し、2行目：【通し番号】【商品ID】、3行目：型番・SKU（2026-11-21 ユーザー指定） */
+.invoice-task-rows > .admin-task-card .listing-task-details > :is(.task-id-line,small) { flex-basis:100%; }
+.invoice-task-rows > .admin-task-card .task-id-line a,.invoice-task-rows > .admin-task-card .task-id-line span { overflow-wrap:anywhere; }
 .invoice-task-rows > .admin-task-card .btn { display:inline-flex; justify-content:center; align-items:center; width:auto; min-height:var(--action-button-min-height,44px); margin:0; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); color:var(--text); white-space:nowrap; font-size:13px; }
 .invoice-task-rows > .admin-simple-task > .btn { grid-column:2; grid-row:1 / span 2; align-self:start; }
 .invoice-task-rows > .admin-task-card .supplier-refund-details { flex-flow:column; align-items:flex-start; gap:0; }
