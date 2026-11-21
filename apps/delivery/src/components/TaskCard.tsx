@@ -94,18 +94,6 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   ['仕入担当者',staffDisplayName(item.purchaser_name)||'—',true],
   ['納品担当者',staffDisplayName(item.deliverer_name||(item.deliverer_id===staff.id?staffDisplayName(staff):''))||'未設定',true],['仕入先',item.purchase_account_label||item.marketplace,false],['販売先',item.sales_account_label||salesChannelLabel(item.sales_channel)||'—',false],
  ].map(([label,value,person])=><div key={String(label)}><small>{label}</small><span className="inventory-label" style={person?inventoryStaffStyle(String(value)):inventorySiteStyle(String(value))}>{value}</span>{label==="販売先"&&item.flea_listing_account_label&&<span className="inventory-label" style={inventorySiteStyle(item.flea_listing_account_label)}>{item.flea_listing_account_label}（出品記録）</span>}</div>)}</div>;
- // 付属品は「仕入担当者 仕入先」「納品担当者 販売先」の2行で表示する（2026-11-21 ユーザー指定）。
- const accessoryPeople=(item:DeliveryInventoryRow)=>{
-  const purchaser=staffDisplayName(item.purchaser_name)||'—';
-  const deliverer=staffDisplayName(item.deliverer_name||(item.deliverer_id===staff.id?staffDisplayName(staff):''))||'未設定';
-  const supplier=item.purchase_account_label||item.marketplace||'—';
-  const sales=item.sales_account_label||salesChannelLabel(item.sales_channel)||'—';
-  const label=(value:string,person:boolean,title:string)=><span className="inventory-label" title={title} style={person?inventoryStaffStyle(String(value)):inventorySiteStyle(String(value))}>{String(value)}</span>;
-  return <div className="delivery-accessory-people">
-   <div>{label(purchaser,true,'仕入担当者')}{label(supplier,false,'仕入先')}</div>
-   <div>{label(deliverer,true,'納品担当者')}{label(sales,false,'販売先')}{item.flea_listing_account_label&&<span className="inventory-label" style={inventorySiteStyle(item.flea_listing_account_label)}>{item.flea_listing_account_label}（出品記録）</span>}</div>
-  </div>;
- };
  const sourceLink=(item:DeliveryTask)=>{const url=noticeProductUrl(item.marketplace,productIdFor(item),item.marketplace_url);return <button type="button" className="task-item-page-link inventory-inline-link" aria-label="仕入先の商品ページを開く" disabled={!isAllowedMarketplaceUrl(item.marketplace,url)} title={isAllowedMarketplaceUrl(item.marketplace,url)?'仕入先の商品ページを開く':'登録されたURLは対応フリマサイトの商品ページではありません'} onClick={()=>{if(isAllowedMarketplaceUrl(item.marketplace,url))window.open(url!,'_blank','noopener,noreferrer');}}><span className="external-link-arrow" aria-hidden="true" /></button>;};
  const field=(label:string,value:string,className='')=><span className={`task-detail-field${className?' '+className:''}`}><span>{label}</span><span>{value}</span></span>;
  const source=(item:DeliveryTask)=><span className="task-item-id-line"><CopyableText label={itemIdLabel(item)} value={productIdFor(item)}/>{sourceLink(item)}</span>;
@@ -116,7 +104,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
    {independent(item)&&<span className="delivery-accessory-state">{status(item)}<b className="delivery-mobile-accessory-name">{item.title}</b></span>}
    <div className="delivery-accessory-text"><div className="delivery-accessory-title">{selectItem(item)}<strong>{independent(item)?inventorySerial(item):task.inventory_group_serial?.toLowerCase()||inventorySerial(task)}</strong>{independent(item)&&<b>{item.title}</b>}{badge(item.is_accessory?accessoryDisplayLabel(item):'本体')}{!independent(item)&&<b>{item.title}</b>}</div>{independent(item)&&<CopyableText label="SKU" value={item.sku}/>}</div>
   </div>
-  {item.is_accessory?accessoryPeople(item):people(item)}
+  {people(item)}
   <div className={`delivery-accessory-details${compact?' compact':''}`}>
    {source(item)}<CopyableText label={trackingLabel(item)} value={item.tracking_no||'—'}/>
    {field('仕入日',jpDate(item.purchased_at))}
