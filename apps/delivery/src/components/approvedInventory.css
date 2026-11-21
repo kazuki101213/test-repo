@@ -235,3 +235,15 @@
 .app .task-card.approved-delivery-card .task-detail-inline .photo-save-all { width:28px!important; height:28px!important; min-width:28px; padding:4px!important; }
 .app .task-card.approved-delivery-card .task-detail-inline .description-listing-actions { display:flex; flex-wrap:nowrap; align-items:center; justify-content:flex-start; gap:8px; }
 .app .task-card.approved-delivery-card .task-detail-inline .description-listing-actions > .btn { flex:none; white-space:nowrap; }
+/* 付属品の担当者・販売先：1行目「仕入担当者 仕入先」、2行目「納品担当者 販売先」（2026-11-21） */
+.delivery-accessory-people { display:grid; gap:3px; align-content:start; min-width:0; }
+.delivery-accessory-people > div { display:flex; flex-wrap:wrap; align-items:center; gap:4px; min-width:0; }
+.delivery-accessory-people .inventory-label { font-size:11px; padding:1px 5px; line-height:17px; white-space:nowrap; }
+@media(min-width:1280px) {
+ .delivery-bundled-record .delivery-accessory-people { grid-column:2; grid-row:1/4; align-self:center; }
+ .delivery-independent-record > .delivery-accessory-people .inventory-label { font-size:10px; padding-inline:3px; }
+}
+@media(max-width:1279px) {
+ .delivery-accessory-people { width:100%; margin:8px 0 9px; }
+ .delivery-accessory-people .inventory-label { font-size:10px; padding:2px 3px; line-height:16px; }
+}
