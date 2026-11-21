@@ -27651,3 +27651,10 @@ where not exists (select 1 from app.expenses e where e.deleted_at is null and e.
 on conflict (target_month, category, name) do nothing;
 
 
+-- ▼▼▼ 20261122110000_expense_ai_names.sql ▼▼▼
+
+-- 経費名 ChatGPT を OPEN AI、Claude を ANTHROPIC にそろえる（2026-11-22 ユーザー指定）。
+update app.expenses set name = 'OPEN AI' where name in ('CHATGPT', 'chatGPT($22)');
+update app.expenses set name = 'ANTHROPIC' where name = 'claude($20)';
+
+
