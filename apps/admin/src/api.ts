@@ -4,6 +4,7 @@ import { purchaseItemUrl } from './purchaseUrl';
 import { getSupabase, STATUSES, inventoryStatusText, usageRecordText, purchaseSourceFields, salesDestinationFields } from '@bussan/shared';
 import { matchesInventorySearch, type InventorySearchField } from './inventorySearch';
 import type { SaleRow } from './sales';
+import type { FbaHistoryPlan } from './fbaInboundHistory';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft, type ExpenseReimbursement } from './expenses';
 import { materialPurchaseWindow, type BubbleWrapEstimate, type MaterialPurchase, type MaterialWorkload, type MaterialAnalysisInput, type MaterialAnalysis } from './materialPurchases';
@@ -164,6 +165,12 @@ export async function fetchDashboardPurchaserSummary(): Promise<DashboardPurchas
   const { data, error } = await getSupabase().rpc('read_dashboard_purchaser_summary');
   if (error) throw new Error(error.message);
   return data as DashboardPurchaserSummary;
+}
+
+export async function fetchFbaInboundHistory(): Promise<FbaHistoryPlan[]> {
+  const { data, error } = await getSupabase().rpc('admin_fba_inbound_history', { p_limit: 300 });
+  if (error) throw new Error(error.code === '42501' ? 'FBA納品の履歴は管理者だけが見られます。' : 'FBA納品の履歴を読み込めませんでした。時間をおいて再読み込みしてください。');
+  return Array.isArray(data) ? data as FbaHistoryPlan[] : [];
 }
 
 export async function fetchWorkload(): Promise<DelivererWorkload[]> {

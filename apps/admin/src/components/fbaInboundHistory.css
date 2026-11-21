@@ -1,0 +1,56 @@
+.fba-history{display:flex;flex-direction:column;gap:12px;min-width:0}
+.fba-history-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.fba-history-summary>div{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.fba-history-summary span{font-size:12px;color:var(--muted)}
+.fba-history-summary strong{font-size:20px;font-weight:600}
+.fba-history-toolbar{flex-wrap:wrap;gap:8px;align-items:center}
+.fba-history-toolbar input[type=search]{flex:1;min-width:200px}
+.fba-history-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.fba-history-list{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)}
+.fba-history-plan+.fba-history-plan{border-top:1px solid var(--border)}
+.fba-history-plan.cancelled .fba-history-row{color:var(--muted)}
+.fba-history-row{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:grid;grid-template-columns:minmax(0,2.4fr) 70px 104px 96px 104px 18px;gap:10px;align-items:center;padding:10px 14px;font-size:13px}
+.fba-history-row:hover,.fba-history-plan.open .fba-history-row{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.fba-history-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.fba-history-name{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fba-history-name strong{font-weight:600}
+.fba-history-name .sub{overflow-wrap:anywhere}
+.fba-history-label{display:none}
+.fba-history-state{justify-self:start;font-size:12px;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.fba-history-state.tone-neutral{background:#eeeeea;color:#55534d}
+.fba-history-state.tone-warn{background:#fff6d9;color:#78601b}
+.fba-history-state.tone-info{background:#dce7f1;color:#3c6085}
+.fba-history-state.tone-ok{background:#dce9d3;color:#456439}
+.fba-history-state.tone-muted{background:transparent;color:var(--muted);border:1px solid var(--border)}
+.fba-history-chevron{font-size:10px;color:var(--muted)}
+.fba-history-detail{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;padding:12px 16px 16px;background:color-mix(in srgb,var(--accent) 6%,transparent);border-top:1px solid var(--border)}
+.fba-history-detail h4{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted)}
+.fba-history-timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.fba-history-timeline li{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px;padding-left:10px;border-left:2px solid var(--border)}
+.fba-history-timeline li.tone-done{border-left-color:var(--ok)}
+.fba-history-timeline li.tone-muted{color:var(--muted)}
+.fba-history-time{color:var(--muted);font-variant-numeric:tabular-nums}
+.fba-history-meta{margin:12px 0 0;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.fba-history-meta>div{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px}
+.fba-history-meta dt{color:var(--muted)}
+.fba-history-meta dd{margin:0;overflow-wrap:anywhere}
+.fba-history-link{display:inline-block;margin-top:12px;text-decoration:none}
+.fba-history-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.fba-history-items li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.fba-history-items li:last-child{border-bottom:none}
+.fba-history-sku{grid-column:1;overflow-wrap:anywhere}
+.fba-history-item-state{grid-column:2;grid-row:1/3;display:flex;align-items:center;gap:6px}
+@media (max-width:760px){
+  .fba-history-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .fba-history-row{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;position:relative}
+  .fba-history-name{grid-column:1/-1;padding-right:20px}
+  .fba-history-cell{display:flex;gap:6px}
+  .fba-history-label{display:inline;color:var(--muted)}
+  .fba-history-state{grid-column:1}
+  .fba-history-chevron{position:absolute;top:14px;right:14px}
+  .fba-history-detail{grid-template-columns:minmax(0,1fr)}
+}
+.inventory-view-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.inventory-view-tabs button{all:unset;cursor:pointer;padding:8px 14px;font-size:14px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.inventory-view-tabs button.active{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+.inventory-view-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
