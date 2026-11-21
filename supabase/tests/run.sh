@@ -165,3 +165,5 @@ $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/fba_completion_dispatch_date.sql"
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/amazon_self_dispatch_write.sql"
 
 $PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/partial_photo_delete_review.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/malfunction_return_request_task.sql"
+$PSQL -v ON_ERROR_STOP=1 -q -d "$DB" -f "$HERE/reply_notice_expires_after_2_days.sql"
