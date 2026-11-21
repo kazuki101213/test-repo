@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchAmazonUnreflectedPayments, reviewAmazonPayment, type AmazonUnreflectedPayment } from '../api';
+import type { ExpenseDraft } from '../expenses';
 
 const formatter = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 10 });
 
@@ -10,7 +11,12 @@ function displayAmount({ amount, currency }: AmazonUnreflectedPayment) {
   return currency ? value + ' ' + currency : value;
 }
 
-export default function AmazonUnreflectedPayments({ onReflected }: { onReflected: () => void }) {
+export default function AmazonUnreflectedPayments({ onReflected, drafts = [], draftsDisabled = false, onDraft }: {
+  onReflected: () => void;
+  drafts?: (ExpenseDraft & { amount?: number | null })[];
+  draftsDisabled?: boolean;
+  onDraft?: (row: ExpenseDraft) => void;
+}) {
   const [rows, setRows] = useState<AmazonUnreflectedPayment[] | null>(null);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -43,11 +49,17 @@ export default function AmazonUnreflectedPayments({ onReflected }: { onReflected
   }
 
   return <section className="card expense-column amazon-unreflected" aria-labelledby="amazon-unreflected-title">
-    <h3 id="amazon-unreflected-title">Amazonの未反映分</h3>
+    <h3 id="amazon-unreflected-title">未反映分</h3>
     {actionError && <p className="error" role="alert">{actionError}</p>}
     {message && <p role="status">{message}</p>}
+    {drafts.length > 0 && <ul className="amazon-unreflected-entries expense-draft-entries">{drafts.map(row => <li key={row.id}>
+      <div className="amazon-unreflected-meta"><span>{row.target_month.slice(0, 7).replace('-', '年')}月</span><span>{row.category}</span></div>
+      <button type="button" className="expense-edit" disabled={draftsDisabled} aria-label={`${row.name}の金額と日付を入力`} onClick={() => onDraft?.(row)}>
+        <div>{row.name}</div><span className="expense-hint">{row.amount != null ? `${formatter.format(row.amount)}円 · 日付の入力待ち` : '日付・金額の入力待ち'}</span>
+      </button>
+    </li>)}</ul>}
     {error ? <p className="error" role="alert">{error}</p> : rows === null ? <p role="status">読み込み中…</p>
-      : rows.length === 0 ? <p className="sub">未反映の明細はありません。</p>
+      : rows.length === 0 ? (drafts.length === 0 && <p className="sub">未反映の明細はありません。</p>)
         : <ul className="amazon-unreflected-entries">{rows.map(row => <li key={row.id}>
           <div className="amazon-unreflected-meta"><time dateTime={row.date}>{row.date}</time><span>{row.account}</span></div>
           <div className="amazon-unreflected-entry">

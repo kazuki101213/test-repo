@@ -4,7 +4,7 @@ function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&t
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
 async function mount(file,props={},mobile=true){let hooks=[],cursor=0,pending=[],dirty=true,tree,scrolls=0,writes=0;
 const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useRef(value){return hooks[cursor++]??={current:value}},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
-const api={fetchExpenses:async()=>[],fetchExpenseDrafts:async()=>[{id:'draft',category:'固定費',name:'家賃',card_id:null,target_month:'2026-10-01'}],fetchExpenseReimbursements:async()=>[],fetchCards:async()=>[],saveExpense:async()=>{writes++;throw Error('Unexpected write')},updateExpense:async()=>{writes++;throw Error('Unexpected write')},updateExpenseField:async()=>{writes++;throw Error('Unexpected write')}};
+const api={fetchExpenses:async()=>[{id:'old',incurred_on:'2026-09-10',category:'固定費',name:'家賃',amount:11880,card_id:null,staff_id:null,memo:null}],fetchExpenseDrafts:async()=>[{id:'draft',category:'固定費',name:'家賃',card_id:null,target_month:'2026-10-01'}],fetchExpenseReimbursements:async()=>[],fetchCards:async()=>[],saveExpense:async()=>{writes++;throw Error('Unexpected write')},updateExpense:async()=>{writes++;throw Error('Unexpected write')},updateExpenseField:async()=>{writes++;throw Error('Unexpected write')}};
 const mocks={exports:{},crypto:{randomUUID:()=> 'sample'},window:{matchMedia:()=>({matches:mobile,addEventListener(){},removeEventListener(){}})},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{yen:n=>'¥'+n}:name==='../api'?api:name==='../expenses'?{expenseCategories:['固定費','変動費','外注費'],expenseCategoryLabel:v=>v}:{__esModule:true,default:name.split('/').at(-1)}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,mocks);
 async function settle(){for(let i=0;i<30;i++){if(dirty){cursor=0;dirty=false;tree=mocks.exports.default(props);for(const n of all(tree))if(n.props.ref)n.props.ref.current={scrollIntoView(){scrolls++}};pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
@@ -15,9 +15,9 @@ const panel=()=>app.nodes().find(n=>n.type==='ExpensePanel');
 assert(panel(),'Registration form is always visible');
 assert.equal(panel().props.onClose,undefined);
 assert(!app.nodes().some(n=>n.type==='button'&&text(n)==='経費登録'),'No toggle button');
-app.nodes().find(n=>n.props['aria-label']==='家賃の金額と日付を入力').props.onClick();await app.settle();
+const unreflected=app.nodes().find(n=>n.type==='AmazonUnreflectedPayments');assert.deepEqual(unreflected.props.drafts.map(d=>[d.name,d.amount]),[['家賃',11880]],'Drafts are listed in 未反映分 with the last amount');assert(!app.nodes().some(n=>n.props?.['aria-label']==='家賃の金額と日付を入力'),'Drafts are not in the expense column');unreflected.props.onDraft(unreflected.props.drafts[0]);await app.settle();
 assert.equal(panel().props.template.month,'2026-10');
-assert.equal(panel().props.template.name,'家賃');
+assert.equal(panel().props.template.name,'家賃');assert.equal(panel().props.template.amount,11880);
 panel().props.onBusyChange(true);await app.settle();panel().props.onClose();await app.settle();assert(panel().props.template,'Busy draft remains');
 panel().props.onBusyChange(false);await app.settle();panel().props.onClose();await app.settle();assert(panel());assert.equal(panel().props.template,undefined);assert.equal(app.writes(),0);
 const form=await mount('apps/admin/src/components/ExpensePanel.tsx',{onSaved(){},onBusyChange(){}});
