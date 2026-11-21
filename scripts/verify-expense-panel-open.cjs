@@ -2,10 +2,10 @@ const fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),asser
 const jsx=(type,props)=>({type,props});
 function all(n,out=[]){if(Array.isArray(n))n.forEach(v=>all(v,out));else if(n&&typeof n==='object'){out.push(n);all(n.props?.children,out)}return out;}
 function text(n){return n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);}
-async function mount(file,props={},mobile=true){let hooks=[],cursor=0,pending=[],dirty=true,tree,scrolls=0,writes=0;
+const deleted=[];async function mount(file,props={},mobile=true){let hooks=[],cursor=0,pending=[],dirty=true,tree,scrolls=0,writes=0;
 const react={useState(initial){const n=cursor++;hooks[n]??={value:typeof initial==='function'?initial():initial};return[hooks[n].value,v=>{hooks[n].value=typeof v==='function'?v(hooks[n].value):v;dirty=true}]},useRef(value){return hooks[cursor++]??={current:value}},useEffect(fn,deps){const n=cursor++,old=hooks[n];if(!old||deps.some((v,i)=>v!==old.deps[i])){old?.cleanup?.();const entry=hooks[n]={deps};pending.push(()=>entry.cleanup=fn())}}};
-const api={fetchExpenses:async()=>[{id:'old',incurred_on:'2026-09-10',category:'固定費',name:'家賃',amount:11880,card_id:null,staff_id:null,memo:null}],fetchExpenseDrafts:async()=>[{id:'draft',category:'固定費',name:'家賃',card_id:null,target_month:'2026-10-01'}],fetchExpenseReimbursements:async()=>[],fetchCards:async()=>[],saveExpense:async()=>{writes++;throw Error('Unexpected write')},updateExpense:async()=>{writes++;throw Error('Unexpected write')},updateExpenseField:async()=>{writes++;throw Error('Unexpected write')}};
-const mocks={exports:{},crypto:{randomUUID:()=> 'sample'},window:{matchMedia:()=>({matches:mobile,addEventListener(){},removeEventListener(){}})},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{yen:n=>'¥'+n}:name==='../api'?api:name==='../expenses'?{expenseCategories:['固定費','変動費','外注費'],expenseCategoryLabel:v=>v}:{__esModule:true,default:name.split('/').at(-1)}};
+const api={fetchExpenses:async()=>[{id:'old',incurred_on:'2026-09-10',category:'固定費',name:'家賃',amount:11880,card_id:null,staff_id:null,memo:null}],fetchExpenseDrafts:async()=>[{id:'draft',category:'固定費',name:'家賃',card_id:null,target_month:'2026-10-01'}],fetchExpenseReimbursements:async()=>[],fetchCards:async()=>[],fetchAmazonUnreflectedPayments:async()=>[{id:'amz',date:'2026-11-11',account:'Amazon2',description:'FBA納品送料',kind:'配送費',amount:-832,currency:'JPY',canReflect:true,partiallyReflected:false}],deleteExpenseDraft:async id=>{deleted.push(id)},saveExpense:async()=>{writes++;throw Error('Unexpected write')},updateExpense:async()=>{writes++;throw Error('Unexpected write')},updateExpenseField:async()=>{writes++;throw Error('Unexpected write')}};
+const mocks={exports:{},Intl,crypto:{randomUUID:()=> 'sample'},window:{confirm:()=>true,matchMedia:()=>({matches:mobile,addEventListener(){},removeEventListener(){}})},require:name=>name==='react'?react:name==='react/jsx-runtime'?{jsx,jsxs:jsx}:name==='@bussan/shared'?{yen:n=>'¥'+n}:name==='../api'?api:name==='../expenses'?{expenseCategories:['固定費','変動費','外注費'],expenseCategoryLabel:v=>v}:{__esModule:true,default:name.split('/').at(-1)}};
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,mocks);
 async function settle(){for(let i=0;i<30;i++){if(dirty){cursor=0;dirty=false;tree=mocks.exports.default(props);for(const n of all(tree))if(n.props.ref)n.props.ref.current={scrollIntoView(){scrolls++}};pending.splice(0).forEach(fn=>fn())}await Promise.resolve()}}
 await settle();return {nodes:()=>all(tree),settle,writes:()=>writes,scrolls:()=>scrolls};}
@@ -26,4 +26,14 @@ assert(form.nodes().some(n=>n.type==='button'&&text(n)==='経費登録'));
 const draft=await mount('apps/admin/src/components/ExpensePanel.tsx',{onSaved(){},onBusyChange(){},template:{id:'draft',month:'2026-10',name:'家賃',category:'固定費',card_id:null}});
 assert.equal(draft.scrolls(),1,'Selecting a draft brings the form into view');
 assert.equal(form.writes(),0);console.log('PASS: persistent registration, no toggle or initial scroll, draft selection and busy guard, no writes');
+let refreshed=0,opened=null;
+const list=await mount('apps/admin/src/components/AmazonUnreflectedPayments.tsx',{onReflected(){refreshed++},onDraft(r){opened=r},drafts:[{id:'draft',category:'固定費',name:'familia会費',card_id:null,target_month:'2026-11-01',amount:11880}]});
+assert(list.nodes().some(n=>n.type==='h3'&&text(n)==='未反映分'));
+assert.equal(list.nodes().filter(n=>n.type==='ul').length,1,'Drafts and Amazon rows share one scroll list');
+const items=list.nodes().filter(n=>n.type==='li');assert.equal(items.length,2);
+assert(text(items[0]).includes('familia会費')&&text(items[0]).includes('11,880円'));
+const btns=all(items[0]).filter(n=>n.type==='button');assert.deepEqual(btns.map(text),['反映','削除']);
+btns[0].props.onClick();assert.equal(opened.name,'familia会費');
+await btns[1].props.onClick();await list.settle();assert.deepEqual(deleted,['draft']);assert.equal(refreshed,1);
+console.log('PASS: drafts share the 未反映分 list with 反映/削除');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -379,6 +379,14 @@ export async function reviewAmazonPayment(paymentId: string, decision: 'reflect'
   return data;
 }
 
+// 入力待ちを未反映分から外す（論理削除。経費そのものは作らない）。
+export async function deleteExpenseDraft(id: string): Promise<void> {
+  const { data, error } = await getSupabase().from('expense_drafts')
+    .update({ deleted_at: new Date().toISOString() }).eq('id', id).is('deleted_at', null).select('id');
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error('入力待ちが見つかりません。再読み込みしてください。');
+}
+
 export async function fetchExpenseDrafts(): Promise<ExpenseDraft[]> {
   return readAllRows<ExpenseDraft>(async (from, to) => {
     const { data, error } = await getSupabase().from('expense_drafts')
