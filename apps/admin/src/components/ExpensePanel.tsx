@@ -5,11 +5,11 @@ import { expenseCategories, expenseCategoryLabel, type ExpenseInput } from '../e
 import DateInput from './DateInput';
 
 
-export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; onClose?: () => void; initial?: ExpenseInput; template?: { id: string; category: '固定費' | '外注費'; name: string; card_id: string | null; month: string } }) {
+export default function ExpensePanel({ onSaved, onBusyChange, onClose, initial, template }: { onSaved: (saved: ExpenseInput) => void; onBusyChange: (busy: boolean) => void; onClose?: () => void; initial?: ExpenseInput; template?: { id: string; category: '固定費' | '外注費'; name: string; card_id: string | null; month: string; amount?: number | null } }) {
   const [date, setDate] = useState(() => initial?.incurred_on ?? (template ? '' : new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10)));
   const [category, setCategory] = useState<ExpenseInput['category'] | ''>(initial ? expenseCategoryLabel(initial.category) : template?.category ?? '');
   const [name, setName] = useState(initial?.name ?? template?.name ?? '');
-  const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : template?.amount != null ? String(template.amount) : '');
   const [card, setCard] = useState(initial?.card_id ?? template?.card_id ?? '');
   const [original, setOriginal] = useState(initial);
   const [cards, setCards] = useState<{ id: string; name: string }[]>([]);

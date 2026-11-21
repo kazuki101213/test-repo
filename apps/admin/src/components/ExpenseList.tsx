@@ -152,7 +152,12 @@ export default function ExpenseList({ revision }: { revision: number }) {
     if (entries) entries.push(row);
     else reimbursementsByMonth.set(month, [row]);
   }
-  const months = [...new Set([...filtered.map(row => row.incurred_on.slice(0, 7)), ...pending.map(row => row.target_month.slice(0, 7))])].sort().reverse();
+  // 入力待ちの金額は、前月までの同じ経費の最新の金額を最初から入れておく（familia会費など金額が決まっているもの）。
+  const draftAmount = (d: ExpenseDraft) => rows
+    .filter(row => row.name === d.name && expenseCategoryLabel(row.category) === d.category && row.incurred_on < d.target_month)
+    .reduce<ExpenseInput | undefined>((latest, row) => !latest || row.incurred_on > latest.incurred_on ? row : latest, undefined)?.amount ?? null;
+  // 日付・金額の入力待ちは経費の列ではなく「未反映分」に出す（2026-11-22 ユーザー指定）。
+  const months = [...new Set(filtered.map(row => row.incurred_on.slice(0, 7)))].sort().reverse();
   return <section id="expense-list" className="expense-workspace" aria-label="経費一覧">
     <div className="card expense-tools">
     <div className="toolbar expense-search-toolbar">
@@ -179,7 +184,6 @@ export default function ExpenseList({ revision }: { revision: number }) {
           {error ? <p className="error" role="alert">{error}</p> : loading ? <p>読み込み中…</p>
             : months.length === 0 ? <p className="sub">該当する経費はありません。</p> : <ul className="expense-entries">{months.map(month => {
             const entries = filtered.filter(row => row.incurred_on.startsWith(month));
-            const monthDrafts = pending.filter(row => row.target_month.startsWith(month));
             return <li key={month} className="expense-month-group"><h4>{expenseMonthTitle(month, entries)}</h4><ul className="expense-entries">{entries.map(row => <li key={row.id}>
             <div className="expense-entry-top">
               <time dateTime={row.incurred_on}>{editCell(row, 'incurred_on', row.incurred_on)}</time>
@@ -189,10 +193,6 @@ export default function ExpenseList({ revision }: { revision: number }) {
             <div className="expense-entry-name">{editCell(row, 'name', expenseContentLabel(row, staffNames))}</div>
             {!isAskulExpense(row) && row.staff_id && staffNames[row.staff_id] && <div className="expense-hint">担当者 {staffNames[row.staff_id]}</div>}
             <div className="expense-entry-bottom"><span className="expense-hint">{editCell(row, 'category', expenseCategoryLabel(row.category))}</span><strong>{editCell(row, 'amount', yen(row.amount))}</strong></div>
-          </li>)}{monthDrafts.map(row => <li key={row.id}>
-            <button className="expense-edit" disabled={expenseBusy} aria-label={`${row.name}の金額と日付を入力`} onClick={() => { setEditing(undefined); setDraft(row); }}>
-              <div>{row.name}</div><span className="expense-hint">日付・金額の入力待ち</span>
-            </button>
           </li>)}</ul></li>;
           })}</ul>}
         </section>
@@ -235,8 +235,8 @@ export default function ExpenseList({ revision }: { revision: number }) {
             </li>)}</ul>}
         </section>
     <div className="expense-registration-column">
-      <ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7) } : undefined} onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} onClose={draft ? () => { if (expenseBusy) return; setEditing(undefined); setDraft(undefined); } : undefined} />
-      <AmazonUnreflectedPayments onReflected={() => setSavedRevision(value => value + 1)} />
+      <ExpensePanel key={editing?.id ?? draft?.id ?? 'new'} initial={editing} template={draft ? { ...draft, month: draft.target_month.slice(0, 7), amount: draftAmount(draft) } : undefined} onSaved={() => setSavedRevision(value => value + 1)} onBusyChange={setExpenseBusy} onClose={draft ? () => { if (expenseBusy) return; setEditing(undefined); setDraft(undefined); } : undefined} />
+      <AmazonUnreflectedPayments onReflected={() => setSavedRevision(value => value + 1)} drafts={loading || error ? [] : pending.map(row => ({ ...row, amount: draftAmount(row) }))}draftsDisabled={expenseBusy} onDraft={row => { setEditing(undefined); setDraft(row); }} />
     </div>
   {fieldEdit && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="経費の項目を編集"><div className="card inventory-comment-panel">
     <h3>{{ incurred_on: '日付', category: '区分', name: '内容', amount: '金額', card_id: '支払い方法' }[fieldEdit.field]}を編集</h3>
