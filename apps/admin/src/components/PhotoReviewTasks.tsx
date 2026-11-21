@@ -146,7 +146,7 @@ export default function PhotoReviewTasks({mode='all',onReviewed,refreshRevision=
   return <>
       {noticeMessage && <li role="status">{noticeMessage}</li>}
       {listingTasks.rows.map(task => { return <li key={`listing-${task.id}`} className="malfunction-task-row admin-task-card admin-simple-task admin-task-overdue">
-        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品({listingReminderDays(task.created_at, listingTasks.checkedAt)}日経過)</strong> <a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a> <TaskProductLinks products={task.purchase_products} fallback={task}/><small>{task.sku}</small></div>
+        <div className="task-action-details listing-task-details"><strong>{task.sales_channel}出品({listingReminderDays(task.created_at, listingTasks.checkedAt)}日経過)</strong> <span className="task-id-line"><a className="listing-inventory-link" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer" aria-label="出品する商品の在庫を開く">【{productSerial(task.sku,task.lot_seq)}】</a><TaskProductLinks products={task.purchase_products} fallback={task}/></span><small>{task.sku}</small></div>
         <a className="btn" href={deliveryAppUrl+'?itemId='+encodeURIComponent(task.id)} target="_blank" rel="noopener noreferrer">確認</a>
       </li>;})}
       {reviews.map(review => { const item=items[review.item_id]; return <li key={review.item_id} className="admin-task-card admin-simple-task admin-photo-task">

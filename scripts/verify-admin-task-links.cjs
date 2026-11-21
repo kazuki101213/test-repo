@@ -32,8 +32,8 @@ function inventoryLink(nodes,label,item){
  inventoryLink(listingNodes,'出品する商品の在庫を開く',listingId);
  const text=n=>n==null?'':Array.isArray(n)?n.map(text).join(''):typeof n==='object'?text(n.props?.children):String(n);
  const details=listingNodes.filter(n=>n.props?.className==='task-action-details listing-task-details');
- assert.deepEqual(JSON.parse(JSON.stringify(details.map(n=>n.props.children.filter(v=>typeof v==='object').map(text)))),[['ヤフオク出品(8日経過)','【2395】','【m1245892718】','2395-EE'],['メルカリ出品(5日経過)','【1856b】','【m987654321】','1856b-EE']]);
- const mercariLink=details[1].props.children.find(n=>n?.type==='a');assert.equal(new URL(mercariLink.props.href).searchParams.get('itemId'),'mercari-item');
+ assert.deepEqual(JSON.parse(JSON.stringify(details.map(n=>n.props.children.filter(v=>typeof v==='object').map(text)))),[['ヤフオク出品(8日経過)','【2395】【m1245892718】','2395-EE'],['メルカリ出品(5日経過)','【1856b】【m987654321】','1856b-EE']]);
+ const mercariLink=details[1].props.children.find(n=>n?.props?.className==='task-id-line').props.children.find(n=>n?.type==='a');assert.equal(new URL(mercariLink.props.href).searchParams.get('itemId'),'mercari-item');
  const many=Array.from({length:201},(_,n)=>({id:'task'+n,lot_seq:n,sku:'SKU'+n,sales_channel:'ヤフオク'}));
  const manyNodes=await render('apps/admin/src/components/PhotoReviewTasks.tsx',{listing_tasks:many},many.map(t=>({id:t.id,marketplace_item_id:'ID'+t.id})));
  assert.equal(manyNodes.filter(n=>n.props?.className==='task-action-details listing-task-details').length,201,'All task IDs survive bounded query batches');

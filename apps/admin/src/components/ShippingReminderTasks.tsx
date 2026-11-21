@@ -39,8 +39,7 @@ export default function ShippingReminderTasks({kind='shipping'}:{kind?:'shipping
   return <li key={row.id} className="admin-task-card admin-simple-task admin-shipping-reminder admin-task-overdue">
   <div className="task-action-details listing-task-details">
    <strong title={pendingParts?'本体・付属品の追跡番号または到着確認がそろっていません。':undefined}>{inspection?`動作確認${supplier}(${inspectionReminderDays(row.created_at,checkedAt)}日経過)${pendingParts?'※':''}`:row.sales_channel+'発送(24時間経過)'}</strong>
-   <a href={inventory} target="_blank" rel="noopener noreferrer" aria-label={inspection?'動作確認する商品の在庫を開く':'発送する商品の在庫を開く'}>【{productSerial(row.sku,row.lot_seq)}】</a>
-   <TaskProductLinks products={row.purchase_products} fallback={row}/>
+   <span className="task-id-line"><a href={inventory} target="_blank" rel="noopener noreferrer" aria-label={inspection?'動作確認する商品の在庫を開く':'発送する商品の在庫を開く'}>【{productSerial(row.sku,row.lot_seq)}】</a><TaskProductLinks products={row.purchase_products} fallback={row}/></span>
    <small>{inspection?`${model==='—'?'型番未登録':model}、${row.sku}`:row.sku}</small>
   </div>
   <a className="btn" href={deliveryAppUrl+'?itemId='+encodeURIComponent(row.action_item_id ?? row.item_id)} target="_blank" rel="noopener noreferrer">確認</a>
