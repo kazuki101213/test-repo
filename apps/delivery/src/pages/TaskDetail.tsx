@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { jpDate, canViewDeliveryAssignee, canAddPackingPhotos } from '@bussan/shared';
 import type { DeliveryTask, ItemComment, Staff } from '@bussan/shared';
 import {
-  addPhotosToDrive, deletePhoto, fetchComments, fetchSupplierConversation, fetchSupplierOperation, fetchPhotoReview, fetchPhotoUrls, fetchTask, postComment,
+  addPhotosToDrive, deletePhoto, fetchComments, generateReturnMessage, fetchSupplierConversation, fetchSupplierOperation, fetchPhotoReview, fetchPhotoUrls, fetchTask, postComment,
   queueSupplierOperation, recordListingPhotoUpload, reflectOriginalProductPhotos, uploadPhoto,
 } from '../api';
 import type { ItemPhoto, MarketplaceConversation, PhotoReviewState } from '../api';
@@ -42,6 +42,7 @@ export default function TaskDetail({
   const [marketplaceDraft, setMarketplaceDraft] = useState('');
   const [marketplaceSending, setMarketplaceSending] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState('');
+  const [aiDrafting, setAiDrafting] = useState(false);
   const selectedSupplierAccount = marketplaceConversation.account_id || supplierAccount;
 
   // Parent callbacks may change identity after every row update; reading them through refs
@@ -249,6 +250,21 @@ export default function TaskDetail({
     }
   }
 
+  async function draftReturnMessage() {
+    if (!task || aiDrafting || marketplaceSending) return;
+    if (marketplaceDraft.trim() && !window.confirm('入力中のメッセージをAIの作成文に置き換えますか？')) return;
+    setAiDrafting(true);
+    setMarketplaceError('');
+    try {
+      const message = await generateReturnMessage(task.id);
+      if (mounted.current) setMarketplaceDraft(message);
+    } catch (cause) {
+      if (mounted.current) setMarketplaceError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (mounted.current) setAiDrafting(false);
+    }
+  }
+
   async function sendMarketplaceMessage() {
     if (!task || !selectedSupplierAccount || !marketplaceDraft.trim() || marketplaceSending) return;
     setMarketplaceSending(true);
@@ -362,7 +378,10 @@ export default function TaskDetail({
             </div>
             {marketplaceConversation.expired ? <p className="muted">作業完了から7日を経過したため、会話の保存期間は終了しました。</p> : task.status!=='返品処理' && <div className="marketplace-message-composer">
               <textarea aria-label="フリマ取引相手へのメッセージ" value={marketplaceDraft} onChange={event => setMarketplaceDraft(event.target.value)} maxLength={2000} placeholder="取引相手へのメッセージ" />
-              <button type="button" className="btn primary" disabled={!selectedSupplierAccount || !marketplaceDraft.trim() || marketplaceSending} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信結果を確認中…' : '取引メッセージを送信'}</button>
+              <div className="marketplace-composer-actions">
+                <button type="button" className="btn primary" disabled={!selectedSupplierAccount || !marketplaceDraft.trim() || marketplaceSending || aiDrafting} onClick={() => void sendMarketplaceMessage()}>{marketplaceSending ? '送信結果を確認中…' : '取引メッセージ送信'}</button>
+                <button type="button" className="btn" disabled={aiDrafting || marketplaceSending} title="納品担当者の動作不良の報告と取引メッセージから、返品のお願い文を作成します（送信はしません）" onClick={() => void draftReturnMessage()}>{aiDrafting ? 'AI作成中…' : 'AIメッセージ作成'}</button>
+              </div>
               <small className="muted">送信後は、ログイン済みChromeの拡張機能が取引画面へ反映します。</small>
             </div>}
           </>}

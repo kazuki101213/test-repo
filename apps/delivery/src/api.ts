@@ -512,3 +512,14 @@ export async function generateListingKeywords(input: { itemId:string; target:'me
   if(typeof data?.keywords!=='string'||!data.keywords.trim())throw new Error('生成結果を確認できません。');
   return {keywords:data.keywords,previous:Array.isArray(data.previous)?data.previous.filter((v:unknown)=>typeof v==='string'):[],cached:data.cached===true};
 }
+
+/** 動作不良の報告と取引メッセージから、出品者への返品・返金のお願い文をAI（Gemini）で下書きする。送信はしない。 */
+export async function generateReturnMessage(itemId: string): Promise<string> {
+  const {data,error}=await getSupabase().functions.invoke('marketplace-return-message',{body:{itemId}});
+  if(error){
+    const message=await error.context?.json?.().then((body:{error?:string})=>body.error).catch(()=>null);
+    throw new Error(message||'AIに接続できませんでした。メッセージは手で入力できます。');
+  }
+  if(typeof data?.message!=='string'||!data.message.trim())throw new Error('作成結果を確認できません。');
+  return data.message;
+}

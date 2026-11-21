@@ -99,3 +99,7 @@ verify_jwt = false
 # Auth.getUser and staff role gate the read-only Amazon Product Fees API.
 [functions.amazon-catalog-estimate]
 verify_jwt = false
+
+# Auth.getUser + supplier_conversation permission; Gemini credentials stay server-side. Draft only, never sends.
+[functions.marketplace-return-message]
+verify_jwt = false
