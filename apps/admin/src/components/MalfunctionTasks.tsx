@@ -33,7 +33,16 @@ interface MalfunctionTask extends TaskPurchaseReferences {
   purchaser_id: string | null; deliverer_id: string | null; malfunction_comment: string; malfunction_reported_at: string; malfunction_reported_by: string | null;
   supplier_refund_pending?: boolean;
   supplier_refund_event_id?: string | null;
+  supplier_refund_event_at?: string | null;
   products: { model_no: string | null }[];
+}
+
+// 返金待ちの経過日数。返品完了の翌日（仕入先に届く日）から数える（日本時間の日付、2026-11-21 ユーザー指定）。
+export function refundWaitDays(eventAt: string | null | undefined, now = Date.now()): number | null {
+  const at = eventAt ? Date.parse(eventAt) : NaN;
+  if (!Number.isFinite(at)) return null;
+  const tokyoDay = (ms: number) => Math.floor((ms + 9 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
+  return Math.max(0, tokyoDay(now) - tokyoDay(at) - 1);
 }
 type PurchaseSource = { id: string; marketplace: string | null; marketplace_item_id: string | null; marketplace_url: string | null };
 interface TaskComment {
@@ -375,13 +384,13 @@ export default function MalfunctionTasks({ staff }: { staff: Staff }) {
       if (row.supplier_refund_pending) {
         return <li id={id} key={key} className="malfunction-task-row admin-task-card">
           <div className="task-action-details supplier-refund-details">
-            <strong>動作不良(返金待ち)</strong>
+            <strong>動作不良(返金待ち){(() => { const days = refundWaitDays(row.supplier_refund_event_at); return days === null ? '' : `(${days}日経過)`; })()}</strong>
             {inventoryLink}
             {purchaseLink}
             <small>{row.sku}</small>
           </div>
           <button type="button" className="btn" disabled={busy !== null || pending || !row.supplier_refund_event_id}
-            onClick={() => ask(`【${productSerial(row.sku,row.lot_seq)}】の返金を仕入先から受け取りましたか？`, () => completeMalfunctionTask(row))}>完了</button>
+            onClick={() => ask(`【${productSerial(row.sku,row.lot_seq)}】の返金を仕入先から受け取りましたか？完了すると仕入金額の全額を返金額として記録します。`, () => completeMalfunctionTask(row))}>完了</button>
         </li>;
       }
       const controls = (staff.role === 'admin' || staff.role === 'purchaser') && (

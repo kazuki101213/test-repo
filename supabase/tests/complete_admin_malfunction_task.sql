@@ -157,8 +157,10 @@ begin
     where task->>'id'=item.id::text) then
     raise exception 'Refund task remained after manual confirmation';
   end if;
-  if not exists(select 1 from app.items where id=item.id and status='販売済' and non_amazon_refund_amount=0) then
-    raise exception 'Refund confirmation altered inventory status or accounting';
+  -- 完了＝仕入金額の全額を返金として記録する（2026-11-21 ユーザー指定）。状態は変えない。
+  if not exists(select 1 from app.items where id=item.id and status='販売済'
+      and non_amazon_refund_amount=coalesce(item.cost_amount,0)) then
+    raise exception 'Refund confirmation must keep the status and record the full purchase price';
   end if;
 end $$;
 rollback;
