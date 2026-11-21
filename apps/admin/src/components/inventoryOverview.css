@@ -51,6 +51,11 @@
 .approved-accessory .approved-serial-line { gap:5px; }
 .approved-accessory .approved-serial-line .inventory-accessory-label { font-size:10px; }
 .approved-accessory .approved-people { grid-template-columns:repeat(2,minmax(0,1fr)); gap:3px; }
+/* 付属品：1行目「仕入担当者 仕入先」、2行目「納品担当者 販売先」（2026-11-21 ユーザー指定） */
+.approved-accessory .approved-people > :nth-child(1) { order:1; }
+.approved-accessory .approved-people > :nth-child(2) { order:3; }
+.approved-accessory .approved-people > :nth-child(3) { order:2; }
+.approved-accessory .approved-people > :nth-child(4) { order:4; }
 .approved-accessory .approved-amazon-price:empty { display:block; }
 .amazon-listing-price form { display:flex; gap:5px; align-items:start; }
 .amazon-listing-price input { width:calc(100% - 46px); min-width:0; height:32px; padding:2px; font:inherit; background:var(--surface); }
