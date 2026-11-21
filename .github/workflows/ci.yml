@@ -88,7 +88,7 @@ jobs:
         run: node supabase/functions/malfunction-report-photos/index_test.cjs && node scripts/verify-malfunction-report-photos.cjs && node scripts/verify-admin-review-photos.cjs && node scripts/verify-return-tasks.cjs && node scripts/verify-packing-photo-tasks.cjs
 
       - name: Gemini検索語と手編集保護
-        run: node --test supabase/functions/listing-ai-keywords/index_test.cjs && node scripts/verify-listing-keywords.cjs && node scripts/verify-shipping-actions.cjs
+        run: node --test supabase/functions/listing-ai-keywords/index_test.cjs supabase/functions/marketplace-return-message/index_test.cjs && node scripts/verify-listing-keywords.cjs && node scripts/verify-shipping-actions.cjs
 
       - name: LINE連携の署名と本人確認
         run: node scripts/verify-line-photo-order.cjs && node scripts/verify-line-resend.cjs && node --test supabase/functions/delivery-push/index_test.cjs supabase/functions/delivery-line/index_test.cjs supabase/functions/delivery-line/media_test.cjs supabase/functions/delivery-line/photo-recovery_test.cjs supabase/functions/delivery-line/photo-selection_test.cjs scripts/extension-tests/auth-schedule.test.mjs scripts/extension-tests/line-patrol.test.mjs

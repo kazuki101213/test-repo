@@ -240,6 +240,7 @@ textarea { min-height: 80px; resize: vertical; }
 .marketplace-message p { margin: 5px 0 0; }
 .marketplace-message-composer { display: grid; gap: 8px; margin-top: 12px; }
 .marketplace-message-composer textarea { min-height: 76px; resize: vertical; }
+.marketplace-composer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .spare-row-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 
 .photo-control-row { display:flex; align-items:stretch; flex-wrap:wrap; gap:8px; }
