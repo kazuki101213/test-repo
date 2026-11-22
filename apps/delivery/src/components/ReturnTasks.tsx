@@ -44,7 +44,9 @@ function displayTaskTitle(row:ReturnTask){
  switch(row.kind){
   case 'photo_approved':
   case 'listing_due':return row.listing_request_title||taskTitle[row.kind];
-  case 'photo_return':return row.reason?.trim()||taskTitle[row.kind];
+  // 差し戻し・返信は入力されたメッセージをそのまま出す（2026-11-22 ユーザー指定）。空なら固定の文。
+  case 'photo_return':
+  case 'reply':return row.reason?.trim()||taskTitle[row.kind];
   // Amazon self-shipping reads naturally without the account number ("自己発送2発送…" was wrong).
   case 'shipping':return /^自己発送/.test(row.sales_channel??'')?'自己発送をお願いします。'
    :(row.sales_account_label||salesChannelLabel(row.sales_channel))+taskTitle.shipping;
