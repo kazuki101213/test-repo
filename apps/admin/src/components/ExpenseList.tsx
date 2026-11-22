@@ -158,7 +158,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
     const recent = rows
       .filter(row => row.name === d.name && expenseCategoryLabel(row.category) === d.category && row.incurred_on < d.target_month)
       .sort((a, b) => b.incurred_on.localeCompare(a.incurred_on)).slice(0, 3);
-    return recent.length >= 2 && recent.every(row => row.amount === recent[0].amount) ? recent[0].amount : null;
+    return recent.length >= 2 && recent.every(row => row.amount === recent[0]!.amount) ? recent[0]!.amount : null;
   };
   // 日付・金額の入力待ちは経費の列ではなく「未反映分」に出す（2026-11-22 ユーザー指定）。
   const months = [...new Set(filtered.map(row => row.incurred_on.slice(0, 7)))].sort().reverse();

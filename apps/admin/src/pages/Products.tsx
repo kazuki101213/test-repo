@@ -3,6 +3,7 @@ import { staffDisplayName, yen } from '@bussan/shared';
 import type { Product, Staff } from '@bussan/shared';
 import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchFurimaWatchStock, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
+import { mercariSearchUrl } from '../mercariSearch';
 import { furimaWatchCsvRows } from '../furimaWatchCsv';
 import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from '../productEstimates';
 import ColoredLabel from '../components/ColoredLabel';
@@ -233,7 +234,7 @@ export default function Products({ me }: { me: Staff }) {
               <tr key={p.id}>
                 <td className="num"><button type="button" className="inventory-cell-edit" title="クリックして商品情報全体を編集" onClick={() => startFullEdit(p)}>{String(p.product_no ?? '—')}</button></td>
                 <td><span className="reference-value">{cell(p, 'asin', p.asin)}<a className="inline-reference-link" href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}><span className="external-link-arrow" aria-hidden="true" /></a></span></td>
-                <td>{cell(p, 'model_no', p.model_no ?? '—')}</td>
+                <td>{p.model_no?.trim() ? <span className="reference-value">{cell(p, 'model_no', p.model_no)}<a className="inline-reference-link" href={mercariSearchUrl(p.model_no)} target="_blank" rel="noreferrer" aria-label={`${p.model_no}をメルカリで検索`}><span className="external-link-arrow" aria-hidden="true" /></a></span> : cell(p, 'model_no', '—')}</td>
                 <td>{cell(p, 'maker', p.maker ?? '—')}</td>
                 {!ownerFilter && <td>{ownerNames.get(p.owner_staff_id ?? '') ?? '—'}</td>}
                 <td>{cell(p, 'genre', p.genre ?? '—')}</td>
