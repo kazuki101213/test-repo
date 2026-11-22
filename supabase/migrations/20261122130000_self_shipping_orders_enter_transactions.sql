@@ -36,7 +36,12 @@ begin
     -- A confirmed order changes inventory state before financial settlement (FBA and self-shipping).
     -- Never infer a sale from zero stock, or reopen final/returned/problem items.
     if item.id is not null then
-      update app.items i set status='取引中'
+      -- An Amazon order is a new trade: flea-market trade/cancel markers left from an earlier
+      -- channel (e.g. a cancelled Mercari trade) must not block the self-shipping LINE request.
+      update app.items i set status='取引中',
+        seller_trade_key=case when r.fulfillment='MERCHANT' then null else i.seller_trade_key end,
+        seller_cancelled_at=case when r.fulfillment='MERCHANT' then null else i.seller_cancelled_at end,
+        seller_cancelled_trade_key=case when r.fulfillment='MERCHANT' then null else i.seller_cancelled_trade_key end
       where i.id=item.id and i.status='出品中'
         and i.sold_on is null and i.returned_on is null
         and not coalesce(i.malfunction_reported and i.malfunction_resolved_at is null,false)

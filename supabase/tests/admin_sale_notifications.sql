@@ -48,7 +48,8 @@ begin
   insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,asin)
     select 989693,p.id,d.id,(purchase_time at time zone 'Asia/Tokyo')::date,'Self shipping fixture',1000,'ヤフオク','自己発送2','B000000002'
     from app.staff p,app.staff d where p.code='AA' and d.code='DD' returning id into strict fixture_id;
-  update app.items set status='出品中',product_registered_at=purchase_time-interval '1 minute' where id=fixture_id;
+  update app.items set status='出品中',product_registered_at=purchase_time-interval '1 minute',
+    seller_cancelled_at=purchase_time-interval '2 days',seller_cancelled_trade_key='m989693:2026-01-01T00:00' where id=fixture_id;
   if (select status from app.items where id=fixture_id)<>'出品中' then
     raise exception 'Self shipping fixture could not be listed';
   end if;
@@ -61,6 +62,9 @@ begin
   if (select status from app.items where id=fixture_id)<>'取引中'
     or not exists(select 1 from app.delivery_shipping_tasks where item_id=fixture_id and resolved_at is null) then
     raise exception 'Self shipping order did not create a shipping task';
+  end if;
+  if (select seller_cancelled_at is not null or seller_cancelled_trade_key is not null from app.items where id=fixture_id) then
+    raise exception 'An old flea-market cancellation still blocks the self shipping LINE request';
   end if;
 end $$;
 rollback;
