@@ -153,9 +153,13 @@ export default function ExpenseList({ revision }: { revision: number }) {
     else reimbursementsByMonth.set(month, [row]);
   }
   // 入力待ちの金額は、前月までの同じ経費の最新の金額を最初から入れておく（familia会費など金額が決まっているもの）。
-  const draftAmount = (d: ExpenseDraft) => rows
-    .filter(row => row.name === d.name && expenseCategoryLabel(row.category) === d.category && row.incurred_on < d.target_month)
-    .reduce<ExpenseInput | undefined>((latest, row) => !latest || row.incurred_on > latest.incurred_on ? row : latest, undefined)?.amount ?? null;
+  // 為替で毎月変わるもの（OPEN AI・ANTHROPICなど）は入れない：直近（最大3件）が2件以上あり、すべて同じ金額のときだけ入れる。
+  const draftAmount = (d: ExpenseDraft) => {
+    const recent = rows
+      .filter(row => row.name === d.name && expenseCategoryLabel(row.category) === d.category && row.incurred_on < d.target_month)
+      .sort((a, b) => b.incurred_on.localeCompare(a.incurred_on)).slice(0, 3);
+    return recent.length >= 2 && recent.every(row => row.amount === recent[0].amount) ? recent[0].amount : null;
+  };
   // 日付・金額の入力待ちは経費の列ではなく「未反映分」に出す（2026-11-22 ユーザー指定）。
   const months = [...new Set(filtered.map(row => row.incurred_on.slice(0, 7)))].sort().reverse();
   return <section id="expense-list" className="expense-workspace" aria-label="経費一覧">
