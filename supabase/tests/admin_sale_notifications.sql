@@ -43,5 +43,24 @@ begin
     or app.record_amazon_sale_page('amazon-2',lease,amazon_row)<>0 then
     raise exception 'Amazon repeated poll did not deduplicate';
   end if;
+
+  -- A confirmed self-shipping order enters transactions and creates the shipping task.
+  insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,asin)
+    select 989693,p.id,d.id,(purchase_time at time zone 'Asia/Tokyo')::date,'Self shipping fixture',1000,'ヤフオク','自己発送2','B000000002'
+    from app.staff p,app.staff d where p.code='AA' and d.code='DD' returning id into strict fixture_id;
+  update app.items set status='出品中',product_registered_at=purchase_time-interval '1 minute' where id=fixture_id;
+  if (select status from app.items where id=fixture_id)<>'出品中' then
+    raise exception 'Self shipping fixture could not be listed';
+  end if;
+  amazon_row:=jsonb_build_array(jsonb_build_object('order_id','123-1234567-7654321','line_id','self-line',
+    'sku',(select sku from app.items where id=fixture_id),'asin','B000000002','product_title','Self','fulfillment','MERCHANT',
+    'purchased_at',purchase_time));
+  if app.record_amazon_sale_page('amazon-2',lease,amazon_row)<>1 then
+    raise exception 'Self shipping order was not notified';
+  end if;
+  if (select status from app.items where id=fixture_id)<>'取引中'
+    or not exists(select 1 from app.delivery_shipping_tasks where item_id=fixture_id and resolved_at is null) then
+    raise exception 'Self shipping order did not create a shipping task';
+  end if;
 end $$;
 rollback;
