@@ -24,10 +24,10 @@ async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tre
  control('ジャンル').props.onChange({target:{value:'パソコン・周辺機器'}});
  control('販売想定金額').props.onChange({target:{value:'10870'}});
  await settle();
- assert.deepEqual(all(form()).filter(node=>node.type==='output').map(text),['¥10000','¥7500'],'The threshold uses the unrounded payout');
+assert.deepEqual(all(form()).filter(node=>node.type==='output').map(text),['登録時にAmazonの手数料で計算','登録時に計算'],'Registration preview defers to the Amazon fee estimate');
  let inserted;
  const apiModule={exports:{},require:id=>id==='./productEstimates'?estimates.exports:id==='@bussan/shared'?{
-  getSupabase:()=>({from:table=>{assert.equal(table,'products');return {insert:async row=>{inserted=row;return {error:null};}};}}),
+  getSupabase:()=>({functions:{invoke:async(name,{body})=>{assert.equal(name,'amazon-catalog-estimate');assert.deepEqual({...body},{asin:'BTEST00003',price:20000});return {data:{payout:17000},error:null};}},from:table=>{assert.equal(table,'products');return {insert:async row=>{inserted=row;return {error:null};}};}}),
  }:{}};
  vm.runInNewContext(compile('apps/admin/src/api.ts'),apiModule);
  await apiModule.exports.createProduct({asin:'btest00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:'20000',shipping_category:'ブ',shipping_size:'100'});

@@ -8,7 +8,7 @@ import type { FbaHistoryPlan } from './fbaInboundHistory';
 import { financialProductSerial, normalizeSkuReturnSuffix, productCount, productSerial, readAllRows } from './inventory';
 import { validateExpense, type ExpenseInput, type ExpenseDraft, type ExpenseReimbursement } from './expenses';
 import { materialPurchaseWindow, type BubbleWrapEstimate, type MaterialPurchase, type MaterialWorkload, type MaterialAnalysisInput, type MaterialAnalysis } from './materialPurchases';
-import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
+import { PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
   InventoryMarketplaceLabels, ItemInsert, ItemStatus, ItemView, LedgerRow,
   MonthlySummary, Product, PurchaseDraft, SpareAccessory, Staff, StockSummary,
@@ -876,6 +876,27 @@ export async function deleteProducts(ids: string[]): Promise<string[]> {
   return (data ?? []).map(row => row.id);
 }
 
+/**
+ * 商品リスト登録の拡張機能と同じ計算（2026-11-17 ユーザー指定）：
+ * 振込想定金額 ＝ 販売想定金額 − Amazonの手数料見積もり − 500円（Edge Function amazon-catalog-estimate）。
+ * 仕入れ目標金額 ＝ 振込想定金額 × 55%（1万円以下）／75%（1.5万円以下）／76%。
+ */
+export function targetCostFromPayout(payout: number): number {
+  const rate = payout <= 10000 ? 55 : payout <= 15000 ? 75 : 76;
+  return Math.round(payout * rate / 100);
+}
+
+export async function amazonProductAmounts(asin: string, price: number): Promise<{ payout_estimate: number; target_cost: number }> {
+  const { data, error } = await getSupabase().functions.invoke<{ payout?: number }>('amazon-catalog-estimate', { body: { asin, price } });
+  if (error) {
+    const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
+    throw new Error(message || 'Amazonの手数料見積もりを取得できませんでした。時間をおいて保存してください。');
+  }
+  const payout = data?.payout;
+  if (!Number.isSafeInteger(payout) || payout! < 0 || payout! > price) throw new Error('Amazonの手数料見積もりを確認できませんでした。');
+  return { payout_estimate: payout!, target_cost: targetCostFromPayout(payout!) };
+}
+
 export async function updateProductField(product: Product, field: ProductField, value: string): Promise<void> {
   const next = field === 'asin' ? value.trim().toUpperCase() : value.trim();
   if (field === 'asin' && !/^[A-Z0-9]{10}$/.test(next)) throw new Error('ASINは英数字10文字で入力してください。');
@@ -884,13 +905,9 @@ export async function updateProductField(product: Product, field: ProductField, 
   if (numeric && next && (!Number.isSafeInteger(Number(next)) || Number(next) < (field === 'product_no' ? 1 : 0))) throw new Error('0以上の整数を入力してください（品番は1以上）。');
   const parsed = field === 'has_sold_before' ? next === 'true' : numeric ? next ? Number(next) : null : field === 'asin' ? next : next || null;
   const update: Record<string, unknown> = { [field]: parsed };
-  // 販売想定金額（またはジャンル）を変えたら、振込想定金額と仕入れ目標金額も登録時と同じ計算で直す（2026-11-22 ユーザー指定）。
-  if (field === 'list_price' || field === 'genre') {
-    const estimate = estimateProductAmounts(
-      field === 'genre' ? String(parsed ?? '') : product.genre ?? '',
-      field === 'list_price' ? parsed as number | null : product.list_price ?? null,
-    );
-    if (estimate.payout_estimate !== null) Object.assign(update, estimate);
+  // 販売想定金額を変えたら、その時だけAmazonの手数料APIで振込想定金額と仕入れ目標金額も計算し直す（2026-11-22 ユーザー指定）。
+  if (field === 'list_price' && typeof parsed === 'number' && parsed > 0 && parsed !== product.list_price) {
+    Object.assign(update, await amazonProductAmounts(product.asin, parsed));
   }
   let query = getSupabase().from('products').update(update).eq('id', product.id);
   query = product[field] === null ? query.is(field, null) : query.eq(field, product[field]);
@@ -940,11 +957,10 @@ export async function updateProductDetails(product: Product, input: ProductDetai
   const listPrice = parseNumber('list_price', 0);
   let payout = parseNumber('payout_estimate', 0);
   let targetCost = parseNumber('target_cost', 0);
-  // 販売想定金額かジャンルを変え、振込・仕入れ目標を手で変えていなければ、登録時と同じ計算で直す。
-  if ((listPrice !== (product.list_price ?? null) || input.genre.trim() !== (product.genre ?? ''))
+  // 販売想定金額を変え、振込・仕入れ目標を手で変えていなければ、Amazonの手数料APIで計算し直す。
+  if (listPrice !== null && listPrice > 0 && listPrice !== (product.list_price ?? null)
     && payout === (product.payout_estimate ?? null) && targetCost === (product.target_cost ?? null)) {
-    const estimate = estimateProductAmounts(input.genre.trim(), listPrice);
-    if (estimate.payout_estimate !== null) { payout = estimate.payout_estimate; targetCost = estimate.target_cost; }
+    ({ payout_estimate: payout, target_cost: targetCost } = await amazonProductAmounts(asin, listPrice));
   }
   if (input.turnover && !PRODUCT_TURNOVER.includes(input.turnover)) throw new Error('回転を選択してください。');
   if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
@@ -980,7 +996,7 @@ export async function createProduct(input: ProductRegistrationInput): Promise<vo
     asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
     genre: input.genre || null, turnover: input.turnover || null, list_price: listPrice,
     shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null,
-    ...estimateProductAmounts(input.genre, listPrice),
+    ...(listPrice !== null && listPrice > 0 ? await amazonProductAmounts(asin, listPrice) : { payout_estimate: null, target_cost: null }),
   });
   if (error) throw error;
 }
