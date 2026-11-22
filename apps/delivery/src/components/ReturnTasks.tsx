@@ -45,7 +45,9 @@ function displayTaskTitle(row:ReturnTask){
   case 'photo_approved':
   case 'listing_due':return row.listing_request_title||taskTitle[row.kind];
   case 'photo_return':return row.reason?.trim()||taskTitle[row.kind];
-  case 'shipping':return (row.sales_account_label||salesChannelLabel(row.sales_channel))+taskTitle.shipping;
+  // Amazon self-shipping reads naturally without the account number ("自己発送2発送…" was wrong).
+  case 'shipping':return /^自己発送/.test(row.sales_channel??'')?'自己発送をお願いします。'
+   :(row.sales_account_label||salesChannelLabel(row.sales_channel))+taskTitle.shipping;
   default:return taskTitle[row.kind];
  }
 }
