@@ -11,7 +11,7 @@ const react={useState(initial){const i=cursor++;hooks[i]??={value:typeof initial
 const confirmation={useTaskConfirmation:()=>({pending:!!request,confirmation:null,ask(label,action,notice){request={label,action,notice};dirty=true;}})};
 const me={id:'admin-a',name:'管理者'};
 const api={fetchProductCatalogOwners:async()=>[me],fetchProducts:async query=>rows.filter(row=>!query||row.model_no.includes(query)),fetchProductSaleSummaries:async()=>[],deleteProducts:async ids=>{calls.push([...ids]);await new Promise(r=>release=r);if(fail)throw Error('通信エラー');rows=rows.filter(row=>!ids.includes(row.id));return ids;}};
-const ctx={exports:{},Error,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='../api'?api:id==='../components/TaskConfirmation'?confirmation:id==='../productEstimates'?estimates.exports:id==='@bussan/shared'?{yen:n=>String(n??'—'),staffDisplayName:staff=>staff.name}:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
+const ctx={exports:{},Error,require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='../api'?api:id==='../components/TaskConfirmation'?confirmation:id==='../productEstimates'?estimates.exports:id==='../mercariSearch'?{mercariSearchUrl:m=>'https://jp.mercari.com/search?keyword='+encodeURIComponent(m)}:id==='@bussan/shared'?{yen:n=>String(n??'—'),staffDisplayName:staff=>staff.name}:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
 vm.runInNewContext(compile('apps/admin/src/pages/Products.tsx'),ctx);
 async function settle(){for(let i=0;i<30;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me});effects.splice(0).forEach(fn=>fn());}await Promise.resolve();}}
 const checks=()=>all(tree).filter(n=>n.type==='input'&&n.props.type==='checkbox');
