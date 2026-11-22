@@ -27781,6 +27781,7 @@ end
 $move$;
 
 
+-- ▼▼▼ 20261122130000_self_shipping_orders_enter_transactions.sql ▼▼▼
 
 -- Confirmed Amazon self-shipping (MERCHANT) orders enter transactions, like FBA orders.
 -- Since 2026-11-18 only FBA orders moved to 取引中, so a self-shipping order produced a sale
@@ -27841,3 +27842,5 @@ end $function$;
 
 revoke all on function app.record_amazon_sale_page(text,uuid,jsonb) from public,anon,authenticated;
 grant execute on function app.record_amazon_sale_page(text,uuid,jsonb) to service_role;
+
+
