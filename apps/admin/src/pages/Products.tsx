@@ -5,7 +5,7 @@ import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchFurimaWa
 import { downloadCsv } from '../csv';
 import { mercariSearchUrl } from '../mercariSearch';
 import { furimaWatchCsvRows } from '../furimaWatchCsv';
-import { estimateProductAmounts, PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from '../productEstimates';
+import { PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from '../productEstimates';
 import ColoredLabel from '../components/ColoredLabel';
 import { useTaskConfirmation } from '../components/TaskConfirmation';
 import '../components/ExpenseSelection.css';
@@ -167,7 +167,6 @@ export default function Products({ me }: { me: Staff }) {
   const ownerNames = new Map(owners.map(owner => [owner.id, staffDisplayName(owner)]));
   const ownerOption = (owner: ProductCatalogOwner) => <option key={owner.id} value={owner.id}>{ownerNames.get(owner.id)}</option>;
   const selectedRows = rows.filter(row => selected.has(row.id));
-  const newProductEstimates = estimateProductAmounts(newProduct.genre, newProduct.list_price ? Number(newProduct.list_price) : null);
   function askDelete() {
     if (!selectedRows.length || loading || busy || deleting) return;
     let remaining = selectedRows.map(row => row.id);
@@ -281,8 +280,8 @@ export default function Products({ me }: { me: Staff }) {
           <label className="field"><span>配送サイズ</span><select value={newProduct.shipping_size} onChange={e => setNewProduct(current => ({ ...current, shipping_size: e.target.value }))}>
             <option value="">未設定</option>{PRODUCT_SHIPPING_SIZES.map(size => <option value={size} key={size}>{shippingSizeLabel(size)}</option>)}
           </select></label>
-          <div className="field"><span>振込想定金額</span><output aria-label="振込想定金額">{yen(newProductEstimates.payout_estimate)}</output></div>
-          <div className="field"><span>仕入れ目標金額</span><output aria-label="仕入れ目標金額">{yen(newProductEstimates.target_cost)}</output></div>
+          <div className="field"><span>振込想定金額</span><output aria-label="振込想定金額">登録時にAmazonの手数料で計算</output></div>
+          <div className="field"><span>仕入れ目標金額</span><output aria-label="仕入れ目標金額">登録時に計算</output></div>
         </fieldset>
         <div className="toolbar registration-actions"><button type="submit" className="btn primary" disabled={busy}>{busy ? '登録中…' : '商品登録'}</button></div>
         {error && <div className="error" role="alert">{error}</div>}
