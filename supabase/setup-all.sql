@@ -27781,3 +27781,150 @@ end
 $move$;
 
 
+-- ▼▼▼ 20261122130000_self_shipping_orders_enter_transactions.sql ▼▼▼
+
+-- Confirmed Amazon self-shipping (MERCHANT) orders enter transactions, like FBA orders.
+-- Since 2026-11-18 only FBA orders moved to 取引中, so a self-shipping order produced a sale
+-- notice but no shipping task (capture_shipping_request runs when status becomes 取引中).
+CREATE OR REPLACE FUNCTION app.record_amazon_sale_page(p_account text, p_lease uuid, p_rows jsonb)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  activation timestamptz;
+  item app.items;
+  r record;
+  channel text;
+  label text;
+  queued integer:=0;
+  item_price text;
+begin
+  select enabled_at into strict activation from app.amazon_sale_poll
+  where account_id=p_account and lease_id=p_lease and lease_until>now() for update;
+  if jsonb_typeof(p_rows) is distinct from 'array' or jsonb_array_length(p_rows)>200 then
+    raise exception 'Invalid orders page';
+  end if;
+  for r in select * from jsonb_to_recordset(p_rows) as x(order_id text,line_id text,sku text,asin text,product_title text,
+     fulfillment text,purchased_at timestamptz,amount integer) loop
+    if r.purchased_at is null or r.purchased_at < activation or r.purchased_at > now()
+      or coalesce(r.order_id,'') !~ '^[0-9]{3}-[0-9]{7}-[0-9]{7}$' or length(coalesce(r.line_id,'')) not between 1 and 80
+      or length(coalesce(r.sku,'')) not between 1 and 160 or coalesce(r.asin,'') !~ '^[A-Z0-9]{10}$'
+      or coalesce(r.fulfillment,'') not in ('AMAZON','MERCHANT') then continue;end if;
+    channel := (case r.fulfillment when 'AMAZON' then 'FBA' else '自己発送' end);
+    label := (case p_account when 'amazon-1' then 'Amazon1' else 'Amazon2' end)||'（'||channel||'）';
+    select i.* into item from app.items i
+    where i.id=(select min(m.id::text)::uuid from app.items m where btrim(m.asin::text)=r.asin
+      and (m.sales_channel::text=channel||right(p_account,1) or (p_account='amazon-1' and m.sales_channel::text=channel))
+      and app.inventory_sku_matches(m.id,m.sku,r.sku) having count(*)=1);
+    -- A confirmed order changes inventory state before financial settlement (FBA and self-shipping).
+    -- Never infer a sale from zero stock, or reopen final/returned/problem items.
+    if item.id is not null then
+      -- An Amazon order is a new trade: flea-market trade/cancel markers left from an earlier
+      -- channel (e.g. a cancelled Mercari trade) must not block the self-shipping LINE request.
+      update app.items i set status='取引中',
+        seller_trade_key=case when r.fulfillment='MERCHANT' then null else i.seller_trade_key end,
+        seller_cancelled_at=case when r.fulfillment='MERCHANT' then null else i.seller_cancelled_at end,
+        seller_cancelled_trade_key=case when r.fulfillment='MERCHANT' then null else i.seller_cancelled_trade_key end
+      where i.id=item.id and i.status='出品中'
+        and i.sold_on is null and i.returned_on is null
+        and not coalesce(i.malfunction_reported and i.malfunction_resolved_at is null,false)
+        and (not i.is_accessory or app.is_standalone_accessory_serial(i.sku,i.lot_seq))
+        and ((r.fulfillment='AMAZON' and i.sales_channel::text in ('FBA','FBA1','FBA2'))
+          or (r.fulfillment='MERCHANT' and i.sales_channel::text in ('自己発送','自己発送1','自己発送2')))
+        and r.purchased_at >= coalesce(i.product_registered_at,
+          i.purchased_at::timestamp at time zone 'Asia/Tokyo')
+        and (i.purchased_at is null or (r.purchased_at at time zone 'Asia/Tokyo')::date >= i.purchased_at);
+    end if;
+    item_price := case when r.amount>0 then '｜'||to_char(r.amount,'FM999,999,990')||'円' end;
+    if app.record_sale_notice(jsonb_build_array(p_account,r.order_id,r.line_id)::text,item.id,
+      concat(label,'で売れました｜【',coalesce(app.product_serial(item.sku,item.lot_seq),left(r.sku,45)),'】',
+        left(coalesce(item.title,r.product_title,''),100),item_price)) then queued:=queued+1;end if;
+  end loop;
+  return queued;
+end $function$;
+
+revoke all on function app.record_amazon_sale_page(text,uuid,jsonb) from public,anon,authenticated;
+grant execute on function app.record_amazon_sale_page(text,uuid,jsonb) to service_role;
+
+
+-- ▼▼▼ 20261122130100_self_shipping_line_without_marketplace_code.sql ▼▼▼
+
+-- Amazon self-shipping has no flea-market shipping code. A shipping size saved for an earlier
+-- Mercari/Yahoo listing must not make the LINE request wait for such a code forever.
+CREATE OR REPLACE FUNCTION app.line_shipping_media(p_id uuid)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE
+ SET search_path TO ''
+AS $function$
+ select case
+  when required.needs_code and code.id is null then null
+  else jsonb_build_object(
+   'itemId',i.id,
+   'serial',app.product_serial(i.sku,i.lot_seq),
+   'sku',i.sku,
+   'supplierUrl',case when i.marketplace_url ~ '^https://(auctions\.yahoo\.co\.jp|page\.auctions\.yahoo\.co\.jp|paypayfleamarket\.yahoo\.co\.jp|jp\.mercari\.com|item\.mercari\.com|fril\.jp|item\.fril\.jp|www\.amazon\.co\.jp|amazon\.co\.jp)(/[^[:space:]]*)?$' then i.marketplace_url end,
+   'automatic',true,
+   'photoPaths',case when front.id is not null and model.id is not null
+    then jsonb_build_array(front.storage_path,model.storage_path)
+    else coalesce((select jsonb_agg(photo.storage_path order by photo.created_at,photo.id)
+     from (select p.id,p.storage_path,p.created_at from app.item_photos p
+      where p.item_id=i.id and coalesce(p.photo_kind,'product')='product'
+       and p.storage_path ~* '\.(jpe?g|png)$'
+      order by p.created_at,p.id limit 2) photo),'[]'::jsonb) end,
+   'codeOperationId',code.id,
+   'withoutBarcode',case when shipping.code_note is not null then 'carrier_instructions' when not required.needs_code then 'size_unset' end,
+   'shipping',case when i.sales_channel='メルカリ' and listing.item_id is not null then jsonb_strip_nulls(jsonb_build_object(
+    'method',coalesce(code.payload->>'shippingMethod',shipping.settings->>'shippingMethod'),
+    'size',app.mercari_shipping_size(coalesce(code.payload->>'shippingMethod',shipping.settings->>'shippingMethod'),
+      coalesce(code.payload->>'size',shipping.settings->>'size')),
+    'dropoff',coalesce(code.payload->>'dropoff',shipping.settings->>'dropoff'),
+    'note',shipping.code_note,
+    'tradeUrl',case when shipping.code_note is not null and listing.external_id ~ '^m[0-9]{8,14}$'
+     then 'https://jp.mercari.com/transaction/'||listing.external_id end)) end
+  )
+ end
+ from app.delivery_line_outbox o
+ join app.delivery_shipping_tasks t on t.id=o.task_id
+ join app.items i on i.id=t.item_id
+ left join app.delivery_line_preferences pref on pref.item_id=i.id
+ left join app.item_photos front on front.id=pref.overview_photo_id
+  and front.item_id=i.id and coalesce(front.photo_kind,'product')='product'
+  and front.storage_path ~* '\.(jpe?g|png)$'
+ left join app.item_photos model on model.id=pref.model_photo_id
+  and model.item_id=i.id and coalesce(model.photo_kind,'product')='product'
+  and model.storage_path ~* '\.(jpe?g|png)$'
+ left join app.seller_listings listing on listing.item_id=i.id and listing.active
+  and listing.trade_key=o.trade_key
+ left join lateral (
+  select cfg.settings,app.mercari_shipping_code_note(cfg.settings->>'size',cfg.settings->>'dropoff') as code_note
+  from (select app.mercari_item_shipping_defaults(i.id) as settings) cfg
+  where i.sales_channel='メルカリ' and listing.item_id is not null
+ ) shipping on true
+ left join lateral (
+  -- Only flea-market trades issue shipping codes; Amazon self-shipping never waits for one.
+  select shipping.code_note is null and app.sales_channel_family(i.sales_channel) is distinct from '自己発送'
+    and (app.line_fixed_shipping_size(i.id) is not null
+    or (i.sales_channel='メルカリ' and nullif(pref.shipping->>'size','') is not null)) as needs_code
+ ) required on true
+ left join lateral (
+  select op.id,op.payload from app.seller_operations op
+  where listing.item_id is not null
+   and (case when i.shipped_on is not null then op.id=o.code_issue_operation_id else required.needs_code end)
+   and op.item_id=i.id and op.account_id=listing.account_id and op.channel=listing.channel
+   and op.kind in ('shipping_code','register_package') and op.status='succeeded'
+   and op.payload->>'trade_key'=o.trade_key
+   and nullif(op.result->>'qr_code','') is not null
+   and (i.sales_channel<>'メルカリ' or (
+    op.payload->>'shippingMethod' is not distinct from shipping.settings->>'shippingMethod'
+    and op.payload->>'dropoff' is not distinct from shipping.settings->>'dropoff'
+    and not (op.payload->>'shippingMethod'='らくらくメルカリ便' and op.payload->>'size'='140')
+    and app.mercari_shipping_size(op.payload->>'shippingMethod',op.payload->>'size') is not distinct from shipping.settings->>'size'))
+  order by op.created_at desc limit 1
+ ) code on true
+ where o.id=p_id and app.line_shipping_eligible(o.id);
+$function$;
+
+

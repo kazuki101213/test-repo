@@ -81,9 +81,9 @@ const flush=async()=>{for(let n=0;n<30;n++)await Promise.resolve();};
  const beforeTimerReads=reads;
  let previousHour=0;
  for(const [hours,expectedCards] of [
-  [12,[['自己発送2発送お願いします。','warning']]],
-  [24,[['自己発送2発送お願いします。(1日経過)','overdue']]],
-  [48,[['自己発送2発送お願いします。(2日経過)','overdue'],['動作確認お願いします。(1日経過)','warning']]],
+  [12,[['自己発送をお願いします。','warning']]],
+  [24,[['自己発送をお願いします。(1日経過)','overdue']]],
+  [48,[['自己発送をお願いします。(2日経過)','overdue'],['動作確認お願いします。(1日経過)','warning']]],
   [72,[['動作確認お願いします。(2日経過)','overdue']]],
   [96,[['動作確認お願いします。(3日経過)','overdue']]],
   [120,[['FBA納品お願いします。(3日経過)','warning'],['メルカリ出品お願いします。(3日経過)','warning']]],
