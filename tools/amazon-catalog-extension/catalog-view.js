@@ -23,6 +23,9 @@ export function mountCatalogView(root) {
   let canRegister = false;
   let quota;
   let packageInfo;
+  let shippingCategoryEdited = false;
+  let makerEdited = false;
+  fields.maker.addEventListener('input', () => { makerEdited = true; });
   let keepaBusy = false;
   let checking = false;
   let saving = false;
@@ -52,11 +55,13 @@ export function mountCatalogView(root) {
     $('#model-display').hidden = !model;
   }
   fields.model_no.addEventListener('input', showModel);
+  fields.shipping_category.addEventListener('change', () => { shippingCategoryEdited = true; });
+
   function suggestShipping(keepa) {
     packageInfo = keepa?.packageInfo ?? packageInfo ?? product.packageInfo;
-    if (!fields.shipping_category.value) {
+    if (!shippingCategoryEdited) {
       const categories = [...product.categories, ...(keepa?.categories ?? [])];
-      fields.shipping_category.value = shippingCategory(categories, product.title || keepa?.title || '', packageInfo);
+      fields.shipping_category.value = shippingCategory(categories, product.title || keepa?.title || '', packageInfo) || '小';
     }
   }
   $('#settings').addEventListener('click', () => void send('open-options').catch(error => { keepaMessage = error.message; updateKeepaStatus(); }));
@@ -102,6 +107,9 @@ export function mountCatalogView(root) {
       userId = result.userId;
       owners = result.owners;
       ownerId = result.ownerId;
+      const destination = owners.find(owner => owner.id === ownerId);
+      $('#catalog-destination').textContent = destination ? '登録先 ' + (destination.display_name || destination.name) : '';
+      if (!result.product && !makerEdited) fields.maker.value = result.maker || product.maker || fields.maker.value;
       canRegister = result.canRegister;
       loginLink.hidden = true;
       showCatalog(result.product);

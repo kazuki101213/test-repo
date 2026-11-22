@@ -157,7 +157,47 @@ export async function catalogOwnerPreference(preference, requestedId) {
   };
 }
 
-export async function catalogLookup(asin, preference) {
+const makerAliases = [
+  ['Panasonic', 'パナソニック'], ['Sony', 'ソニー'], ['Sharp', 'シャープ'],
+  ['Toshiba', '東芝'], ['Hitachi', '日立'], ['Makita', 'マキタ'], ['Canon', 'キヤノン', 'キャノン'],
+];
+
+const makerForms = value => value.normalize('NFKC').split(/[()]/).map(part => part.trim()).filter(Boolean);
+const makerIdentity = value => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+
+async function lookupMaker(value, ownerId, session) {
+  const forms = makerForms(value);
+  const identities = new Set(forms.map(makerIdentity).filter(Boolean));
+  for (const group of makerAliases) {
+    if (group.some(name => identities.has(makerIdentity(name)))) {
+      forms.push(...group);
+      for (const name of group) identities.add(makerIdentity(name));
+    }
+  }
+  const terms = [...new Set(forms.flatMap(form => form.match(/[\p{L}\p{N}]{2,40}/gu) ?? [])
+    .map(term => term.toLowerCase()))].slice(0, 12);
+  if (!terms.length) return '';
+  const params = new URLSearchParams({
+    select: 'maker,owner_staff_id', is_active: 'eq.true',
+    or: '(' + terms.map(term => 'maker.ilike.*' + term + '*').join(',') + ')',
+    order: 'maker,id', limit: '1000',
+  });
+  const rows = await request('/rest/v1/products?' + params, session);
+  const counts = new Map();
+  for (const row of rows) {
+    const parts = makerForms(row.maker ?? '').map(makerIdentity);
+    if (!parts.length || !parts.every(part => identities.has(part))) continue;
+    const count = counts.get(row.maker) ?? { parts: parts.length, total: 0, owner: 0 };
+    count.total++;
+    if (row.owner_staff_id === ownerId) count.owner++;
+    counts.set(row.maker, count);
+  }
+  if (identities.has('panasonic') && counts.has('Panasonic')) return 'Panasonic';
+  return [...counts].sort((a, b) => a[1].parts - b[1].parts || b[1].owner - a[1].owner ||
+    b[1].total - a[1].total || a[0].length - b[0].length || a[0].localeCompare(b[0], 'ja'))[0]?.[0] ?? '';
+}
+
+export async function catalogLookup(asin, preference, maker) {
   validateAsin(asin);
   const session = await getSession();
   const [product, scope] = await Promise.all([find(asin, session), catalogOwners(session)]);
@@ -166,6 +206,7 @@ export async function catalogLookup(asin, preference) {
     product,
     owners: scope.owners,
     ownerId: selected?.id ?? '',
+    maker: !product && selected && maker ? await lookupMaker(maker, selected.id, session).catch(() => '') : '',
     canRegister: Boolean(selected && (scope.canChooseOwner || selected.id === scope.defaultOwner?.id)),
     userId: session.userId,
   };
@@ -201,6 +242,20 @@ export function productRow(asin, input) {
   };
 }
 
+// Amazonの手数料見積もり（Amazon2）から振込想定金額・仕入れ目標金額を出す。登録時と価格変更時で共通。
+async function estimateAmounts(asin, price, session) {
+  const estimate = await request('/functions/v1/amazon-catalog-estimate', session, {
+    method: 'POST',
+    body: JSON.stringify({ asin, price }),
+    signal: AbortSignal.timeout(48000),
+  });
+  if (!Number.isSafeInteger(estimate.payout) || estimate.payout < 0 || estimate.payout > price) {
+    throw new Error('Amazonの手数料見積もりを確認できませんでした。');
+  }
+  const rate = estimate.payout <= 10000 ? 55 : estimate.payout <= 15000 ? 75 : 76;
+  return { payout_estimate: estimate.payout, target_cost: Math.round(estimate.payout * rate / 100) };
+}
+
 export async function catalogRegister(asin, input, userId, ownerId, preference) {
   const row = productRow(asin, input);
   const session = await getSession();
@@ -217,17 +272,7 @@ export async function catalogRegister(asin, input, userId, ownerId, preference) 
   const existing = await find(asin, session);
   if (existing) return { product: existing, created: false };
   if (row.list_price !== null && row.list_price > 0) {
-    const estimate = await request('/functions/v1/amazon-catalog-estimate', session, {
-      method: 'POST',
-      body: JSON.stringify({ asin, price: row.list_price }),
-      signal: AbortSignal.timeout(48000),
-    });
-    if (!Number.isSafeInteger(estimate.payout) || estimate.payout < 0 || estimate.payout > row.list_price) {
-      throw new Error('Amazonの手数料見積もりを確認できませんでした。');
-    }
-    const rate = estimate.payout <= 10000 ? 55 : estimate.payout <= 15000 ? 75 : 76;
-    row.payout_estimate = estimate.payout;
-    row.target_cost = Math.round(estimate.payout * rate / 100);
+    Object.assign(row, await estimateAmounts(asin, row.list_price, session));
   }
   const params = new URLSearchParams({ select: columns });
   const rows = await request('/rest/v1/products?' + params, session, {
@@ -257,7 +302,12 @@ export async function updateCatalogPrice(asin, { id, userId, previousPrice, pric
   const rows = await request('/rest/v1/products?' + params, session, {
     method: 'PATCH',
     headers: { Prefer: 'return=representation' },
-    body: JSON.stringify({ list_price: listPrice }),
+    body: JSON.stringify({
+      list_price: listPrice,
+      // 価格を変えた時だけAPIで計算し直す（同じ価格・空欄・0円なら振込・仕入れ目標はそのまま）。
+      ...(listPrice !== null && listPrice > 0 && listPrice !== previousPrice
+        ? await estimateAmounts(asin, listPrice, session) : {}),
+    }),
   });
   if (rows.length !== 1 || rows[0].id !== id || rows[0].list_price !== listPrice) {
     throw new Error('商品リストが変更されたか、編集権限がありません。登録状況を確認してください。');
