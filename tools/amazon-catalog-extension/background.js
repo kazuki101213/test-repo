@@ -62,6 +62,7 @@ async function amazonProduct(tabId) {
 async function verifySelection(tabId, asin) {
   const current = await amazonProduct(tabId);
   if (current.asin !== asin) throw new Error('選択中の商品が変わりました。拡張機能を開き直してください。');
+  return current;
 }
 
 async function handle(message, sender) {
@@ -105,8 +106,8 @@ async function handle(message, sender) {
   const tabId = sender.tab?.id;
   if (message.type === 'read-page') return amazonProduct(tabId);
   if (message.type === 'catalog-lookup') {
-    await verifySelection(tabId, message.asin);
-    return catalogLookup(message.asin, (await storage.get('catalogOwner')).catalogOwner);
+    const current = await verifySelection(tabId, message.asin);
+    return catalogLookup(message.asin, (await storage.get('catalogOwner')).catalogOwner, current.maker);
   }
   if (message.type === 'keepa-lookup') {
     await verifySelection(tabId, message.asin);

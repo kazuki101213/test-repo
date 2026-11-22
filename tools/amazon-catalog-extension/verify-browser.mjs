@@ -116,8 +116,9 @@ try {
         if (url.pathname === '/functions/v1/amazon-catalog-estimate') {
           const body = JSON.parse(options.body);
           testLog.feeRequests++;
-          if (body.asin !== other || body.price !== 20000) return Response.json({ error: 'unexpected estimate' }, { status: 400 });
-          return Response.json({ payout: 16500 });
+          const payouts = { 20000: 16500, 18500: 15000, 18900: 15300 };
+          if (body.asin !== other || !payouts[body.price]) return Response.json({ error: 'unexpected estimate' }, { status: 400 });
+          return Response.json({ payout: payouts[body.price] });
         }
         if (options.headers.Authorization !== 'Bearer fixture') return Response.json({}, { status: 401 });
         if (url.pathname.endsWith('/staff')) return Response.json([
@@ -348,8 +349,9 @@ try {
   await amazon.keyboard.type('18500');
   await clickPanel('#save-catalog-price');
   await waitPanel('#catalog-price-status', /販売想定金額を保存しました/);
-  assert.deepEqual(await worker.evaluate(() => testLog.pricePatch), { list_price: 18500 });
-  assert.equal(await worker.evaluate(() => testLog.feeRequests), 1);
+  // 価格を変えたらAmazonの手数料APIで振込想定・仕入れ目標も計算し直す（15,000円以下は75%）。
+  assert.deepEqual(await worker.evaluate(() => testLog.pricePatch), { list_price: 18500, payout_estimate: 15000, target_cost: 11250 });
+  assert.equal(await worker.evaluate(() => testLog.feeRequests), 2);
   assert.equal(await panelValue(registeredPrice), '18500');
   await worker.evaluate(() => { testLog.row.list_price = 20001; });
   await clickPanel(registeredPrice);
