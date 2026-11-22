@@ -883,7 +883,15 @@ export async function updateProductField(product: Product, field: ProductField, 
   const numeric = ['product_no', 'list_price', 'payout_estimate', 'target_cost'].includes(field);
   if (numeric && next && (!Number.isSafeInteger(Number(next)) || Number(next) < (field === 'product_no' ? 1 : 0))) throw new Error('0以上の整数を入力してください（品番は1以上）。');
   const parsed = field === 'has_sold_before' ? next === 'true' : numeric ? next ? Number(next) : null : field === 'asin' ? next : next || null;
-  const update = { [field]: parsed };
+  const update: Record<string, unknown> = { [field]: parsed };
+  // 販売想定金額（またはジャンル）を変えたら、振込想定金額と仕入れ目標金額も登録時と同じ計算で直す（2026-11-22 ユーザー指定）。
+  if (field === 'list_price' || field === 'genre') {
+    const estimate = estimateProductAmounts(
+      field === 'genre' ? String(parsed ?? '') : product.genre ?? '',
+      field === 'list_price' ? parsed as number | null : product.list_price ?? null,
+    );
+    if (estimate.payout_estimate !== null) Object.assign(update, estimate);
+  }
   let query = getSupabase().from('products').update(update).eq('id', product.id);
   query = product[field] === null ? query.is(field, null) : query.eq(field, product[field]);
   const { data, error } = await query.select('id').maybeSingle();
@@ -930,8 +938,14 @@ export async function updateProductDetails(product: Product, input: ProductDetai
   };
   const productNo = parseNumber('product_no', 1);
   const listPrice = parseNumber('list_price', 0);
-  const payout = parseNumber('payout_estimate', 0);
-  const targetCost = parseNumber('target_cost', 0);
+  let payout = parseNumber('payout_estimate', 0);
+  let targetCost = parseNumber('target_cost', 0);
+  // 販売想定金額かジャンルを変え、振込・仕入れ目標を手で変えていなければ、登録時と同じ計算で直す。
+  if ((listPrice !== (product.list_price ?? null) || input.genre.trim() !== (product.genre ?? ''))
+    && payout === (product.payout_estimate ?? null) && targetCost === (product.target_cost ?? null)) {
+    const estimate = estimateProductAmounts(input.genre.trim(), listPrice);
+    if (estimate.payout_estimate !== null) { payout = estimate.payout_estimate; targetCost = estimate.target_cost; }
+  }
   if (input.turnover && !PRODUCT_TURNOVER.includes(input.turnover)) throw new Error('回転を選択してください。');
   if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
   if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
