@@ -234,3 +234,9 @@
 .app .photo-primary-actions > .btn { display:inline-flex; align-items:center; justify-content:center; min-height:44px; white-space:nowrap; }
 .app .photo-control-row > .photo-save-all { grid-column:2; grid-row:2; justify-self:end; width:44px; height:44px; }
 .app .photo-control-row > .photo-drive-add { grid-column:1 / -1; grid-row:3; justify-self:start; min-height:44px; }
+
+/* 写真追加・写真反映・Googleドライブ追加・保存アイコンを1行に並べ、他のボタンと同じ8px間隔にする（2026-11-24 ユーザー指定）。 */
+.app .photo-control-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.app .photo-control-row > .muted { flex:0 0 100%; }
+.app .photo-control-row > :not(.muted) { flex:none; margin:0; }
+.app .photo-control-row > .photo-primary-actions { display:flex; gap:8px; }
