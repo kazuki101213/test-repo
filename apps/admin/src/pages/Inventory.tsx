@@ -14,7 +14,6 @@ import { deleteInventoryItem, dismissPurchaseDraft, fetchCards, fetchInventoryIt
 import type { InventoryField } from '../api';
 import NewPurchase from './NewPurchase';
 import AmazonSalesSync from '../components/AmazonSalesSync';
-import FbaInboundHistory from '../components/FbaInboundHistory';
 import { productCount, productSerial } from '../inventory';
 import { filterInventoryColumns, inventoryColumns, isColumnFilterActive, type ColumnFilters } from '../inventoryFilters';
 import InventoryStateFilter from '../components/InventoryStateFilter';
@@ -46,7 +45,6 @@ function inventoryError(cause: unknown): string {
 export default function Inventory({ me, saleItemId }: { me: Staff; saleItemId?: string | null }) {
 
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [view, setView] = useState<'items' | 'fba'>('items');
   const [queryField, setQueryField] = useState<InventorySearchField>('serial');
   const [query, setQuery] = useState('');
   useEffect(() => {
@@ -144,11 +142,6 @@ export default function Inventory({ me, saleItemId }: { me: Staff; saleItemId?: 
   return (
     <div className={`inventory-workspace${purchaseOpen ? ' with-purchase' : ''}${fullEditFor ? ' with-full-edit' : ''}`}>
       <section className="inventory-list" aria-label="在庫">
-      {me.role === 'admin' && <div className="inventory-view-tabs" role="tablist" aria-label="在庫の表示">
-        <button type="button" role="tab" aria-selected={view === 'items'} className={view === 'items' ? 'active' : ''} onClick={() => setView('items')}>在庫一覧</button>
-        <button type="button" role="tab" aria-selected={view === 'fba'} className={view === 'fba' ? 'active' : ''} onClick={() => { setPurchaseOpen(false); setFullEditFor(null); setView('fba'); }}>FBA納品</button>
-      </div>}
-      {view === 'fba' ? <FbaInboundHistory /> : <>
       <div className="inventory-controls">
       <div className="inventory-registration-actions">
         <button className="btn primary" aria-expanded={purchaseOpen} aria-controls="inventory-purchase-panel" onClick={() => { setFullEditFor(null); if (purchaseOpen) setSelectedPurchaseDraft(null); setPurchaseOpen(open => !open); }}>
@@ -217,7 +210,6 @@ export default function Inventory({ me, saleItemId }: { me: Staff; saleItemId?: 
       {!loading && items.length > 0 && viewItems.length === 0 && <p className="empty" role="status">フィルターに一致する在庫はありません。フィルターの条件を変更するか、すべて解除してください。</p>}
       {(visibleCount<viewItems.length||inventory.more)&&<div ref={loadMoreRef} className="toolbar"><button className="btn" disabled={loading} onClick={()=>{if(visibleCount<viewItems.length)setVisibleCount(current=>Math.min(current+80,viewItems.length));else {setVisibleCount(current=>current+50);inventory.loadMore();}}}>さらに表示</button></div>}
       </div>
-      </>}
       </section>
       {openColumn && <InventoryColumnFilter key={openColumn.field} field={openColumn.field} anchor={openColumn.anchor} items={items} current={columnFilters[openColumn.field]} onClose={closeColumn} onApply={filter => {
         setColumnFilters(current => { const next = { ...current }; if (filter && isColumnFilterActive(filter)) next[openColumn.field] = filter; else delete next[openColumn.field]; return next; });
