@@ -9,7 +9,7 @@
  .app .seller-listing-layout .description-editor .row,
  .app .seller-listing-layout .description-editor > fieldset > .btn,
  .app .seller-listing-layout .description-editor > :is(p,.error),
- .app .seller-listing-layout > :is(p,.error,.seller-history,.seller-photos,.btn) { grid-column:1 / -1; min-width:0; }
+ .app .seller-listing-layout > :is(p,.error,.seller-history,.seller-photos,.btn,.operation-progress) { grid-column:1 / -1; min-width:0; }
  .app .seller-listing-layout .description-editor > fieldset > .btn { justify-self:start; }
  .app .seller-listing-layout .description-options > label,
  .app .seller-listing-layout > .seller-form > label { grid-column:auto; min-width:0; display:flex; flex-direction:column; gap:6px; }
