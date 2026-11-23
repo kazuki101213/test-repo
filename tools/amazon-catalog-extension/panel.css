@@ -44,6 +44,9 @@ header h1::before {
 #asin { white-space: nowrap; }
 #catalog-summary { display: flex; align-items: center; gap: 6px; }
 #catalog-summary > p { min-width: 0; }
+#catalog-destination { margin-left: auto; flex-shrink: 0; white-space: nowrap; }
+#catalog-destination:empty { display: none; }
+#catalog-destination:not(:empty) ~ #catalog-price-form { margin-left: 0; }
 #catalog-price-form { display: flex; align-items: center; gap: 5px; margin-left: auto; flex-shrink: 0; }
 #catalog-price-form input { width: 74px; text-align: right; appearance: textfield; }
 #catalog-price-form input::-webkit-inner-spin-button { appearance: none; }
