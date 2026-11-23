@@ -45,10 +45,12 @@ eq(f({query:'FBA STA (2026/11/15 13:24)-TPB6',account:'FBA2'}),['p']);
 const summary=h.fbaSummary([{...base,stage:'draft',shipments:[]},base,{...receiving,received_at:'2026-11-18T16:00:09Z'},{...base,stage:'cancelled'}],new Date('2026-11-21T03:00:00Z'));
 eq(summary,{draft:1,open:1,receivedThisMonth:1,itemsThisMonth:4});
 
-// 管理者だけが在庫画面でFBA納品タブを開ける。読み取り専用のRPCで、管理者以外は拒否する。
+// FBA納品は在庫の切り替えで予備の右のタブ。管理者だけが開ける。読み取り専用のRPCで、管理者以外は拒否する。
+const app=fs.readFileSync('apps/admin/src/App.tsx','utf8');
+assert.match(app,/\{ key: 'spares', label: '予備' \},[^{]*\{ key: 'fba', label: 'FBA納品' \}/);
+assert.match(app,/visiblePage === 'fba' && session\.staff\.role === 'admin' && <FbaInboundHistory \/>/);
 const page=fs.readFileSync('apps/admin/src/pages/Inventory.tsx','utf8');
-assert.match(page,/me\.role === 'admin' && <div className="inventory-view-tabs"/);
-assert.match(page,/view === 'fba' \? <FbaInboundHistory \/>/);
+assert.doesNotMatch(page,/在庫一覧|inventory-view-tabs|FbaInboundHistory/);
 const sql=fs.readFileSync('supabase/migrations/20261121040000_admin_fba_inbound_history.sql','utf8');
 assert.match(sql,/not app\.is_admin\(\)/);
 assert.match(sql,/revoke all on function app\.admin_fba_inbound_history\(integer\) from public, anon;/);

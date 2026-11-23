@@ -38,8 +38,10 @@ if(kind==='admin'&&role!=='deliverer'){
  assert.deepEqual(pages().map(text),role==='admin'?['ダッシュボード','在庫','経費','商品リスト','古物台帳']:['在庫']);
  assert.deepEqual(stockPages().map(text),role==='admin'?[]:['在庫','予備']);
  pages().find(n=>text(n)==='在庫').props.onClick();await settle();assert(all(tree).some(n=>n.type==='Inventory'));
- assert.deepEqual(stockPages().map(text),['在庫','予備']);
+ const stockLabels=role==='admin'?['在庫','予備','FBA納品']:['在庫','予備'];
+ assert.deepEqual(stockPages().map(text),stockLabels);
  assert.deepEqual(active(stockPages()),['在庫']);
+ if(role==='admin'){stockPages().find(n=>text(n)==='FBA納品').props.onClick();await settle();assert(all(tree).some(n=>n.type==='FbaInboundHistory'));assert(!all(tree).some(n=>n.type==='Inventory'));assert.deepEqual(active(pages()),['在庫']);assert.deepEqual(active(stockPages()),['FBA納品']);}
  stockPages().find(n=>text(n)==='予備').props.onClick();await settle();assert(all(tree).some(n=>n.type==='Spares'));
  assert.deepEqual(active(pages()),['在庫']);
  assert.deepEqual(active(stockPages()),['予備']);

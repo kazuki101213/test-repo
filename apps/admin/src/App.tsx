@@ -9,10 +9,11 @@ import Products from './pages/Products';
 import Ledger from './pages/Ledger';
 import ExpenseList from './components/ExpenseList';
 import Spares from './pages/Spares';
+import FbaInboundHistory from './components/FbaInboundHistory';
 import { disableDevicePush } from './push';
 import { adminTaskNotice } from './taskNotice';
 
-type Page = 'dashboard' | 'inventory' | 'spares' | 'expenses' | 'products' | 'ledger';
+type Page = 'dashboard' | 'inventory' | 'spares' | 'fba' | 'expenses' | 'products' | 'ledger';
 
 const NAV: { key: Page; label: string }[] = [
   { key: 'dashboard', label: 'ダッシュボード' },
@@ -25,6 +26,8 @@ const NAV: { key: Page; label: string }[] = [
 const INVENTORY_NAV = [
   { key: 'inventory', label: '在庫' },
   { key: 'spares', label: '予備' },
+  // FBA納品は予備の右のタブ（管理者だけ。2026-11-23 ユーザー指定）。
+  { key: 'fba', label: 'FBA納品' },
 ] as const;
 
 export default function App() {
@@ -115,6 +118,7 @@ export default function App() {
         {visiblePage === 'dashboard' && <Dashboard key={session.staff.id} staff={session.staff} userId={session.user.id} />}
         {visiblePage === 'inventory' && <Inventory me={session.staff} saleItemId={session.staff.role === 'admin' ? saleItemId : null} />}
         {visiblePage === 'spares' && <Spares me={session.staff} />}
+        {visiblePage === 'fba' && session.staff.role === 'admin' && <FbaInboundHistory />}
         {visiblePage === 'expenses' && session.staff.role === 'admin' && <ExpenseList revision={0} />}
         {visiblePage === 'products'  && <Products key={session.staff.id} me={session.staff} />}
         {visiblePage === 'ledger'    && <Ledger />}
