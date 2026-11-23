@@ -3,19 +3,20 @@
 .fba-history-summary>div{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
 .fba-history-summary span{font-size:12px;color:var(--muted)}
 .fba-history-summary strong{font-size:20px;font-weight:600}
-/* PCは絞り込み・検索・取消プラン表示・再読み込み・件数を1行に（2026-11-23 ユーザー指定）。 */
-.layout .toolbar.fba-history-toolbar{display:flex;flex-wrap:nowrap;gap:8px;align-items:center}
-.layout .toolbar.fba-history-toolbar>select{width:auto;flex:0 1 auto;min-width:0}
-.layout .toolbar.fba-history-toolbar>input[type=search]{flex:1 1 0;width:0;min-width:6rem!important}
-.layout .toolbar.fba-history-toolbar>.btn,.layout .toolbar.fba-history-toolbar>.sub{flex:none;white-space:nowrap;margin:0}
+/* PCは絞り込み・検索・取消プラン表示・再読み込み・件数を1行に（2026-11-23 ユーザー指定）。
+   共通の「検索欄のある行は折り返す」設定より強くするため .fba-history から指定する。 */
+.layout .fba-history .toolbar.fba-history-toolbar{display:flex!important;flex-wrap:nowrap;gap:8px;align-items:center}
+.layout .fba-history .toolbar.fba-history-toolbar>select{width:auto;flex:0 1 auto;min-width:0}
+.layout .fba-history .toolbar.fba-history-toolbar>input[type=search]{flex:1 1 0;width:0!important;min-width:6rem!important}
+.layout .fba-history .toolbar.fba-history-toolbar>.btn,.layout .fba-history .toolbar.fba-history-toolbar>.sub{flex:none;white-space:nowrap;margin:0}
 .fba-history-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);white-space:nowrap;flex:none}
 /* スマホはアカウントと状態を横並び、ほかはその下に1つずつ。 */
 @media screen and (max-width:1023px){
-  .layout .toolbar.fba-history-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
-  .layout .toolbar.fba-history-toolbar>select{width:100%}
-  .layout .toolbar.fba-history-toolbar>:not(select){grid-column:1/-1}
-  .layout .toolbar.fba-history-toolbar>input[type=search]{width:100%}
-  .layout .toolbar.fba-history-toolbar>.btn{justify-self:start}
+  .layout .fba-history .toolbar.fba-history-toolbar{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .layout .fba-history .toolbar.fba-history-toolbar>select{width:100%!important}
+  .layout .fba-history .toolbar.fba-history-toolbar>:not(select){grid-column:1/-1}
+  .layout .fba-history .toolbar.fba-history-toolbar>input[type=search]{width:100%!important}
+  .layout .fba-history .toolbar.fba-history-toolbar>.btn{justify-self:start}
 }
 .fba-history-list{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)}
 .fba-history-plan+.fba-history-plan{border-top:1px solid var(--border)}
