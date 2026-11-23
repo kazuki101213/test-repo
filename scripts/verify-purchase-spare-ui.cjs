@@ -5,7 +5,7 @@ const skus={exports:{}};vm.runInNewContext(compile('packages/shared/src/sku.ts')
 const codes=['AA','DD','EE','HH','II','KK','LL','MM'];
 const staff=[...codes,'FF','GG','JJ','NN'].reverse().map(code=>({id:code,code,name:code==='AA'?'長部一輝':code,role:code==='AA'?'admin':'deliverer',is_active:code!=='NN'}));
 staff.push({id:'OO',code:'OO',name:'石嶋俊紀',role:'admin',is_active:true});
-const assigneeCodes=['DD','HH','II','LL','MM'];
+const assigneeCodes=['AA','DD','HH','II','LL','MM'];
 assert.deepEqual(Array.from(names.exports.deliveryStaffOptions(staff),s=>s.code),[...codes,'OO']);
 assert.deepEqual(Array.from(names.exports.deliveryStaffOptions(staff,'assignee'),s=>s.code),assigneeCodes);
 assert.equal(names.exports.staffDisplayName({name:'old',code:'AA',display_name:'old'}),'AA 長部 一輝');
@@ -87,7 +87,7 @@ function field(label){const node=all(tree).find(n=>n.type==='label'&&all(n.props
   parents=[{id:'original',lot_seq:1894,sku:'1894-EEKK-20260701-1540'},{id:'return-a',lot_seq:1894,sku:'1894a-AAEE-20260927-0'},{id:'return-aa',lot_seq:1894,sku:'1894aa-AAII-20260921-0'}];
   await realApi.exports.createItem(saved.payload,'spare');assert.match(requests.at(-1).p_item.sku,/^1894aa-/);
  }
- console.log('Main form preserved; atomic spare save retains 1894aa; five eligible delivery assignees passed');
+ console.log('Main form preserved; atomic spare save retains 1894aa; six eligible delivery assignees passed');
  // The requested location is the inventory registration form footer.
  for(const imported of [false,true]){
   hooks.splice(0);cursor=0;pending=[];dirty=true;currentSpares=[];saved=undefined;
