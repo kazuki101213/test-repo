@@ -278,7 +278,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    {yahooListing&&draft.category==='小物'&&<p>{yahooRule?.source==='sale'?(yahooNeedsWeight&&!yahooRule.weightKg?'前回の配送サイズを適用しました。梱包後の重さを入力してください。':'前回の販売データを適用しました。'):'前回の販売データから、この配送会社で使えるサイズを確認できませんでした。梱包後の配送条件を入力してください。'}</p>}
    {yahooShippingError&&<p className="error" role="alert">{yahooShippingError}</p>}
    <button type="button" className="btn primary" disabled={disabled||photoAnalysis.reading||!!categoryError||!!yahooShippingError||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
-   {operationProgress(['listing'])}{context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}
+   {context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}
    </>}
    {!amazonListing&&staff.role==='admin'&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
