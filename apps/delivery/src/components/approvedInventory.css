@@ -235,3 +235,6 @@
 .app .task-card.approved-delivery-card .task-detail-inline .photo-save-all { width:28px!important; height:28px!important; min-width:28px; padding:4px!important; }
 .app .task-card.approved-delivery-card .task-detail-inline .description-listing-actions { display:flex; flex-wrap:nowrap; align-items:center; justify-content:flex-start; gap:8px; }
 .app .task-card.approved-delivery-card .task-detail-inline .description-listing-actions > .btn { flex:none; white-space:nowrap; }
+
+/* 閉じるは操作ボタンのすぐ下の左に置き、横いっぱいに広げない（2026-11-24 ユーザー指定）。 */
+.app .seller-close { justify-self:start; align-self:start; width:auto; }

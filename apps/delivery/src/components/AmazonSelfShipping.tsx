@@ -49,10 +49,11 @@ export default function AmazonSelfShipping({ task, onClose }: { task: DeliveryTa
       </dl> : error ? <p className="error" role="alert">{error}</p> : <p role="status">Amazonの未出荷注文を確認しています…</p>}
     </div>
     <div className="amazon-self-shipping-actions">
-      <button type="button" className="btn ghost" onClick={onClose}>閉じる</button>
       {error && <button type="button" className="btn" onClick={() => { setError(''); setAttempt(current => current + 1); }}>再試行</button>}
       {order ? <a className="btn primary" href={sellerCentral + '/order/' + order.orderId} target="_blank" rel="noopener noreferrer">配送先住所を確認</a>
         : error && <a className="btn" href={sellerCentral + '/mfn/unshipped'} target="_blank" rel="noopener noreferrer">セラーセントラルの未出荷一覧</a>}
     </div>
+    {/* 閉じるは操作ボタンのすぐ下の左に置く（2026-11-24 ユーザー指定） */}
+    <button type="button" className="btn ghost seller-close" onClick={onClose}>閉じる</button>
   </section>;
 }
