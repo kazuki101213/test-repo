@@ -29,7 +29,6 @@ export default function LineShippingSettings({itemId,draft,overviewId,listing=fa
  }catch(cause){if(active.current)setError(deliveryErrorMessage(cause));}finally{lock.current=false;if(active.current)setBusy(false);}}
  return <section className="line-shipping-settings" aria-label="LINE発送依頼の設定">
   <div className="row">
-   <span>LINE発送依頼</span>
    <div className="row">
     {context?.state==='sent'&&<button type="button" className="btn ghost" disabled={busy} onClick={()=>void resend()}>LINEを再送</button>}
     <button type="button" className="btn ghost" disabled={busy||!context} onClick={()=>void edit()}>通知写真を設定</button>
