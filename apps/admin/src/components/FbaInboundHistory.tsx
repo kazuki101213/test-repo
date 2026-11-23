@@ -52,7 +52,7 @@ export default function FbaInboundHistory() {
         {(Object.keys(fbaPlanStateLabels) as FbaPlanState[]).map(value => <option key={value} value={value}>{fbaPlanStateLabels[value]}</option>)}
       </select>
       <input type="search" aria-label="納品を検索" placeholder="プラン名・出荷番号・型番・SKU" value={query} onChange={event => setQuery(event.target.value)} />
-      <label className="fba-history-check"><input type="checkbox" checked={showCancelled} onChange={event => setShowCancelled(event.target.checked)} />取り消したプランも表示（{cancelledCount}件）</label>
+      <label className="fba-history-check"><input type="checkbox" checked={showCancelled} onChange={event => setShowCancelled(event.target.checked)} />取消プラン表示（{cancelledCount}件）</label>
       <button type="button" className="btn" disabled={loading} onClick={() => void load()}>再読み込み</button>
       <span className="sub" aria-live="polite">{loading ? '読み込み中…' : `${visible.length}件`}</span>
     </div>
