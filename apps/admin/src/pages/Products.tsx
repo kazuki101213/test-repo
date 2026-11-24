@@ -3,6 +3,7 @@ import { staffDisplayName, yen } from '@bussan/shared';
 import type { Product, Staff } from '@bussan/shared';
 import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchFurimaWatchStock, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory } from '../api';
 import { downloadCsv } from '../csv';
+import { errorMessage } from '../errorMessage';
 import { mercariSearchUrl } from '../mercariSearch';
 import { furimaWatchCsvRows } from '../furimaWatchCsv';
 import { PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from '../productEstimates';
@@ -69,7 +70,7 @@ export default function Products({ me }: { me: Staff }) {
           setSummaries(Object.fromEntries(summaries.map(row=>[row.product_id,row])));
           setError(null);
         })
-        .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
+        .catch((e) => { if (!cancelled) setError(errorMessage(e)); })
         .finally(() => { if (!cancelled) setLoading(false); });
     }, 250);
     return () => { cancelled = true; clearTimeout(id); };
@@ -80,7 +81,7 @@ export default function Products({ me }: { me: Staff }) {
     let active=true;setHistoryLoading(true);setHistoryError('');
     void fetchProductSaleHistory([historyProduct]).then(rows=>{
       if(active)setSalesByProduct({[historyProduct.id]:rows.sort((a,b)=>b.sold_on.localeCompare(a.sold_on)||a.id.localeCompare(b.id))});
-    }).catch(e=>{if(active)setHistoryError(e instanceof Error?e.message:String(e));})
+    }).catch(e=>{if(active)setHistoryError(errorMessage(e));})
       .finally(()=>{if(active)setHistoryLoading(false);});
     return()=>{active=false;};
   },[historyProduct,revision]);
@@ -89,7 +90,7 @@ export default function Products({ me }: { me: Staff }) {
     if (!editing) return;
     setBusy(true); setError(null);
     try { await updateProductField(editing.product, editing.field, editing.value); setEditing(null); setRevision(n => n + 1); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   }
 
@@ -101,7 +102,7 @@ export default function Products({ me }: { me: Staff }) {
       if (ownerFilter && ownerFilter !== me.id) showOwner(me.id);
       setRevision(n => n + 1);
     }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   }
 
@@ -120,7 +121,7 @@ export default function Products({ me }: { me: Staff }) {
     if (!fullEditProduct || !fullEditDraft) return;
     setBusy(true); setError(null);
     try { await updateProductDetails(fullEditProduct, fullEditDraft); setFullEditProduct(null); setFullEditDraft(null); setRevision(n => n + 1); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   }
 
@@ -134,7 +135,7 @@ export default function Products({ me }: { me: Staff }) {
     if (!sizeEditProduct || !sizeEditDraft) return;
     setBusy(true); setError(null);
     try { await updateProductShippingSettings(sizeEditProduct, sizeEditDraft); setSizeEditProduct(null); setSizeEditDraft(null); setRevision(n => n + 1); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   }
 

@@ -14,6 +14,7 @@ import type {
 import { createItem, createSpareAccessory, registerPurchaseDraftSpare, fetchCards, findInventoryForAmazonReturn, fetchProduct, fetchProducts, fetchStaff, nextLotSeq } from '../api';
 import PurchaseDraftToSpare from '../components/PurchaseDraftToSpare';
 import { buildPurchaseUrl, parsePurchaseUrl } from '../purchaseUrl';
+import { errorMessage } from '../errorMessage';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const canAssignPurchase = (staff: Staff) => staff.is_active && (staff.role === 'admin' || staff.role === 'purchaser');
@@ -23,18 +24,6 @@ const handoffTemplates = [
   '動作確認は出来る環境があればやってください。\nできなければ大丈夫です。',
   '付属品は揃っていますか。',
 ];
-
-function errorMessage(cause: unknown): string {
-  if (cause instanceof Error) return cause.message;
-  if (cause && typeof cause === 'object') {
-    const value = cause as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
-    const parts = [value.message, value.details, value.hint]
-      .filter((part): part is string => typeof part === 'string' && part.length > 0);
-    if (parts.length) return parts.join(' ');
-    if (typeof value.code === 'string') return `データ参照エラー (${value.code})`;
-  }
-  return String(cause);
-}
 
 function SpareOptionText({ text }: { text: string }) {
   const line = useRef<HTMLSpanElement>(null);
