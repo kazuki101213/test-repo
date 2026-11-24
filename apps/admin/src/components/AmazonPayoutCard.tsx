@@ -32,13 +32,14 @@ function PayoutBlock({ payout, owners, open }: { payout: AmazonPayout; owners: A
     .filter(line => line.owner_code === code && line.type === 'Shipment' && line.serial).map(line => line.serial)).size;
   return <section className="payout-request" aria-label={`${payout.account} ${date} の振込`}>
     <div className="payout-head">
-      <span>{payout.account}{date && `　${date} 振込`}　{yen(payout.total)}</span>
+      {/* 残高がマイナスで、登録カードから引き落とされた回は「カード請求」と出す（2026-11-24 ユーザー指示）。 */}
+      <span>{payout.account}{date && `　${date}`}　{(payout.total ?? 0) < 0 ? `カード請求 ${yen(Math.abs(payout.total ?? 0))}` : `振込 ${yen(payout.total)}`}</span>
       <span className={matches ? 'payout-match' : 'payout-mismatch'}>{matches ? '✓ 内訳と一致' : `内訳の合計 ${yen(payout.line_total)}`}</span>
     </div>
     <div className="dashboard-comparison">
       {owners.map(owner => <div className="dashboard-comparison-panel" key={owner.code}>
         <h4>{surname(owner.name)}</h4>
-        <div className="kpi-value">{yen(amount(owner.code))} <span className="dashboard-kpi-count">{items(owner.code)} 点</span></div>
+        <div className="kpi-value">{amount(owner.code) < 0 ? <><span className="payout-card-charge">カード請求</span> {yen(Math.abs(amount(owner.code)))}</> : yen(amount(owner.code))} <span className="dashboard-kpi-count">{items(owner.code)} 点</span></div>
       </div>)}
     </div>
     <details className="payout-lines" open={open}>
