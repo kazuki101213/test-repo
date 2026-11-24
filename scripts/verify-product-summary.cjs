@@ -32,7 +32,9 @@ assert.deepEqual(all(form()).filter(node=>node.type==='output').map(text),['登�
  }:{}};
  vm.runInNewContext(compile('apps/admin/src/api.ts'),apiModule);
  await apiModule.exports.createProduct({asin:'btest00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:'20000',shipping_category:'ブ',shipping_size:'100'});
- assert.deepEqual(JSON.parse(JSON.stringify(inserted)),{asin:'BTEST00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:20000,shipping_category:'ブ',shipping_size:'100',payout_estimate:17000,target_cost:13600});
+ assert.deepEqual(JSON.parse(JSON.stringify(inserted)),{asin:'BTEST00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:20000,target_profit_rate:null,shipping_category:'ブ',shipping_size:'100',payout_estimate:17000,target_cost:13600});
+ await apiModule.exports.createProduct({asin:'btest00003',model_no:'',maker:'',genre:'',turnover:'',list_price:'20000',target_profit_rate:'15',shipping_category:'',shipping_size:''});
+ assert.equal(inserted.target_profit_rate,15);assert.equal(inserted.target_cost,14450,'An entered profit rate wins over the rule');
  const owner=()=>all(tree).find(n=>n.type==='select');
  assert.equal(owner().props.value,me.id);
  assert(!text(tree).includes('OTHER'));

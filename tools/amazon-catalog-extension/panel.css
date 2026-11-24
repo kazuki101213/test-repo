@@ -51,6 +51,10 @@ header h1::before {
 #catalog-price-form input { width: 74px; text-align: right; appearance: textfield; }
 #catalog-price-form input::-webkit-inner-spin-button { appearance: none; }
 #catalog-price-form button { padding: 4px 8px; white-space: nowrap; }
+#catalog-price-form input.catalog-rate { width: 46px; }
+.fields-six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.fields-six .span-2 { grid-column: span 2; }
+.fields-six .span-3 { grid-column: span 3; }
 #catalog-price-status:empty { display: none; }
 #catalog-status, #catalog-number { font-size: 12px; font-weight: 600; white-space: nowrap; }
 #catalog-status:empty, #catalog-number:empty, #catalog-message:empty { display: none; }

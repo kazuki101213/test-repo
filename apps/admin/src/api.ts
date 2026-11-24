@@ -863,7 +863,7 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
 }
 
 export type ProductField = 'asin' | 'model_no' | 'product_no' | 'maker' | 'genre' | 'turnover' |
-  'list_price' | 'payout_estimate' | 'target_cost' | 'has_sold_before';
+  'list_price' | 'payout_estimate' | 'target_profit_rate' | 'target_cost' | 'has_sold_before';
 
 /** Remove catalog entries from active lists without breaking historical inventory links. */
 export async function deleteProducts(ids: string[]): Promise<string[]> {
@@ -879,14 +879,27 @@ export async function deleteProducts(ids: string[]): Promise<string[]> {
 /**
  * 商品リスト登録の拡張機能と同じ計算（2026-11-17 ユーザー指定）：
  * 振込想定金額 ＝ 販売想定金額 − Amazonの手数料見積もり − 500円（Edge Function amazon-catalog-estimate）。
- * 仕入れ目標金額 ＝ 振込想定金額 × 77%（1万円以下）／80%（5万円以下）／83%（2026-11-24 ユーザー指定：利益23%／20%／17%）。
+ * 仕入れ目標金額 ＝ 振込想定金額 × (100 － 利益率)%。利益率は商品ごとに入力した値を優先し、
+ * 空欄なら 23%（1万円以下）／20%（5万円以下）／17%（5万円超）（2026-11-24 ユーザー指定）。
  */
-export function targetCostFromPayout(payout: number): number {
-  const rate = payout <= 10000 ? 77 : payout <= 50000 ? 80 : 83;
+export function ruleProfitRate(payout: number): number {
+  return payout <= 10000 ? 23 : payout <= 50000 ? 20 : 17;
+}
+
+export function targetCostFromPayout(payout: number, profitRate: number | null = null): number {
+  const rate = 100 - (profitRate ?? ruleProfitRate(payout));
   return Math.round(payout * rate / 100);
 }
 
-export async function amazonProductAmounts(asin: string, price: number): Promise<{ payout_estimate: number; target_cost: number }> {
+function parseProfitRate(raw: string): number | null {
+  const text = raw.trim();
+  if (!text) return null;
+  const value = Number(text);
+  if (!Number.isInteger(value) || value < 0 || value > 99) throw new Error('利益率は0〜99の整数（%）で入力してください。');
+  return value;
+}
+
+export async function amazonProductAmounts(asin: string, price: number, profitRate: number | null = null): Promise<{ payout_estimate: number; target_cost: number }> {
   const { data, error } = await getSupabase().functions.invoke<{ payout?: number }>('amazon-catalog-estimate', { body: { asin, price } });
   if (error) {
     const message = await error.context?.json?.().then((body: { error?: string }) => body.error).catch(() => null);
@@ -894,7 +907,7 @@ export async function amazonProductAmounts(asin: string, price: number): Promise
   }
   const payout = data?.payout;
   if (!Number.isSafeInteger(payout) || payout! < 0 || payout! > price) throw new Error('Amazonの手数料見積もりを確認できませんでした。');
-  return { payout_estimate: payout!, target_cost: targetCostFromPayout(payout!) };
+  return { payout_estimate: payout!, target_cost: targetCostFromPayout(payout!, profitRate) };
 }
 
 export async function updateProductField(product: Product, field: ProductField, value: string): Promise<void> {
@@ -903,11 +916,16 @@ export async function updateProductField(product: Product, field: ProductField, 
   if (field === 'turnover' && next && !['高', '中', '低'].includes(next)) throw new Error('回転は高・中・低から選んでください。');
   const numeric = ['product_no', 'list_price', 'payout_estimate', 'target_cost'].includes(field);
   if (numeric && next && (!Number.isSafeInteger(Number(next)) || Number(next) < (field === 'product_no' ? 1 : 0))) throw new Error('0以上の整数を入力してください（品番は1以上）。');
-  const parsed = field === 'has_sold_before' ? next === 'true' : numeric ? next ? Number(next) : null : field === 'asin' ? next : next || null;
+  const parsed = field === 'target_profit_rate' ? parseProfitRate(next)
+    : field === 'has_sold_before' ? next === 'true' : numeric ? next ? Number(next) : null : field === 'asin' ? next : next || null;
   const update: Record<string, unknown> = { [field]: parsed };
+  // 利益率を変えたら、今の振込想定金額から仕入れ目標金額を計算し直す（空欄なら決まりの割合）。
+  if (field === 'target_profit_rate' && product.payout_estimate !== null) {
+    update.target_cost = targetCostFromPayout(product.payout_estimate, parsed as number | null);
+  }
   // 販売想定金額を変えたら、その時だけAmazonの手数料APIで振込想定金額と仕入れ目標金額も計算し直す（2026-11-22 ユーザー指定）。
   if (field === 'list_price' && typeof parsed === 'number' && parsed > 0 && parsed !== product.list_price) {
-    Object.assign(update, await amazonProductAmounts(product.asin, parsed));
+    Object.assign(update, await amazonProductAmounts(product.asin, parsed, product.target_profit_rate ?? null));
   }
   let query = getSupabase().from('products').update(update).eq('id', product.id);
   query = product[field] === null ? query.is(field, null) : query.eq(field, product[field]);
@@ -919,11 +937,11 @@ export async function updateProductField(product: Product, field: ProductField, 
 export type ProductDetailsInput = {
   product_no: string; asin: string; model_no: string; maker: string; genre: string;
   turnover: string; shipping_category: string; shipping_size: string;
-  list_price: string; payout_estimate: string; target_cost: string; has_sold_before: string;
+  list_price: string; payout_estimate: string; target_profit_rate: string; target_cost: string; has_sold_before: string;
 };
 
 export type ProductRegistrationInput = Pick<ProductDetailsInput,
-  'asin' | 'model_no' | 'maker' | 'genre' | 'turnover' | 'list_price' | 'shipping_category' | 'shipping_size'>;
+  'asin' | 'model_no' | 'maker' | 'genre' | 'turnover' | 'list_price' | 'target_profit_rate' | 'shipping_category' | 'shipping_size'>;
 
 export type ProductCatalogOwner = Pick<Staff, 'id' | 'code' | 'name' | 'display_name'>;
 
@@ -957,10 +975,16 @@ export async function updateProductDetails(product: Product, input: ProductDetai
   const listPrice = parseNumber('list_price', 0);
   let payout = parseNumber('payout_estimate', 0);
   let targetCost = parseNumber('target_cost', 0);
+  const profitRate = parseProfitRate(input.target_profit_rate ?? '');
+  const targetEdited = targetCost !== (product.target_cost ?? null);
   // 販売想定金額を変え、振込・仕入れ目標を手で変えていなければ、Amazonの手数料APIで計算し直す。
   if (listPrice !== null && listPrice > 0 && listPrice !== (product.list_price ?? null)
-    && payout === (product.payout_estimate ?? null) && targetCost === (product.target_cost ?? null)) {
-    ({ payout_estimate: payout, target_cost: targetCost } = await amazonProductAmounts(asin, listPrice));
+    && payout === (product.payout_estimate ?? null) && !targetEdited) {
+    ({ payout_estimate: payout, target_cost: targetCost } = await amazonProductAmounts(asin, listPrice, profitRate));
+  } else if (!targetEdited && payout !== null
+    && (profitRate !== (product.target_profit_rate ?? null) || payout !== (product.payout_estimate ?? null))) {
+    // 利益率や振込想定金額を変えたら、仕入れ目標金額を計算し直す（仕入れ目標を手で入れたときはその値を残す）。
+    targetCost = targetCostFromPayout(payout, profitRate);
   }
   if (input.turnover && !PRODUCT_TURNOVER.includes(input.turnover)) throw new Error('回転を選択してください。');
   if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
@@ -969,7 +993,7 @@ export async function updateProductDetails(product: Product, input: ProductDetai
     product_no: productNo, asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
     genre: input.genre.trim() || null, turnover: input.turnover || null,
     shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null,
-    list_price: listPrice, payout_estimate: payout, target_cost: targetCost, has_sold_before: input.has_sold_before === 'true',
+    list_price: listPrice, payout_estimate: payout, target_profit_rate: profitRate, target_cost: targetCost, has_sold_before: input.has_sold_before === 'true',
   };
   const previous = product as Product & Record<string, unknown>;
   let query = getSupabase().from('products').update(next).eq('id', product.id);
@@ -991,12 +1015,13 @@ export async function createProduct(input: ProductRegistrationInput): Promise<vo
   if (input.turnover && !PRODUCT_TURNOVER.includes(input.turnover)) throw new Error('回転を選択してください。');
   if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
   if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
+  const profitRate = parseProfitRate(input.target_profit_rate ?? '');
 
   const { error } = await getSupabase().from('products').insert({
     asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
-    genre: input.genre || null, turnover: input.turnover || null, list_price: listPrice,
+    genre: input.genre || null, turnover: input.turnover || null, list_price: listPrice, target_profit_rate: profitRate,
     shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null,
-    ...(listPrice !== null && listPrice > 0 ? await amazonProductAmounts(asin, listPrice) : { payout_estimate: null, target_cost: null }),
+    ...(listPrice !== null && listPrice > 0 ? await amazonProductAmounts(asin, listPrice, profitRate) : { payout_estimate: null, target_cost: null }),
   });
   if (error?.code === '23505') throw new Error(await duplicateProductMessage(asin));
   if (error) throw error;

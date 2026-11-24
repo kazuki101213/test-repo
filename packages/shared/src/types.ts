@@ -46,6 +46,8 @@ export interface Product {
   list_price: number | null;
   payout_estimate: number | null;
   target_cost: number | null;
+  /** 利益率（%）。空欄なら決まりの割合。 */
+  target_profit_rate: number | null;
   turnover: TurnoverClass | null;
   has_sold_before: boolean;
   monthly_purchase_cap: number | null;

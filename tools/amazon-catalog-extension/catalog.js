@@ -13,7 +13,7 @@ const sessionKey = 'sb-' + new URL(API).hostname.split('.')[0] + '-auth-token';
 const loginRequired = () => Object.assign(
   new Error('管理アプリのログインが必要です。'), { code: 'login-required' });
 const adminPatterns = adminOrigins.map(origin => origin + '/*');
-const columns = 'id,asin,product_no,model_no,maker,genre,turnover,list_price,is_active,owner_staff_id';
+const columns = 'id,asin,product_no,model_no,maker,genre,turnover,list_price,payout_estimate,target_profit_rate,is_active,owner_staff_id';
 let sessionLookup;
 let retryInBackgroundAfter = 0;
 
@@ -226,9 +226,23 @@ function parseListPrice(value) {
   return price;
 }
 
+// 利益率（%）。空欄ならnull＝決まりの割合（1万円以下23%・5万円以下20%・5万円超17%）。
+function parseProfitRate(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (!/^\d{1,2}$/.test(text)) throw new Error('利益率は0〜99の整数（%）で入力してください。');
+  return Number(text);
+}
+
+export function targetCostFor(payout, profitRate) {
+  const rate = profitRate ?? (payout <= 10000 ? 23 : payout <= 50000 ? 20 : 17);
+  return Math.round(payout * (100 - rate) / 100);
+}
+
 export function productRow(asin, input) {
   validateAsin(asin);
   const price = parseListPrice(input.list_price);
+  const profitRate = parseProfitRate(input.target_profit_rate);
   const genre = optionalChoice(input.genre, PRODUCT_GENRES, 'ジャンル');
   return {
     asin,
@@ -237,13 +251,14 @@ export function productRow(asin, input) {
     genre,
     turnover: optionalChoice(input.turnover, PRODUCT_TURNOVER, '回転'),
     list_price: price,
+    target_profit_rate: profitRate,
     shipping_category: optionalChoice(input.shipping_category, PRODUCT_SHIPPING_CATEGORIES.map(option => option.value), 'サイズ区分'),
     shipping_size: optionalChoice(input.shipping_size, PRODUCT_SHIPPING_SIZES, '配送サイズ'),
   };
 }
 
 // Amazonの手数料見積もり（Amazon2）から振込想定金額・仕入れ目標金額を出す。登録時と価格変更時で共通。
-async function estimateAmounts(asin, price, session) {
+async function estimateAmounts(asin, price, session, profitRate = null) {
   const estimate = await request('/functions/v1/amazon-catalog-estimate', session, {
     method: 'POST',
     body: JSON.stringify({ asin, price }),
@@ -252,8 +267,7 @@ async function estimateAmounts(asin, price, session) {
   if (!Number.isSafeInteger(estimate.payout) || estimate.payout < 0 || estimate.payout > price) {
     throw new Error('Amazonの手数料見積もりを確認できませんでした。');
   }
-  const rate = estimate.payout <= 10000 ? 77 : estimate.payout <= 50000 ? 80 : 83;
-  return { payout_estimate: estimate.payout, target_cost: Math.round(estimate.payout * rate / 100) };
+  return { payout_estimate: estimate.payout, target_cost: targetCostFor(estimate.payout, profitRate) };
 }
 
 export async function catalogRegister(asin, input, userId, ownerId, preference) {
@@ -272,7 +286,7 @@ export async function catalogRegister(asin, input, userId, ownerId, preference) 
   const existing = await find(asin, session);
   if (existing) return { product: existing, created: false };
   if (row.list_price !== null && row.list_price > 0) {
-    Object.assign(row, await estimateAmounts(asin, row.list_price, session));
+    Object.assign(row, await estimateAmounts(asin, row.list_price, session, row.target_profit_rate));
   }
   const params = new URLSearchParams({ select: columns });
   const rows = await request('/rest/v1/products?' + params, session, {
@@ -286,9 +300,11 @@ export async function catalogRegister(asin, input, userId, ownerId, preference) 
   return { product: rows[0], created: true };
 }
 
-export async function updateCatalogPrice(asin, { id, userId, previousPrice, price }) {
+export async function updateCatalogPrice(asin, { id, userId, previousPrice, price, previousRate = null, rate, payout = null }) {
   validateAsin(asin);
   const listPrice = parseListPrice(price);
+  const profitRate = parseProfitRate(rate);
+  const priceChanged = listPrice !== null && listPrice > 0 && listPrice !== previousPrice;
   const session = await getSession();
   if (session.userId !== userId) throw new Error('ログイン先が変わりました。登録状況を確認してください。');
   if (typeof id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id) ||
@@ -298,15 +314,18 @@ export async function updateCatalogPrice(asin, { id, userId, previousPrice, pric
   const params = new URLSearchParams({
     select: columns, id: 'eq.' + id, asin: 'eq.' + asin, is_active: 'eq.true',
     list_price: previousPrice === null ? 'is.null' : 'eq.' + previousPrice,
+    target_profit_rate: previousRate === null ? 'is.null' : 'eq.' + previousRate,
   });
   const rows = await request('/rest/v1/products?' + params, session, {
     method: 'PATCH',
     headers: { Prefer: 'return=representation' },
     body: JSON.stringify({
       list_price: listPrice,
-      // 価格を変えた時だけAPIで計算し直す（同じ価格・空欄・0円なら振込・仕入れ目標はそのまま）。
-      ...(listPrice !== null && listPrice > 0 && listPrice !== previousPrice
-        ? await estimateAmounts(asin, listPrice, session) : {}),
+      target_profit_rate: profitRate,
+      // 価格を変えた時だけAPIで計算し直す（同じ価格・空欄・0円なら振込はそのまま）。
+      // 利益率だけ変えた時は、今の振込想定金額から仕入れ目標金額を計算し直す。
+      ...(priceChanged ? await estimateAmounts(asin, listPrice, session, profitRate)
+        : profitRate !== previousRate && Number.isSafeInteger(payout) ? { target_cost: targetCostFor(payout, profitRate) } : {}),
     }),
   });
   if (rows.length !== 1 || rows[0].id !== id || rows[0].list_price !== listPrice) {

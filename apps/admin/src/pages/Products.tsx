@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { staffDisplayName, yen } from '@bussan/shared';
 import type { Product, Staff } from '@bussan/shared';
-import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchFurimaWatchStock, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory } from '../api';
+import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchFurimaWatchStock, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory, ruleProfitRate } from '../api';
 import { downloadCsv } from '../csv';
 import { errorMessage } from '../errorMessage';
 import { mercariSearchUrl } from '../mercariSearch';
@@ -13,7 +13,7 @@ import '../components/ExpenseSelection.css';
 import './ProductSelection.css';
 
 const emptyProduct: ProductRegistrationInput = {
-  asin: '', model_no: '', maker: '', genre: '', turnover: '', list_price: '',
+  asin: '', model_no: '', maker: '', genre: '', turnover: '', list_price: '', target_profit_rate: '',
   shipping_category: '', shipping_size: '',
 };
 const shippingSizeLabel = (size: string) => /^\d+$/.test(size) ? `${size}サイズ` : size;
@@ -112,7 +112,7 @@ export default function Products({ me }: { me: Staff }) {
     setFullEditDraft({
       product_no: String(product.product_no ?? ''), asin: product.asin, model_no: product.model_no ?? '', maker: product.maker ?? '', genre: product.genre ?? '',
       turnover: product.turnover ?? '', shipping_category: product.shipping_category ?? '', shipping_size: product.shipping_size ?? '',
-      list_price: String(product.list_price ?? ''), payout_estimate: String(product.payout_estimate ?? ''), target_cost: String(product.target_cost ?? ''),
+      list_price: String(product.list_price ?? ''), payout_estimate: String(product.payout_estimate ?? ''), target_profit_rate: String(product.target_profit_rate ?? ''), target_cost: String(product.target_cost ?? ''),
       has_sold_before: String(product.has_sold_before),
     });
   }
@@ -188,11 +188,11 @@ export default function Products({ me }: { me: Staff }) {
 
   const fieldLabels: Record<ProductField, string> = {
     product_no: '品番', asin: 'ASIN', model_no: '型番', maker: 'メーカー', genre: 'ジャンル',
-    turnover: '回転', list_price: '販売想定金額', payout_estimate: '振込想定金額', target_cost: '仕入れ目標金額',
+    turnover: '回転', list_price: '販売想定金額', payout_estimate: '振込想定金額', target_profit_rate: '利益率（%）', target_cost: '仕入れ目標金額',
     has_sold_before: '実績',
   };
   const startEdit = (product: Product, field: ProductField) => setEditing({ product, field, value: String(product[field] ?? '') });
-  const cell = (product: Product, field: ProductField, label: string) => <button className="inventory-cell-edit" onClick={() => startEdit(product, field)}>{label}</button>;
+  const cell = (product: Product, field: ProductField, label: ReactNode) => <button className="inventory-cell-edit" onClick={() => startEdit(product, field)}>{label}</button>;
   const recentAmazonAverage = (productId: string) => {
     const summary=summaries[productId];
     return summary?.amazon_count && summary.amazon_average!==null ? {amount:summary.amazon_average,count:summary.amazon_count}:null;
@@ -225,7 +225,7 @@ export default function Products({ me }: { me: Staff }) {
             <tr>
               <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th>
               {!ownerFilter && <th>管理者</th>}<th>ジャンル</th><th>回転</th><th>Amazon販売金額</th>
-              <th className="num">販売想定金額</th><th className="num">振込想定金額</th>
+              <th className="num">販売想定金額</th><th className="num">振込想定金額</th><th className="num">利益率</th>
               <th className="num">仕入れ目標金額</th><th>実績</th><th>サイズ</th><th aria-label="選択" />
             </tr>
           </thead>
@@ -250,6 +250,7 @@ export default function Products({ me }: { me: Staff }) {
                 })()}</td>
                 <td className="num">{cell(p, 'list_price', yen(p.list_price))}</td>
                 <td className="num">{cell(p, 'payout_estimate', yen(p.payout_estimate))}</td>
+                <td className="num">{cell(p, 'target_profit_rate', p.target_profit_rate != null ? p.target_profit_rate + '%' : p.payout_estimate != null ? <span className="sub">ルール({ruleProfitRate(p.payout_estimate)}%)</span> : '—')}</td>
                 <td className="num" style={{ color: 'var(--accent)' }}>{cell(p, 'target_cost', yen(p.target_cost))}</td>
                 <td>{cell(p, 'has_sold_before', p.has_sold_before ? '有' : '無')}</td>
                 <td><button type="button" className="inventory-cell-edit" title="クリックしてサイズ区分・配送サイズを変更" onClick={() => startSizeEdit(p)}>{p.shipping_category ? `${p.shipping_category} ${p.shipping_size ? shippingSizeLabel(p.shipping_size) : '未設定'}` : p.shipping_size ? shippingSizeLabel(p.shipping_size) : '未設定'}</button></td>
@@ -272,6 +273,7 @@ export default function Products({ me }: { me: Staff }) {
             <option value="">未設定</option>{PRODUCT_TURNOVER.map(turnover => <option key={turnover}>{turnover}</option>)}
           </select></label>
           <label className="field"><span>販売想定金額</span><input type="number" min={0} step={1} value={newProduct.list_price} onChange={e => setNewProduct(current => ({ ...current, list_price: e.target.value }))} /></label>
+          <label className="field"><span>利益率（%）</span><input type="number" min={0} max={99} step={1} placeholder="空欄＝ルール" value={newProduct.target_profit_rate} onChange={e => setNewProduct(current => ({ ...current, target_profit_rate: e.target.value }))} /></label>
           <label className="field"><span>サイズ区分</span><select value={newProduct.shipping_category} onChange={e => {
             const category = e.target.value;
             setNewProduct(current => ({ ...current, shipping_category: category, shipping_size: PRODUCT_SHIPPING_CATEGORIES.find(option => option.value === category)?.defaultSize ?? current.shipping_size }));
@@ -291,7 +293,7 @@ export default function Products({ me }: { me: Staff }) {
       {fullEditProduct && fullEditDraft && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品情報全体を編集"><div className="card inventory-comment-panel product-full-edit-panel">
         <h3>商品情報を編集</h3><p className="sub">品番 {fullEditDraft.product_no || '未設定'} ・ {fullEditDraft.model_no || fullEditDraft.asin}</p>
         <div className="product-full-edit-grid">
-          {([['product_no','品番'],['asin','ASIN'],['model_no','型番'],['maker','メーカー'],['genre','ジャンル'],['list_price','販売想定金額'],['payout_estimate','振込想定金額'],['target_cost','仕入れ目標金額']] as const).map(([key,label]) => <label className="field" key={key}><span>{label}</span><input type={['product_no','list_price','payout_estimate','target_cost'].includes(key) ? 'number' : 'text'} min={key === 'product_no' ? 1 : 0} value={fullEditDraft[key]} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, [key]: e.target.value }))} /></label>)}
+          {([['product_no','品番'],['asin','ASIN'],['model_no','型番'],['maker','メーカー'],['genre','ジャンル'],['list_price','販売想定金額'],['payout_estimate','振込想定金額'],['target_profit_rate','利益率（%）'],['target_cost','仕入れ目標金額']] as const).map(([key,label]) => <label className="field" key={key}><span>{label}</span><input type={['product_no','list_price','payout_estimate','target_profit_rate','target_cost'].includes(key) ? 'number' : 'text'} min={key === 'product_no' ? 1 : 0} max={key === 'target_profit_rate' ? 99 : undefined} value={fullEditDraft[key]} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, [key]: e.target.value }))} /></label>)}
           <label className="field"><span>回転</span><select value={fullEditDraft.turnover} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, turnover: e.target.value }))}><option value="">未設定</option>{['高','中','低'].map(v => <option key={v}>{v}</option>)}</select></label>
           <label className="field"><span>実績</span><select value={fullEditDraft.has_sold_before} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, has_sold_before: e.target.value }))}><option value="false">無</option><option value="true">有</option></select></label>
           <label className="field"><span>サイズ区分</span><select value={fullEditDraft.shipping_category} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, shipping_category: e.target.value, shipping_size: e.target.value === 'モ' ? '140' : e.target.value === 'ブ' ? '100' : e.target.value === '小' ? '' : current.shipping_size }))}><option value="">未設定</option><option value="モ">モニター（モ）</option><option value="ブ">ブルーレイレコーダー（ブ）</option><option value="小">小物（小）</option></select></label>
@@ -311,7 +313,7 @@ export default function Products({ me }: { me: Staff }) {
         <h3>{fieldLabels[editing.field]}を編集</h3>
         <label className="field"><span>{fieldLabels[editing.field]}</span>
           {editing.field === 'turnover' || editing.field === 'has_sold_before' ? <select value={editing.value} onChange={e => setEditing(current => current && { ...current, value: e.target.value })}>{(editing.field === 'turnover' ? [['', '未設定'], ['高', '高'], ['中', '中'], ['低', '低']] : [['false', '無'], ['true', '有']]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-            : <input autoFocus type={['product_no', 'list_price', 'payout_estimate', 'target_cost'].includes(editing.field) ? 'number' : 'text'} min={editing.field === 'product_no' ? 1 : 0} value={editing.value} onChange={e => setEditing(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveEdit(); }} />}
+            : <input autoFocus type={['product_no', 'list_price', 'payout_estimate', 'target_profit_rate', 'target_cost'].includes(editing.field) ? 'number' : 'text'} min={editing.field === 'product_no' ? 1 : 0} max={editing.field === 'target_profit_rate' ? 99 : undefined} value={editing.value} onChange={e => setEditing(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveEdit(); }} />}
         </label>
         {error && <div className="error" role="alert">{error}</div>}
         <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setEditing(null)}>閉じる</button></div>
