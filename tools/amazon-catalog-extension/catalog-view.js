@@ -17,6 +17,8 @@ export function mountCatalogView(root) {
   const yen = value => value === null ? '—' : format.format(value) + '円';
   let product;
   let catalogItem;
+  // 追加した直後は、金額・利益率の変更欄を出さずに「追加しました」だけ表示する（ページを開き直すと出る）。
+  let justAddedId = null;
 
   let userId;
   let ownerId = '';
@@ -69,7 +71,7 @@ export function mountCatalogView(root) {
 
   function showCatalog(item) {
     catalogItem = item;
-    priceForm.hidden = !item?.is_active;
+    priceForm.hidden = !item?.is_active || item.id === justAddedId;
     priceInput.value = item?.list_price ?? product.amazonPrice ?? '';
     rateInput.value = item?.target_profit_rate ?? '';
     $('#catalog-price-status').textContent = '';
@@ -237,7 +239,9 @@ export function mountCatalogView(root) {
           shipping_size: catalogShippingSize(fields.shipping_category.value, packageInfo),
         },
       });
+      if (result.created) justAddedId = result.product.id;
       showCatalog(result.product);
+      if (result.created) $('#catalog-message').textContent = '商品リストに追加しました。';
     } catch (error) {
       $('#catalog-status').textContent = error.message;
     } finally {
