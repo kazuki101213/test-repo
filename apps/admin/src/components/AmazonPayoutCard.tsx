@@ -21,6 +21,7 @@ const shortDay = (value: string | null) => {
   const sameYear = thisYear.format(date) === thisYear.format(new Date());
   return new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', ...(sameYear ? {} : { year: 'numeric' }), month: 'numeric', day: 'numeric' }).format(date);
 };
+const clock = (value: string | null) => value ? new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '';
 const signed = (value: number) => value < 0 ? `−${Math.abs(value).toLocaleString('ja-JP')}` : value.toLocaleString('ja-JP');
 
 function PayoutBlock({ payout, owners, open }: { payout: AmazonPayout; owners: AmazonPayoutSummary['owners']; open: boolean }) {
@@ -82,7 +83,7 @@ export default function AmazonPayoutCard() {
   const selectedAccount = account || payouts[0]?.account || 'Amazon2';
   const accountPayouts = payouts.filter(payout => payout.account === selectedAccount);
   const selected = accountPayouts.find(payout => payout.group_id === groupId) ?? accountPayouts[0];
-  // 同じ日に2回振込があるときだけ、見分けるために金額も出す。
+  // 金額は出さない（2026-11-24 ユーザー指示）。同じ日に2回あるときだけ時刻で見分ける。
   const sameDay = (payout: AmazonPayout) => accountPayouts.filter(other =>
     shortDay(other.fund_transfer_date ?? other.group_end) === shortDay(payout.fund_transfer_date ?? payout.group_end)).length > 1;
 
@@ -98,7 +99,7 @@ export default function AmazonPayoutCard() {
         <label>振込日 <select value={selected?.group_id ?? ''} disabled={!accountPayouts.length} onChange={event => setGroupId(event.target.value)}>
           {!accountPayouts.length && <option value="">—</option>}
           {accountPayouts.map(payout => <option key={payout.group_id} value={payout.group_id}>
-            {shortDay(payout.fund_transfer_date ?? payout.group_end)}{sameDay(payout) ? ` ${yen(payout.total)}` : ''}
+            {shortDay(payout.fund_transfer_date ?? payout.group_end)}{sameDay(payout) ? ` ${clock(payout.fund_transfer_date ?? payout.group_end)}` : ''}
           </option>)}
         </select></label>
       </div>
