@@ -15,10 +15,18 @@ export function useInventoryPage<T extends {id:string}>(scope:InventoryScope,own
    if(!active||busy||(!force&&Date.now()-lastCheck<5000))return;
    busy=true;
    try{
-    const snapshot=await fetchInventoryPage<T>(scope,JSON.parse(serialized),limit,page?.fingerprints??{},controller.signal);
+    let snapshot=await fetchInventoryPage<T>(scope,JSON.parse(serialized),limit,page?.fingerprints??{},controller.signal);
     if(!active)return;
     if(all&&snapshot.total>10000)throw new Error('対象が多いため、検索条件を絞り込んでください。');
-    page={rows:mergeInventoryPage(page?.rows??[],snapshot),fingerprints:snapshot.unchanged?(page?.fingerprints??{}):{...snapshot.fingerprints,...(snapshot.revision?{__revision:snapshot.revision}:{})},total:snapshot.total,limit,checkedAt:Date.now()};
+    let rows:T[];
+    try{rows=mergeInventoryPage(page?.rows??[],snapshot);}
+    catch{
+     // 手元の一覧と差分が合わないとき（「さらに表示」など）は、差分を使わずに全部読み直す。
+     snapshot=await fetchInventoryPage<T>(scope,JSON.parse(serialized),limit,{},controller.signal);
+     if(!active)return;
+     rows=mergeInventoryPage([],snapshot);
+    }
+    page={rows,fingerprints:snapshot.unchanged?(page?.fingerprints??{}):{...snapshot.fingerprints,...(snapshot.revision?{__revision:snapshot.revision}:{})},total:snapshot.total,limit,checkedAt:Date.now()};
     rememberInventoryPage(key,page);lastCheck=Date.now();setState({key,page,loading:false,error:null});
    }catch(cause){
     if(!active)return;
@@ -44,7 +52,10 @@ export function useInventoryPage<T extends {id:string}>(scope:InventoryScope,own
   const next={...current,rows:current.rows.map(item=>item.id===row.id?{...item,...row}:item),fingerprints};
   rememberInventoryPage(key,next);setState(s=>s.key===key?({...s,page:next}):s);void refreshRef.current();
  },[key]);
- return {rows:page?.rows??[],total:page?.total??0,hasPage:!!page,more:!all&&(page?.total??0)>limit,loading:state.key!==key||state.loading,error:state.key===key?state.error:null,
+ const error=state.key===key?state.error:null;
+ return {rows:page?.rows??[],total:page?.total??0,hasPage:!!page,more:!all&&(page?.total??0)>limit,
+ // 「さらに表示」を押して、増やした件数をまだ読み込めていない間はtrue。
+ loadingMore:!all&&!!page&&page.limit<limit&&!error,loading:state.key!==key||state.loading,error,
  refresh:()=>refreshRef.current(),loadMore:()=>setWindow({key,limit:limit+50}),updateRow};
 }
 const windowGlobal=()=>globalThis.window;
