@@ -244,6 +244,8 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     <label><span>{order<0?'出品しない':`${order+1}枚目`}</span><img src={photo.url} alt="出品写真" loading="lazy"/><input type="checkbox" aria-label={order<0?'この写真を出品に含める':`${order+1}枚目を出品に含める`} checked={order>=0} disabled={disabled||order<0&&selected.length>=(amazonListing?6:10)} onChange={event=>{photosEdited.current=true;setSelected(current=>event.target.checked?[...current,photo.id]:current.filter(id=>id!==photo.id));request.current=crypto.randomUUID();}}/></label>
     {order>=0&&<div className="seller-photo-order"><button type="button" className="btn" aria-label={`写真${order+1}を前へ`} title="前へ" disabled={disabled||order===0} onClick={()=>movePhoto(photo.id,-1)}>←</button><button type="button" className="btn" aria-label={`写真${order+1}を後へ`} title="後へ" disabled={disabled||order===selected.length-1} onClick={()=>movePhoto(photo.id,1)}>→</button></div>}
    </div>;})}</div></>;
+ // 閉じるは、どの販売状態でも操作ボタン（出品・発送コード表示・送信）のすぐ下の左に置く（2026-11-24 ユーザー指定）。
+ const closeButton=<button type="button" className="btn ghost seller-close" disabled={mode==='listing'&&busy} onClick={onClose}>閉じる</button>;
  const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key)?.result.messages;
 
  return <section className={`task-detail-inline seller-panel${mode==='listing'&&!amazonListing?' seller-listing-layout':''}`} aria-label={`${task.sku}の${mode==='listing'?'出品':mode==='shipping'?'発送':'取引メッセージ'}`}>
@@ -256,7 +258,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     suggestedAccessories:photoAnalysis.overview&&selected[0]===photoAnalysis.overview?photoAnalysis.accessories:undefined,
     beforeActions:amazonListing?photoChooser:undefined,
     actions:amazonListing?(persistDetails,readingYear)=><button type="button" className="btn primary" disabled={disabled||amazonPhase==='complete'||readingYear||photoAnalysis.reading||selected.length<1||selected.length>6} onClick={()=>void beginAmazonListing(persistDetails)}>出品</button>:undefined,
-    afterActions:amazonListing?<>{error&&<p className="error" role="alert">{error}</p>}</>:undefined,
+    afterActions:amazonListing?<>{error&&<p className="error" role="alert">{error}</p>}{closeButton}</>:undefined,
    }}/>}
    {!amazonListing&&<>
    <div className="seller-form">
@@ -278,6 +280,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    {yahooShippingError&&<p className="error" role="alert">{yahooShippingError}</p>}
    <button type="button" className="btn primary" disabled={disabled||photoAnalysis.reading||!!categoryError||!!yahooShippingError||!draft.title.trim()||!draft.description.trim()||!draft.listingCategory?.trim()||draft.price<1||!draft.origin||!draft.condition||selected.length<1||selected.length>10} onClick={()=>setConfirming('listing')}>出品</button>
    {context?.listing&&<a href={context.listing.url} target="_blank" rel="noreferrer">出品した商品を確認</a>}
+   {closeButton}
    </>}
    {!amazonListing&&staff.role==='admin'&&<LineShippingSettings key={task.id} itemId={task.id} draft={draft} overviewId={selected[0]} listing/>}
   </>:!trade?<p>販売先の取引情報の取得待ちです。</p>:mode==='shipping'?<>
@@ -295,17 +298,19 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     {code&&<><p>専用資材のコードを読み取りました。</p><button type="button" className="btn" disabled={disabled} onClick={()=>void submit('register_package',{...tradePayload,code})}>対象取引へ登録</button></>}
    </>:<><div className="seller-shipping-actions"><button type="button" className="btn" data-direction="forward" disabled={busy||!!codeIssue||(pending&&!operations.some(op=>op.kind==='shipping_code'&&op.status==='uncertain'&&op.trade_key===trade))} onClick={()=>void (pending?retryShipping(tradePayload):submit('shipping_code',tradePayload))}>発送コード表示</button>{<MarketplaceShippingHandoff key={task.id+':'+trade} itemId={task.id} tradeKey={trade} disabled={disabled}/>}</div>{codeIssue&&!sellerShippingError(draft)&&<p className="error" role="alert">{codeIssue}</p>}{qr&&!codeIssue&&<img src={qr} className="seller-qr" alt="対象取引の配送コード"/>}</>}
    {(mercariPost||/ゆうパケットポストmini/.test(draft.size))&&<div className="seller-shipping-actions"><MarketplaceShippingHandoff key={task.id+':'+trade} itemId={task.id} tradeKey={trade} disabled={disabled}/></div>}
+   {closeButton}
    {staff.role==='admin'&&<LineShippingSettings key={task.id+':'+trade} itemId={task.id} draft={draft}/>}
   </>:<>
    <button type="button" className="btn" disabled={disabled} onClick={()=>void submit('message_sync',tradePayload)}>メッセージを取得</button>
    {Array.isArray(latestMessages)&&latestMessages.map((entry,index)=><p key={index} className="seller-preview">{entry&&typeof entry==='object'&&typeof entry.body==='string'?entry.body:''}</p>)}
    <textarea aria-label="取引相手へのメッセージ" value={message} maxLength={2000} disabled={disabled} onChange={event=>{setMessage(event.target.value);request.current=crypto.randomUUID();}}/>
    <button type="button" className="btn primary" disabled={disabled||!message.trim()} onClick={()=>{if(window.confirm('取引相手へ送信しますか？'))void submit('message_send',{...tradePayload,body:message.trim()});}}>送信</button>
+   {closeButton}
   </>}
   {mode==='listing'&&operations.some(op=>op.kind==='listing'&&op.status==='uncertain')&&<div><label>出品済み商品のURL（任意）<input type="url" value={listingUrl} disabled={busy||!!watching} onChange={event=>setListingUrl(event.target.value)}/></label><button type="button" className="btn" disabled={busy||!!watching} onClick={()=>void checkListing()}>出品結果を確認</button></div>}
   {confirming&&<WorkDateConfirmation title={amazonListing?`${task.sales_channel==='FBA2'||task.sales_channel==='自己発送2'?'Amazon2':'Amazon1'}に${amazonConfirmation?.price.toLocaleString('ja-JP')??''}円で出品しますか。`:(marketplaceAccountLabel(context?.listing_account_id) ? `${marketplaceAccountLabel(context?.listing_account_id)}に出品しますか。` : '出品しますか。')} purchasedAt={task.purchased_at} savedDate={task.packed_on} onCancel={()=>{setConfirming(null);setAmazonPhase(current=>current==='confirmation'?null:current);}} onConfirm={async date=>{if(lock.current||disabled)return;if(!draft)throw new Error('出品内容を確認してください。');if(confirming==='listing'&&(categoryError||yahooShippingError))throw new Error(categoryError||yahooShippingError);if(confirming==='listing_complete')await completeAmazonListing(date);else{lock.current=true;setBusy(true);setOperationLocal({kind:'listing',state:'sending'});try{const {expected_revision,...payload}={...draft,work_completed_on:date,photos:selected.flatMap(id=>{const photo=photos.find(value=>value.id===id);return photo?[photo.url]:[];}),expected_revision:context?.revision};await queueSellerOperation(task.id,'listing',{...payload,...(yahooListing?{yahoo_shipping_rule:1}:{}),expected_revision},request.current);request.current=crypto.randomUUID();setContext(await fetchSellerContext(task.id));setOperationLocal(null);}catch(cause){setOperationLocal({kind:'listing',state:'uncertain'});throw cause;}finally{lock.current=false;setBusy(false);}}}}/>}
-  {/* 閉じるは、どの販売状態でも操作ボタンのすぐ下の左に置く（2026-11-24 ユーザー指定） */}
-  <button type="button" className="btn ghost seller-close" disabled={mode==='listing'&&busy} onClick={onClose}>閉じる</button>
+  {/* 読み込み中・取引情報待ちなど操作ボタンが無いときだけ、ここに閉じるを出す */}
+  {(!draft||(mode==='listing'?amazonListing&&!descriptionSource:!trade))&&closeButton}
   {/* 出品・発送・取引メッセージの状況の枠は、どの販売状態でも閉じるの下の履歴の先頭に出す（2026-11-24 ユーザー指定・案4） */}
   {mode==='listing'?(amazonListing?<OperationProgress phase={amazonPhase} note={amazonNotice} verifiedAt={amazonVerifiedAt}/>:operationProgress(['listing'])):mode==='shipping'?operationProgress(['shipping_code','register_package','ship_notice']):operationProgress(['message_sync','message_send'])}
   <div className="seller-history" aria-live="polite">{operations.filter(op=>mode!=='shipping'||(op.trade_key===trade&&['shipping_code','register_package','ship_notice'].includes(op.kind))).map(op=><p key={op.id}>{operationLabel(op.kind)}：{statusText(op)}{op.status==='succeeded'&&op.finished_at&&<>（<time dateTime={op.finished_at}>{formatOperationTime(op.finished_at)}</time>）</>}{typeof op.result.last_check_note==='string'?'：'+op.result.last_check_note:typeof op.result.note==='string'?'：'+op.result.note:''}{op.status==='running'&&Date.now()-Date.parse(op.created_at)>600000?'。結果を確認するまで再実行しません。':''}</p>)}</div>
