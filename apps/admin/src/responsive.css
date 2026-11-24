@@ -378,3 +378,6 @@
 .payout-request .payout-head { margin-top:0; }
 .payout-request .dashboard-comparison { margin-top:6px; }
 .payout-more { margin-top:12px; }
+.payout-selects { display:flex; flex-wrap:wrap; gap:8px 12px; margin:4px 0 12px; font-size:13px; color:var(--muted); }
+.payout-selects label { display:flex; align-items:center; gap:6px; }
+.payout-selects select { min-width:0; }
