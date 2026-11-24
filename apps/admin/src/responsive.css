@@ -390,5 +390,6 @@
 /* 2026-11-24: 今月販売の「売上：金額/点数/利益率」「保有在庫：点数/はけ率」を1行で。 */
 .dashboard-comparison-panel .dashboard-sales-line { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:4px; font-variant-numeric:tabular-nums; }
 .dashboard-comparison-panel .dashboard-sales-line .dashboard-metric-divider { color:var(--muted); font-weight:400; }
-/* 点数・利益率・はけ率は金額の半分の大きさ（2026-11-24 ユーザー指定）。 */
-.dashboard-comparison-panel .dashboard-sales-line .dashboard-sub { font-size:0.5em; }
+/* 点数・利益率・はけ率は金額の2/3の大きさ（2026-11-24 ユーザー指定。半分から変更）。 */
+.dashboard-comparison-panel .dashboard-sales-line .dashboard-sub { font-size:0.667em; }
+.payout-card-charge { font-size:0.6em; font-weight:600; color:var(--muted); }
