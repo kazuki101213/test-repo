@@ -1,4 +1,5 @@
 const fs=require('fs'),vm=require('vm'),ts=require('typescript'),assert=require('assert/strict');
+const errorMessageModule=()=>{const m={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('apps/admin/src/errorMessage.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports:m.exports,Error,String});return m.exports;};
 const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 const estimates={exports:{}};
 vm.runInNewContext(compile('apps/admin/src/productEstimates.ts'),estimates);
@@ -12,7 +13,7 @@ const product={id:'p',asin:'BTEST00001',model_no:'MODEL',owner_staff_id:me.id,am
 const otherProduct={...product,id:'q',model_no:'OTHER',owner_staff_id:other.id};
 let history=[{id:'sale',product_id:'p',sku:'sale-SKU',sold_on:'2026-10-10',sold_price:301,payout_amount:270,sales_channel:'FBA'}];
 const api={fetchProductCatalogOwners:async()=>[me,other],fetchProducts:async(query,owner)=>[product,otherProduct].filter(row=>!owner||row.owner_staff_id===owner),fetchProductSaleSummaries:async()=>[{product_id:'p',history_count:5,amazon_count:3,amazon_average:301}],fetchProductSaleHistory:async rows=>{historyCalls.push(rows);return history;}};
-const jsx=(type,props)=>({type,props});const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>n==null?'—':'¥'+n,staffDisplayName:staff=>staff.name}:id==='../components/TaskConfirmation'?{useTaskConfirmation:()=>({pending:false,confirmation:null})}:id==='../api'?api:id==='../productEstimates'?estimates.exports:id==='../mercariSearch'?{mercariSearchUrl:m=>'https://jp.mercari.com/search?keyword='+encodeURIComponent(m)}:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
+const jsx=(type,props)=>({type,props});const ctx={exports:{},require:id=>id==='react'?react:id==='react/jsx-runtime'?{jsx,jsxs:jsx}:id==='@bussan/shared'?{yen:n=>n==null?'—':'¥'+n,staffDisplayName:staff=>staff.name}:id==='../components/TaskConfirmation'?{useTaskConfirmation:()=>({pending:false,confirmation:null})}:id==='../api'?api:id==='../productEstimates'?estimates.exports:id==='../errorMessage'?errorMessageModule():id==='../mercariSearch'?{mercariSearchUrl:m=>'https://jp.mercari.com/search?keyword='+encodeURIComponent(m)}:{default:'stub'},setTimeout:fn=>{fn();return 1;},clearTimeout(){}};
 vm.runInNewContext(compile('apps/admin/src/pages/Products.tsx'),ctx);
 async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tree=ctx.exports.default({me});effects.splice(0).forEach(f=>f());}await Promise.resolve();}}
 (async()=>{
