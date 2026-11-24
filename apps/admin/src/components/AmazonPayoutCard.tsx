@@ -22,11 +22,13 @@ const shortDay = (value: string | null) => {
   return new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', ...(sameYear ? {} : { year: 'numeric' }), month: 'numeric', day: 'numeric' }).format(date);
 };
 const clock = (value: string | null) => value ? new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '';
+// 日付は振込日ではなく申請日（＝Amazonの支払いグループが締まった日時）で出す（2026-11-24 ユーザー指定）。
+const requestedAt = (payout: AmazonPayout) => payout.group_end ?? payout.fund_transfer_date;
 const signed = (value: number) => value < 0 ? `−${Math.abs(value).toLocaleString('ja-JP')}` : value.toLocaleString('ja-JP');
 
 function PayoutBlock({ payout, owners, open }: { payout: AmazonPayout; owners: AmazonPayoutSummary['owners']; open: boolean }) {
   const matches = payout.total !== null && payout.total === payout.line_total;
-  const date = day(payout.fund_transfer_date ?? payout.group_end);
+  const date = day(requestedAt(payout));
   const amount = (code: string) => payout.lines.filter(line => line.owner_code === code).reduce((sum, line) => sum + (line.amount ?? 0), 0);
   const items = (code: string) => new Set(payout.lines
     .filter(line => line.owner_code === code && line.type === 'Shipment' && line.serial).map(line => line.serial)).size;
@@ -86,10 +88,10 @@ export default function AmazonPayoutCard() {
   const selected = accountPayouts.find(payout => payout.group_id === groupId) ?? accountPayouts[0];
   // 金額は出さない（2026-11-24 ユーザー指示）。同じ日に2回あるときだけ時刻で見分ける。
   const sameDay = (payout: AmazonPayout) => accountPayouts.filter(other =>
-    shortDay(other.fund_transfer_date ?? other.group_end) === shortDay(payout.fund_transfer_date ?? payout.group_end)).length > 1;
+    shortDay(requestedAt(other)) === shortDay(requestedAt(payout))).length > 1;
 
   return <div className="card payout-summary-card">
-    <h3>Amazon振込</h3>
+    <h3>Amazonペイメント</h3>
     {error && <p className="error" role="alert">{error}</p>}
     {!error && !summary && <p className="muted">読み込み中…</p>}
     {summary && <>
@@ -97,10 +99,10 @@ export default function AmazonPayoutCard() {
         <label>販売先 <select value={selectedAccount} onChange={event => { setAccount(event.target.value); setGroupId(''); }}>
           {ACCOUNTS.map(name => <option key={name} value={name}>{name}</option>)}
         </select></label>
-        <label>振込日 <select value={selected?.group_id ?? ''} disabled={!accountPayouts.length} onChange={event => setGroupId(event.target.value)}>
+        <label>申請日 <select value={selected?.group_id ?? ''} disabled={!accountPayouts.length} onChange={event => setGroupId(event.target.value)}>
           {!accountPayouts.length && <option value="">—</option>}
           {accountPayouts.map(payout => <option key={payout.group_id} value={payout.group_id}>
-            {shortDay(payout.fund_transfer_date ?? payout.group_end)}{sameDay(payout) ? ` ${clock(payout.fund_transfer_date ?? payout.group_end)}` : ''}
+            {shortDay(requestedAt(payout))}{sameDay(payout) ? ` ${clock(requestedAt(payout))}` : ''}
           </option>)}
         </select></label>
       </div>
