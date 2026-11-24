@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { fetchAmazonPayoutSummary, type AmazonPayout, type AmazonPayoutSummary } from '../api';
 
 const ACCOUNTS = ['Amazon1', 'Amazon2'] as const;
-const FIRST_VISIBLE = 3;
 const FEE_LABELS: Record<string, string> = {
   ShippingService: '配送ラベル代', Refund: '返金', ServiceFee: 'Amazonの料金', DebtRecovery: 'カード等での精算',
   Adjustment: '調整', Retrocharge: '調整',
@@ -14,7 +13,15 @@ const FEE_DESCRIPTIONS: Record<string, string> = {
 
 // 名字だけを出す（長部一輝 → 長部、石嶋俊紀 → 石嶋）。
 const surname = (name: string) => name.replace(/\s/g, '').slice(0, 2);
-const day = (value: string | null) => value ? new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric' }).format(new Date(value)) : '';
+const day = (value: string | null) => value ? new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date(value)) : '';
+// プルダウンは横に並べるので短く（今年は月/日だけ）。
+const shortDay = (value: string | null) => {
+  if (!value) return '';
+  const date = new Date(value), thisYear = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric' });
+  const sameYear = thisYear.format(date) === thisYear.format(new Date());
+  return new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', ...(sameYear ? {} : { year: 'numeric' }), month: 'numeric', day: 'numeric' }).format(date);
+};
+const clock = (value: string | null) => value ? new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '';
 const signed = (value: number) => value < 0 ? `−${Math.abs(value).toLocaleString('ja-JP')}` : value.toLocaleString('ja-JP');
 
 function PayoutBlock({ payout, owners, open }: { payout: AmazonPayout; owners: AmazonPayoutSummary['owners']; open: boolean }) {
@@ -60,7 +67,8 @@ function PayoutBlock({ payout, owners, open }: { payout: AmazonPayout; owners: A
 export default function AmazonPayoutCard() {
   const [summary, setSummary] = useState<AmazonPayoutSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [account, setAccount] = useState<string>('');
+  const [groupId, setGroupId] = useState<string>('');
 
   useEffect(() => {
     let active = true;
@@ -71,20 +79,33 @@ export default function AmazonPayoutCard() {
   }, []);
 
   const payouts = summary?.payouts ?? [];
-  const visible = showAll ? payouts : payouts.slice(0, FIRST_VISIBLE);
-  const missing = ACCOUNTS.filter(account => summary && !payouts.some(payout => payout.account === account));
+  // 最初は一番新しい振込のアカウントを選ぶ（振込は新しい順に届く）。
+  const selectedAccount = account || payouts[0]?.account || 'Amazon2';
+  const accountPayouts = payouts.filter(payout => payout.account === selectedAccount);
+  const selected = accountPayouts.find(payout => payout.group_id === groupId) ?? accountPayouts[0];
+  // 金額は出さない（2026-11-24 ユーザー指示）。同じ日に2回あるときだけ時刻で見分ける。
+  const sameDay = (payout: AmazonPayout) => accountPayouts.filter(other =>
+    shortDay(other.fund_transfer_date ?? other.group_end) === shortDay(payout.fund_transfer_date ?? payout.group_end)).length > 1;
 
   return <div className="card payout-summary-card">
-    <h3>Amazon振込（支払いリクエストごと）</h3>
+    <h3>Amazon振込</h3>
     {error && <p className="error" role="alert">{error}</p>}
     {!error && !summary && <p className="muted">読み込み中…</p>}
-    {summary && payouts.length === 0 && <p className="muted">まだ振込がありません。</p>}
-    {visible.map((payout, index) => <PayoutBlock key={`${payout.account}-${payout.group_id}`} payout={payout} owners={summary?.owners ?? []} open={index === 0} />)}
-    {payouts.length > FIRST_VISIBLE && <button type="button" className="btn ghost payout-more" onClick={() => setShowAll(value => !value)}>
-      {showAll ? '新しい3件だけ表示' : `前の振込も表示（ほか${payouts.length - FIRST_VISIBLE}件）`}
-    </button>}
-    {missing.map(account => <p className="payout-na" key={account}>
-      {account}：振込の明細を取得できていません{account === 'Amazon1' ? '（権限の設定待ち）' : ''}
-    </p>)}
+    {summary && <>
+      <div className="payout-selects">
+        <label>販売先 <select value={selectedAccount} onChange={event => { setAccount(event.target.value); setGroupId(''); }}>
+          {ACCOUNTS.map(name => <option key={name} value={name}>{name}</option>)}
+        </select></label>
+        <label>振込日 <select value={selected?.group_id ?? ''} disabled={!accountPayouts.length} onChange={event => setGroupId(event.target.value)}>
+          {!accountPayouts.length && <option value="">—</option>}
+          {accountPayouts.map(payout => <option key={payout.group_id} value={payout.group_id}>
+            {shortDay(payout.fund_transfer_date ?? payout.group_end)}{sameDay(payout) ? ` ${clock(payout.fund_transfer_date ?? payout.group_end)}` : ''}
+          </option>)}
+        </select></label>
+      </div>
+      {selected
+        ? <PayoutBlock key={`${selected.account}-${selected.group_id}`} payout={selected} owners={summary.owners} open />
+        : <p className="payout-na">{selectedAccount}：振込の明細を取得できていません{selectedAccount === 'Amazon1' ? '（権限の設定待ち）' : ''}</p>}
+    </>}
   </div>;
 }
