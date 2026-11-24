@@ -18,7 +18,7 @@ export function furimaWatchCsvRows(products: readonly Product[], stock: Readonly
   }
 
   return [...groups.values()].flatMap(group => {
-    const first = group[0];
+    const first = group[0]!;
     const model = group.map(product => product.model_no?.trim()).find(Boolean);
     const variants: Variant[] = group.flatMap(product => [
       ...(positive(product.target_cost) ? [{ cost: product.target_cost, payout: product.payout_estimate }] : []),
