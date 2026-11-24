@@ -11,7 +11,7 @@ import DescriptionEditor from '../components/DescriptionEditor';
 
 
 export default function TaskDetail({
-  itemId, latestTask, staff, listingSkus, mode = 'photos', onChanged, onOpened,
+  itemId, latestTask, staff, listingSkus, mode = 'photos', onClose, onChanged, onOpened,
 }: { mode?: 'photos'|'packingPhotos'|'description'|'messages'|'comments'; itemId: string; latestTask?: DeliveryTask; staff: Staff; listingSkus: string[]; onClose: () => void; onChanged: (task: DeliveryTask) => void; onOpened: (itemId: string) => void }) {
   const packing=mode==='packingPhotos';
   const photoMode=mode==='photos'||packing;
@@ -293,6 +293,7 @@ export default function TaskDetail({
   if (!task) {
     return (
       <section className="task-detail-inline">
+        <button type="button" className="btn ghost seller-close" onClick={onClose}>閉じる</button>
         {error ? <div className="error">{error}</div> : <div className="empty">読み込み中…</div>}
       </section>
     );
@@ -304,6 +305,8 @@ export default function TaskDetail({
 
   return (
     <section className="task-detail-inline" aria-label={`${task.sku}の詳細`}>
+      {/* 閉じるはどの販売状態でもパネルの先頭（「商品写真」ボタンのすぐ下の左）に置く（2026-11-24 ユーザー指定） */}
+      <button type="button" className="btn ghost seller-close" onClick={onClose}>閉じる</button>
       {error && <div className="error" role="alert">{error}</div>}
       {photoMode && <>
       <div className="card photo-control-row">
