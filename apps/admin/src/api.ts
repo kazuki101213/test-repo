@@ -938,7 +938,7 @@ export async function updateProductField(product: Product, field: ProductField, 
 export type ProductOptionField = 'label' | 'list_price' | 'target_profit_rate';
 
 /** 付属品・状態の通りを追加する（同じASIN）。金額は通りごとにAmazonの手数料と利益率で計算する。 */
-export async function createProductOption(product: Pick<Product, 'id' | 'asin' | 'product_no'>, input: { label: string; list_price: string; target_profit_rate: string }): Promise<void> {
+export async function addProductOption(product: Pick<Product, 'id' | 'asin' | 'product_no'>, input: { label: string; list_price: string; target_profit_rate: string }): Promise<void> {
   const label = input.label.trim();
   if (!label) throw new Error('付属品・状態を入力してください。');
   const listPrice = input.list_price.trim() ? Number(input.list_price) : null;
@@ -1080,7 +1080,7 @@ export async function createProduct(input: ProductRegistrationInput): Promise<vo
   if (findError) throw findError;
   if (existing?.is_active) {
     if (!label || label.toLowerCase() === (existing.variant_label ?? '').trim().toLowerCase()) throw new Error(await duplicateProductMessage(asin));
-    await createProductOption(existing, { label, list_price: input.list_price, target_profit_rate: input.target_profit_rate ?? '' });
+    await addProductOption(existing, { label, list_price: input.list_price, target_profit_rate: input.target_profit_rate ?? '' });
     return;
   }
 
