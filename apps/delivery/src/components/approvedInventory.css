@@ -252,9 +252,4 @@
  .app .task-card.approved-delivery-card .delivery-record-actions .workflow-buttons .btn { margin:0 0 5px; }
  .app .task-card.approved-delivery-card .delivery-record-actions .workflow-buttons > .workflow-close-break { display:none; }
  .app .task-card.approved-delivery-card .delivery-record-actions .workflow-buttons > .workflow-panel-close { grid-column:2; grid-row:1; margin:0 0 5px; }
- /* 入力欄（動作不良の報告など）の閉じるも操作ボタンの列にそろえる */
- .app .task-card.approved-delivery-card .approved-delivery-body .delivery-record-actions .workflow-controls .workflow-action-form { display:grid; grid-template-columns:subgrid; column-gap:normal!important; row-gap:8px; }
- .app .task-card.approved-delivery-card .delivery-record-actions .workflow-action-form > * { grid-column:1 / -1; }
- .app .task-card.approved-delivery-card .delivery-record-actions .workflow-action-form > .btn.seller-close:first-child { grid-column:-2; justify-self:start; margin:-8px 0 0; }
 }
-.app .task-card .workflow-action-form > .btn.seller-close:first-child { grid-column:1 / -1; justify-self:start; flex:none; min-width:max-content; margin:0 100% 0 0; }

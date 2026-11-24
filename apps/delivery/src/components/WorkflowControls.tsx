@@ -75,10 +75,12 @@ export default function WorkflowControls({task,onChanged,onError,onPanel,onClose
    }
   }else setConfirming(button);
  }
+ // 閉じるは操作ボタンの最後に1つ（入力欄が開いていれば入力欄を、なければパネルを閉じる）。PCは縦並びの右上、スマホはボタンの下の左（2026-11-24 ユーザー指定）
+ const formOpen=!!form&&buttons.some(button=>button.key===form.key);
+ const closeForm=()=>{templateRequest.current++;setLoadingReportTemplate(false);setReportTemplate('');setForm(null);setNote('');setPhotos([]);setHasPhysicalDamage(false);};
  return <div className="workflow-controls" aria-label={`${task.sku}の操作`}>
-  <div className="workflow-buttons">{photoButtons.length>0?<><div className="workflow-photo-buttons">{photoButtonContent}</div>{buttons.filter(button=>!besidePhoto.includes(button.key)).map(renderButton)}</>:buttons.map(renderButton)}{onClosePanel&&<><span className="workflow-close-break" aria-hidden="true"/><button type="button" className="btn ghost seller-close workflow-panel-close" onClick={onClosePanel}>閉じる</button></>}</div>
+  <div className="workflow-buttons">{photoButtons.length>0?<><div className="workflow-photo-buttons">{photoButtonContent}</div>{buttons.filter(button=>!besidePhoto.includes(button.key)).map(renderButton)}</>:buttons.map(renderButton)}{(formOpen||onClosePanel)&&<><span className="workflow-close-break" aria-hidden="true"/><button type="button" className="btn ghost seller-close workflow-panel-close" disabled={formOpen&&busy} onClick={formOpen?closeForm:onClosePanel}>閉じる</button></>}</div>
   {form&&buttons.some(button=>button.key===form.key)&&<div className="workflow-action-form">
-   <button type="button" className="btn ghost seller-close" disabled={busy} onClick={()=>{templateRequest.current++;setLoadingReportTemplate(false);setReportTemplate('');setForm(null);setNote('');setPhotos([]);setHasPhysicalDamage(false);}}>閉じる</button>
    <label>{form.key==='report'?form.label+'の内容':'理由'}<textarea value={note} maxLength={2000} rows={reportTemplate?10:undefined} disabled={busy} onChange={event=>{noteEdited.current=true;setNote(event.target.value);}} /></label>
    {loadingReportTemplate&&<p className="muted" role="status">確認項目を準備中…</p>}
    {form.key==='report'&&<label className="workflow-damage-option"><input type="checkbox" checked={hasPhysicalDamage} disabled={busy} onChange={event=>{setHasPhysicalDamage(event.target.checked);request.current=crypto.randomUUID();}}/>破損あり</label>}
