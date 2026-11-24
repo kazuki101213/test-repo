@@ -252,7 +252,7 @@ async function estimateAmounts(asin, price, session) {
   if (!Number.isSafeInteger(estimate.payout) || estimate.payout < 0 || estimate.payout > price) {
     throw new Error('Amazonの手数料見積もりを確認できませんでした。');
   }
-  const rate = estimate.payout <= 10000 ? 55 : estimate.payout <= 15000 ? 75 : 76;
+  const rate = estimate.payout <= 10000 ? 77 : estimate.payout <= 50000 ? 80 : 83;
   return { payout_estimate: estimate.payout, target_cost: Math.round(estimate.payout * rate / 100) };
 }
 
