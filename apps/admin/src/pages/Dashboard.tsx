@@ -1,7 +1,7 @@
 import { staffDisplayName, yen, type Staff } from '@bussan/shared';
 import { useEffect, useState, type ReactNode } from 'react';
-import { fetchDashboardPurchaseForecast, fetchDashboardPurchaserSummary, fetchMonthly, fetchStockSummary, fetchWorkload, workloadMetrics } from '../api';
-import type { DashboardMonth, DashboardPurchaserSummary, DashboardScope, DashboardStock, DelivererWorkload, WorkloadMetric } from '../api';
+import { fetchDashboardPurchaseForecast, fetchDashboardPurchaserSummary, fetchDashboardSellThrough, fetchMonthly, fetchStockSummary, fetchWorkload, workloadMetrics } from '../api';
+import type { DashboardMonth, DashboardPurchaserSummary, DashboardScope, DashboardSellThrough, DashboardStock, DelivererWorkload, WorkloadMetric } from '../api';
 import DailySalesChart from '../components/DailySalesChart';
 import { japanMonth } from '../sales';
 import MonthlyDetail, { type MonthlyMetric } from '../components/MonthlyDetail';
@@ -42,6 +42,11 @@ function MoneyPair({ firstLabel, firstAmount, forecast }: { firstLabel: string; 
   </>;
 }
 
+// 利益率・はけ率の表示（分母が0や未取得なら —）。
+function rate(part?: number | null, whole?: number | null) {
+  return whole ? `${Math.round(((part ?? 0) / whole) * 100)}%` : '—';
+}
+
 function formatMonthlyMetric(metric: MonthlyMetric, month?: DashboardMonth) {
   if (metric === '平均利益単価') return month?.販売数 ? yen(Math.round(month.粗利益 / month.販売数)) : '—';
   if (metric === '仕入数' || metric === '販売数') return month?.[metric] ?? 0;
@@ -56,6 +61,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
   const [months, setMonths] = useState<DashboardMonth[]>([]);
   const [mine, setMine] = useState<DashboardPurchaserSummary | null>(null);
   const [purchaseForecast, setPurchaseForecast] = useState<Record<DashboardScope, number> | null>(null);
+  const [sellThrough, setSellThrough] = useState<DashboardSellThrough | null>(null);
   const [workload, setWorkload] = useState<DelivererWorkload[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ month: string; metric: MonthlyMetric; scope: DashboardScope } | null>(null);
@@ -65,6 +71,9 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
     let active = true;
     setError(null);
     setPurchaseForecast(null);
+    void fetchDashboardSellThrough()
+      .then(value => { if (active) setSellThrough(value); })
+      .catch(() => { if (active) setSellThrough(null); });
     void fetchDashboardPurchaseForecast(thisMonth)
       .then(value => { if (active) setPurchaseForecast(value); })
       .catch((e) => { if (active) setError(e instanceof Error ? e.message : String(e)); });
@@ -107,13 +116,23 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
               {summaries.map(({ scope, name, month, stock: inventory }) => <div className="dashboard-comparison-panel" key={scope}>
                 <h4>{name}</h4>
                 <div className="kpi-label">売上</div>
-                <div className="kpi-value">{yen(month?.売上)} <span className="dashboard-kpi-count">{month?.販売数 ?? 0} 点</span></div>
+                <div className="kpi-value dashboard-sales-line">
+                  <span>{yen(month?.売上)}</span>
+                  <span className="dashboard-metric-divider">/</span>
+                  <span>{month?.販売数 ?? 0}点</span>
+                  <span className="dashboard-metric-divider">/</span>
+                  <span className={(month?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}>{rate(month?.粗利益, month?.売上)}</span>
+                </div>
                 <div className="kpi-label">粗利益</div>
                 <div className={`kpi-value ${(month?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(month?.粗利益)}</div>
                 <div className="kpi-label">純利益</div>
                 <div className={`kpi-value ${(month?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>{yen(month?.純利益)}</div>
                 <div className="kpi-label">保有在庫</div>
-                <div className="kpi-value">{inventory?.現在庫数 ?? 0} 点</div>
+                <div className="kpi-value dashboard-sales-line" title="はけ率：31〜60日前に仕入れた商品のうち、仕入れから30日以内に売れた割合">
+                  <span>{inventory?.現在庫数 ?? 0}点</span>
+                  <span className="dashboard-metric-divider">/</span>
+                  <span>はけ率 {rate(sellThrough?.[scope].sold, sellThrough?.[scope].items)}</span>
+                </div>
               </div>)}
             </div>
           </div>
