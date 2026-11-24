@@ -4,7 +4,7 @@ const api=fs.readFileSync('apps/admin/src/api.ts','utf8');
 const between=(a,b)=>api.slice(api.indexOf(a),api.indexOf(b));
 const helper=between('export function targetCostFromPayout','export async function updateProductField');
 assert(helper.includes("functions.invoke<{ payout?: number }>('amazon-catalog-estimate'"),'Uses the Amazon fee estimate function');
-assert(helper.includes('payout <= 10000 ? 55 : payout <= 15000 ? 75 : 76'),'Same target rates as the catalog extension');
+assert(helper.includes('payout <= 10000 ? 77 : payout <= 50000 ? 80 : 83'),'Same target rates as the catalog extension');
 const field=between('export async function updateProductField','export async function updateProductDetails');
 assert(field.includes("field === 'list_price'")&&field.includes('parsed !== product.list_price')&&field.includes('amazonProductAmounts(product.asin, parsed)'),'Inline price edit calls the API only when the price changes');
 assert(!field.includes('estimateProductAmounts'),'Genre-rate estimate is no longer used');
@@ -13,6 +13,6 @@ assert(details.includes('amazonProductAmounts(asin, listPrice)')&&details.includ
 const create=api.slice(api.indexOf('export async function createProduct'));
 assert(create.slice(0,create.indexOf('\n}\n')).includes('amazonProductAmounts(asin, listPrice)'),'Admin registration uses the API');
 // targetCostFromPayout の境界
-const t=p=>Math.round(p*(p<=10000?55:p<=15000?75:76)/100);
-assert.deepEqual([t(10000),t(10001),t(15000),t(15001)],[5500,7501,11250,11401]);
+const t=p=>Math.round(p*(p<=10000?77:p<=50000?80:83)/100);
+assert.deepEqual([t(10000),t(10001),t(50000),t(50001)],[7700,8001,40000,41501]);
 console.log('PASS: price change recalculates payout/target with the Amazon fee API only when the price changes');

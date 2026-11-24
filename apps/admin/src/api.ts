@@ -879,10 +879,10 @@ export async function deleteProducts(ids: string[]): Promise<string[]> {
 /**
  * 商品リスト登録の拡張機能と同じ計算（2026-11-17 ユーザー指定）：
  * 振込想定金額 ＝ 販売想定金額 − Amazonの手数料見積もり − 500円（Edge Function amazon-catalog-estimate）。
- * 仕入れ目標金額 ＝ 振込想定金額 × 55%（1万円以下）／75%（1.5万円以下）／76%。
+ * 仕入れ目標金額 ＝ 振込想定金額 × 77%（1万円以下）／80%（5万円以下）／83%（2026-11-24 ユーザー指定：利益23%／20%／17%）。
  */
 export function targetCostFromPayout(payout: number): number {
-  const rate = payout <= 10000 ? 55 : payout <= 15000 ? 75 : 76;
+  const rate = payout <= 10000 ? 77 : payout <= 50000 ? 80 : 83;
   return Math.round(payout * rate / 100);
 }
 

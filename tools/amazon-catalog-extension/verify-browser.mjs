@@ -333,7 +333,7 @@ try {
   assert.equal(actual.request.shipping_size, '80');
   assert.equal(actual.feeRequests, 1);
   assert.equal(actual.request.payout_estimate, 16500);
-  assert.equal(actual.request.target_cost, 12540);
+  assert.equal(actual.request.target_cost, 13200);
   const registeredPrice = '#catalog-price-form [name="list_price"]';
   assert.match(await panelMarkup(registeredPrice), /Amazonの表示価格 18,900円/);
   assert.match(await panelMarkup('#save-catalog-price'), />保存<\/button>/);
@@ -350,7 +350,7 @@ try {
   await clickPanel('#save-catalog-price');
   await waitPanel('#catalog-price-status', /販売想定金額を保存しました/);
   // 価格を変えたらAmazonの手数料APIで振込想定・仕入れ目標も計算し直す（15,000円以下は75%）。
-  assert.deepEqual(await worker.evaluate(() => testLog.pricePatch), { list_price: 18500, payout_estimate: 15000, target_cost: 11250 });
+  assert.deepEqual(await worker.evaluate(() => testLog.pricePatch), { list_price: 18500, payout_estimate: 15000, target_cost: 12000 });
   assert.equal(await worker.evaluate(() => testLog.feeRequests), 2);
   assert.equal(await panelValue(registeredPrice), '18500');
   await worker.evaluate(() => { testLog.row.list_price = 20001; });

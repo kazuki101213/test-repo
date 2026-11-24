@@ -38,7 +38,7 @@ export function estimateProductAmounts(genre: string, price: number | null) {
 
   // Choose the target bracket before rounding the payout to whole yen.
   const payoutHundredths = BigInt(price) * BigInt(rate);
-  const targetRate = payoutHundredths <= 1_000_000n ? 55n : payoutHundredths <= 1_500_000n ? 75n : 76n;
+  const targetRate = payoutHundredths <= 1_000_000n ? 77n : payoutHundredths <= 5_000_000n ? 80n : 83n;
   return {
     payout_estimate: Number((payoutHundredths + 50n) / 100n),
     target_cost: Number((payoutHundredths * targetRate + 5000n) / 10000n),
