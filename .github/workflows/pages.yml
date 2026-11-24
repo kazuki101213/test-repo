@@ -33,7 +33,7 @@ jobs:
     runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy_retry.outputs.page_url }}
     env:
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -102,5 +102,16 @@ jobs:
           echo "artifact still not listed after 2 minutes"
       - uses: actions/deploy-pages@v4
         id: deploy
+        continue-on-error: true
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
+      # deploy-pages sometimes reports "Found 0 artifact(s)" right after the upload even though the
+      # artifact is already listed. Retry exactly once after a pause; a second failure fails the job.
+      - name: Pause before retrying the Pages deployment
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 45
+      - uses: actions/deploy-pages@v4
+        id: deploy_retry
+        if: steps.deploy.outcome == 'failure'
         with:
           artifact_name: github-pages-${{ github.run_attempt }}
