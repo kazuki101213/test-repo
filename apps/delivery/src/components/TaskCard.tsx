@@ -1,5 +1,5 @@
 import { deliveryWorkflowButtons, salesChannelLabel } from '@bussan/shared';
-import { lazy, Suspense, useState, type SyntheticEvent, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useState, type SyntheticEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { jpDate, canViewDeliveryAssignee, productModelText, inventorySerial, isSeparateAccessory, inventoryBoxColor, inventoryStaffStyle, inventorySiteStyle, inventoryStatusStyle, inventoryStatusText, staffDisplayName, accessoryDisplayLabel, noticeProductUrl } from '@bussan/shared';
 import type { DeliveryInventoryRow, DeliveryTask, Staff, ProductPanel } from '@bussan/shared';
 import TaskDetail from '../pages/TaskDetail';
@@ -114,7 +114,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   </div>
  </>;
  const mainAccessory=task.is_accessory;
- let detail;
+ let detail:ReactNode;
  if(operate(selected)&&expandedId){
   if(panel==='selfShipping'){
    if(deliveryWorkflowButtons(selected).some(button=>button.key==='selfShipping')){
