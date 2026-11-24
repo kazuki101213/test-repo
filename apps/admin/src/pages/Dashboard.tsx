@@ -10,6 +10,7 @@ import InvoiceTasks from '../components/InvoiceTasks';
 import MalfunctionTasks from '../components/MalfunctionTasks';
 import SpareShippingTasks from '../components/SpareShippingTasks';
 import PushSettings from '../components/PushSettings';
+import AmazonPayoutCard from '../components/AmazonPayoutCard';
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス', '石川秀樹']);
 const monthlyMetrics = ['仕入数', '仕入金額', '販売数', '売上', '振込金額', '粗利益', '経費', '純利益', '平均利益単価'] as const;
@@ -116,6 +117,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
               </div>)}
             </div>
           </div>
+          {isAdmin && <AmazonPayoutCard />}
           <div className="card purchase-summary-card">
             <h3>今月仕入</h3>
             <div className="dashboard-comparison">

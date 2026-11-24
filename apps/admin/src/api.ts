@@ -1147,3 +1147,19 @@ export async function fetchProductSaleSummaries(products:Pick<Product,'id'>[]):P
  }
  return rows;
 }
+
+export type AmazonPayoutLine = {
+  serial: string | null; product: string | null; sku: string | null; type: string | null; description: string | null;
+  owner_code: string; owner_name: string | null; amount: number | null;
+};
+export type AmazonPayout = {
+  account: 'Amazon1' | 'Amazon2'; group_id: string; fund_transfer_status: string | null; fund_transfer_date: string | null;
+  group_end: string | null; total: number | null; line_total: number; lines: AmazonPayoutLine[];
+};
+export type AmazonPayoutSummary = { owners: { code: string; name: string }[]; payouts: AmazonPayout[] };
+
+export async function fetchAmazonPayoutSummary(): Promise<AmazonPayoutSummary> {
+  const { data, error } = await getSupabase().rpc('read_amazon_payout_summary');
+  if (error) throw new Error(error.code === '42501' ? 'Amazonの振込は管理者だけが見られます。' : 'Amazonの振込を読み込めませんでした。時間をおいて再読み込みしてください。');
+  return data as AmazonPayoutSummary;
+}

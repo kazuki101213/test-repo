@@ -352,3 +352,25 @@
  .layout .inventory-controls .inventory-registration-actions .amazon-sales-update > .btn { justify-self:start; }
  .layout .inventory-controls .amazon-sales-update > :is(.sub,.error,.amazon-listing-status) { grid-column:1 / -1; }
 }
+
+/* 2026-11-24: Amazon振込を今月販売の下に置く（管理者のダッシュボード）。 */
+@media screen and (min-width:1024px) {
+ .layout .management-dashboard .invoice-tasks { grid-row:1 / 5; }
+ .layout .management-dashboard .payout-summary-card { grid-column:5 / 9; grid-row:3 / 5; }
+ .layout .management-dashboard .daily-sales { grid-column:9 / -1; grid-row:3 / 5; }
+ .layout .management-dashboard .workload-card { grid-row:5; }
+ .layout .management-dashboard > .monthly-trend-card { grid-row:6; }
+}
+.payout-summary-card { min-width:0; }
+.payout-account { display:flex; justify-content:space-between; align-items:baseline; gap:6px; margin-top:6px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.payout-account b { color:var(--text); font-weight:600; }
+.payout-lines { margin-top:12px; color:var(--muted); font-size:12px; }
+.payout-lines summary { cursor:pointer; color:var(--accent); }
+.payout-head { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; margin:10px 0 4px; color:var(--text); font-weight:600; }
+.payout-head .payout-match { color:var(--ok); font-weight:400; }
+.payout-head .payout-mismatch { color:var(--danger); font-weight:400; }
+.payout-table { border:0; }
+.payout-table table { width:100%; font-size:12px; }
+.payout-table :is(th,td) { padding:5px 4px; }
+.payout-table td.payout-negative { color:var(--danger); }
+.payout-na { margin:8px 0 0; }

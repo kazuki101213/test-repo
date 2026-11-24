@@ -41,6 +41,10 @@ verify_jwt = false
 [functions.amazon-fba-returns]
 verify_jwt = false
 
+# Payout groups (read-only). Same private Vault token as the Amazon daily sync.
+[functions.amazon-payouts]
+verify_jwt = false
+
 # Auth.getUser + app.is_admin; exact item/SKU/account checks before price updates.
 [functions.amazon-listing-price]
 verify_jwt = false
