@@ -249,7 +249,7 @@ export default function Products({ me }: { me: Staff }) {
             <tr>
               <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th><th>色</th><th>付属品・状態</th>
               {!ownerFilter && <th>管理者</th>}<th>ジャンル</th><th>回転</th><th>Amazon販売金額</th>
-              <th className="num">販売想定金額</th><th className="num">振込想定金額</th><th className="num">利益率</th>
+              <th className="num">販売想定金額</th><th className="num">振込想定金額</th><th className="num">利益率</th><th className="num">利益想定金額</th>
               <th className="num">仕入れ目標金額</th><th>実績</th><th>サイズ</th><th aria-label="選択" />
             </tr>
           </thead>
@@ -276,7 +276,9 @@ export default function Products({ me }: { me: Staff }) {
                 })()}</td>
                 <td className="num">{cell(p, 'list_price', yen(p.list_price))}</td>
                 <td className="num">{cell(p, 'payout_estimate', yen(p.payout_estimate))}</td>
-                <td className="num">{cell(p, 'target_profit_rate', p.target_profit_rate != null ? p.target_profit_rate + '%' : p.payout_estimate != null ? <span className="sub">ルール({ruleProfitRate(p.payout_estimate)}%)</span> : '—')}</td>
+                <td className="num">{cell(p, 'target_profit_rate', p.target_profit_rate != null ? p.target_profit_rate + '%' : p.payout_estimate != null ? ruleProfitRate(p.payout_estimate) + '%' : '—')}</td>
+                {/* 利益想定金額 ＝ 振込想定金額 − 仕入れ目標金額（2026-11-24 ユーザー指定） */}
+                <td className="num">{p.payout_estimate != null && p.target_cost != null ? yen(p.payout_estimate - p.target_cost) : '—'}</td>
                 <td className="num" style={{ color: 'var(--accent)' }}>{cell(p, 'target_cost', yen(p.target_cost))}</td>
                 <td>{cell(p, 'has_sold_before', p.has_sold_before ? '有' : '無')}</td>
                 <td><button type="button" className="inventory-cell-edit" title="クリックしてサイズ区分・配送サイズを変更" onClick={() => startSizeEdit(p)}>{p.shipping_category ? `${p.shipping_category} ${p.shipping_size ? shippingSizeLabel(p.shipping_size) : '未設定'}` : p.shipping_size ? shippingSizeLabel(p.shipping_size) : '未設定'}</button></td>
