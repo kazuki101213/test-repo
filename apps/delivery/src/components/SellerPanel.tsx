@@ -244,12 +244,9 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     <label><span>{order<0?'出品しない':`${order+1}枚目`}</span><img src={photo.url} alt="出品写真" loading="lazy"/><input type="checkbox" aria-label={order<0?'この写真を出品に含める':`${order+1}枚目を出品に含める`} checked={order>=0} disabled={disabled||order<0&&selected.length>=(amazonListing?6:10)} onChange={event=>{photosEdited.current=true;setSelected(current=>event.target.checked?[...current,photo.id]:current.filter(id=>id!==photo.id));request.current=crypto.randomUUID();}}/></label>
     {order>=0&&<div className="seller-photo-order"><button type="button" className="btn" aria-label={`写真${order+1}を前へ`} title="前へ" disabled={disabled||order===0} onClick={()=>movePhoto(photo.id,-1)}>←</button><button type="button" className="btn" aria-label={`写真${order+1}を後へ`} title="後へ" disabled={disabled||order===selected.length-1} onClick={()=>movePhoto(photo.id,1)}>→</button></div>}
    </div>;})}</div></>;
- // 閉じるは、どの販売状態でもパネルの先頭（カードの「商品写真」ボタンのすぐ下の左）に置く（2026-11-24 ユーザー指定）。
- const closeButton=<button type="button" className="btn ghost seller-close" disabled={mode==='listing'&&busy} onClick={onClose}>閉じる</button>;
  const latestMessages=operations.find(op=>op.kind==='message_sync'&&op.status==='succeeded'&&op.trade_key===context?.listing?.trade_key)?.result.messages;
 
  return <section className={`task-detail-inline seller-panel${mode==='listing'&&!amazonListing?' seller-listing-layout':''}`} aria-label={`${task.sku}の${mode==='listing'?'出品':mode==='shipping'?'発送':'取引メッセージ'}`}>
-  {closeButton}
   {error&&!(amazonListing&&draft&&descriptionSource)&&<p className="error" role="alert">{error}</p>}
   {mode==='listing'&&context&&context.photo_review_approved!==true&&<p role="status">管理アプリで商品写真の承認が必要です。</p>}
   {!draft?<p>読み込み中…</p>:mode==='listing'?<>

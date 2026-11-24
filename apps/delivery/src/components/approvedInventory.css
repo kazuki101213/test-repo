@@ -242,5 +242,17 @@
 .app .task-card.approved-delivery-card[data-expanded="true"] > .approved-delivery-body { padding-bottom:0; }
 .app .task-card.approved-delivery-card > .task-detail-inline { margin-top:0; padding-top:0; }
 .app .task-card.approved-delivery-card > .task-detail-inline.amazon-self-shipping { border-top:0; padding-left:0; padding-right:0; }
-.app .task-card.approved-delivery-card > .task-detail-inline > .btn.seller-close:first-child { margin:0 0 4px 10px; }
+.app .task-card.approved-delivery-card > .delivery-detail-close-row { padding:0 10px; }
+.app .task-card.approved-delivery-card > .delivery-detail-close-row > .btn.seller-close { margin:0; }
+@media(min-width:1280px) {
+ /* PC版：閉じるは操作ボタンの列（右端）の左にそろえ、ボタンのすぐ下に置く */
+ .app .task-card.approved-delivery-card > .delivery-detail-close-row { display:grid; grid-template-columns:var(--delivery-main-column) calc(var(--delivery-bundled-gap) - 2 * var(--delivery-column-gap)) var(--delivery-bundled-column) var(--delivery-action-column); column-gap:var(--delivery-column-gap); padding:0 12px; margin-top:-12px; }
+ .app .task-card.approved-delivery-card > .delivery-detail-close-row > .btn.seller-close { grid-column:-2; justify-self:start; }
+ /* PC版：操作ボタンは縦並び。1列3つまでで次の列へ回し、行の高さ（112px）を変えない */
+ .app .task-card.approved-delivery-card .delivery-record-actions .workflow-buttons { flex-direction:column; flex-wrap:wrap; align-content:flex-start; align-items:flex-start; box-sizing:content-box; max-height:96px; }
+ /* 入力欄（動作不良の報告など）の閉じるも操作ボタンの列にそろえる */
+ .app .task-card.approved-delivery-card .approved-delivery-body .delivery-record-actions .workflow-controls .workflow-action-form { display:grid; grid-template-columns:subgrid; column-gap:normal!important; row-gap:8px; }
+ .app .task-card.approved-delivery-card .delivery-record-actions .workflow-action-form > * { grid-column:1 / -1; }
+ .app .task-card.approved-delivery-card .delivery-record-actions .workflow-action-form > .btn.seller-close:first-child { grid-column:-2; justify-self:start; margin:-8px 0 0; }
+}
 .app .task-card .workflow-action-form > .btn.seller-close:first-child { grid-column:1 / -1; justify-self:start; flex:none; min-width:max-content; margin:0 100% 0 0; }
