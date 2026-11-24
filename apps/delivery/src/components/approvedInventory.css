@@ -238,3 +238,8 @@
 
 /* 閉じるは操作ボタンのすぐ下の左に置き、横いっぱいに広げない（2026-11-24 ユーザー指定）。 */
 .app .seller-close { justify-self:start; align-self:start; width:auto; }
+/* 閉じるは「商品写真」ボタンのすぐ下の左に、隙間を詰めて置く（2026-11-24 ユーザー指定）。Amazon自己発送の区切り線は出さない。 */
+.app .task-card.approved-delivery-card[data-expanded="true"] > .approved-delivery-body { padding-bottom:0; }
+.app .task-card.approved-delivery-card > .task-detail-inline:is(.seller-panel,.amazon-self-shipping) { margin-top:0; padding-top:0; }
+.app .task-card.approved-delivery-card > .task-detail-inline.amazon-self-shipping { border-top:0; padding-left:0; padding-right:0; }
+.app .task-card.approved-delivery-card > .task-detail-inline > .btn.seller-close:first-child { margin:0 0 4px 10px; }
