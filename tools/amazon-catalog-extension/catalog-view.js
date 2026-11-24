@@ -9,6 +9,7 @@ export function mountCatalogView(root) {
   const fields = form.elements;
   const priceForm = $('#catalog-price-form');
   const priceInput = priceForm.elements.list_price;
+  const rateInput = priceForm.elements.target_profit_rate;
   const savePrice = $('#save-catalog-price');
   const loginLink = $('#catalog-login');
   const format = new Intl.NumberFormat('ja-JP');
@@ -70,6 +71,7 @@ export function mountCatalogView(root) {
     catalogItem = item;
     priceForm.hidden = !item?.is_active;
     priceInput.value = item?.list_price ?? product.amazonPrice ?? '';
+    rateInput.value = item?.target_profit_rate ?? '';
     $('#catalog-price-status').textContent = '';
     $('#catalog-message').textContent = '';
     const status = $('#catalog-status');
@@ -162,16 +164,17 @@ export function mountCatalogView(root) {
     event.preventDefault();
     if (!catalogItem?.is_active || checking || saving) return;
     saving = true;
-    const controls = [priceInput, savePrice];
+    const controls = [priceInput, rateInput, savePrice];
     for (const control of controls) control.disabled = true;
     const status = $('#catalog-price-status');
     status.textContent = '保存しています…';
     try {
       const item = await send('catalog-update-price', {
         asin: product.asin, id: catalogItem.id, userId, previousPrice: catalogItem.list_price, price: priceInput.value,
+        previousRate: catalogItem.target_profit_rate ?? null, rate: rateInput.value, payout: catalogItem.payout_estimate ?? null,
       });
       showCatalog(item);
-      status.textContent = '商品リストの販売想定金額を保存しました。';
+      status.textContent = '商品リストの販売想定金額・利益率を保存しました。';
     } catch (error) {
       status.textContent = error.message;
     } finally {

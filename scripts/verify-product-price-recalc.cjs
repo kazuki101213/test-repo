@@ -2,17 +2,22 @@
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const api=fs.readFileSync('apps/admin/src/api.ts','utf8');
 const between=(a,b)=>api.slice(api.indexOf(a),api.indexOf(b));
-const helper=between('export function targetCostFromPayout','export async function updateProductField');
+const helper=between('export function ruleProfitRate','export async function updateProductField');
 assert(helper.includes("functions.invoke<{ payout?: number }>('amazon-catalog-estimate'"),'Uses the Amazon fee estimate function');
-assert(helper.includes('payout <= 10000 ? 77 : payout <= 50000 ? 80 : 83'),'Same target rates as the catalog extension');
+assert(helper.includes('payout <= 10000 ? 23 : payout <= 50000 ? 20 : 17'),'Same rule profit rates as the catalog extension');
+assert(helper.includes('profitRate ?? ruleProfitRate(payout)'),'An entered profit rate wins over the rule');
+const ext=fs.readFileSync('tools/amazon-catalog-extension/catalog.js','utf8');
+assert(ext.includes('payout <= 10000 ? 23 : payout <= 50000 ? 20 : 17')&&ext.includes('profitRate ?? '),'Extension uses the same rule and entered rate');
 const field=between('export async function updateProductField','export async function updateProductDetails');
-assert(field.includes("field === 'list_price'")&&field.includes('parsed !== product.list_price')&&field.includes('amazonProductAmounts(product.asin, parsed)'),'Inline price edit calls the API only when the price changes');
+assert(field.includes("field === 'target_profit_rate' && product.payout_estimate !== null"),'Changing the profit rate recalculates the target');
+assert(field.includes("field === 'list_price'")&&field.includes('parsed !== product.list_price')&&field.includes('amazonProductAmounts(product.asin, parsed, product.target_profit_rate'),'Inline price edit calls the API only when the price changes');
 assert(!field.includes('estimateProductAmounts'),'Genre-rate estimate is no longer used');
 const details=between('export async function updateProductDetails','export async function createProduct');
-assert(details.includes('amazonProductAmounts(asin, listPrice)')&&details.includes('payout === (product.payout_estimate ?? null)'),'Full edit uses the API unless amounts were edited by hand');
+assert(details.includes('amazonProductAmounts(asin, listPrice, profitRate)')&&details.includes('payout === (product.payout_estimate ?? null)'),'Full edit uses the API unless amounts were edited by hand');
 const create=api.slice(api.indexOf('export async function createProduct'));
-assert(create.slice(0,create.indexOf('\n}\n')).includes('amazonProductAmounts(asin, listPrice)'),'Admin registration uses the API');
+assert(create.slice(0,create.indexOf('\n}\n')).includes('amazonProductAmounts(asin, listPrice, profitRate)'),'Admin registration uses the API');
 // targetCostFromPayout の境界
-const t=p=>Math.round(p*(p<=10000?77:p<=50000?80:83)/100);
+const t=(p,r=null)=>Math.round(p*(100-(r??(p<=10000?23:p<=50000?20:17)))/100);
+assert.equal(t(20000,15),17000);
 assert.deepEqual([t(10000),t(10001),t(50000),t(50001)],[7700,8001,40000,41501]);
 console.log('PASS: price change recalculates payout/target with the Amazon fee API only when the price changes');
