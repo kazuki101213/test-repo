@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { staffDisplayName, yen } from '@bussan/shared';
-import type { Product, Staff } from '@bussan/shared';
-import { createProduct, deleteProducts, fetchProductCatalogOwners, fetchFurimaWatchStock, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory, ruleProfitRate } from '../api';
+import type { Product, ProductOption, Staff } from '@bussan/shared';
+import { createProduct, deleteProductOptions, deleteProducts, updateProductOption, type ProductOptionField, fetchProductCatalogOwners, fetchFurimaWatchStock, fetchProductSaleHistory, fetchProductSaleSummaries, type ProductCatalogOwner, type ProductSaleSummary, fetchProducts, updateProductField, updateProductDetails, updateProductShippingSettings, type ProductDetailsInput, type ProductField, type ProductRegistrationInput, type ProductSaleHistory, ruleProfitRate } from '../api';
 import { downloadCsv } from '../csv';
 import { errorMessage } from '../errorMessage';
 import { mercariSearchUrl } from '../mercariSearch';
@@ -14,8 +14,12 @@ import './ProductSelection.css';
 
 const emptyProduct: ProductRegistrationInput = {
   asin: '', model_no: '', maker: '', genre: '', turnover: '', list_price: '', target_profit_rate: '',
-  shipping_category: '', shipping_size: '',
+  shipping_category: '', shipping_size: '', color: '', variant_label: '',
 };
+/** 番号の表示。同じ番号に通りが2つ以上あれば「352-2」、1つだけなら「352」。 */
+const productNumberLabel = (productNo: number | null | undefined, variantNo: number | null | undefined, variants: number) =>
+  productNo == null ? '—' : variants > 1 ? `${productNo}-${variantNo ?? 1}` : String(productNo);
+const activeOptions = (product: Product) => (product.product_options ?? []).filter(option => option.is_active).sort((a, b) => a.variant_no - b.variant_no);
 const shippingSizeLabel = (size: string) => /^\d+$/.test(size) ? `${size}サイズ` : size;
 
 export default function Products({ me }: { me: Staff }) {
@@ -34,6 +38,7 @@ export default function Products({ me }: { me: Staff }) {
   const [revision, setRevision] = useState(0);
   const [newProduct, setNewProduct] = useState(emptyProduct);
   const [editing, setEditing] = useState<{ product: Product; field: ProductField; value: string } | null>(null);
+  const [optionEditing, setOptionEditing] = useState<{ option: ProductOption; asin: string; field: ProductOptionField; value: string } | null>(null);
   const [fullEditProduct, setFullEditProduct] = useState<Product | null>(null);
   const [fullEditDraft, setFullEditDraft] = useState<ProductDetailsInput | null>(null);
   const [sizeEditProduct, setSizeEditProduct] = useState<Product | null>(null);
@@ -94,6 +99,14 @@ export default function Products({ me }: { me: Staff }) {
     finally { setBusy(false); }
   }
 
+  async function saveOptionEdit() {
+    if (!optionEditing) return;
+    setBusy(true); setError(null);
+    try { await updateProductOption(optionEditing.option, optionEditing.asin, optionEditing.field, optionEditing.value); setOptionEditing(null); setRevision(n => n + 1); }
+    catch (e) { setError(errorMessage(e)); }
+    finally { setBusy(false); }
+  }
+
   async function addProduct() {
     setBusy(true); setError(null);
     try {
@@ -147,7 +160,7 @@ export default function Products({ me }: { me: Staff }) {
       const csvRows = furimaWatchCsvRows(rows, await fetchFurimaWatchStock());
       if (!csvRows.length) throw new Error('型番と仕入れ目標金額が設定された商品がありません。');
       downloadCsv('furimawatch.csv', csvRows);
-      const skipped = rows.length - csvRows.length;
+      const skipped = rows.filter(row => !row.model_no?.trim() || !(row.target_cost && row.target_cost > 0)).length;
       if (skipped) setMessage(`型番または仕入れ目標金額が未設定の商品${skipped}件を除いて出力しました。`);
     } catch (cause) {
       setExportError('フリマウォッチCSVを出力できませんでした。' + (cause instanceof Error ? cause.message : String(cause)));
@@ -168,13 +181,24 @@ export default function Products({ me }: { me: Staff }) {
   const ownerNames = new Map(owners.map(owner => [owner.id, staffDisplayName(owner)]));
   const ownerOption = (owner: ProductCatalogOwner) => <option key={owner.id} value={owner.id}>{ownerNames.get(owner.id)}</option>;
   const selectedRows = rows.filter(row => selected.has(row.id));
+  const selectedOptions = rows.flatMap(row => activeOptions(row).filter(option => selected.has('opt:' + option.id)).map(option => ({ row, option })));
+  const groupSizes = new Map<number, number>();
+  for (const row of rows) if (row.product_no != null) groupSizes.set(row.product_no, (groupSizes.get(row.product_no) ?? 0) + 1 + activeOptions(row).length);
+  const variantsOf = (row: Product) => Math.max(groupSizes.get(row.product_no ?? -1) ?? 1, (row.variant_no ?? 1) > 1 ? 2 : 1);
   function askDelete() {
-    if (!selectedRows.length || loading || busy || deleting) return;
+    if ((!selectedRows.length && !selectedOptions.length) || loading || busy || deleting) return;
     let remaining = selectedRows.map(row => row.id);
-    confirmation.ask(`商品リスト ${remaining.length}件の削除：${selectedRows.map(row => `${row.model_no || row.asin}（${row.asin}）`).join('、')}`, async () => {
+    const optionIds = selectedOptions.map(({ option }) => option.id);
+    const names = [...selectedRows.map(row => `${row.model_no || row.asin}（${row.asin}）`), ...selectedOptions.map(({ row, option }) => `${row.model_no || row.asin} ${option.label}`)];
+    confirmation.ask(`商品リスト ${names.length}件の削除：${names.join('、')}`, async () => {
       if (deleteLock.current) return;
       deleteLock.current = true; setDeleting(true); setError(null); setMessage('');
       try {
+        if (optionIds.length) {
+          const removed = new Set(await deleteProductOptions(optionIds));
+          setSelected(current => new Set([...current].filter(id => !removed.has(id.replace(/^opt:/, '')))));
+          if (removed.size < optionIds.length) throw new Error(`${optionIds.length - removed.size}件は削除できません。すでに削除済みか、削除権限がありません。`);
+        }
         const deleted = new Set(await deleteProducts(remaining));
         setRows(current => current.filter(row => !deleted.has(row.id)));
         setSelected(current => new Set([...current].filter(id => !deleted.has(id))));
@@ -187,7 +211,7 @@ export default function Products({ me }: { me: Staff }) {
   }
 
   const fieldLabels: Record<ProductField, string> = {
-    product_no: '品番', asin: 'ASIN', model_no: '型番', maker: 'メーカー', genre: 'ジャンル',
+    product_no: '品番', asin: 'ASIN', model_no: '型番', maker: 'メーカー', genre: 'ジャンル', color: '色', variant_label: '付属品・状態',
     turnover: '回転', list_price: '販売想定金額', payout_estimate: '振込想定金額', target_profit_rate: '利益率（%）', target_cost: '仕入れ目標金額',
     has_sold_before: '実績',
   };
@@ -210,7 +234,7 @@ export default function Products({ me }: { me: Staff }) {
         </select>
         <input type="search" aria-label="商品リストを検索" placeholder="検索" value={query} disabled={deleting || confirmation.pending} onChange={event => { setSelected(new Set()); setQuery(event.target.value); }} />
         <button type="button" className="btn" title="フリマウォッチ用CSV" disabled={loading || exporting || deleting || !rows.length} onClick={() => void exportFurimaWatchCsv()}>{exporting ? '出力中…' : 'CSV'}</button>
-        <button type="button" className="btn" disabled={loading || busy || deleting || confirmation.pending || !selectedRows.length} onClick={askDelete}>削除</button>
+        <button type="button" className="btn" disabled={loading || busy || deleting || confirmation.pending || (!selectedRows.length && !selectedOptions.length)} onClick={askDelete}>削除</button>
         <span className="sub product-result-count">{rows.length} 件</span>
       </div>
 
@@ -223,19 +247,21 @@ export default function Products({ me }: { me: Staff }) {
         <table className="products-table product-catalog-table" aria-label="商品リスト">
           <thead>
             <tr>
-              <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th>
+              <th className="num">品番</th><th>ASIN</th><th>型番</th><th>メーカー</th><th>色</th><th>付属品・状態</th>
               {!ownerFilter && <th>管理者</th>}<th>ジャンル</th><th>回転</th><th>Amazon販売金額</th>
               <th className="num">販売想定金額</th><th className="num">振込想定金額</th><th className="num">利益率</th><th className="num">利益想定金額</th>
               <th className="num">仕入れ目標金額</th><th>実績</th><th>サイズ</th><th aria-label="選択" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => (
-              <tr key={p.id}>
-                <td className="num"><button type="button" className="inventory-cell-edit" title="クリックして商品情報全体を編集" onClick={() => startFullEdit(p)}>{String(p.product_no ?? '—')}</button></td>
+            {rows.map((p) => (<Fragment key={p.id}>
+              <tr>
+                <td className="num"><button type="button" className="inventory-cell-edit" title="クリックして商品情報全体を編集" onClick={() => startFullEdit(p)}>{productNumberLabel(p.product_no, p.variant_no, variantsOf(p))}</button></td>
                 <td><span className="reference-value">{cell(p, 'asin', p.asin)}<a className="inline-reference-link" href={p.amazon_url} target="_blank" rel="noreferrer" aria-label={`${p.asin}をAmazonで開く`}><span className="external-link-arrow" aria-hidden="true" /></a></span></td>
                 <td>{p.model_no?.trim() ? <span className="reference-value">{cell(p, 'model_no', p.model_no)}<a className="inline-reference-link" href={mercariSearchUrl(p.model_no)} target="_blank" rel="noreferrer" aria-label={`${p.model_no}をメルカリで検索`}><span className="external-link-arrow" aria-hidden="true" /></a></span> : cell(p, 'model_no', '—')}</td>
                 <td>{cell(p, 'maker', p.maker ?? '—')}</td>
+                <td>{cell(p, 'color', p.color?.trim() || '—')}</td>
+                <td>{cell(p, 'variant_label', p.variant_label?.trim() || '—')}</td>
                 {!ownerFilter && <td>{ownerNames.get(p.owner_staff_id ?? '') ?? '—'}</td>}
                 <td>{cell(p, 'genre', p.genre ?? '—')}</td>
                 <td>{cell(p, 'turnover', p.turnover ?? '—')}</td>
@@ -258,7 +284,24 @@ export default function Products({ me }: { me: Staff }) {
                 <td><button type="button" className="inventory-cell-edit" title="クリックしてサイズ区分・配送サイズを変更" onClick={() => startSizeEdit(p)}>{p.shipping_category ? `${p.shipping_category} ${p.shipping_size ? shippingSizeLabel(p.shipping_size) : '未設定'}` : p.shipping_size ? shippingSizeLabel(p.shipping_size) : '未設定'}</button></td>
                 <td><label className="expense-selection"><input type="checkbox" aria-label={`${p.model_no || p.asin}（${p.asin}）を選択`} checked={selected.has(p.id)} disabled={loading || busy || deleting || confirmation.pending} onChange={event => { const checked = event.target.checked; setSelected(current => { const next = new Set(current); if (checked) next.add(p.id); else next.delete(p.id); return next; }); }} /></label></td>
               </tr>
-            ))}
+              {activeOptions(p).map(option => {
+                const editOption = (field: ProductOptionField) => setOptionEditing({ option, asin: p.asin, field, value: String(option[field] ?? '') });
+                return <tr key={option.id} className="product-option-row">
+                  <td className="num">{productNumberLabel(p.product_no, option.variant_no, 2)}</td>
+                  <td className="sub">{p.asin}</td><td className="sub">{p.model_no ?? ''}</td><td />
+                  <td className="sub">{p.color?.trim() || ''}</td>
+                  <td><button className="inventory-cell-edit" onClick={() => editOption('label')}>{option.label}</button></td>
+                  {!ownerFilter && <td />}<td /><td /><td />
+                  <td className="num"><button className="inventory-cell-edit" onClick={() => editOption('list_price')}>{yen(option.list_price)}</button></td>
+                  <td className="num">{yen(option.payout_estimate)}</td>
+                  <td className="num"><button className="inventory-cell-edit" onClick={() => editOption('target_profit_rate')}>{option.target_profit_rate != null ? option.target_profit_rate + '%' : option.payout_estimate != null ? ruleProfitRate(option.payout_estimate) + '%' : '—'}</button></td>
+                  <td className="num">{option.payout_estimate != null && option.target_cost != null ? yen(option.payout_estimate - option.target_cost) : '—'}</td>
+                  <td className="num" style={{ color: 'var(--accent)' }}>{yen(option.target_cost)}</td>
+                  <td /><td />
+                  <td><label className="expense-selection"><input type="checkbox" aria-label={`${p.model_no || p.asin} ${option.label}を選択`} checked={selected.has('opt:' + option.id)} disabled={loading || busy || deleting || confirmation.pending} onChange={event => { const checked = event.target.checked; setSelected(current => { const next = new Set(current); if (checked) next.add('opt:' + option.id); else next.delete('opt:' + option.id); return next; }); }} /></label></td>
+                </tr>;
+              })}
+            </Fragment>))}
           </tbody>
         </table>
       </div>
@@ -266,7 +309,7 @@ export default function Products({ me }: { me: Staff }) {
       <form className="card product-entry registration-sidebar registration-form" aria-label="商品登録" onSubmit={event => { event.preventDefault(); if (!busy) void addProduct(); }}>
         <div className="toolbar"><h2>商品登録</h2></div>
         <fieldset className="product-registration-fields registration-fields" disabled={busy}>
-          {([['asin', 'ASIN'], ['model_no', '型番'], ['maker', 'メーカー']] as const).map(([field, label]) =>
+          {([['asin', 'ASIN'], ['model_no', '型番'], ['maker', 'メーカー'], ['color', '色（任意）'], ['variant_label', '付属品・状態（任意）']] as const).map(([field, label]) =>
             <label className="field" key={field}><span>{label}</span><input value={newProduct[field]} onChange={e => setNewProduct(current => ({ ...current, [field]: e.target.value }))} /></label>)}
           <label className="field"><span>ジャンル</span><select value={newProduct.genre} onChange={e => setNewProduct(current => ({ ...current, genre: e.target.value }))}>
             <option value="">未設定</option>{PRODUCT_GENRES.map(genre => <option key={genre}>{genre}</option>)}
@@ -319,6 +362,14 @@ export default function Products({ me }: { me: Staff }) {
         </label>
         {error && <div className="error" role="alert">{error}</div>}
         <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setEditing(null)}>閉じる</button></div>
+      </div></div>}
+      {optionEditing && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="通りの項目を編集"><div className="card inventory-comment-panel">
+        <h3>{optionEditing.field === 'label' ? '付属品・状態' : optionEditing.field === 'list_price' ? '販売想定金額' : '利益率（%）'}を編集</h3>
+        <label className="field"><span>{optionEditing.field === 'label' ? '付属品・状態' : optionEditing.field === 'list_price' ? '販売想定金額' : '利益率（%）'}</span>
+          <input autoFocus type={optionEditing.field === 'label' ? 'text' : 'number'} min={0} max={optionEditing.field === 'target_profit_rate' ? 99 : undefined} placeholder={optionEditing.field === 'target_profit_rate' ? '空欄＝ルール' : undefined} value={optionEditing.value} onChange={e => setOptionEditing(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveOptionEdit(); }} />
+        </label>
+        {error && <div className="error" role="alert">{error}</div>}
+        <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveOptionEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setOptionEditing(null)}>閉じる</button></div>
       </div></div>}
       {historyProduct && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="過去の販売履歴">
         <div className="card inventory-comment-panel product-history-panel">

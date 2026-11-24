@@ -57,6 +57,27 @@ export interface Product {
   amazon_url: string;
   memo: string | null;
   is_active: boolean;
+  /** 色（任意） */
+  color?: string | null;
+  /** 付属品・状態（任意） */
+  variant_label?: string | null;
+  /** 同じ番号の中の枝番（1から） */
+  variant_no?: number;
+  /** 同じASINで付属品・状態が違う通り */
+  product_options?: ProductOption[];
+}
+
+/** app.product_options：同じASINで付属品・状態が違う通り（金額は通りごと） */
+export interface ProductOption {
+  id: string;
+  product_id: string;
+  variant_no: number;
+  label: string;
+  list_price: number | null;
+  payout_estimate: number | null;
+  target_cost: number | null;
+  target_profit_rate: number | null;
+  is_active: boolean;
 }
 
 /** app.items の書き込み用（SKU は DB 側で採番されるので任意） */

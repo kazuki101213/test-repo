@@ -6,7 +6,7 @@
   transform: translateY(-50%) !important;
   z-index: 2147483647 !important;
   display: block !important;
-  width: min(375px, calc(100vw - 24px)) !important;
+  width: min(268px, calc(100vw - 24px)) !important;
   color-scheme: light;
   font: 13px/1.45 system-ui, "Yu Gothic UI", sans-serif;
   color: #172a23;
@@ -69,3 +69,40 @@ header h1::before {
 
 header h1 { min-width: 0; flex-wrap: wrap; }
 .panel-controls { flex-shrink: 0; }
+
+/* 2026-11-24 小さく：見出しの文字は欄の中の薄い字（placeholder）だけにし、欄を横に並べる。 */
+:host { font-size: 12px; }
+#catalog-panel-body { padding: 2px 8px 8px; }
+header { padding: 4px 8px; }
+#catalog-destination { margin: 0 0 2px; text-align: right; white-space: nowrap; }
+#catalog-destination:empty { display: none; }
+.fields-twelve { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }
+.fields-twelve .span-6 { grid-column: span 6; }
+.fields-twelve .span-3 { grid-column: span 3; }
+#registration label { font-size: 0; gap: 0; }
+#registration label > * { font-size: 12px; }
+#registration input, #registration select, .compact-fields input { min-height: 24px; padding: 2px 4px; }
+#registration[data-mode="group"] .base-field { display: none; }
+#registration[data-mode="group"] .color-field { grid-column: span 3; }
+#registration[data-mode="group"] .label-field { grid-column: span 4; }
+#registration[data-mode="group"] .money-field { grid-column: span 3; }
+#registration[data-mode="group"] .rate-field { grid-column: span 2; }
+#registration .label-field { grid-column: span 6; }
+#register { width: auto; margin: 4px 0 0 auto; display: block; padding: 2px 10px; }
+.compact-fields { display: flex; gap: 3px; margin-top: 4px; }
+.compact-fields input { min-width: 0; flex: 1 1 auto; }
+.compact-fields .money { flex: 0 0 60px; text-align: right; }
+.compact-fields .rate { flex: 0 0 40px; text-align: right; }
+.compact-fields button { padding: 2px 8px; white-space: nowrap; }
+#option-status:empty { display: none; }
+#catalog-variants { display: grid; gap: 0; margin-top: 3px; }
+.variant-row { display: flex; align-items: center; gap: 3px; padding: 2px 0; border-bottom: 1px solid #dde3dc; }
+.variant-row .no { flex: 0 0 auto; color: #67786f; }
+.variant-row .text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.variant-row .price { white-space: nowrap; }
+.variant-row input { width: 56px; min-height: 22px; padding: 1px 3px; text-align: right; }
+.variant-row input.rate { width: 38px; }
+.variant-row button { padding: 1px 6px; }
+.panel-controls button { white-space: nowrap; }
+#settings { font-size: 11px; padding: 2px 4px; }
+.compact-fields .rate { flex-basis: 44px; }

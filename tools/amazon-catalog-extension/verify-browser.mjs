@@ -334,6 +334,13 @@ try {
   assert.equal(actual.feeRequests, 1);
   assert.equal(actual.request.payout_estimate, 16500);
   assert.equal(actual.request.target_cost, 13200);
+  // 追加した直後は金額・利益率の変更欄を出さない（0.1.23）。商品を開き直すと出る。
+  assert.match(await panelMarkup('#catalog-price-form'), /^<form[^>]*hidden/);
+  for (const value of [asin, other]) {
+    await amazon.locator('#ASIN').evaluate((element, next) => { element.value = next; }, value);
+    await waitPanel('#asin', new RegExp(value));
+  }
+  await waitPanel('#catalog-status', /登録済み/);
   const registeredPrice = '#catalog-price-form [name="list_price"]';
   assert.match(await panelMarkup(registeredPrice), /Amazonの表示価格 18,900円/);
   assert.match(await panelMarkup('#save-catalog-price'), />保存<\/button>/);
@@ -341,16 +348,16 @@ try {
   const { model: modelBox } = await cdp.send('DOM.getBoxModel', { nodeId: await panelNode('#model-display') });
   const { model: priceBox } = await cdp.send('DOM.getBoxModel', { nodeId: await panelNode(registeredPrice) });
   assert.equal(await panelNode('#check'), 0);
-  assert.ok(priceBox.border[0] > modelBox.border[2]);
-  assert.ok(priceBox.border[1] < modelBox.border[5] && priceBox.border[5] > modelBox.border[1]);
+  // 幅を小さくしたので、金額欄は型番の右か、入らなければ型番の下の行に出る（型番は潰さない）。
+  assert.ok(priceBox.border[0] > modelBox.border[2] || priceBox.border[1] >= modelBox.border[5] - 1);
   assert.equal(await panelValue(registeredPrice), '20000');
   await clickPanel(registeredPrice);
   await amazon.keyboard.press('Control+a');
   await amazon.keyboard.type('18500');
   await clickPanel('#save-catalog-price');
-  await waitPanel('#catalog-price-status', /販売想定金額を保存しました/);
+  await waitPanel('#catalog-price-status', /販売想定金額・利益率を保存しました/);
   // 価格を変えたらAmazonの手数料APIで振込想定・仕入れ目標も計算し直す（15,000円以下は75%）。
-  assert.deepEqual(await worker.evaluate(() => testLog.pricePatch), { list_price: 18500, payout_estimate: 15000, target_cost: 12000 });
+  assert.deepEqual(await worker.evaluate(() => testLog.pricePatch), { list_price: 18500, target_profit_rate: null, payout_estimate: 15000, target_cost: 12000 });
   assert.equal(await worker.evaluate(() => testLog.feeRequests), 2);
   assert.equal(await panelValue(registeredPrice), '18500');
   await worker.evaluate(() => { testLog.row.list_price = 20001; });

@@ -1,5 +1,5 @@
 import { asinFromUrl, readAmazonProduct } from './amazon.js';
-import { catalogLookup, catalogOwnerPreference, catalogRegister, updateCatalogPrice, validateAsin } from './catalog.js';
+import { catalogLookup, catalogOwnerPreference, catalogRegister, updateCatalogPrice, updateOptionPrice, validateAsin } from './catalog.js';
 import { lookupKeepa } from './keepa.js';
 
 const storage = chrome.storage.local;
@@ -107,7 +107,7 @@ async function handle(message, sender) {
   if (message.type === 'read-page') return amazonProduct(tabId);
   if (message.type === 'catalog-lookup') {
     const current = await verifySelection(tabId, message.asin);
-    return catalogLookup(message.asin, (await storage.get('catalogOwner')).catalogOwner, current.maker);
+    return catalogLookup(message.asin, (await storage.get('catalogOwner')).catalogOwner, current.maker, current.model);
   }
   if (message.type === 'keepa-lookup') {
     await verifySelection(tabId, message.asin);
@@ -121,6 +121,10 @@ async function handle(message, sender) {
   if (message.type === 'catalog-update-price') {
     await verifySelection(tabId, message.asin);
     return updateCatalogPrice(message.asin, message);
+  }
+  if (message.type === 'catalog-update-option') {
+    await verifySelection(tabId, message.asin);
+    return updateOptionPrice(message.asin, message);
   }
   throw new Error('操作を確認できませんでした。');
 }
