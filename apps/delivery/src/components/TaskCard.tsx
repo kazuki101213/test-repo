@@ -98,7 +98,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
  const field=(label:string,value:string,className='')=><span className={`task-detail-field${className?' '+className:''}`}><span>{label}</span><span>{value}</span></span>;
  const source=(item:DeliveryTask)=><span className="task-item-id-line"><CopyableText label={itemIdLabel(item)} value={productIdFor(item)}/>{sourceLink(item)}</span>;
  const comments=(item:DeliveryTask)=>field('仕入担当者からのコメント',item.memo?.trim()?item.memo:'—','purchaser-comment');
- const controls=(item:DeliveryTask)=>operate(item)?<div className="delivery-record-actions" data-record-id={item.id}><WorkflowControls task={item} onChanged={()=>refreshAction(item)} onError={message=>setActionError(message?`${item.sku}：${message}`:null)} onPanel={mode=>openPanel(item,mode)}/></div>:<span className="muted task-read-only">閲覧のみ</span>;
+ const controls=(item:DeliveryTask)=>operate(item)?<div className="delivery-record-actions" data-record-id={item.id}><WorkflowControls task={item} onChanged={()=>refreshAction(item)} onError={message=>setActionError(message?`${item.sku}：${message}`:null)} onPanel={mode=>openPanel(item,mode)} onClosePanel={expandedId===item.id&&detail?onClose:undefined}/></div>:<span className="muted task-read-only">閲覧のみ</span>;
  const accessoryInfo=(item:DeliveryInventoryRow,compact=false)=> <>
   <div className={`delivery-accessory-identity${independent(item)?' independent':''}`}>
    {independent(item)&&<span className="delivery-accessory-state">{status(item)}<b className="delivery-mobile-accessory-name">{item.title}</b></span>}
@@ -142,8 +142,7 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   </div>}
   {separate.map(item=><section key={item.id} className="delivery-independent-record" data-kind="separate" data-item-id={item.id} data-item-status={item.status} style={{backgroundColor:inventoryBoxColor(item.status,item.purchased_at)}}>{accessoryInfo(item)}{controls(item)}</section>)}
   {actionError&&<p className="error" role="alert">{actionError}</p>}
-  {/* 閉じるはパネルの種類によらず、カードの操作ボタン（商品写真など）のすぐ下の左に1つだけ出す（2026-11-24 ユーザー指定） */}
-  {detail&&<div className="delivery-detail-close-row"><button type="button" className="btn ghost seller-close" onClick={onClose}>閉じる</button></div>}
+  {/* 閉じるはパネルの種類によらず、カードの操作ボタンの最後に1つだけ出す（スマホ：ボタンの下の左、PC：縦並びのボタンの右上。2026-11-24 ユーザー指定） */}
   {detail}
  </div>;
 }

@@ -9,7 +9,7 @@ import WorkDateConfirmation from './WorkDateConfirmation';
 
 const panels=new Set(['photos','packingPhotos','description','messages','comments','listing','shipping','selfShipping']);
 const isReversal=(button:WorkflowButton)=>button.key.endsWith('_cancel')||button.key==='resell';
-export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void;onPanel?:(panel:ProductPanel)=>void}){
+export default function WorkflowControls({task,onChanged,onError,onPanel,onClosePanel}:{task:DeliveryTask;onChanged:()=>Promise<void>;onError:(message:string|null)=>void;onPanel?:(panel:ProductPanel)=>void;onClosePanel?:()=>void}){
  const [busy,setBusy]=useState(false),[form,setForm]=useState<WorkflowButton|null>(null),[note,setNote]=useState('');
  const [reportTemplate,setReportTemplate]=useState(''),[loadingReportTemplate,setLoadingReportTemplate]=useState(false);
  const templateRequest=useRef(0),noteEdited=useRef(false);
@@ -76,7 +76,7 @@ export default function WorkflowControls({task,onChanged,onError,onPanel}:{task:
   }else setConfirming(button);
  }
  return <div className="workflow-controls" aria-label={`${task.sku}の操作`}>
-  <div className="workflow-buttons">{photoButtons.length>0?<><div className="workflow-photo-buttons">{photoButtonContent}</div>{buttons.filter(button=>!besidePhoto.includes(button.key)).map(renderButton)}</>:buttons.map(renderButton)}</div>
+  <div className="workflow-buttons">{photoButtons.length>0?<><div className="workflow-photo-buttons">{photoButtonContent}</div>{buttons.filter(button=>!besidePhoto.includes(button.key)).map(renderButton)}</>:buttons.map(renderButton)}{onClosePanel&&<><span className="workflow-close-break" aria-hidden="true"/><button type="button" className="btn ghost seller-close workflow-panel-close" onClick={onClosePanel}>閉じる</button></>}</div>
   {form&&buttons.some(button=>button.key===form.key)&&<div className="workflow-action-form">
    <button type="button" className="btn ghost seller-close" disabled={busy} onClick={()=>{templateRequest.current++;setLoadingReportTemplate(false);setReportTemplate('');setForm(null);setNote('');setPhotos([]);setHasPhysicalDamage(false);}}>閉じる</button>
    <label>{form.key==='report'?form.label+'の内容':'理由'}<textarea value={note} maxLength={2000} rows={reportTemplate?10:undefined} disabled={busy} onChange={event=>{noteEdited.current=true;setNote(event.target.value);}} /></label>
