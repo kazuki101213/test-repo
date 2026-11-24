@@ -118,26 +118,26 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
                 <div className="kpi-label">売上</div>
                 <div className="kpi-value dashboard-sales-line">
                   <span>{yen(month?.売上)}</span>
-                  <span className="dashboard-metric-divider">/</span>
-                  <span>{month?.販売数 ?? 0}点</span>
+                  <span className="dashboard-metric-divider dashboard-sub">/</span>
+                  <span className="dashboard-sub">{month?.販売数 ?? 0}点</span>
                 </div>
                 <div className="kpi-label">粗利益</div>
                 <div className={`kpi-value dashboard-sales-line ${(month?.粗利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>
                   <span>{yen(month?.粗利益)}</span>
-                  <span className="dashboard-metric-divider">/</span>
-                  <span>{rate(month?.粗利益, month?.売上)}</span>
+                  <span className="dashboard-metric-divider dashboard-sub">/</span>
+                  <span className="dashboard-sub">{rate(month?.粗利益, month?.売上)}</span>
                 </div>
                 <div className="kpi-label">純利益</div>
                 <div className={`kpi-value dashboard-sales-line ${(month?.純利益 ?? 0) >= 0 ? 'pos' : 'neg'}`}>
                   <span>{yen(month?.純利益)}</span>
-                  <span className="dashboard-metric-divider">/</span>
-                  <span>{rate(month?.純利益, month?.売上)}</span>
+                  <span className="dashboard-metric-divider dashboard-sub">/</span>
+                  <span className="dashboard-sub">{rate(month?.純利益, month?.売上)}</span>
                 </div>
                 <div className="kpi-label">保有在庫</div>
                 <div className="kpi-value dashboard-sales-line" title="はけ率：31〜60日前に仕入れた商品のうち、仕入れから30日以内に売れた割合">
                   <span>{inventory?.現在庫数 ?? 0}点</span>
-                  <span className="dashboard-metric-divider">/</span>
-                  <span>はけ率 {rate(sellThrough?.[scope].sold, sellThrough?.[scope].items)}</span>
+                  <span className="dashboard-metric-divider dashboard-sub">/</span>
+                  <span className="dashboard-sub">はけ率 {rate(sellThrough?.[scope].sold, sellThrough?.[scope].items)}</span>
                 </div>
               </div>)}
             </div>
