@@ -374,3 +374,7 @@
 .payout-table :is(th,td) { padding:5px 4px; }
 .payout-table td.payout-negative { color:var(--danger); }
 .payout-na { margin:8px 0 0; }
+.payout-request + .payout-request { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.payout-request .payout-head { margin-top:0; }
+.payout-request .dashboard-comparison { margin-top:6px; }
+.payout-more { margin-top:12px; }
