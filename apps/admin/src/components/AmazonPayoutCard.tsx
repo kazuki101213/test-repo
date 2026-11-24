@@ -14,6 +14,13 @@ const FEE_DESCRIPTIONS: Record<string, string> = {
 // 名字だけを出す（長部一輝 → 長部、石嶋俊紀 → 石嶋）。
 const surname = (name: string) => name.replace(/\s/g, '').slice(0, 2);
 const day = (value: string | null) => value ? new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric' }).format(new Date(value)) : '';
+// プルダウンは横に並べるので短く（今年は月/日だけ）。
+const shortDay = (value: string | null) => {
+  if (!value) return '';
+  const date = new Date(value), thisYear = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric' });
+  const sameYear = thisYear.format(date) === thisYear.format(new Date());
+  return new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', ...(sameYear ? {} : { year: 'numeric' }), month: 'numeric', day: 'numeric' }).format(date);
+};
 const signed = (value: number) => value < 0 ? `−${Math.abs(value).toLocaleString('ja-JP')}` : value.toLocaleString('ja-JP');
 
 function PayoutBlock({ payout, owners, open }: { payout: AmazonPayout; owners: AmazonPayoutSummary['owners']; open: boolean }) {
@@ -75,6 +82,9 @@ export default function AmazonPayoutCard() {
   const selectedAccount = account || payouts[0]?.account || 'Amazon2';
   const accountPayouts = payouts.filter(payout => payout.account === selectedAccount);
   const selected = accountPayouts.find(payout => payout.group_id === groupId) ?? accountPayouts[0];
+  // 同じ日に2回振込があるときだけ、見分けるために金額も出す。
+  const sameDay = (payout: AmazonPayout) => accountPayouts.filter(other =>
+    shortDay(other.fund_transfer_date ?? other.group_end) === shortDay(payout.fund_transfer_date ?? payout.group_end)).length > 1;
 
   return <div className="card payout-summary-card">
     <h3>Amazon振込</h3>
@@ -88,7 +98,7 @@ export default function AmazonPayoutCard() {
         <label>振込日 <select value={selected?.group_id ?? ''} disabled={!accountPayouts.length} onChange={event => setGroupId(event.target.value)}>
           {!accountPayouts.length && <option value="">—</option>}
           {accountPayouts.map(payout => <option key={payout.group_id} value={payout.group_id}>
-            {day(payout.fund_transfer_date ?? payout.group_end)}　{yen(payout.total)}
+            {shortDay(payout.fund_transfer_date ?? payout.group_end)}{sameDay(payout) ? ` ${yen(payout.total)}` : ''}
           </option>)}
         </select></label>
       </div>

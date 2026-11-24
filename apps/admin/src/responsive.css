@@ -378,6 +378,11 @@
 .payout-request .payout-head { margin-top:0; }
 .payout-request .dashboard-comparison { margin-top:6px; }
 .payout-more { margin-top:12px; }
-.payout-selects { display:flex; flex-wrap:wrap; gap:8px 12px; margin:4px 0 12px; font-size:13px; color:var(--muted); }
-.payout-selects label { display:flex; align-items:center; gap:6px; }
-.payout-selects select { min-width:0; }
+.payout-selects { display:flex; flex-wrap:nowrap; gap:8px; margin:4px 0 12px; font-size:13px; color:var(--muted); }
+.payout-selects label { display:flex; align-items:center; gap:4px; min-width:0; white-space:nowrap; }
+.payout-selects label:last-child { flex:1 1 auto; }
+.payout-selects select { min-width:0; max-width:100%; }
+.payout-selects label:last-child select { flex:1 1 auto; width:0; }
+.payout-selects label:first-child { flex:none; } .payout-selects label:first-child select { width:auto; }
+@media screen and (min-width:1024px) { .payout-selects label:last-child { flex:0 1 auto; } .payout-selects label:last-child select { width:auto; } }
+@media screen and (max-width:1023px) { .payout-selects select { font-size:14px; } .payout-selects { gap:6px; } }
