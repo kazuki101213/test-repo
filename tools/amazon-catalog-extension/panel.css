@@ -103,3 +103,6 @@ header { padding: 4px 8px; }
 .variant-row input { width: 56px; min-height: 22px; padding: 1px 3px; text-align: right; }
 .variant-row input.rate { width: 38px; }
 .variant-row button { padding: 1px 6px; }
+.panel-controls button { white-space: nowrap; }
+#settings { font-size: 11px; padding: 2px 4px; }
+.compact-fields .rate { flex-basis: 44px; }
