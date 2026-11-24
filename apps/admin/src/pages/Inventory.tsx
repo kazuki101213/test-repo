@@ -208,6 +208,7 @@ export default function Inventory({ me, saleItemId }: { me: Staff; saleItemId?: 
         onFullEdit={item=>{setPurchaseOpen(false);setFullEditFor(item);}}
         onComment={item=>setExpandedComment({sku:item.sku,label:'納品担当者からのコメント',text:item.latest_comment??''})} />}
       {!loading && items.length > 0 && viewItems.length === 0 && <p className="empty" role="status">フィルターに一致する在庫はありません。フィルターの条件を変更するか、すべて解除してください。</p>}
+      {inventory.error&&items.length>0&&<p className="error" role="alert">{inventory.error} <button type="button" className="btn" onClick={()=>void load()}>再読み込み</button></p>}
       {(visibleCount<viewItems.length||inventory.more)&&<div ref={loadMoreRef} className="toolbar"><button className="btn" disabled={loading} onClick={()=>{if(visibleCount<viewItems.length)setVisibleCount(current=>Math.min(current+80,viewItems.length));else {setVisibleCount(current=>current+50);inventory.loadMore();}}}>さらに表示</button></div>}
       </div>
       </section>
