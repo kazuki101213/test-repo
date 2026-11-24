@@ -35,6 +35,8 @@ export default function AmazonSelfShipping({ task, onClose }: { task: DeliveryTa
   }, [task.id, task.sales_channel, attempt]);
 
   return <section className="task-detail-inline amazon-self-shipping" aria-label="Amazon自己発送">
+    {/* 閉じるはパネルの先頭（カードの操作ボタンのすぐ下の左）に置く（2026-11-24 ユーザー指定） */}
+    <button type="button" className="btn ghost seller-close" onClick={onClose}>閉じる</button>
     <div className="amazon-self-shipping-summary">
       <h3>Amazon自己発送</h3>
       <p className="amazon-self-shipping-product"><strong>{inventorySerial(task)} {task.model_no || task.title}</strong>
@@ -53,7 +55,5 @@ export default function AmazonSelfShipping({ task, onClose }: { task: DeliveryTa
       {order ? <a className="btn primary" href={sellerCentral + '/order/' + order.orderId} target="_blank" rel="noopener noreferrer">配送先住所を確認</a>
         : error && <a className="btn" href={sellerCentral + '/mfn/unshipped'} target="_blank" rel="noopener noreferrer">セラーセントラルの未出荷一覧</a>}
     </div>
-    {/* 閉じるは操作ボタンのすぐ下の左に置く（2026-11-24 ユーザー指定） */}
-    <button type="button" className="btn ghost seller-close" onClick={onClose}>閉じる</button>
   </section>;
 }
