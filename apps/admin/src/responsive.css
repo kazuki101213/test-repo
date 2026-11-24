@@ -386,3 +386,9 @@
 .payout-selects label:first-child { flex:none; } .payout-selects label:first-child select { width:auto; }
 @media screen and (min-width:1024px) { .payout-selects label:last-child { flex:0 1 auto; } .payout-selects label:last-child select { width:auto; } }
 @media screen and (max-width:1023px) { .payout-selects select { font-size:14px; } .payout-selects { gap:6px; } }
+
+/* 2026-11-24: 今月販売の「売上：金額/点数/利益率」「保有在庫：点数/はけ率」を1行で。 */
+.dashboard-comparison-panel .dashboard-sales-line { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:4px; font-variant-numeric:tabular-nums; }
+.dashboard-comparison-panel .dashboard-sales-line .dashboard-metric-divider { color:var(--muted); font-weight:400; }
+/* 点数・利益率・はけ率は金額の半分の大きさ（2026-11-24 ユーザー指定）。 */
+.dashboard-comparison-panel .dashboard-sales-line .dashboard-sub { font-size:0.5em; }

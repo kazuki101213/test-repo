@@ -1188,3 +1188,12 @@ export async function fetchAmazonPayoutSummary(): Promise<AmazonPayoutSummary> {
   if (error) throw new Error(error.code === '42501' ? 'Amazonの振込は管理者だけが見られます。' : 'Amazonの振込を読み込めませんでした。時間をおいて再読み込みしてください。');
   return data as AmazonPayoutSummary;
 }
+
+export type DashboardSellThrough = { from: string; to: string } & Record<DashboardScope, { items: number; sold: number }>;
+
+/** はけ率：31〜60日前に仕入れた本体のうち、仕入れから30日以内に売れた割合（全体・担当者）。 */
+export async function fetchDashboardSellThrough(): Promise<DashboardSellThrough> {
+  const { data, error } = await getSupabase().rpc('read_dashboard_sell_through');
+  if (error) throw new Error(error.message);
+  return data as DashboardSellThrough;
+}
