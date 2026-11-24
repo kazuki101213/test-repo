@@ -127,7 +127,13 @@ async function find(asin, session) {
   return rows[0] ?? null;
 }
 
+// 2026-11-25 通信削減：管理者一覧と自分の担当者は商品ページを開くたびに読まず、10分間使い回す（ログイン先が変われば読み直す）。
+const reuseMs = 10 * 60 * 1000;
+let ownersCache = null;
+const makerCache = new Map();
+
 async function catalogOwners(session) {
+  if (ownersCache?.userId === session.userId && Date.now() - ownersCache.at < reuseMs) return ownersCache.scope;
   const profiles = new URLSearchParams({ select: 'staff_id', user_id: 'eq.' + session.userId, limit: '1' });
   const [owners, profile] = await Promise.all([
     request('/rest/v1/staff?select=id,code,name,display_name&role=eq.admin&is_active=eq.true&order=code', session),
@@ -135,7 +141,9 @@ async function catalogOwners(session) {
   ]);
   const current = owners.find(owner => owner.id === profile[0]?.staff_id);
   const original = owners.find(owner => owner.code === 'AA');
-  return { owners, defaultOwner: current ?? original, canChooseOwner: Boolean(current) };
+  const scope = { owners, defaultOwner: current ?? original, canChooseOwner: Boolean(current) };
+  ownersCache = { userId: session.userId, at: Date.now(), scope };
+  return scope;
 }
 
 function selectedOwner(scope, session, preference) {
@@ -184,7 +192,14 @@ async function lookupMaker(value, ownerId, session) {
     or: '(' + terms.map(term => 'maker.ilike.*' + term + '*').join(',') + ')',
     order: 'maker,id', limit: '1000',
   });
-  const rows = await request('/rest/v1/products?' + params, session);
+  // 同じメーカー名の照会は10分間使い回す（商品ページを移るたびに同じ一覧を読まない）。
+  const cacheKey = session.userId + '|' + params;
+  const cached = makerCache.get(cacheKey);
+  const rows = cached && Date.now() - cached.at < reuseMs ? cached.rows : await request('/rest/v1/products?' + params, session);
+  if (rows !== cached?.rows) {
+    if (makerCache.size > 50) makerCache.clear();
+    makerCache.set(cacheKey, { at: Date.now(), rows });
+  }
   const counts = new Map();
   for (const row of rows) {
     const parts = makerForms(row.maker ?? '').map(makerIdentity);
