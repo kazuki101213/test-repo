@@ -142,6 +142,8 @@ export default function TaskCard({ readOnly = false, showAssignee = false, task,
   </div>}
   {separate.map(item=><section key={item.id} className="delivery-independent-record" data-kind="separate" data-item-id={item.id} data-item-status={item.status} style={{backgroundColor:inventoryBoxColor(item.status,item.purchased_at)}}>{accessoryInfo(item)}{controls(item)}</section>)}
   {actionError&&<p className="error" role="alert">{actionError}</p>}
+  {/* 閉じるはパネルの種類によらず、カードの操作ボタン（商品写真など）のすぐ下の左に1つだけ出す（2026-11-24 ユーザー指定） */}
+  {detail&&<div className="delivery-detail-close-row"><button type="button" className="btn ghost seller-close" onClick={onClose}>閉じる</button></div>}
   {detail}
  </div>;
 }

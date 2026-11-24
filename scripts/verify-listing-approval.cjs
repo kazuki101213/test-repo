@@ -47,8 +47,8 @@ async function panelCheck(approved,saved,uncertain=false,channel='メルカリ')
  await settle();
  if(approved&&!uncertain){const field=all(tree).find(n=>n.type==='input'&&n.props.maxLength===200),original=field.props.value;field.props.onChange({target:{value:' '}});await settle();assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='出品').props.disabled,true);assert(all(tree).some(n=>n.props?.role==='alert'&&String(n.props.children).includes('出品カテゴリを入力')));assert.equal(queued,undefined);field.props.onChange({target:{value:original}});await settle();}
  if(channel==='ヤフオク'&&approved&&!uncertain){const field=all(tree).find(n=>n.type==='input'&&n.props.maxLength===200),original=field.props.value;field.props.onChange({target:{value:'ブルーレイレコーダー'}});await settle();assert.equal(all(tree).find(n=>n.type==='button'&&n.props.children==='出品').props.disabled,true);assert(all(tree).some(n=>n.props?.role==='alert'&&String(n.props.children).includes('メーカーまで指定')));field.props.onChange({target:{value:original}});await settle();}
- // Since fa8d414 the listing panel has its own close button.
- assert.equal(all(tree).some(n=>n.type==='button'&&n.props.children==='閉じる'),true);
+ // Since 2026-11-24 the close button is rendered once by TaskCard right under the action buttons, not inside each panel.
+ assert.equal(all(tree).some(n=>n.type==='button'&&n.props.children==='閉じる'),false);
  const title=all(tree).find(n=>n.type==='input'&&n.props.maxLength===128);
  const body=all(tree).find(n=>n.type==='textarea'&&n.props.maxLength===5000);
  assert(title&&body);assert.equal(title.props.disabled,!approved||uncertain);
