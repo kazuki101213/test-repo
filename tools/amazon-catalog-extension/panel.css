@@ -42,8 +42,10 @@ header h1::before {
 }
 #product > .meta { display: grid; gap: 0; overflow-wrap: anywhere; }
 #asin { white-space: nowrap; }
-#catalog-summary { display: flex; align-items: center; gap: 6px; }
+#catalog-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 #catalog-summary > p { min-width: 0; }
+/* 型番は少なくとも9文字分の幅を取り、入らないときは登録先・金額欄を次の行へ回す（縦に1文字ずつ潰れないように）。 */
+#catalog-summary > .product-title { flex: 1 1 auto; min-width: 9em; }
 #catalog-destination { margin-left: auto; flex-shrink: 0; white-space: nowrap; }
 #catalog-destination:empty { display: none; }
 #catalog-destination:not(:empty) ~ #catalog-price-form { margin-left: 0; }
