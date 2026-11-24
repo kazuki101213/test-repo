@@ -11,7 +11,7 @@ import { materialPurchaseWindow, type BubbleWrapEstimate, type MaterialPurchase,
 import { PRODUCT_GENRES, PRODUCT_SHIPPING_CATEGORIES, PRODUCT_SHIPPING_SIZES, PRODUCT_TURNOVER } from './productEstimates';
 import type {
   InventoryMarketplaceLabels, ItemInsert, ItemStatus, ItemView, LedgerRow,
-  MonthlySummary, Product, PurchaseDraft, SpareAccessory, Staff, StockSummary,
+  MonthlySummary, Product, ProductOption, PurchaseDraft, SpareAccessory, Staff, StockSummary,
 } from '@bussan/shared';
 
 export async function fetchStaff(): Promise<Staff[]> {
@@ -863,7 +863,7 @@ export async function updateInventoryField(item: InventoryItem, field: Inventory
 }
 
 export type ProductField = 'asin' | 'model_no' | 'product_no' | 'maker' | 'genre' | 'turnover' |
-  'list_price' | 'payout_estimate' | 'target_profit_rate' | 'target_cost' | 'has_sold_before';
+  'list_price' | 'payout_estimate' | 'target_profit_rate' | 'target_cost' | 'has_sold_before' | 'color' | 'variant_label';
 
 /** Remove catalog entries from active lists without breaking historical inventory links. */
 export async function deleteProducts(ids: string[]): Promise<string[]> {
@@ -928,10 +928,61 @@ export async function updateProductField(product: Product, field: ProductField, 
     Object.assign(update, await amazonProductAmounts(product.asin, parsed, product.target_profit_rate ?? null));
   }
   let query = getSupabase().from('products').update(update).eq('id', product.id);
-  query = product[field] === null ? query.is(field, null) : query.eq(field, product[field]);
+  const current = product[field] ?? null;
+  query = current === null ? query.is(field, null) : query.eq(field, current as never);
   const { data, error } = await query.select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
+}
+
+export type ProductOptionField = 'label' | 'list_price' | 'target_profit_rate';
+
+/** 付属品・状態の通りを追加する（同じASIN）。金額は通りごとにAmazonの手数料と利益率で計算する。 */
+export async function createProductOption(product: Pick<Product, 'id' | 'asin' | 'product_no'>, input: { label: string; list_price: string; target_profit_rate: string }): Promise<void> {
+  const label = input.label.trim();
+  if (!label) throw new Error('付属品・状態を入力してください。');
+  const listPrice = input.list_price.trim() ? Number(input.list_price) : null;
+  if (listPrice !== null && (!Number.isSafeInteger(listPrice) || listPrice < 0)) throw new Error('販売想定金額は0円以上の整数で入力してください。');
+  const profitRate = parseProfitRate(input.target_profit_rate ?? '');
+  const { error } = await getSupabase().from('product_options').insert({
+    product_id: product.id, variant_no: 1, label, list_price: listPrice, target_profit_rate: profitRate,
+    ...(listPrice !== null && listPrice > 0 ? await amazonProductAmounts(product.asin, listPrice, profitRate) : { payout_estimate: null, target_cost: null }),
+  });
+  if (error?.code === '23505') throw new Error(error.message.includes('登録済み') ? error.message : `「${label}」は ${product.product_no} に登録済みです。`);
+  if (error) throw error;
+}
+
+export async function updateProductOption(option: ProductOption, asin: string, field: ProductOptionField, value: string): Promise<void> {
+  const next = value.trim();
+  const update: Record<string, unknown> = {};
+  if (field === 'label') {
+    if (!next) throw new Error('付属品・状態を入力してください。');
+    update.label = next;
+  } else if (field === 'target_profit_rate') {
+    const rate = parseProfitRate(next);
+    update.target_profit_rate = rate;
+    if (option.payout_estimate !== null) update.target_cost = targetCostFromPayout(option.payout_estimate, rate);
+  } else {
+    const price = next ? Number(next) : null;
+    if (price !== null && (!Number.isSafeInteger(price) || price < 0)) throw new Error('販売想定金額は0円以上の整数で入力してください。');
+    update.list_price = price;
+    if (price !== null && price > 0 && price !== option.list_price) Object.assign(update, await amazonProductAmounts(asin, price, option.target_profit_rate));
+  }
+  let query = getSupabase().from('product_options').update(update).eq('id', option.id);
+  const current = option[field] ?? null;
+  query = current === null ? query.is(field, null) : query.eq(field, current as never);
+  const { data, error } = await query.select('id').maybeSingle();
+  if (error?.code === '23505') throw new Error(error.message.includes('登録済み') ? error.message : 'その付属品・状態は登録済みです。');
+  if (error) throw error;
+  if (!data) throw new Error('商品リストが変更されたか、編集権限がありません。再読み込みしてください。');
+}
+
+export async function deleteProductOptions(ids: string[]): Promise<string[]> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  const { data, error } = await getSupabase().from('product_options').update({ is_active: false }).in('id', unique).select('id');
+  if (error) throw error;
+  return (data ?? []).map(row => row.id);
 }
 
 export type ProductDetailsInput = {
@@ -941,7 +992,12 @@ export type ProductDetailsInput = {
 };
 
 export type ProductRegistrationInput = Pick<ProductDetailsInput,
-  'asin' | 'model_no' | 'maker' | 'genre' | 'turnover' | 'list_price' | 'target_profit_rate' | 'shipping_category' | 'shipping_size'>;
+  'asin' | 'model_no' | 'maker' | 'genre' | 'turnover' | 'list_price' | 'target_profit_rate' | 'shipping_category' | 'shipping_size'> & {
+  /** 色（任意） */
+  color: string;
+  /** 付属品・状態（任意） */
+  variant_label: string;
+};
 
 export type ProductCatalogOwner = Pick<Staff, 'id' | 'code' | 'name' | 'display_name'>;
 
@@ -1016,9 +1072,21 @@ export async function createProduct(input: ProductRegistrationInput): Promise<vo
   if (input.shipping_category && !PRODUCT_SHIPPING_CATEGORIES.some(category => category.value === input.shipping_category)) throw new Error('サイズ区分を選択してください。');
   if (input.shipping_size && !PRODUCT_SHIPPING_SIZES.includes(input.shipping_size)) throw new Error('対応している配送サイズを選択してください。');
   const profitRate = parseProfitRate(input.target_profit_rate ?? '');
+  const label = (input.variant_label ?? '').trim();
+
+  // 登録済みのASIN：付属品・状態が違えば、その商品の通りとして追加する。
+  const { data: existing, error: findError } = await getSupabase().from('products')
+    .select('id,asin,product_no,variant_no,variant_label,is_active').eq('asin', asin).maybeSingle();
+  if (findError) throw findError;
+  if (existing?.is_active) {
+    if (!label || label.toLowerCase() === (existing.variant_label ?? '').trim().toLowerCase()) throw new Error(await duplicateProductMessage(asin));
+    await createProductOption(existing, { label, list_price: input.list_price, target_profit_rate: input.target_profit_rate ?? '' });
+    return;
+  }
 
   const { error } = await getSupabase().from('products').insert({
     asin, model_no: input.model_no.trim() || null, maker: input.maker.trim() || null,
+    color: (input.color ?? '').trim() || null, variant_label: label || null,
     genre: input.genre || null, turnover: input.turnover || null, list_price: listPrice, target_profit_rate: profitRate,
     shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null,
     ...(listPrice !== null && listPrice > 0 ? await amazonProductAmounts(asin, listPrice, profitRate) : { payout_estimate: null, target_cost: null }),
@@ -1029,10 +1097,10 @@ export async function createProduct(input: ProductRegistrationInput): Promise<vo
 
 /** 同じASINはデータベースで1件だけ。登録済みの番号を添えて、何をすればよいかを返す。 */
 async function duplicateProductMessage(asin: string): Promise<string> {
-  const { data } = await getSupabase().from('products').select('product_no,is_active').eq('asin', asin).maybeSingle();
-  const no = data?.product_no != null ? `（番号${data.product_no}）` : '';
+  const { data } = await getSupabase().from('products').select('product_no,variant_no,is_active').eq('asin', asin).maybeSingle();
+  const no = data?.product_no != null ? `（番号${data.product_no}${data.variant_no && data.variant_no > 1 ? '-' + data.variant_no : ''}）` : '';
   if (data && data.is_active === false) return `ASIN ${asin} は以前に登録して削除済みの商品${no}です。同じASINは新しく登録できません。`;
-  return `ASIN ${asin} は商品リストに登録済み${no}です。内容を変えるときは一覧の行を編集してください。`;
+  return `ASIN ${asin} は商品リストに登録済み${no}です。付属品・状態が違うときは「付属品・状態」を入れて登録してください。`;
 }
 
 /** A draft already identifies its product; do not download the catalog to display it. */
@@ -1055,7 +1123,7 @@ export async function fetchDashboardDailySales(from: string, to: string): Promis
 
 export async function fetchProducts(query?: string, ownerStaffId?: string): Promise<Product[]> {
   return readAllRows<Product>(async (from, to) => {
-    let q = getSupabase().from('products').select('*').eq('is_active', true).order('product_no').order('id').range(from, to);
+    let q = getSupabase().from('products').select('*,product_options(*)').eq('is_active', true).order('product_no').order('variant_no').order('id').range(from, to);
     if (ownerStaffId) q = q.eq('owner_staff_id', ownerStaffId);
     if (query) {
       const term = `%${query.replace(/[(),.%_*"\\]/g, ' ').trim()}%`;

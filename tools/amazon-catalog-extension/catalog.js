@@ -13,7 +13,9 @@ const sessionKey = 'sb-' + new URL(API).hostname.split('.')[0] + '-auth-token';
 const loginRequired = () => Object.assign(
   new Error('管理アプリのログインが必要です。'), { code: 'login-required' });
 const adminPatterns = adminOrigins.map(origin => origin + '/*');
-const columns = 'id,asin,product_no,model_no,maker,genre,turnover,list_price,payout_estimate,target_profit_rate,is_active,owner_staff_id';
+const columns = 'id,asin,product_no,model_no,maker,genre,turnover,list_price,payout_estimate,target_profit_rate,is_active,owner_staff_id,color,variant_label,variant_no,shipping_category,shipping_size';
+const optionColumns = 'id,product_id,variant_no,label,list_price,payout_estimate,target_profit_rate,is_active';
+const uuidPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 let sessionLookup;
 let retryInBackgroundAfter = 0;
 
@@ -197,13 +199,43 @@ async function lookupMaker(value, ownerId, session) {
     b[1].total - a[1].total || a[0].length - b[0].length || a[0].localeCompare(b[0], 'ja'))[0]?.[0] ?? '';
 }
 
-export async function catalogLookup(asin, preference, maker) {
+// 同じ番号の通り（色違いの商品の行と、付属品・状態違いの通り）。
+// 登録済みならその番号、未登録なら登録先の管理者の同じ型番を探す。読めないとき（古いDBなど）は通りなしで続ける。
+async function catalogGroup(product, ownerId, model, session) {
+  let rows = [];
+  if (product?.product_no != null) {
+    rows = await request('/rest/v1/products?' + new URLSearchParams({
+      select: columns, product_no: 'eq.' + product.product_no, is_active: 'eq.true', order: 'variant_no,id' }), session);
+  } else if (!product && ownerId && String(model ?? '').trim()) {
+    const exact = String(model).trim().replace(/[\\%_*]/g, '\\$&');
+    rows = await request('/rest/v1/products?' + new URLSearchParams({
+      select: columns, owner_staff_id: 'eq.' + ownerId, is_active: 'eq.true', model_no: 'ilike.' + exact,
+      order: 'product_no,variant_no,id' }), session);
+    if (rows.length) rows = rows.filter(row => row.product_no === rows[0].product_no);
+  }
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const ids = rows.map(row => row.id).filter(id => uuidPattern.test(id));
+  const options = ids.length ? await request('/rest/v1/product_options?' + new URLSearchParams({
+    select: optionColumns, product_id: 'in.(' + ids.join(',') + ')', is_active: 'eq.true', order: 'variant_no' }), session) : [];
+  const items = [
+    ...rows.map(row => ({ kind: 'product', ...row, label: row.variant_label })),
+    ...(Array.isArray(options) ? options : []).map(option => {
+      const owner = rows.find(row => row.id === option.product_id);
+      return { kind: 'option', ...option, asin: owner?.asin, color: owner?.color, owner_staff_id: owner?.owner_staff_id };
+    }),
+  ].sort((a, b) => (a.variant_no ?? 1) - (b.variant_no ?? 1));
+  return { productNo: rows[0].product_no, first: rows[0], items };
+}
+
+export async function catalogLookup(asin, preference, maker, model) {
   validateAsin(asin);
   const session = await getSession();
   const [product, scope] = await Promise.all([find(asin, session), catalogOwners(session)]);
   const selected = selectedOwner(scope, session, preference);
+  const group = await catalogGroup(product, selected?.id, model, session).catch(() => null);
   return {
     product,
+    group,
     owners: scope.owners,
     ownerId: selected?.id ?? '',
     maker: !product && selected && maker ? await lookupMaker(maker, selected.id, session).catch(() => '') : '',
@@ -252,6 +284,8 @@ export function productRow(asin, input) {
     turnover: optionalChoice(input.turnover, PRODUCT_TURNOVER, '回転'),
     list_price: price,
     target_profit_rate: profitRate,
+    color: String(input.color ?? '').trim().slice(0, 40) || null,
+    variant_label: String(input.variant_label ?? '').trim().slice(0, 80) || null,
     shipping_category: optionalChoice(input.shipping_category, PRODUCT_SHIPPING_CATEGORIES.map(option => option.value), 'サイズ区分'),
     shipping_size: optionalChoice(input.shipping_size, PRODUCT_SHIPPING_SIZES, '配送サイズ'),
   };
@@ -284,7 +318,22 @@ export async function catalogRegister(asin, input, userId, ownerId, preference) 
     row.owner_staff_id = ownerId;
   }
   const existing = await find(asin, session);
-  if (existing) return { product: existing, created: false };
+  if (existing) {
+    // 登録済みのASIN：付属品・状態が違えば、その商品の通りとして追加する。同じなら登録済み。
+    const label = row.variant_label ?? '';
+    if (!existing.is_active || !label || label.toLowerCase() === String(existing.variant_label ?? '').trim().toLowerCase()) {
+      return { product: existing, created: false };
+    }
+    const option = { product_id: existing.id, variant_no: 1, label, list_price: row.list_price, target_profit_rate: row.target_profit_rate };
+    if (option.list_price !== null && option.list_price > 0) {
+      Object.assign(option, await estimateAmounts(asin, option.list_price, session, option.target_profit_rate));
+    }
+    const added = await request('/rest/v1/product_options?' + new URLSearchParams({ select: optionColumns }), session, {
+      method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(option),
+    });
+    if (added[0]?.product_id !== existing.id) throw new Error('保存先を確認できません。商品ページを再読み込みしてください。');
+    return { product: existing, created: false, option: added[0] };
+  }
   if (row.list_price !== null && row.list_price > 0) {
     Object.assign(row, await estimateAmounts(asin, row.list_price, session, row.target_profit_rate));
   }
@@ -331,5 +380,35 @@ export async function updateCatalogPrice(asin, { id, userId, previousPrice, pric
   if (rows.length !== 1 || rows[0].id !== id || rows[0].list_price !== listPrice) {
     throw new Error('商品リストが変更されたか、編集権限がありません。登録状況を確認してください。');
   }
+  return rows[0];
+}
+
+// 付属品・状態の通りの販売想定金額・利益率を保存する（商品の行と同じ計算）。
+export async function updateOptionPrice(asin, { id, userId, previousPrice, price, previousRate = null, rate, payout = null }) {
+  validateAsin(asin);
+  const listPrice = parseListPrice(price);
+  const profitRate = parseProfitRate(rate);
+  const priceChanged = listPrice !== null && listPrice > 0 && listPrice !== previousPrice;
+  const session = await getSession();
+  if (session.userId !== userId) throw new Error('ログイン先が変わりました。登録状況を確認してください。');
+  if (typeof id !== 'string' || !uuidPattern.test(id) || (previousPrice !== null && !Number.isSafeInteger(previousPrice))) {
+    throw new Error('登録状況を確認してから保存してください。');
+  }
+  const params = new URLSearchParams({
+    select: optionColumns, id: 'eq.' + id, is_active: 'eq.true',
+    list_price: previousPrice === null ? 'is.null' : 'eq.' + previousPrice,
+    target_profit_rate: previousRate === null ? 'is.null' : 'eq.' + previousRate,
+  });
+  const rows = await request('/rest/v1/product_options?' + params, session, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({
+      list_price: listPrice,
+      target_profit_rate: profitRate,
+      ...(priceChanged ? await estimateAmounts(asin, listPrice, session, profitRate)
+        : profitRate !== previousRate && Number.isSafeInteger(payout) ? { target_cost: targetCostFor(payout, profitRate) } : {}),
+    }),
+  });
+  if (rows.length !== 1 || rows[0].id !== id) throw new Error('商品リストが変更されたか、編集権限がありません。登録状況を確認してください。');
   return rows[0];
 }

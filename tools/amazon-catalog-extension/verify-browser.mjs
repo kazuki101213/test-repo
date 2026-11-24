@@ -341,8 +341,8 @@ try {
   const { model: modelBox } = await cdp.send('DOM.getBoxModel', { nodeId: await panelNode('#model-display') });
   const { model: priceBox } = await cdp.send('DOM.getBoxModel', { nodeId: await panelNode(registeredPrice) });
   assert.equal(await panelNode('#check'), 0);
-  assert.ok(priceBox.border[0] > modelBox.border[2]);
-  assert.ok(priceBox.border[1] < modelBox.border[5] && priceBox.border[5] > modelBox.border[1]);
+  // 幅を小さくしたので、金額欄は型番の右か、入らなければ型番の下の行に出る（型番は潰さない）。
+  assert.ok(priceBox.border[0] > modelBox.border[2] || priceBox.border[1] >= modelBox.border[5] - 1);
   assert.equal(await panelValue(registeredPrice), '20000');
   await clickPanel(registeredPrice);
   await amazon.keyboard.press('Control+a');

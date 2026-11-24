@@ -28,11 +28,11 @@ async function settle(){for(let i=0;i<25;i++){if(dirty){cursor=0;dirty=false;tre
 assert.deepEqual(all(form()).filter(node=>node.type==='output').map(text),['登録時にAmazonの手数料で計算','登録時に計算'],'Registration preview defers to the Amazon fee estimate');
  let inserted;
  const apiModule={exports:{},require:id=>id==='./productEstimates'?estimates.exports:id==='@bussan/shared'?{
-  getSupabase:()=>({functions:{invoke:async(name,{body})=>{assert.equal(name,'amazon-catalog-estimate');assert.deepEqual({...body},{asin:'BTEST00003',price:20000});return {data:{payout:17000},error:null};}},from:table=>{assert.equal(table,'products');return {insert:async row=>{inserted=row;return {error:null};}};}}),
+  getSupabase:()=>({functions:{invoke:async(name,{body})=>{assert.equal(name,'amazon-catalog-estimate');assert.deepEqual({...body},{asin:'BTEST00003',price:20000});return {data:{payout:17000},error:null};}},from:table=>{assert.equal(table,'products');return {insert:async row=>{inserted=row;return {error:null};},select:()=>({eq:()=>({maybeSingle:async()=>({data:null,error:null})})})};}}),
  }:{}};
  vm.runInNewContext(compile('apps/admin/src/api.ts'),apiModule);
  await apiModule.exports.createProduct({asin:'btest00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:'20000',shipping_category:'ブ',shipping_size:'100'});
- assert.deepEqual(JSON.parse(JSON.stringify(inserted)),{asin:'BTEST00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:20000,target_profit_rate:null,shipping_category:'ブ',shipping_size:'100',payout_estimate:17000,target_cost:13600});
+ assert.deepEqual(JSON.parse(JSON.stringify(inserted)),{asin:'BTEST00003',model_no:'MODEL',maker:'Maker',genre:'家電＆カメラ',turnover:'高',list_price:20000,target_profit_rate:null,shipping_category:'ブ',shipping_size:'100',payout_estimate:17000,target_cost:13600,color:null,variant_label:null});
  await apiModule.exports.createProduct({asin:'btest00003',model_no:'',maker:'',genre:'',turnover:'',list_price:'20000',target_profit_rate:'15',shipping_category:'',shipping_size:''});
  assert.equal(inserted.target_profit_rate,15);assert.equal(inserted.target_cost,14450,'An entered profit rate wins over the rule');
  const owner=()=>all(tree).find(n=>n.type==='select');
