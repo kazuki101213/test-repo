@@ -998,7 +998,16 @@ export async function createProduct(input: ProductRegistrationInput): Promise<vo
     shipping_category: input.shipping_category || null, shipping_size: input.shipping_size || null,
     ...(listPrice !== null && listPrice > 0 ? await amazonProductAmounts(asin, listPrice) : { payout_estimate: null, target_cost: null }),
   });
+  if (error?.code === '23505') throw new Error(await duplicateProductMessage(asin));
   if (error) throw error;
+}
+
+/** 同じASINはデータベースで1件だけ。登録済みの番号を添えて、何をすればよいかを返す。 */
+async function duplicateProductMessage(asin: string): Promise<string> {
+  const { data } = await getSupabase().from('products').select('product_no,is_active').eq('asin', asin).maybeSingle();
+  const no = data?.product_no != null ? `（番号${data.product_no}）` : '';
+  if (data && data.is_active === false) return `ASIN ${asin} は以前に登録して削除済みの商品${no}です。同じASINは新しく登録できません。`;
+  return `ASIN ${asin} は商品リストに登録済み${no}です。内容を変えるときは一覧の行を編集してください。`;
 }
 
 /** A draft already identifies its product; do not download the catalog to display it. */
