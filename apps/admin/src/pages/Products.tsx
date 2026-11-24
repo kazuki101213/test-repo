@@ -294,7 +294,8 @@ export default function Products({ me }: { me: Staff }) {
                   {!ownerFilter && <td />}<td /><td /><td />
                   <td className="num"><button className="inventory-cell-edit" onClick={() => editOption('list_price')}>{yen(option.list_price)}</button></td>
                   <td className="num">{yen(option.payout_estimate)}</td>
-                  <td className="num"><button className="inventory-cell-edit" onClick={() => editOption('target_profit_rate')}>{option.target_profit_rate != null ? option.target_profit_rate + '%' : option.payout_estimate != null ? <span className="sub">ルール({ruleProfitRate(option.payout_estimate)}%)</span> : '—'}</button></td>
+                  <td className="num"><button className="inventory-cell-edit" onClick={() => editOption('target_profit_rate')}>{option.target_profit_rate != null ? option.target_profit_rate + '%' : option.payout_estimate != null ? ruleProfitRate(option.payout_estimate) + '%' : '—'}</button></td>
+                  <td className="num">{option.payout_estimate != null && option.target_cost != null ? yen(option.payout_estimate - option.target_cost) : '—'}</td>
                   <td className="num" style={{ color: 'var(--accent)' }}>{yen(option.target_cost)}</td>
                   <td /><td />
                   <td><label className="expense-selection"><input type="checkbox" aria-label={`${p.model_no || p.asin} ${option.label}を選択`} checked={selected.has('opt:' + option.id)} disabled={loading || busy || deleting || confirmation.pending} onChange={event => { const checked = event.target.checked; setSelected(current => { const next = new Set(current); if (checked) next.add('opt:' + option.id); else next.delete('opt:' + option.id); return next; }); }} /></label></td>
