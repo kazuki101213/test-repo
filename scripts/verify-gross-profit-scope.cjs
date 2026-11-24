@@ -92,10 +92,17 @@ async function testDashboardPairs(){
   '../sales':{japanMonth:()=> '2026-11'},
   '../api':{fetchStockSummary:async()=>allStock,fetchMonthly:async()=>[allMonth],fetchWorkload:async()=>[],workloadMetrics:[],
    fetchDashboardPurchaserSummary:async()=>({stock:ownStock,months:[ownMonth],workload:[]}),
-   fetchDashboardPurchaseForecast:async month=>{requests.push(month);return{all:12300,mine:-4500}}},
+   fetchDashboardPurchaseForecast:async month=>{requests.push(month);return{all:12300,mine:-4500}},
+   fetchDashboardSellThrough:async()=>({from:'2026-09-25',to:'2026-10-24',all:{items:4,sold:3},mine:{items:2,sold:1}})},
  });
  await dashboard.settle();
  assert.deepEqual(requests,['2026-11']);
+ // 今月販売：保有在庫は「点数 / はけ率」（はけ率の文言は出さない）。
+ const salesLines=all(all(dashboard.tree).find(n=>n.props?.className==='card sales-summary-card'))
+  .filter(n=>typeof n.props?.className==='string'&&n.props.className.includes('dashboard-sales-line')).map(text);
+ assert(salesLines.includes('5点/75%'),'all stock count and sell-through: '+JSON.stringify(salesLines));
+ assert(salesLines.includes('2点/50%'),'own stock count and sell-through: '+JSON.stringify(salesLines));
+ assert(!salesLines.some(line=>line.includes('はけ率')));
  const pairs=(card)=>all(all(dashboard.tree).find(n=>n.props?.className==='card '+card))
   .filter(n=>typeof n.type==='function'&&n.props.firstLabel)
   .map(n=>all(n.type(n.props)).filter(node=>node.props?.className?.includes('kpi-label')||node.props?.className?.includes('dashboard-money-pair')).map(text));
