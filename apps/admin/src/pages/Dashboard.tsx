@@ -137,7 +137,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
                 <div className="kpi-value dashboard-sales-line" title="はけ率：31〜60日前に仕入れた商品のうち、仕入れから30日以内に売れた割合">
                   <span>{inventory?.現在庫数 ?? 0}点</span>
                   <span className="dashboard-metric-divider dashboard-sub">/</span>
-                  <span className="dashboard-sub">はけ率 {rate(sellThrough?.[scope].sold, sellThrough?.[scope].items)}</span>
+                  <span className="dashboard-sub">{rate(sellThrough?.[scope].sold, sellThrough?.[scope].items)}</span>
                 </div>
               </div>)}
             </div>
