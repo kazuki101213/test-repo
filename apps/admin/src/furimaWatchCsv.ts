@@ -13,8 +13,9 @@ type Variant = { cost: number; payout: number | null };
 export function furimaWatchCsvRows(products: readonly Product[], stock: ReadonlyMap<string, number>) {
   const groups = new Map<string, Product[]>();
   for (const product of products) {
-    // 品番は管理者ごと（2026-11-25）。管理者が違えば同じ番号でも別の行。
-    const key = product.product_no != null ? 'no:' + (product.owner_staff_id ?? '') + ':' + product.product_no : 'id:' + product.id;
+    // 2026-11-25：品番は管理者ごとの通し番号（色違いも別の番号）。同じ管理者・同じ型番を1行にまとめる。
+    const model = product.model_no?.trim().replace(/\s+/g, ' ').toLowerCase();
+    const key = model ? 'model:' + (product.owner_staff_id ?? '') + ':' + model : 'id:' + product.id;
     groups.set(key, [...(groups.get(key) ?? []), product]);
   }
 
@@ -39,7 +40,7 @@ export function furimaWatchCsvRows(products: readonly Product[], stock: Readonly
       : first.color?.trim() || first.variant_label?.trim()
         ? [head, first.color?.trim(), first.variant_label?.trim()].filter(Boolean).join(' ')
         : first.maker ?? '';
-    const number = (first.product_no ?? '') + (count > 1 ? '・' + count + '通り' : '');
+    const number = group.length > 1 ? group.map(product => product.product_no ?? '').join('・') : (first.product_no ?? '') + (count > 1 ? '・' + count + '通り' : '');
     const name = [
       first.turnover ?? '', held, roundUpHundred(top.cost), model, maker,
       group.some(product => product.has_sold_before) ? '有' : '無',
