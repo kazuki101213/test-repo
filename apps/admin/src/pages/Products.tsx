@@ -347,14 +347,14 @@ export default function Products({ me }: { me: Staff }) {
           <label className="field"><span>配送サイズ</span><select value={fullEditDraft.shipping_size} disabled={busy} onChange={e => setFullEditDraft(current => current && ({ ...current, shipping_size: e.target.value }))}><option value="">未設定</option>{PRODUCT_SHIPPING_SIZES.map(v => <option key={v} value={v}>{v}{/^\d+$/.test(v) ? 'サイズ' : ''}</option>)}</select></label>
         </div>
         {error && <div className="error" role="alert">{error}</div>}
-        <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveFullEdit()}>{busy ? '保存中…' : '保存'}</button><button className="btn" disabled={busy} onClick={() => { setFullEditProduct(null); setFullEditDraft(null); }}>閉じる</button></div>
+        <div className="toolbar save-close-actions"><button className="btn primary" disabled={busy} onClick={() => void saveFullEdit()}>{busy ? '保存中…' : '保存'}</button><button className="btn" disabled={busy} onClick={() => { setFullEditProduct(null); setFullEditDraft(null); }}>閉じる</button></div>
       </div></div>}
       {sizeEditProduct && sizeEditDraft && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="サイズ区分と配送サイズを編集"><div className="card inventory-comment-panel">
         <h3>サイズ設定を編集</h3><p className="sub">品番 {sizeEditProduct.product_no ?? '未設定'} ・ {sizeEditProduct.model_no || sizeEditProduct.asin}</p>
         <label className="field"><span>サイズ区分</span><select value={sizeEditDraft.shipping_category} disabled={busy} onChange={e => setSizeEditDraft(current => current && ({ ...current, shipping_category: e.target.value, shipping_size: e.target.value === 'モ' ? '140' : e.target.value === 'ブ' ? '100' : e.target.value === '小' ? '' : current.shipping_size }))}><option value="">未設定</option><option value="モ">モニター（モ）</option><option value="ブ">ブルーレイレコーダー（ブ）</option><option value="小">小物（小）</option></select></label>
         <label className="field"><span>配送サイズ</span><select value={sizeEditDraft.shipping_size} disabled={busy} onChange={e => setSizeEditDraft(current => current && ({ ...current, shipping_size: e.target.value }))}><option value="">未設定</option>{PRODUCT_SHIPPING_SIZES.map(v => <option key={v} value={v}>{v}{/^\d+$/.test(v) ? 'サイズ' : ''}</option>)}</select></label>
         {error && <div className="error" role="alert">{error}</div>}
-        <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveSizeEdit()}>{busy ? '保存中' : '保存'}</button><button className="btn" disabled={busy} onClick={() => { setSizeEditProduct(null); setSizeEditDraft(null); }}>閉じる</button></div>
+        <div className="toolbar save-close-actions"><button className="btn primary" disabled={busy} onClick={() => void saveSizeEdit()}>{busy ? '保存中' : '保存'}</button><button className="btn" disabled={busy} onClick={() => { setSizeEditProduct(null); setSizeEditDraft(null); }}>閉じる</button></div>
       </div></div>}
       {editing && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="商品リストの項目を編集"><div className="card inventory-comment-panel">
         <h3>{fieldLabels[editing.field]}を編集</h3>
@@ -363,7 +363,7 @@ export default function Products({ me }: { me: Staff }) {
             : <input autoFocus type={['product_no', 'list_price', 'payout_estimate', 'target_profit_rate', 'target_cost'].includes(editing.field) ? 'number' : 'text'} min={editing.field === 'product_no' ? 1 : 0} max={editing.field === 'target_profit_rate' ? 99 : undefined} value={editing.value} onChange={e => setEditing(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveEdit(); }} />}
         </label>
         {error && <div className="error" role="alert">{error}</div>}
-        <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setEditing(null)}>閉じる</button></div>
+        <div className="toolbar save-close-actions"><button className="btn primary" disabled={busy} onClick={() => void saveEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setEditing(null)}>閉じる</button></div>
       </div></div>}
       {optionEditing && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="通りの項目を編集"><div className="card inventory-comment-panel">
         <h3>{optionEditing.field === 'label' ? '付属品・状態' : optionEditing.field === 'list_price' ? '販売想定金額' : '利益率（%）'}を編集</h3>
@@ -371,7 +371,7 @@ export default function Products({ me }: { me: Staff }) {
           <input autoFocus type={optionEditing.field === 'label' ? 'text' : 'number'} min={0} max={optionEditing.field === 'target_profit_rate' ? 99 : undefined} placeholder={optionEditing.field === 'target_profit_rate' ? '空欄＝ルール' : undefined} value={optionEditing.value} onChange={e => setOptionEditing(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveOptionEdit(); }} />
         </label>
         {error && <div className="error" role="alert">{error}</div>}
-        <div className="toolbar"><button className="btn primary" disabled={busy} onClick={() => void saveOptionEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setOptionEditing(null)}>閉じる</button></div>
+        <div className="toolbar save-close-actions"><button className="btn primary" disabled={busy} onClick={() => void saveOptionEdit()}>保存</button><button className="btn" disabled={busy} onClick={() => setOptionEditing(null)}>閉じる</button></div>
       </div></div>}
       {historyProduct && <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label="過去の販売履歴">
         <div className="card inventory-comment-panel product-history-panel">

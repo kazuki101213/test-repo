@@ -398,7 +398,7 @@ function InventoryFullEditDialog({ item, staff, canDelete, onClose, onSaved }: {
       {error && <div className="error" role="alert">{error}</div>}
       {usageError&&<div className="error" role="alert">利用記録を読み込めませんでした。{usageError}</div>}
       {paymentError && <div className="error" role="alert">支払い方法を読み込めませんでした。画面を開き直してください。{paymentError}</div>}
-      <div className="toolbar inventory-edit-actions"><button className="btn primary" disabled={busy || !paymentReady} onClick={() => void save()}>保存</button>{canDelete && <button className="btn" disabled={busy} onClick={() => void remove()} style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>削除</button>}<button className="btn" disabled={busy} onClick={onClose}>閉じる</button></div>
+      <div className="toolbar inventory-edit-actions"><button className="btn primary" disabled={busy || !paymentReady} onClick={() => void save()}>保存</button><button className="btn" disabled={busy} onClick={onClose}>閉じる</button>{canDelete && <button className="btn" disabled={busy} onClick={() => void remove()} style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>削除</button>}</div>
     </div>
   </div>;
 }
