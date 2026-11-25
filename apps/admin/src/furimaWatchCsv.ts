@@ -7,15 +7,14 @@ const positive = (value: number | null | undefined): value is number => typeof v
 type Variant = { cost: number; payout: number | null };
 
 /**
- * フリマウォッチ用CSV。同じ番号（色違い・付属品や状態違いの通り）は型番ごとに1行にまとめる（2026-11-24 ユーザー指定）。
+ * フリマウォッチ用CSV。商品（色違いも別の番号）ごとに1行（2026-11-25 ユーザー指定）。付属品・状態の通り（同じASIN）だけその商品の行にまとめる。
  * 上限は通りの中で一番高い仕入れ目標金額、pmin は一番安い仕入れ目標金額から出す。1通りしかない番号は今までと同じ文字。
  */
 export function furimaWatchCsvRows(products: readonly Product[], stock: ReadonlyMap<string, number>) {
   const groups = new Map<string, Product[]>();
   for (const product of products) {
-    // 2026-11-25：品番は管理者ごとの通し番号（色違いも別の番号）。同じ管理者・同じ型番を1行にまとめる。
-    const model = product.model_no?.trim().replace(/\s+/g, ' ').toLowerCase();
-    const key = model ? 'model:' + (product.owner_staff_id ?? '') + ':' + model : 'id:' + product.id;
+    // 2026-11-25 ユーザー指定：色違い（金額が違う）は商品ごとに別の行・別の通知。
+    const key = 'id:' + product.id;
     groups.set(key, [...(groups.get(key) ?? []), product]);
   }
 
