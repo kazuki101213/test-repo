@@ -33,7 +33,12 @@ export function furimaWatchCsvRows(products: readonly Product[], stock: Readonly
     const count = group.length + group.reduce((sum, product) => sum + (product.product_options ?? []).filter(option => option.is_active).length, 0);
     const held = group.reduce((sum, product) => sum + (stock.get(product.asin.trim().toUpperCase()) ?? 0), 0);
     const profit = top.payout === null ? '' : roundUpHundred(top.payout - top.cost);
-    const maker = count > 1 ? (first.maker ?? '').trim().split(/\s+/)[0] ?? '' : first.maker ?? '';
+    // 2026-11-25 ユーザー指定（全員）：1通りの番号は、メーカーの後に色・付属品や状態を書く（空欄なら今までどおり）。
+    const head = (first.maker ?? '').trim().split(/\s+/)[0] ?? '';
+    const maker = count > 1 ? head
+      : first.color?.trim() || first.variant_label?.trim()
+        ? [head, first.color?.trim(), first.variant_label?.trim()].filter(Boolean).join(' ')
+        : first.maker ?? '';
     const number = (first.product_no ?? '') + (count > 1 ? '・' + count + '通り' : '');
     const name = [
       first.turnover ?? '', held, roundUpHundred(top.cost), model, maker,
