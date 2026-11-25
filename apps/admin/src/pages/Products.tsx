@@ -182,9 +182,11 @@ export default function Products({ me }: { me: Staff }) {
   const ownerOption = (owner: ProductCatalogOwner) => <option key={owner.id} value={owner.id}>{ownerNames.get(owner.id)}</option>;
   const selectedRows = rows.filter(row => selected.has(row.id));
   const selectedOptions = rows.flatMap(row => activeOptions(row).filter(option => selected.has('opt:' + option.id)).map(option => ({ row, option })));
-  const groupSizes = new Map<number, number>();
-  for (const row of rows) if (row.product_no != null) groupSizes.set(row.product_no, (groupSizes.get(row.product_no) ?? 0) + 1 + activeOptions(row).length);
-  const variantsOf = (row: Product) => Math.max(groupSizes.get(row.product_no ?? -1) ?? 1, (row.variant_no ?? 1) > 1 ? 2 : 1);
+  // 品番は管理者ごとに1から振る（2026-11-25）。同じ番号でも管理者が違えば別の商品。
+  const groupKey = (row: Product) => (row.owner_staff_id ?? '') + ':' + row.product_no;
+  const groupSizes = new Map<string, number>();
+  for (const row of rows) if (row.product_no != null) groupSizes.set(groupKey(row), (groupSizes.get(groupKey(row)) ?? 0) + 1 + activeOptions(row).length);
+  const variantsOf = (row: Product) => Math.max(row.product_no == null ? 1 : groupSizes.get(groupKey(row)) ?? 1, (row.variant_no ?? 1) > 1 ? 2 : 1);
   function askDelete() {
     if ((!selectedRows.length && !selectedOptions.length) || loading || busy || deleting) return;
     let remaining = selectedRows.map(row => row.id);

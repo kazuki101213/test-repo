@@ -13,7 +13,8 @@ type Variant = { cost: number; payout: number | null };
 export function furimaWatchCsvRows(products: readonly Product[], stock: ReadonlyMap<string, number>) {
   const groups = new Map<string, Product[]>();
   for (const product of products) {
-    const key = product.product_no != null ? 'no:' + product.product_no : 'id:' + product.id;
+    // 品番は管理者ごと（2026-11-25）。管理者が違えば同じ番号でも別の行。
+    const key = product.product_no != null ? 'no:' + (product.owner_staff_id ?? '') + ':' + product.product_no : 'id:' + product.id;
     groups.set(key, [...(groups.get(key) ?? []), product]);
   }
 

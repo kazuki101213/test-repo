@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Amazon 商品リスト登録",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "Amazon.co.jpの商品を管理アプリで確認・登録し、Keepaの売れ行きと相場を表示します。",
   "minimum_chrome_version": "120",
   "permissions": [
