@@ -25,8 +25,9 @@ begin
     raise exception 'Both catalog lists must be visible to the second administrator and retain their owners';
   end if;
   if (select product_no from app.products where asin = 'BCATOWN001') is distinct from 900000
-     or (select product_no from app.products where asin = 'BCATOWN002') is distinct from 900001 then
-    raise exception 'Catalog numbering must advance across owners and deactivated products';
+     or (select product_no from app.products where asin = 'BCATOWN002') is distinct from 1 then
+    -- 2026-11-25: 品番は管理者ごとに1から（無効にした商品の番号は使い回さない）。
+    raise exception 'Catalog numbering must be per owner and advance across deactivated products';
   end if;
   begin
     update app.products set owner_staff_id = second_admin where asin = 'BCATOWN001';
