@@ -220,7 +220,9 @@ async function catalogGroup(product, ownerId, model, session) {
   let rows = [];
   if (product?.product_no != null) {
     rows = await request('/rest/v1/products?' + new URLSearchParams({
-      select: columns, product_no: 'eq.' + product.product_no, is_active: 'eq.true', order: 'variant_no,id' }), session);
+      // 品番は管理者ごとに1から振る（2026-11-25）ので、同じ管理者の中で探す。
+      select: columns, product_no: 'eq.' + product.product_no, is_active: 'eq.true', order: 'variant_no,id',
+      ...(product.owner_staff_id ? { owner_staff_id: 'eq.' + product.owner_staff_id } : {}) }), session);
   } else if (!product && ownerId && String(model ?? '').trim()) {
     const exact = String(model).trim().replace(/[\\%_*]/g, '\\$&');
     rows = await request('/rest/v1/products?' + new URLSearchParams({
