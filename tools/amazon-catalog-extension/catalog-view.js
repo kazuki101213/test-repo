@@ -46,7 +46,9 @@ export function mountCatalogView(root) {
   options('shipping_category', PRODUCT_SHIPPING_CATEGORIES, 'サイズ区分');
   const optionForm = $('#option-form');
   let group = null;
+  // 2026-11-25：商品の行は自分の通し番号だけ。付属品・状態の通り（同じASIN）だけ「番号-枝番」。
   const numberLabel = (no, variant, count) => no == null ? '' : count > 1 ? no + '-' + (variant ?? 1) : String(no);
+  const entryLabel = entry => entry.kind === 'product' ? String(entry.product_no ?? '') : numberLabel(entry.base_no ?? group?.productNo, entry.variant_no, 2);
   const variantText = item => [item.color, item.label].map(value => String(value ?? '').trim()).filter(Boolean).join(' ');
 
   // 同じ番号の通りを並べる。このASINの付属品・状態の通りは金額・利益率をその場で保存できる。
@@ -60,7 +62,7 @@ export function mountCatalogView(root) {
       row.className = 'variant-row';
       const no = document.createElement('span');
       no.className = 'no';
-      no.textContent = numberLabel(group.productNo, entry.variant_no, Math.max(count, 2));
+      no.textContent = entryLabel(entry);
       const text = document.createElement('span');
       text.className = 'text';
       text.textContent = variantText(entry);
@@ -115,7 +117,7 @@ export function mountCatalogView(root) {
       if (first.shipping_category) fields.shipping_category.value = first.shipping_category;
       $('#catalog-status').textContent = group.productNo + 'と同じ型番';
     }
-    $('#register').textContent = join ? group.productNo + 'に追加' : '追加';
+    $('#register').textContent = '追加';
   }
 
   async function send(type, payload = {}) {
@@ -153,7 +155,7 @@ export function mountCatalogView(root) {
     status.dataset.registration = item ? (item.owner_staff_id === ownerId ? 'registered' : 'other-owner') :
       (canRegister ? 'unregistered' : '');
     status.textContent = item ? (item.is_active ? '登録済み' : '登録済み（無効）') : (canRegister ? '未登録' : '');
-    $('#catalog-number').textContent = item?.product_no == null ? '' : '品番 ' + numberLabel(item.product_no, item.variant_no, group?.items.length ?? 1);
+    $('#catalog-number').textContent = item?.product_no == null ? '' : '品番 ' + item.product_no;
     if (item && !fields.model_no.value && item.model_no) {
       fields.model_no.value = item.model_no;
       showModel();

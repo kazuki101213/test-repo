@@ -218,17 +218,16 @@ async function lookupMaker(value, ownerId, session) {
 // 登録済みならその番号、未登録なら登録先の管理者の同じ型番を探す。読めないとき（古いDBなど）は通りなしで続ける。
 async function catalogGroup(product, ownerId, model, session) {
   let rows = [];
-  if (product?.product_no != null) {
+  // 2026-11-25：品番は管理者ごとの通し番号（色違いも別の番号）。同じ管理者・同じ型番の商品を並べる。
+  const owner = product?.owner_staff_id ?? ownerId;
+  const exactModel = String(product?.model_no ?? model ?? '').trim();
+  if (product && !exactModel) {
+    rows = [product];
+  } else if (owner && exactModel) {
     rows = await request('/rest/v1/products?' + new URLSearchParams({
-      // 品番は管理者ごとに1から振る（2026-11-25）ので、同じ管理者の中で探す。
-      select: columns, product_no: 'eq.' + product.product_no, is_active: 'eq.true', order: 'variant_no,id',
-      ...(product.owner_staff_id ? { owner_staff_id: 'eq.' + product.owner_staff_id } : {}) }), session);
-  } else if (!product && ownerId && String(model ?? '').trim()) {
-    const exact = String(model).trim().replace(/[\\%_*]/g, '\\$&');
-    rows = await request('/rest/v1/products?' + new URLSearchParams({
-      select: columns, owner_staff_id: 'eq.' + ownerId, is_active: 'eq.true', model_no: 'ilike.' + exact,
-      order: 'product_no,variant_no,id' }), session);
-    if (rows.length) rows = rows.filter(row => row.product_no === rows[0].product_no);
+      select: columns, owner_staff_id: 'eq.' + owner, is_active: 'eq.true',
+      model_no: 'ilike.' + exactModel.replace(/[\\%_*]/g, '\\$&'), order: 'product_no,variant_no,id' }), session);
+    if (product && Array.isArray(rows) && !rows.some(row => row.id === product.id)) rows = [product, ...rows];
   }
   if (!Array.isArray(rows) || !rows.length) return null;
   const ids = rows.map(row => row.id).filter(id => uuidPattern.test(id));
@@ -238,9 +237,10 @@ async function catalogGroup(product, ownerId, model, session) {
     ...rows.map(row => ({ kind: 'product', ...row, label: row.variant_label })),
     ...(Array.isArray(options) ? options : []).map(option => {
       const owner = rows.find(row => row.id === option.product_id);
-      return { kind: 'option', ...option, asin: owner?.asin, color: owner?.color, owner_staff_id: owner?.owner_staff_id };
+      return { kind: 'option', ...option, asin: owner?.asin, color: owner?.color, owner_staff_id: owner?.owner_staff_id, base_no: owner?.product_no };
     }),
-  ].sort((a, b) => (a.variant_no ?? 1) - (b.variant_no ?? 1));
+  ].sort((a, b) => ((a.kind === 'product' ? a.product_no : a.base_no) ?? 0) - ((b.kind === 'product' ? b.product_no : b.base_no) ?? 0)
+    || (a.variant_no ?? 1) - (b.variant_no ?? 1));
   return { productNo: rows[0].product_no, first: rows[0], items };
 }
 
