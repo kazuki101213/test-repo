@@ -249,7 +249,7 @@ export default function ExpenseList({ revision }: { revision: number }) {
       : <input autoFocus type={fieldEdit.field === 'incurred_on' ? 'date' : fieldEdit.field === 'amount' ? 'number' : 'text'} value={fieldEdit.value} onChange={e => setFieldEdit(current => current && { ...current, value: e.target.value })} onKeyDown={e => { if (e.key === 'Enter') void saveField(); }} />}</label>
     {fieldEdit.field === 'card_id' && cardsError && <div className="error" role="alert">{cardsError}<button type="button" className="btn" disabled={cardsLoading} onClick={() => setCardsRevision(value => value + 1)}>支払い方法を再読み込み</button></div>}
     {error && <div className="error" role="alert">{error}</div>}
-    <div className="toolbar"><button className="btn primary" disabled={expenseBusy || (fieldEdit.field === 'card_id' && (cardsLoading || !!cardsError))} onClick={() => void saveField()}>保存</button><button className="btn" disabled={expenseBusy} onClick={() => setFieldEdit(null)}>閉じる</button></div>
+    <div className="toolbar save-close-actions"><button className="btn primary" disabled={expenseBusy || (fieldEdit.field === 'card_id' && (cardsLoading || !!cardsError))} onClick={() => void saveField()}>保存</button><button className="btn" disabled={expenseBusy} onClick={() => setFieldEdit(null)}>閉じる</button></div>
   </div></div>}
   {askulImportOpen && <AskulExpenseImport onClose={() => setAskulImportOpen(false)} onSaved={result => {
     setAskulImportOpen(false);

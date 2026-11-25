@@ -324,8 +324,9 @@
  .layout .daily-sales .daily-sales-range > .btn { font-size:11px; padding-inline:2px; }
 }
 @media screen {
- .layout .toolbar.inventory-edit-actions { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; gap:8px; }
- .layout .inventory-edit-actions > .btn { flex:0 0 auto; width:auto; }
+ /* 編集画面は、パソコンでもスマホでも「保存」のすぐ隣に「閉じる」を置く（2026-11-25 ユーザー指定）。 */
+ .layout .toolbar:is(.inventory-edit-actions,.save-close-actions) { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:center; justify-content:flex-start; gap:8px; }
+ .layout :is(.inventory-edit-actions,.save-close-actions) > .btn { flex:0 0 auto; width:auto; justify-self:auto; }
 }
 
 @media screen {
