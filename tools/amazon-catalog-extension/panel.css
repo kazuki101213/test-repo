@@ -107,3 +107,10 @@ header { padding: 4px 8px; }
 .panel-controls button { white-space: nowrap; }
 #settings { font-size: 11px; padding: 2px 4px; }
 .compact-fields .rate { flex-basis: 44px; }
+/* 2026-11-26 販売想定金額の行：「利益」の字をなくし、欄の中に「利益率」と出す。金額欄を広げて行の幅いっぱいに並べる。 */
+#catalog-price-form { flex: 1 1 100%; margin-left: 0; }
+#catalog-price-form input[name="list_price"] { flex: 1 1 auto; width: auto; min-width: 70px; }
+#catalog-price-form input.catalog-rate { flex: 0 0 52px; width: 52px; }
+#catalog-price-form button { margin-left: auto; }
+.compact-fields .rate { flex-basis: 60px; }
+.variant-row input.rate { width: 52px; }
