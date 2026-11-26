@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { amazonAccounts, amazonCredentials, type AmazonAccountId } from '../_shared/amazonAccounts.ts';
 
 const marketplace = 'A1VC38T7YXB528';
@@ -79,7 +79,8 @@ async function quote(token: string, asin: string, sku: string | undefined, price
   return response.ok ? estimatePayout(price, await response.json()) : null;
 }
 
-type Service = ReturnType<typeof createClient>;
+// deno-lint-ignore no-explicit-any
+type Service = SupabaseClient<any, 'app', any>;
 type Tokens = Map<AmazonAccountId, Promise<string | null>>;
 
 class LookupError extends Error {}
