@@ -17,11 +17,12 @@ export function createCatalogMarkup() {
       element('h1', {}, '商品リスト', element('span', { id: 'catalog-status', role: 'status' }), element('span', { id: 'catalog-number', class: 'meta' })),
       button('settings', 'Keepa設定', 'link')),
     element('div', { id: 'catalog-panel-body' },
-      element('p', { id: 'catalog-destination', class: 'meta' }),
       status('page-status', '商品情報を読み込んでいます…'),
       element('section', { id: 'product', hidden: '' },
         element('div', { id: 'catalog-summary' },
           element('p', { id: 'model-display', class: 'product-title', hidden: '' }),
+          // 担当者（登録先）は型番と同じ行の右端に出し、パネルを1行低くする（2026-11-26）。
+          element('p', { id: 'catalog-destination', class: 'meta' }),
           element('form', { id: 'catalog-price-form', hidden: '' },
             element('input', { ...priceAttributes, name: 'list_price', 'aria-label': '販売想定金額（円）' }),
             element('span', { 'aria-hidden': 'true' }, '円'),

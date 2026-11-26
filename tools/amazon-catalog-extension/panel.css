@@ -74,7 +74,8 @@ header h1 { min-width: 0; flex-wrap: wrap; }
 :host { font-size: 12px; }
 #catalog-panel-body { padding: 2px 8px 8px; }
 header { padding: 4px 8px; }
-#catalog-destination { margin: 0 0 2px; text-align: right; white-space: nowrap; }
+/* 2026-11-26 担当者は型番の行の右端へ（.meta は横並びの表示なので text-align では右に寄らなかった）。 */
+#catalog-destination { margin: 0 0 0 auto; justify-content: flex-end; white-space: nowrap; }
 #catalog-destination:empty { display: none; }
 .fields-twelve { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }
 .fields-twelve .span-6 { grid-column: span 6; }
