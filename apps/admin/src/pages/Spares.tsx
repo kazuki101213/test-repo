@@ -283,7 +283,8 @@ export default function Spares({ me }: { me: Staff }) {
           </label>)}
         </fieldset>}
         {referenceMode === 'remote' && sourceItemId && <label className="row registration-wide spare-mistaken-choice">
-          <input type="checkbox" checked={mistaken} disabled={saving} onChange={event => setMistaken(event.target.checked)} />
+          {/* 丸の印（ほかの選択肢と同じ見た目）。押すたびに付け外しできる（2026-11-26 ユーザー指定）。 */}
+          <input type="radio" name="spare-mistaken" aria-checked={mistaken} checked={mistaken} disabled={saving} onChange={() => undefined} onClick={() => setMistaken(current => !current)} />
           間違い
         </label>}
         {autofillBusy && <p className="muted">通番号の商品情報を読み込み中…</p>}
