@@ -19,7 +19,8 @@ assert(details.includes('payout = amounts.payout_estimate;')&&details.includes('
 const migration=fs.readFileSync('supabase/migrations/20261126090000_payout_follows_price.sql','utf8');
 assert(migration.includes('new.list_price is distinct from old.list_price')&&migration.includes('new.payout_estimate is not distinct from old.payout_estimate'),'DB rejects a price change that keeps the old payout');
 assert(migration.includes('before update of list_price on app.products')&&migration.includes('before update of list_price on app.product_options'),'Guard covers products and their options');
-assert(migration.includes("cron.schedule('product-payout-daily-check'")&&migration.includes("interval '20 hours'"),'Every product is compared with the fee API once a day');
+// 2026-11-26 ユーザー指示：APIは登録時・販売想定金額の変更時だけ。毎日の照合はやめた。
+assert(fs.readFileSync('supabase/migrations/20261126100000_stop_payout_daily_check.sql','utf8').includes("cron.unschedule('product-payout-daily-check')"),'No scheduled fee API checks');
 const fn=fs.readFileSync('supabase/functions/amazon-catalog-estimate/index.ts','utf8');
 assert(fn.includes("verify_amazon_cron_token")&&fn.includes('payoutCorrection(row, payout)')&&fn.includes("apply_payout_correction"),'Daily check verifies the cron token and applies the profit rule');
 assert(fn.includes('payout <= 10000 ? 23 : payout <= 50000 ? 20 : 17'),'Daily check uses the same profit rule');
