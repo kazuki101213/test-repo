@@ -14,6 +14,15 @@ assert(field.includes("field === 'list_price'")&&field.includes('parsed !== prod
 assert(!field.includes('estimateProductAmounts'),'Genre-rate estimate is no longer used');
 const details=between('export async function updateProductDetails','export async function createProduct');
 assert(details.includes('amazonProductAmounts(asin, listPrice, profitRate)')&&details.includes('payout === (product.payout_estimate ?? null)'),'Full edit uses the API unless amounts were edited by hand');
+assert(details.includes('payout = amounts.payout_estimate;')&&details.includes('if (!targetEdited) targetCost = amounts.target_cost;'),'A hand-entered target never leaves the old payout behind a new price');
+// 2026-11-26：販売想定金額だけを変えて振込想定金額が古いまま残る保存はDBが断り、毎日APIと照合して直す。
+const migration=fs.readFileSync('supabase/migrations/20261126090000_payout_follows_price.sql','utf8');
+assert(migration.includes('new.list_price is distinct from old.list_price')&&migration.includes('new.payout_estimate is not distinct from old.payout_estimate'),'DB rejects a price change that keeps the old payout');
+assert(migration.includes('before update of list_price on app.products')&&migration.includes('before update of list_price on app.product_options'),'Guard covers products and their options');
+assert(migration.includes("cron.schedule('product-payout-daily-check'")&&migration.includes("interval '20 hours'"),'Every product is compared with the fee API once a day');
+const fn=fs.readFileSync('supabase/functions/amazon-catalog-estimate/index.ts','utf8');
+assert(fn.includes("verify_amazon_cron_token")&&fn.includes('payoutCorrection(row, payout)')&&fn.includes("apply_payout_correction"),'Daily check verifies the cron token and applies the profit rule');
+assert(fn.includes('payout <= 10000 ? 23 : payout <= 50000 ? 20 : 17'),'Daily check uses the same profit rule');
 const create=api.slice(api.indexOf('export async function createProduct'));
 assert(create.slice(0,create.indexOf('\n}\n')).includes('amazonProductAmounts(asin, listPrice, profitRate)'),'Admin registration uses the API');
 // targetCostFromPayout の境界

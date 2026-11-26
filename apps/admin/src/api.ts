@@ -1033,10 +1033,13 @@ export async function updateProductDetails(product: Product, input: ProductDetai
   let targetCost = parseNumber('target_cost', 0);
   const profitRate = parseProfitRate(input.target_profit_rate ?? '');
   const targetEdited = targetCost !== (product.target_cost ?? null);
-  // 販売想定金額を変え、振込・仕入れ目標を手で変えていなければ、Amazonの手数料APIで計算し直す。
+  // 販売想定金額を変え、振込想定金額を手で変えていなければ、Amazonの手数料APIで計算し直す。
+  // 仕入れ目標を手で入れたときはその値を残す（振込想定金額は必ずAPIの値にする：2026-11-26、DBも古い振込のままの保存を断る）。
   if (listPrice !== null && listPrice > 0 && listPrice !== (product.list_price ?? null)
-    && payout === (product.payout_estimate ?? null) && !targetEdited) {
-    ({ payout_estimate: payout, target_cost: targetCost } = await amazonProductAmounts(asin, listPrice, profitRate));
+    && payout === (product.payout_estimate ?? null)) {
+    const amounts = await amazonProductAmounts(asin, listPrice, profitRate);
+    payout = amounts.payout_estimate;
+    if (!targetEdited) targetCost = amounts.target_cost;
   } else if (!targetEdited && payout !== null
     && (profitRate !== (product.target_profit_rate ?? null) || payout !== (product.payout_estimate ?? null))) {
     // 利益率や振込想定金額を変えたら、仕入れ目標金額を計算し直す（仕入れ目標を手で入れたときはその値を残す）。
