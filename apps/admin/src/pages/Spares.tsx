@@ -284,7 +284,7 @@ export default function Spares({ me }: { me: Staff }) {
         </fieldset>}
         {referenceMode === 'remote' && sourceItemId && <label className="row registration-wide spare-mistaken-choice">
           <input type="checkbox" checked={mistaken} disabled={saving} onChange={event => setMistaken(event.target.checked)} />
-          間違えて付けたので予備に戻す（この通番号は利用記録に残さない）
+          間違い
         </label>}
         {autofillBusy && <p className="muted">通番号の商品情報を読み込み中…</p>}
         {referenceMessage && <p className="muted" role="status" style={{ gridColumn: '1 / -1' }}>{referenceMessage}</p>}

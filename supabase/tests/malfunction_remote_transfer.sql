@@ -110,8 +110,10 @@ begin
  insert into app.spare_accessories(title,usage_note,owner_staff_id,marketplace_item_id)
  values('リモコン','2444→2472',holder,'mmistake') returning id into attached_spare;
  perform app.allocate_spare_accessory(attached_spare,remote);
- if app.move_inventory_accessory_to_spares(remote,jsonb_build_object(
-   'title','リモコン','marketplace','ヤフオク','marketplace_item_id','mmistake','usage_note',seq::text,'mistaken',true))<>attached_spare
+ -- 同じ文の中だと移動前のデータが見えるので、先に移動してから確かめる。
+ earlier_spare:=app.move_inventory_accessory_to_spares(remote,jsonb_build_object(
+   'title','リモコン','marketplace','ヤフオク','marketplace_item_id','mmistake','usage_note',seq::text,'mistaken',true));
+ if earlier_spare<>attached_spare
    or exists(select 1 from app.items where id=remote)
    or not exists(select 1 from app.spare_accessories where id=attached_spare and used_for_item_id is null and usage_note='2444→2472')
    or (select count(*) from app.spare_accessories where marketplace_item_id='mmistake')<>1 then

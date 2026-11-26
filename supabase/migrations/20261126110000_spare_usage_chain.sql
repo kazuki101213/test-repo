@@ -178,12 +178,12 @@ begin
     identity_checked_on='2026-11-23', memo='2533、2534同梱。', updated_at=now()
   where id=v_accessory;
   update app.spare_accessories set used_for_item_id=v_body, updated_at=now() where id=v_right_spare;
-  -- 「2501」の予備行は、2501に間違えて付けて外したときにできたもの。利用記録として残さない。
-  delete from app.spare_accessories where id=v_wrong_spare;
-  -- 2501も間違えて付けたもの。2472から外した予備行を未使用に戻す（利用記録は 2444→2472）。
-  update app.spare_accessories s set used_for_item_id=null, updated_at=now()
-  from app.items u
-  where s.marketplace_item_id='s1246272416' and u.id=s.used_for_item_id and app.product_serial(u.sku,u.lot_seq)='2501';
+  -- s1246272416 は蓋のないリモコンで、2444・2472・2501・2534 に付けた記録はどれも予備の選び間違い（ユーザー確認）。
+  -- 最初に予備へ入れた行だけを、利用記録なしの未使用の予備として残し、選び間違いでできた行は消す。
+  delete from app.spare_accessories where marketplace_item_id='s1246272416'
+    and id <> (select id from app.spare_accessories where marketplace_item_id='s1246272416' order by created_at, id limit 1);
+  update app.spare_accessories set used_for_item_id=null, linked_item_id=null, usage_note=null, updated_at=now()
+  where marketplace_item_id='s1246272416';
 end $fix$;
 
 -- 11/25に別のリモコンへ書いてしまった利用記録を元に戻す（2501・2414・2460は新しく買ったリモコンで、予備は使っていない）。
