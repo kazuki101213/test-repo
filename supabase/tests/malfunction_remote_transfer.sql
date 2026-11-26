@@ -74,8 +74,8 @@ begin
  perform app.send_malfunction_reply(reply,body,'fixture only','SHARP◯ヤフオク','{}');
  perform app.send_malfunction_reply(reply,body,'fixture only','SHARP◯ヤフオク','{}');
  if exists(select 1 from app.items where id=remote)
-   or (select count(*) from app.spare_accessories where usage_note=seq::text and used_for_item_id is null)<>1
-   or not exists(select 1 from app.spare_accessories where usage_note=seq::text and source_sku=remote_sku and used_for_item_id is null) then
+   or (select count(*) from app.spare_accessories where usage_note='997699→'||seq and used_for_item_id is null)<>1
+   or not exists(select 1 from app.spare_accessories where usage_note='997699→'||seq and source_sku=remote_sku and used_for_item_id is null) then
   raise exception 'Current remote was not moved exactly once';
  end if;
  if not exists(select 1 from app.spare_accessories where id=earlier_spare and used_for_item_id=recipient)
@@ -97,8 +97,44 @@ begin
  if exists(select 1 from app.items where id=remote)
    or not exists(select 1 from app.spare_accessories where id=attached_spare and used_for_item_id=body and usage_note='997699')
    or (select count(*) from app.spare_accessories
-       where marketplace_item_id='mfixture' and used_for_item_id is null and usage_note=seq::text and cost_amount=1577)<>1 then
+       where marketplace_item_id='mfixture' and used_for_item_id is null and usage_note='997699→'||seq and cost_amount=1577)<>1 then
   raise exception 'Manual move did not preserve history and create one available spare';
+ end if;
+
+ -- 間違えて付けた予備は、今の通番号を利用記録に残さず、元の予備行を未使用に戻す。
+ seq:=seq+1;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace)
+ values(seq,buyer,holder,current_date,'mistaken transfer fixture',1000,'ヤフオク') returning id into body;
+ insert into app.items(lot_seq,parent_item_id,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,marketplace_item_id)
+ values(seq,body,true,buyer,holder,current_date,'リモコン',1615,'ヤフオク','mmistake') returning id into remote;
+ insert into app.spare_accessories(title,usage_note,owner_staff_id,marketplace_item_id)
+ values('リモコン','2444→2472',holder,'mmistake') returning id into attached_spare;
+ perform app.allocate_spare_accessory(attached_spare,remote);
+ if app.move_inventory_accessory_to_spares(remote,jsonb_build_object(
+   'title','リモコン','marketplace','ヤフオク','marketplace_item_id','mmistake','usage_note',seq::text,'mistaken',true))<>attached_spare
+   or exists(select 1 from app.items where id=remote)
+   or not exists(select 1 from app.spare_accessories where id=attached_spare and used_for_item_id is null and usage_note='2444→2472')
+   or (select count(*) from app.spare_accessories where marketplace_item_id='mmistake')<>1 then
+  raise exception 'Mistaken attachment was kept in the usage record';
+ end if;
+
+ -- 間違えて付けた購入品（元の予備がない）は、利用記録なしで予備に入る。
+ seq:=seq+1;
+ insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace)
+ values(seq,buyer,holder,current_date,'mistaken purchase fixture',1000,'ヤフオク') returning id into body;
+ insert into app.items(lot_seq,parent_item_id,is_accessory,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,marketplace_item_id)
+ values(seq,body,true,buyer,holder,current_date,'リモコン',900,'ヤフオク','mmistake2') returning id into remote;
+ perform app.move_inventory_accessory_to_spares(remote,jsonb_build_object(
+   'title','リモコン','marketplace','ヤフオク','marketplace_item_id','mmistake2','usage_note',seq::text,'mistaken',true));
+ if (select count(*) from app.spare_accessories where marketplace_item_id='mmistake2' and used_for_item_id is null and usage_note is null)<>1 then
+  raise exception 'Mistaken purchase was not returned to spares without a usage record';
+ end if;
+
+ if app.usage_chain_normalize('1738リモコン / 1755aリモコン')<>'1738→1755a'
+   or app.usage_chain_append('2444→2472','2501')<>'2444→2472→2501'
+   or app.usage_chain_append('2444→2472','2472')<>'2444→2472'
+   or app.usage_chain_last('2444→2472')<>'2472' then
+  raise exception 'Usage chain helpers are wrong';
  end if;
 end $$;
 rollback;

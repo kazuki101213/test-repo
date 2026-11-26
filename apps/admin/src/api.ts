@@ -719,10 +719,11 @@ export async function updateExpenseField(row: ExpenseInput, field: ExpenseField,
   if (!data) throw new Error('明細が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
 
-export async function moveInventoryAccessoryToSpares(itemId: string, input: SpareAccessoryInput): Promise<void> {
+/** mistaken=true：間違えて付けたリモコン。今の通番号を利用記録に残さず、元の予備を未使用に戻す。 */
+export async function moveInventoryAccessoryToSpares(itemId: string, input: SpareAccessoryInput, mistaken = false): Promise<void> {
   const { error } = await getSupabase().rpc('move_inventory_accessory_to_spares', {
     p_item_id: itemId,
-    p_spare_input: input,
+    p_spare_input: { ...input, mistaken },
   });
   if (error) throw error;
 }

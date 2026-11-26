@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { SpareAccessory } from '@bussan/shared';
-import { noticeProductUrl } from '@bussan/shared';
+import { lastUsageSerial, noticeProductUrl } from '@bussan/shared';
 import { findInventoryForSpare } from '../api';
 import { deliveryAppUrl } from '../appUrls';
 
@@ -13,7 +13,7 @@ export default function SpareLinks({ row, kind }: { row: SpareAccessory; kind: '
     const url = noticeProductUrl(row.marketplace, row.marketplace_item_id, null);
     return url ? <a className="inline-reference-link" href={url} target="_blank" rel="noopener noreferrer" aria-label="仕入先の商品ページを開く" title="仕入先の商品ページを開く">{icon}</a> : null;
   }
-  const serial = row.usage_note?.trim();
+  const serial = lastUsageSerial(row.usage_note);
   if (!serial || !/^\d+[a-z]*$/i.test(serial)) return null;
   async function openUsage() {
     if (busy || !serial) return;

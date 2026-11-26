@@ -45,6 +45,7 @@ export default function Spares({ me }: { me: Staff }) {
   const [sourceItemId, setSourceItemId] = useState<string | null>(null);
   const [referenceFound, setReferenceFound] = useState(false);
   const [referenceMessage, setReferenceMessage] = useState('');
+  const [mistaken, setMistaken] = useState(false);
   const referenceLookup = useRef<{ key: string; ready: boolean } | null>(null);
   const saveLock = useRef(false);
   const [editFor, setEditFor] = useState<{ row: SpareAccessory; field: SpareAccessoryField } | null>(null);
@@ -84,6 +85,7 @@ export default function Spares({ me }: { me: Staff }) {
     setAutofillBusy(false);
     setSourceItemId(null);
     setReferenceFound(false);
+    setMistaken(false);
     setReferenceCandidates([]);
     setReferenceMessage('');
     setError('');
@@ -171,7 +173,7 @@ export default function Spares({ me }: { me: Staff }) {
       return;
     }
     const source = referenceCandidates.find(item => item.id === sourceItemId);
-    if (source && !window.confirm(`${source.title}（${source.marketplace_item_id ? `${source.marketplace_item_id} ／ ` : ''}${source.sku}）を在庫から予備へ移動します。続けますか？`)) return;
+    if (source && !window.confirm(`${source.title}（${source.marketplace_item_id ? `${source.marketplace_item_id} ／ ` : ''}${source.sku}）を在庫から予備へ移動します。${mistaken ? '間違えて付けたものとして、この通番号は利用記録に残しません。' : 'この通番号を利用記録に足します。'}続けますか？`)) return;
     saveLock.current = true;
     setSaving(true); setError('');
     try {
@@ -179,7 +181,7 @@ export default function Spares({ me }: { me: Staff }) {
       if (!Number.isSafeInteger(form.cost_amount) || form.cost_amount < 0) throw new Error('仕入金額は0以上の整数で入力してください。');
       let input = { ...form, title: form.title.trim(), owner_name: form.owner_name?.trim() || null };
       if (referenceMode === 'body' && referenceFound) input = { ...input, title: 'リモコン', cost_amount: 0, source_sku: null };
-      if (source) await moveInventoryAccessoryToSpares(source.id, { ...input, usage_note: serial });
+      if (source) await moveInventoryAccessoryToSpares(source.id, { ...input, usage_note: serial }, mistaken);
       else await createSpareAccessory(input);
       resetReference();
       setForm(emptyForm(me.role === 'purchaser' ? me : null));
@@ -280,6 +282,10 @@ export default function Spares({ me }: { me: Staff }) {
             <span><strong>{item.title}</strong> {item.marketplace_item_id || '商品ID未登録'}<small>{item.sku}</small></span>
           </label>)}
         </fieldset>}
+        {referenceMode === 'remote' && sourceItemId && <label className="row registration-wide spare-mistaken-choice">
+          <input type="checkbox" checked={mistaken} disabled={saving} onChange={event => setMistaken(event.target.checked)} />
+          間違えて付けたので予備に戻す（この通番号は利用記録に残さない）
+        </label>}
         {autofillBusy && <p className="muted">通番号の商品情報を読み込み中…</p>}
         {referenceMessage && <p className="muted" role="status" style={{ gridColumn: '1 / -1' }}>{referenceMessage}</p>}
       </div>

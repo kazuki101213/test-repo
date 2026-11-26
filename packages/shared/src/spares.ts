@@ -21,8 +21,15 @@ export function sortSpareAccessories(rows: SpareAccessory[], owners: {id: string
 }
 
 /** Keep serials and suffixes; hide the legacy accessory word in usage records. */
+// 利用記録は、付けてきた商品の通番号を「2444→2472」のように順につなぐ（2026-11-26 ユーザー指定）。
 export function usageRecordText(value: string | null | undefined): string | null {
-  return value?.replace(/リモコン/g, '').trim() || null;
+  return (value ?? '').replace(/リモコン/g, '').split(/\s*(?:→|\/|／|,|，|、)\s*/).map(part => part.trim()).filter(Boolean).join('→') || null;
+}
+
+/** 利用記録の最後の通番号（いちばん新しく付けていた商品）。 */
+export function lastUsageSerial(value: string | null | undefined): string | null {
+  const parts = usageRecordText(value)?.split('→') ?? [];
+  return parts[parts.length - 1] ?? null;
 }
 
 export interface SpareAccessory {
