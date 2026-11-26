@@ -69,7 +69,7 @@ export function mountCatalogView(root) {
       row.append(no, text);
       if (mine && entry.kind === 'option' && entry.product_id === item.id) {
         const price = Object.assign(document.createElement('input'), { type: 'number', min: '0', step: '1', value: entry.list_price ?? '' });
-        const rate = Object.assign(document.createElement('input'), { type: 'number', min: '0', max: '99', step: '1', value: entry.target_profit_rate ?? '', placeholder: '利益%', className: 'rate' });
+        const rate = Object.assign(document.createElement('input'), { type: 'number', min: '0', max: '99', step: '1', value: entry.target_profit_rate ?? '', placeholder: '利益率', className: 'rate' });
         price.setAttribute('aria-label', '販売想定金額（円）');
         rate.setAttribute('aria-label', '利益率（%）');
         const save = Object.assign(document.createElement('button'), { type: 'button', className: 'primary', textContent: '保存' });
@@ -103,7 +103,7 @@ export function mountCatalogView(root) {
     }));
     list.hidden = !list.childElementCount;
     optionForm.hidden = !mine || !canRegister;
-    $('#add-option').textContent = item?.product_no == null ? '追加' : item.product_no + 'に追加';
+    $('#add-option').textContent = '追加';
     // 未登録で同じ型番がある：色・付属品・状態・金額だけ入れて、その番号に追加する。
     const join = !item && Boolean(group);
     form.dataset.mode = join ? 'group' : '';

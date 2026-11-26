@@ -26,8 +26,7 @@ export function createCatalogMarkup() {
           element('form', { id: 'catalog-price-form', hidden: '' },
             element('input', { ...priceAttributes, name: 'list_price', 'aria-label': '販売想定金額（円）' }),
             element('span', { 'aria-hidden': 'true' }, '円'),
-            element('span', { 'aria-hidden': 'true' }, '利益'),
-            element('input', { ...rateAttributes, name: 'target_profit_rate', class: 'catalog-rate', placeholder: 'ルール', 'aria-label': '利益率（%）' }),
+            element('input', { ...rateAttributes, name: 'target_profit_rate', class: 'catalog-rate', placeholder: '利益率', 'aria-label': '利益率（%）' }),
             element('span', { 'aria-hidden': 'true' }, '%'),
             element('button', { id: 'save-catalog-price', type: 'submit', class: 'primary' }, '保存'))),
         element('div', { class: 'meta' },
@@ -36,7 +35,7 @@ export function createCatalogMarkup() {
         element('form', { id: 'option-form', class: 'compact-fields', hidden: '' },
           element('input', { name: 'variant_label', maxlength: '80', placeholder: '付属品・状態', 'aria-label': '付属品・状態' }),
           element('input', { ...priceAttributes, name: 'list_price', class: 'money', placeholder: '金額', 'aria-label': '販売想定金額（円）' }),
-          element('input', { ...rateAttributes, name: 'target_profit_rate', class: 'rate', placeholder: '利益%', 'aria-label': '利益率（%）' }),
+          element('input', { ...rateAttributes, name: 'target_profit_rate', class: 'rate', placeholder: '利益率', 'aria-label': '利益率（%）' }),
           element('button', { id: 'add-option', type: 'submit', class: 'primary' }, '追加')),
         status('option-status'),
         status('catalog-message'),
@@ -59,6 +58,6 @@ export function createCatalogMarkup() {
             field('色', 'input', 'color', { maxlength: '40', placeholder: '色（任意）' }, 'span-6 color-field'),
             field('付属品・状態', 'input', 'variant_label', { maxlength: '80', placeholder: '付属品・状態（任意）' }, 'span-6 label-field'),
             field('販売想定金額（円）', 'input', 'list_price', { ...priceAttributes, placeholder: '金額' }, 'span-3 money-field'),
-            field('利益率（%）', 'input', 'target_profit_rate', { ...rateAttributes, placeholder: '利益%' }, 'span-3 rate-field')),
+            field('利益率（%）', 'input', 'target_profit_rate', { ...rateAttributes, placeholder: '利益率' }, 'span-3 rate-field')),
           element('button', { id: 'register', type: 'submit', class: 'primary' }, '追加')))));
 }
