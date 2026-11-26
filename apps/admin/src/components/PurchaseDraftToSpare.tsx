@@ -29,7 +29,7 @@ export default function PurchaseDraftToSpare({draft,staff,onClose,onRegistered,i
     <h3>予備登録</h3><p>{draft.title}</p>
     <p>仕入先：{draft.marketplace}<br/>商品ID：{draft.marketplace_item_id}</p>
     <form className="purchase-draft-spare-form" onSubmit={event=>void submit(event)}>
-      <label className="field"><span>保管担当者</span><select required value={owner} disabled={busy} onChange={event=>setOwner(event.target.value)}><option value="">選択してください</option>{deliveryStaffOptions(staff).map(person=><option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select></label>
+      <label className="field"><span>保管担当者</span><select required value={owner} disabled={busy} onChange={event=>setOwner(event.target.value)}><option value="">選択してください</option>{deliveryStaffOptions(staff,'assignee').map(person=><option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select></label>
       <label className="field"><span>品名</span><input type="text" required maxLength={500} value={title} disabled={busy} onChange={event=>setTitle(event.target.value)}/></label>
       <label className="field"><span>メーカー</span><input type="text" maxLength={200} value={manufacturer} disabled={busy} onChange={event=>setManufacturer(event.target.value)}/></label>
       <label className="field"><span>購入日</span><DateInput required value={date} disabled={busy} onChange={event=>setDate(event.target.value)}/></label>

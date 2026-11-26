@@ -104,6 +104,12 @@ export async function updateSpareAccessory(id: string, field: SpareAccessoryFiel
   if (!data) throw new Error('予備付属品が別の画面で変更されたか、更新できません。一覧を読み直してください。');
 }
 
+export async function updateSpareAccessoryOwner(id: string, ownerStaffId: string | null, ownerName: string | null): Promise<void> {
+  const { data, error } = await getSupabase().from('spare_accessories').update({ owner_staff_id: ownerStaffId, owner_name: ownerName }).eq('id', id).select('id').maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('予備付属品が別の画面で変更されたか、更新できません。一覧を読み直してください。');
+}
+
 export async function fetchCards(purpose: 'purchase' | 'expense' = 'purchase'): Promise<{ id: string; name: string }[]> {
  return sessionRead(`master:cards:${purpose}`,30000,async()=>{
   const query = getSupabase().from('payment_cards').select('id, name').eq('is_active', true).order('name');
