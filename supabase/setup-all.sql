@@ -29544,7 +29544,20 @@ end
 $cron$;
 
 
--- ▼▼▼ 20261126100000_spare_usage_chain.sql ▼▼▼
+-- ▼▼▼ 20261126100000_stop_payout_daily_check.sql ▼▼▼
+
+-- 毎日の照合（10分ごとの定期実行）をやめる（2026-11-26 ユーザー指示：APIは登録時・販売想定金額の変更時だけ使う）。
+-- 販売想定金額だけを変える保存を断る trigger は残す。
+do $cron$
+begin
+  if exists (select 1 from cron.job where jobname = 'product-payout-daily-check') then
+    perform cron.unschedule('product-payout-daily-check');
+  end if;
+end
+$cron$;
+
+
+-- ▼▼▼ 20261126110000_spare_usage_chain.sql ▼▼▼
 
 -- 予備リモコンの利用記録を「2444→2472」のように、付けてきた商品の通番号を順につないで残す（2026-11-26 ユーザー指定）。
 -- 間違えて付けたリモコンを予備に戻すときは、その商品を利用記録に入れず、元の予備をそのまま使える状態に戻す。
@@ -29786,18 +29799,5 @@ update app.spare_shipping_tasks t set usage_note=s.usage_note
 from app.spare_accessories s where s.id=t.spare_id and t.usage_note is distinct from s.usage_note;
 
 notify pgrst, 'reload schema';
-
-
--- ▼▼▼ 20261126100000_stop_payout_daily_check.sql ▼▼▼
-
--- 毎日の照合（10分ごとの定期実行）をやめる（2026-11-26 ユーザー指示：APIは登録時・販売想定金額の変更時だけ使う）。
--- 販売想定金額だけを変える保存を断る trigger は残す。
-do $cron$
-begin
-  if exists (select 1 from cron.job where jobname = 'product-payout-daily-check') then
-    perform cron.unschedule('product-payout-daily-check');
-  end if;
-end
-$cron$;
 
 
