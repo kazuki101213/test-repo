@@ -9,7 +9,7 @@ import {useTaskConfirmation} from '../components/TaskConfirmation';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { PURCHASE_SOURCES, accountLabelFor, marketplaceAccountLabel, marketplaceSelectOptions, purchaseSourceFields, deleteSpareAccessories, fetchSpareAccessories, spareState, yen } from '@bussan/shared';
 import type { SpareAccessory, Staff } from '@bussan/shared';
-import { createSpareAccessory, findInventoryAccessoriesForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory } from '../api';
+import { createSpareAccessory, findInventoryAccessoriesForSpare, findInventoryForSpare, fetchStaff, moveInventoryAccessoryToSpares, updateSpareAccessory, updateSpareAccessoryOwner } from '../api';
 import type { SpareAccessoryField, SpareAccessoryInput, SpareInventoryAccessory } from '../api';
 
 type SpareReferenceMode = 'remote' | 'body';
@@ -258,7 +258,7 @@ export default function Spares({ me }: { me: Staff }) {
         <label className="field"><span>利用記録（通番号）</span><input value={form.usage_note ?? ''} disabled={saving} onChange={event => { const value = event.target.value; if (referenceSerial(value) !== referenceSerial(form.usage_note ?? '')) resetReference(); setForm(current => ({ ...current, usage_note: value || null })); }} onBlur={event => void autofillFromUsageSerial(event.target.value)} /></label>
         <label className="field"><span>購入日</span><DateInput className="registration-date" value={form.purchased_at ?? ''} onChange={event => setForm(current => ({ ...current, purchased_at: event.target.value || null }))} /></label>
         {me.role === 'admin' ? <label className="field"><span>保管担当者</span>
-          <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff).map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
+          <select value={form.owner_staff_id ?? ''} onChange={event => changeOwner(event.target.value)}><option value="">担当未設定</option>{deliveryStaffOptions(staff, 'assignee').map(person => <option key={person.id} value={person.id}>{staffDisplayName(person)}</option>)}</select>
         </label> : <label className="field"><span>保管担当者</span><input value={staffDisplayName(me)} readOnly /></label>}
         <label className="field"><span>品名</span><input required value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></label>
         <label className="field"><span>メーカー</span><input value={form.manufacturer ?? ''} onChange={event => setForm(current => ({ ...current, manufacturer: event.target.value || null }))} /></label>
@@ -293,20 +293,31 @@ export default function Spares({ me }: { me: Staff }) {
       {error && <p className="error" role="alert">{error}</p>}
 
     </form>}
-    {editFor && <SpareFieldDialog row={editFor.row} field={editFor.field} onClose={() => setEditFor(null)} onSaved={async () => { setEditFor(null); await reload(); }} />}
+    {editFor && <SpareFieldDialog row={editFor.row} field={editFor.field} staff={staff} onClose={() => setEditFor(null)} onSaved={async () => { setEditFor(null); await reload(); }} />}
   </section>;
+}
+
+// 保管担当者は、在庫の納品担当者と同じ人から選ぶ（2026-11-26 ユーザー指定）。今の担当者が一覧にいなければ、選べない形で先頭に出す。
+function spareOwnerOptions(staff: Staff[], row: SpareAccessory): { value: string; label: string; disabled?: boolean }[] {
+  const options: { value: string; label: string; disabled?: boolean }[] = [{ value: '', label: '担当未設定' },
+    ...deliveryStaffOptions(staff, 'assignee').map(person => ({ value: person.id, label: staffDisplayName(person) }))];
+  if (row.owner_staff_id && !options.some(option => option.value === row.owner_staff_id)) {
+    options.splice(1, 0, { value: row.owner_staff_id, label: staffDisplayName(row.owner_name) || '現在の保管担当者', disabled: true });
+  }
+  return options;
 }
 
 function EditableSpare({ row, field, onEdit, children }: { row: SpareAccessory; field: SpareAccessoryField; onEdit: (value: { row: SpareAccessory; field: SpareAccessoryField }) => void; children: ReactNode }) {
   return <button type="button" className="expense-edit" title="クリックして編集" onClick={() => onEdit({ row, field })}>{children}</button>;
 }
 
-function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessory; field: SpareAccessoryField; onClose: () => void; onSaved: () => void | Promise<void> }) {
+function SpareFieldDialog({ row, field, staff, onClose, onSaved }: { row: SpareAccessory; field: SpareAccessoryField; staff: Staff[]; onClose: () => void; onSaved: () => void | Promise<void> }) {
   const labels: Record<SpareAccessoryField, string> = {
     source_sku: 'SKU', owner_name: '保管担当者', purchased_at: '購入日', title: '品名', manufacturer: 'メーカー', model_no: '型番', asin: 'ASIN', cost_amount: '仕入金額',
     marketplace: '仕入先', marketplace_item_id: '商品ID', tracking_no: '追跡番号', usage_note: '利用記録',
   };
-  const initial = field === 'marketplace' ? accountLabelFor(row.marketplace, row.purchase_account_label) || row.marketplace || '' : row[field] ?? '';
+  const owner = field === 'owner_name';
+  const initial = owner ? row.owner_staff_id ?? '' : field === 'marketplace' ? accountLabelFor(row.marketplace, row.purchase_account_label) || row.marketplace || '' : row[field] ?? '';
   const [value, setValue] = useState(String(initial));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -317,15 +328,21 @@ function SpareFieldDialog({ row, field, onClose, onSaved }: { row: SpareAccessor
     try {
       if (field === 'title' && !value.trim()) throw new Error('品名を入力してください。');
       if (numeric && (!Number.isSafeInteger(Number(value)) || Number(value) < 0)) throw new Error('仕入金額は0以上の整数で入力してください。');
-      const nextValue = numeric ? Number(value) : value.trim() || null;
-      await updateSpareAccessory(row.id, field, nextValue);
+      if (owner) {
+        const person = staff.find(candidate => candidate.id === value);
+        await updateSpareAccessoryOwner(row.id, person?.id ?? null, person?.name ?? null);
+      } else {
+        const nextValue = numeric ? Number(value) : value.trim() || null;
+        await updateSpareAccessory(row.id, field, nextValue);
+      }
       await onSaved();
     } catch (cause) { setError(spareErrorMessage(cause)); setBusy(false); }
   }
   return <div className="inventory-edit-overlay" role="dialog" aria-modal="true" aria-label={`${labels[field]}を編集`}>
     <div className="card inventory-comment-panel"><h3>{labels[field]}を編集</h3>
       <label className="field"><span>{labels[field]}</span>
-        {field === 'marketplace' ? <ColoredSelect autoFocus value={value} onChange={event => setValue(event.target.value)}><option value="">未設定</option>{marketplaceSelectOptions(PURCHASE_SOURCES, String(initial)).map(option => <option key={option}>{option}</option>)}</ColoredSelect>
+        {owner ? <select autoFocus value={value} onChange={event => setValue(event.target.value)}>{spareOwnerOptions(staff, row).map(option => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}</select>
+          : field === 'marketplace' ? <ColoredSelect autoFocus value={value} onChange={event => setValue(event.target.value)}><option value="">未設定</option>{marketplaceSelectOptions(PURCHASE_SOURCES, String(initial)).map(option => <option key={option}>{option}</option>)}</ColoredSelect>
           : date ? <DateInput autoFocus value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />
             : <input autoFocus type={numeric ? 'number' : 'text'} min={numeric ? 0 : undefined} step={numeric ? 1 : undefined} value={value} onChange={event => setValue(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void save(); }} />}
       </label>
