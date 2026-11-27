@@ -11,6 +11,21 @@ import MalfunctionTasks from '../components/MalfunctionTasks';
 import SpareShippingTasks from '../components/SpareShippingTasks';
 import PushSettings from '../components/PushSettings';
 import AmazonPayoutCard from '../components/AmazonPayoutCard';
+import { errorMessage } from '../errorMessage';
+// 2026-11-27：DBが混んで8秒で打ち切られた（57014）読み込みだけ、少し待って1回だけ読み直す
+function isTimeout(cause: unknown): boolean {
+  const value = cause as { code?: unknown; message?: unknown } | null;
+  return Boolean(value && (value.code === '57014' || (typeof value.message === 'string' && value.message.includes('statement timeout'))));
+}
+async function retryOnTimeout<T>(load: () => Promise<T>): Promise<T> {
+  try { return await load(); }
+  catch (cause) {
+    if (!isTimeout(cause)) throw cause;
+    await new Promise(resolve => window.setTimeout(resolve, 2000));
+    return load();
+  }
+}
+
 
 const hiddenWorkloadNames = new Set(['長部一輝', '和田知佳', '神谷愛', '株式会社グレイス', '石川秀樹']);
 const monthlyMetrics = ['仕入数', '仕入金額', '販売数', '売上', '振込金額', '粗利益', '経費', '純利益', '平均利益単価'] as const;
@@ -74,10 +89,10 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
     void fetchDashboardSellThrough()
       .then(value => { if (active) setSellThrough(value); })
       .catch(() => { if (active) setSellThrough(null); });
-    void fetchDashboardPurchaseForecast(thisMonth)
+    void retryOnTimeout(() => fetchDashboardPurchaseForecast(thisMonth))
       .then(value => { if (active) setPurchaseForecast(value); })
-      .catch((e) => { if (active) setError(e instanceof Error ? e.message : String(e)); });
-    Promise.all([fetchStockSummary(), fetchMonthly(), fetchWorkload(), fetchDashboardPurchaserSummary()])
+      .catch((e) => { if (active) setError(errorMessage(e)); });
+    Promise.all([retryOnTimeout(fetchStockSummary), retryOnTimeout(fetchMonthly), retryOnTimeout(fetchWorkload), retryOnTimeout(fetchDashboardPurchaserSummary)])
       .then(([s, m, w, purchaser]) => {
         if (active) {
           setStock(s);
@@ -86,7 +101,7 @@ export default function Dashboard({ staff, userId }: { staff: Staff; userId: str
           setMine(purchaser);
         }
       })
-      .catch((e) => { if (active) setError(e instanceof Error ? e.message : String(e)); });
+      .catch((e) => { if (active) setError(errorMessage(e)); });
     return () => { active = false; };
   }, [expenseRevision, staff.id, thisMonth]);
 

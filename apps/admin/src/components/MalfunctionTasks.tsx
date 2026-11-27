@@ -13,6 +13,7 @@ import { adminTaskNotice } from '../taskNotice';
 import { malfunctionMaker } from '../malfunctionMaker';
 import { getSupabase } from '@bussan/shared';
 import type { Staff, ItemStatus, InventoryAction } from '@bussan/shared';
+import { errorMessage } from '../errorMessage';
 
 const PHOTO_AUCTION_TEMPLATES = [
   'Panasonic◯ヤフオク', 'Panasonic×ヤフオク',
@@ -56,7 +57,8 @@ interface ActionTask extends TaskPurchaseReferences {
   lot_seq: number; marketplace_item_id: string | null; sku: string;
 }
 const PHOTO_BUCKET = 'item-photos';
-const messageOf = (cause: unknown) => cause instanceof Error ? cause.message : String(cause);
+// Supabaseのエラーは普通のオブジェクトなので String() すると [object Object] になる（2026-11-27）
+const messageOf = (cause: unknown) => errorMessage(cause);
 
 function templateBody(kind: ReplyTemplate, row: MalfunctionTask): string {
   const model = row.products?.find(product => product.model_no)?.model_no || '型番未登録';
