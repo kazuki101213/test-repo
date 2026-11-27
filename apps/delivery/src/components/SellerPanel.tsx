@@ -218,7 +218,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    try{
     const result=await submitAmazonListing(task.id,amazonAwaiting!.date,amazonAwaiting!.requestId,amazonAwaiting!.photoIds,amazonAwaiting!.expected,true);if(!active)return;
     if(result.state==='retryable'){setAmazonAwaiting(null);setAmazonPhase('waiting');setAmazonNotice(result.note);return;}
-    if(result.offerVerified){setAmazonAwaiting(null);showOfferListed();const full=await fetchTask(task.id,canViewDeliveryAssignee(staff)).catch(()=>null);if(active&&full)changedCallback.current(full,true);return;}
+    if(result.offerVerified){const full=await fetchTask(task.id,canViewDeliveryAssignee(staff)).catch(()=>null);if(!active)return;setAmazonAwaiting(null);showOfferListed();if(full)changedCallback.current(full,true);return;}
     if(result.state==='failed'){setAmazonAwaiting(null);setAmazonPhase('failed');setAmazonNotice('');setError(result.note);return;}
     if(result.verified){
      const receipt=result.verifiedAt?null:await fetchAmazonListingPending(task.id).catch(()=>null);
@@ -231,8 +231,6 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     else{setAmazonPhase('waiting');setAmazonNotice('通信の回復を待って登録結果を自動確認しています。');}
    }finally{inFlight=false;}
   }
-  // Check once right away (e.g. when the panel is reopened), then every 15 seconds.
-  void refreshAmazon();
   const timer=window.setInterval(()=>void refreshAmazon(),15000);return()=>{active=false;window.clearInterval(timer);};
  },[amazonAwaiting,task.id,staff.role,staff.id]);
  const disabled=busy||pending||!!amazonAwaiting||(mode==='listing'&&task.status!=='商品登録前')||(mode==='listing'&&(task.photo_review_approved!==true||context?.photo_review_approved!==true)),trade=context?.listing?.trade_key;
