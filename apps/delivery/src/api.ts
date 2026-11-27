@@ -424,7 +424,7 @@ export async function performInventoryAction(task:Pick<DeliveryTask,'id'|'status
  if(error)throw error;
  announceReturnTaskChange();
 }
-export interface AmazonListingResult {verified:boolean;state:string;note:string;requestId?:string;workCompletedOn?:string;verifiedAt?:string;}
+export interface AmazonListingResult {verified:boolean;state:string;note:string;offerVerified?:boolean;requestId?:string;workCompletedOn?:string;verifiedAt?:string;}
 export async function fetchAmazonListingPending(itemId:string):Promise<{requestId:string;date:string;photoIds:string[];state:string;verifiedAt:string|null;sku:string;asin:string;price:number;condition:string;salesChannel:string;description:string}|null>{
  const {data,error}=await getSupabase().from('amazon_listing_submissions').select('request_id,work_completed_on,photo_ids,state,verified_at,sku,asin,price,item_condition,sales_channel,description').eq('item_id',itemId).in('state',['submitting','accepted','uncertain','verified']).order('created_at',{ascending:false}).limit(1).maybeSingle();
  if(error)throw error;

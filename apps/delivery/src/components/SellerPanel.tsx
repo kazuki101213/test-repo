@@ -200,6 +200,7 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
     setAmazonPhase('waiting');setAmazonNotice(result.note);
     if(result.state==='retryable'){setAmazonAwaiting(null);return;}
     if(result.state==='failed')throw new Error(result.note);
+    if(result.offerVerified&&result.state!=='retryable'){showOfferListed();return;}
     setAmazonAwaiting({date:result.workCompletedOn??date,requestId:result.requestId??request.current,photoIds:[...selected],expected});return;
    }
    const receipt=result.verifiedAt?null:await fetchAmazonListingPending(task.id).catch(()=>null);
@@ -209,12 +210,15 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
   finally{lock.current=false;setBusy(false);}
  }
  const changedCallback=useRef(onChanged);changedCallback.current=onChanged;
+ // Amazonで出品（ASIN・価格・コンディション・配送）を確認できたら完了として出す。写真の取り込みはAmazon側で数時間かかることがある（2026-11-27）。
+ function showOfferListed(){request.current=crypto.randomUUID();setAmazonPhase('complete');setAmazonVerifiedAt(null);setAmazonNotice(/^FBA/.test(task.sales_channel??'')?'Amazonへの出品を確認しました。商品写真はAmazon側で取り込み中です（数時間かかることがあります）。FBA納品手続きは別途必要です。':'Amazonへの出品を確認しました。商品写真はAmazon側で取り込み中です（数時間かかることがあります）。');}
  useEffect(()=>{if(!amazonAwaiting)return;let active=true,inFlight=false;
   async function refreshAmazon(){
    if(!active||inFlight||document.visibilityState!=='visible')return;inFlight=true;
    try{
     const result=await submitAmazonListing(task.id,amazonAwaiting!.date,amazonAwaiting!.requestId,amazonAwaiting!.photoIds,amazonAwaiting!.expected,true);if(!active)return;
     if(result.state==='retryable'){setAmazonAwaiting(null);setAmazonPhase('waiting');setAmazonNotice(result.note);return;}
+    if(result.offerVerified){const full=await fetchTask(task.id,canViewDeliveryAssignee(staff)).catch(()=>null);if(!active)return;setAmazonAwaiting(null);showOfferListed();if(full)changedCallback.current(full,true);return;}
     if(result.state==='failed'){setAmazonAwaiting(null);setAmazonPhase('failed');setAmazonNotice('');setError(result.note);return;}
     if(result.verified){
      const receipt=result.verifiedAt?null:await fetchAmazonListingPending(task.id).catch(()=>null);
