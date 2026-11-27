@@ -8,6 +8,8 @@ declare
   lease uuid;
   amazon_row jsonb;
   purchase_time timestamptz;
+  fixture_plan uuid;
+  n integer;
 begin
   if has_function_privilege('authenticated','app.record_sale_notice(text,uuid,text)','execute')
     or has_function_privilege('anon','app.record_amazon_sale_page(text,uuid,jsonb)','execute') then
@@ -66,5 +68,30 @@ begin
   if (select seller_cancelled_at is not null or seller_cancelled_trade_key is not null from app.items where id=fixture_id) then
     raise exception 'An old flea-market cancellation still blocks the self shipping LINE request';
   end if;
+
+  -- FBA: Amazonの倉庫に着いてすぐ（毎日1時の出品確認より前に）売れた商品も取引中にする。
+  for n in 1..3 loop
+    insert into app.items(lot_seq,purchaser_id,deliverer_id,purchased_at,title,cost_amount,marketplace,sales_channel,asin)
+      select 989693+n,p.id,d.id,(purchase_time at time zone 'Asia/Tokyo')::date,'Early FBA sale fixture',1000,'ヤフオク','FBA2','B00000001'||n
+      from app.staff p,app.staff d where p.code='AA' and d.code='DD' returning id into strict fixture_id;
+    insert into app.fba_inbound_plans(account,staff_id,name,created_by,stage,created_at)
+      select 'FBA2',deliverer_id,'Early FBA sale fixture '||n,'11111111-1111-1111-1111-111111111111',
+        case when n=2 then 'cancelled' else 'ready' end,purchase_time-interval '1 day'
+      from app.items where id=fixture_id returning id into strict fixture_plan;
+    insert into app.fba_inbound_items(plan_id,item_id,sku,asin,title,condition,sales_channel)
+      select fixture_plan,id,sku,asin,title,'非常に良い','FBA2' from app.items where id=fixture_id;
+    -- 1・2：まだ1時の確認前（商品登録前）。3：1時の確認で出品中になったが、注文はそれより前。
+    update app.items set status=case when n=3 then '出品中'::app.item_status else '商品登録前'::app.item_status end,
+      product_registered_at=case when n=3 then purchase_time+interval '1 hour' end where id=fixture_id;
+    amazon_row:=jsonb_build_array(jsonb_build_object('order_id','123-1234567-765432'||n,'line_id','early-line-'||n,
+      'sku',(select sku from app.items where id=fixture_id),'asin','B00000001'||n,'product_title','Early','fulfillment','AMAZON',
+      'purchased_at',purchase_time));
+    if app.record_amazon_sale_page('amazon-2',lease,amazon_row)<>1 then
+      raise exception 'Early FBA order % was not notified',n;
+    end if;
+    if (select status from app.items where id=fixture_id)<>(case when n=2 then '商品登録前' else '取引中' end)::app.item_status then
+      raise exception 'Early FBA order % has the wrong inventory state: %',n,(select status from app.items where id=fixture_id);
+    end if;
+  end loop;
 end $$;
 rollback;
