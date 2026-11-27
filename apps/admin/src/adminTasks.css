@@ -72,3 +72,8 @@
 
 .task-product-links { display:inline-flex; flex-flow:row wrap; align-items:baseline; gap:0 8px; min-width:0; max-width:100%; }
 .task-product-links > a,.task-product-links > span { overflow-wrap:anywhere; }
+
+/* スマホ・タブレット：やることの一覧を画面の高さの半分まで表示する（2026-11-27 ユーザー指定。それより多いときは中でスクロール）。 */
+@media screen and (max-width:1023px) {
+ .layout .invoice-tasks > .invoice-task-rows { max-height:50dvh; }
+}
