@@ -197,10 +197,10 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    const {sku,price,persistYear}=amazonConfirmation;await persistYear();const expected={sku,price};
    const result=await submitAmazonListing(task.id,date,request.current,selected,expected);
    if(!result.verified){
+    if(result.offerVerified){showOfferListed();const full=await fetchTask(task.id,canViewDeliveryAssignee(staff)).catch(()=>null);if(full)onChanged(full,true);return;}
     setAmazonPhase('waiting');setAmazonNotice(result.note);
     if(result.state==='retryable'){setAmazonAwaiting(null);return;}
     if(result.state==='failed')throw new Error(result.note);
-    if(result.offerVerified&&result.state!=='retryable'){showOfferListed();return;}
     setAmazonAwaiting({date:result.workCompletedOn??date,requestId:result.requestId??request.current,photoIds:[...selected],expected});return;
    }
    const receipt=result.verifiedAt?null:await fetchAmazonListingPending(task.id).catch(()=>null);
@@ -217,8 +217,9 @@ export default function SellerPanel({mode,task,staff,listingSkus=[],onClose,onCh
    if(!active||inFlight||document.visibilityState!=='visible')return;inFlight=true;
    try{
     const result=await submitAmazonListing(task.id,amazonAwaiting!.date,amazonAwaiting!.requestId,amazonAwaiting!.photoIds,amazonAwaiting!.expected,true);if(!active)return;
-    if(result.state==='retryable'){setAmazonAwaiting(null);setAmazonPhase('waiting');setAmazonNotice(result.note);return;}
+    // 出品を確認できていれば、写真の取り込み待ち（再確認できる状態も含む）でも完了として出す。
     if(result.offerVerified){const full=await fetchTask(task.id,canViewDeliveryAssignee(staff)).catch(()=>null);if(!active)return;setAmazonAwaiting(null);showOfferListed();if(full)changedCallback.current(full,true);return;}
+    if(result.state==='retryable'){setAmazonAwaiting(null);setAmazonPhase('waiting');setAmazonNotice(result.note);return;}
     if(result.state==='failed'){setAmazonAwaiting(null);setAmazonPhase('failed');setAmazonNotice('');setError(result.note);return;}
     if(result.verified){
      const receipt=result.verifiedAt?null:await fetchAmazonListingPending(task.id).catch(()=>null);
