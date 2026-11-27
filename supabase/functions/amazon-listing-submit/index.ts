@@ -59,8 +59,10 @@ export function verifiedListing(listing:Obj,item:ListingItem):boolean{
 // offer. Exempt only these exact inherited fields after Amazon validates the offer.
 export function inheritedCatalogIssue(issue:Obj,listing:Obj):boolean {
  const names=Array.isArray(issue.attributeNames)?issue.attributeNames:[issue.attributeName].filter(Boolean);
- const name=String(issue.code)==='90244'?'variation_theme':String(issue.code)==='100095'?'model_name':null;
- return issue.severity==='ERROR'&&!!name&&names.length===1&&names[0]===name&&
+ // 100095 (invalid value) also comes from catalog-only packaging data, e.g. 2520 customer_package_type='常规包装' (2026-11-27).
+ const allowed:Record<string,string[]>={'90244':['variation_theme'],'100095':['model_name','customer_package_type']};
+ const name=names.length===1&&allowed[String(issue.code)]?.includes(names[0])?names[0]:null;
+ return issue.severity==='ERROR'&&!!name&&
   !Object.hasOwn(listing.attributes??{},name)&&
   (issue.enforcements===undefined||Array.isArray(issue.enforcements?.actions)&&issue.enforcements.actions.length===0);
 }
