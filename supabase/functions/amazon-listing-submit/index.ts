@@ -159,7 +159,7 @@ export async function reconcileReceipt(svc:any,input:Obj,connect=amazon){
  const api=await connect(accountFor(r.sales_channel));if(api.sellerId!==r.seller_id)throw new SafeError(409,'受付時の出品者が一致しません。');
  const target={...item,sku:r.sku} as ListingItem;
  let remote=await api.get(r.sku);
- const waiting=(note:string,state='accepted')=>({verified:false,state,note,requestId:r.request_id,workCompletedOn:r.work_completed_on});
+ const waiting=(note:string,state='accepted',offerVerified=false)=>({verified:false,state,note,requestId:r.request_id,workCompletedOn:r.work_completed_on,...(offerVerified?{offerVerified:true}:{})});
  const missingRetry=!remote&&r.recovery_count===0&&Date.now()-Date.parse(r.created_at)>600000;
  if(!remote&&!input.recoverMissing)return waiting('AmazonにこのSKUが見つかりません。同じSKUで出品を再確認できます。',missingRetry?'retryable':'accepted');
  const {data:photos,error:photoError}=await svc.from('item_photos').select('id,storage_path').eq('item_id',item.id).eq('photo_kind','product').order('sort_order').order('created_at');
@@ -199,10 +199,11 @@ export async function reconcileReceipt(svc:any,input:Obj,connect=amazon){
    const result=await api.patchImages(r.sku,images,remote);if(result?.status!=='ACCEPTED'||issues(result).length)throw new SafeError(422,'Amazonが商品写真を受け付けませんでした。'+issues(result).join(' '));
    const {error:saveError}=await svc.from('amazon_listing_submissions').update({photo_submission_id:result.submissionId??'accepted:'+reservation}).eq('request_id',r.request_id).eq('photo_submission_id',reservation);
    if(saveError)throw new SafeError(503,'写真の受付結果を保存できません。再送せず確認してください。');
-   return waiting('Amazonに商品写真を送信済みです。取り込みを確認中です。');
+   return waiting('Amazonに商品写真を送信済みです。取り込みを確認中です。','accepted',true);
   }
-  if(canRepair)return waiting('Amazonへの商品登録は確認済みです。同じSKUで写真の反映を再確認できます。','retryable');
-  return waiting('Amazonに送信済みです。商品写真の取り込みを確認中です。');
+  if(canRepair)return waiting('Amazonへの商品登録は確認済みです。同じSKUで写真の反映を再確認できます。','retryable',true);
+  // The offer itself is registered; Amazon ingests offer photos asynchronously (often hours).
+  return waiting('Amazonに送信済みです。商品写真の取り込みを確認中です。','accepted',true);
  }
  const {data:latest,error:latestError}=await svc.from('items').select(columns).eq('id',item.id).single();if(latestError||!latest||!sameItem(item,latest))throw new SafeError(409,'Amazon確認中に商品情報が変更されています。');
  const now=new Date().toISOString();const {error:saveError}=await svc.from('amazon_listing_submissions').update({state:'verified',...(r.verified_at?{}:{verified_at:now}),photo_ids:ids,photo_fingerprint:fingerprint,photos_verified_at:now}).eq('request_id',r.request_id).in('state',['accepted','uncertain','submitting','verified']);
