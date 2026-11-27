@@ -211,7 +211,7 @@ Deno.test('Amazon catalog markup issue identifies the attribute without recommen
 
 
 Deno.test('catalog-only variation and model errors need a valid offer preview and do not change catalog attributes',async()=>{
- for(const [code,name] of [['90244','variation_theme'],['100095','model_name'],['100095','customer_package_type']]){
+ for(const [code,name] of [['90244','variation_theme'],['100095','model_name'],['100095','customer_package_type'],['100339','product_accolade']]){
   const original:any={...listing(),issues:[{code,severity:'ERROR',attributeNames:[name],message:'catalog metadata'}]};
   original.summaries[0].status=['DISCOVERABLE'];
   const before=JSON.stringify(original);
@@ -229,7 +229,7 @@ Deno.test('catalog-only variation and model errors need a valid offer preview an
  }
 });
 Deno.test('offer validation preserves real, attributed, mixed and enforced errors',async()=>{
- for(const variant of ['ownAttribute','otherField','packageOtherCode','ownPackage','otherCode','otherError','enforced','unrecognizedEnforcement','wrongAsin','wrongPrice','noStatus','previewInvalid','previewError','previewSku','previewMissing']){
+ for(const variant of ['ownAttribute','otherField','packageOtherCode','ownPackage','otherCode','ownAccolade','otherError','enforced','unrecognizedEnforcement','wrongAsin','wrongPrice','noStatus','previewInvalid','previewError','previewSku','previewMissing']){
   const i=item();
   const remote:any={...listing(),issues:[{code:'90244',severity:'ERROR',attributeNames:['variation_theme']}]};
   remote.summaries[0].status=['DISCOVERABLE'];
@@ -238,6 +238,7 @@ Deno.test('offer validation preserves real, attributed, mixed and enforced error
   if(variant==='packageOtherCode')remote.issues[0].attributeNames=['customer_package_type'];
   if(variant==='ownPackage'){remote.issues[0]={code:'100095',severity:'ERROR',attributeNames:['customer_package_type']};remote.attributes.customer_package_type=[{value:'常规包装'}];}
   if(variant==='otherCode')remote.issues[0].code='100339';
+  if(variant==='ownAccolade'){remote.issues[0]={code:'100339',severity:'ERROR',attributeNames:['product_accolade']};remote.attributes.product_accolade=[{value:'own'}];}
   if(variant==='otherError')remote.issues.push({code:'90220',severity:'ERROR',attributeNames:['batteries_included']});
   if(variant==='enforced')remote.issues[0].enforcements={actions:[{action:'LISTING_SUPPRESSED'}]};
   if(variant==='unrecognizedEnforcement')remote.issues[0].enforcements={};

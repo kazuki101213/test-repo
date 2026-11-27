@@ -60,7 +60,8 @@ export function verifiedListing(listing:Obj,item:ListingItem):boolean{
 export function inheritedCatalogIssue(issue:Obj,listing:Obj):boolean {
  const names=Array.isArray(issue.attributeNames)?issue.attributeNames:[issue.attributeName].filter(Boolean);
  // 100095 (invalid value) also comes from catalog-only packaging data, e.g. 2520 customer_package_type='常规包装' (2026-11-27).
- const allowed:Record<string,string[]>={'90244':['variation_theme'],'100095':['model_name','customer_package_type']};
+ // 100339 product_accolade is Amazon's own catalog markup on the ASIN (2268b/2494 B07WZK3RJR, 2026-11-27); this offer never sends it.
+ const allowed:Record<string,string[]>={'90244':['variation_theme'],'100095':['model_name','customer_package_type'],'100339':['product_accolade']};
  const name=names.length===1&&allowed[String(issue.code)]?.includes(names[0])?names[0]:null;
  return issue.severity==='ERROR'&&!!name&&
   !Object.hasOwn(listing.attributes??{},name)&&
