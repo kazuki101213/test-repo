@@ -107,3 +107,7 @@ verify_jwt = false
 # Auth.getUser + supplier_conversation permission; Gemini credentials stay server-side. Draft only, never sends.
 [functions.marketplace-return-message]
 verify_jwt = false
+
+# pg_cron only: checks the private Vault cron token (verify_amazon_cron_token) before any work.
+[functions.price-patrol]
+verify_jwt = false
