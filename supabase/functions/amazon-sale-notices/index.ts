@@ -31,7 +31,7 @@ async function poll(db: Service, account: AmazonAccountId) {
     if (!login.ok || typeof auth?.access_token !== 'string') throw new OrderPollError('Amazonに認証できません。', 60);
     const before = Math.min(upper, previous + 24 * 60 * minute);
     const params = new URLSearchParams({
-      marketplaceIds: japanMarketplace, includedData: 'FULFILLMENT', maxResultsPerPage: '100',
+      marketplaceIds: japanMarketplace, includedData: 'FULFILLMENT,PROCEEDS', maxResultsPerPage: '100',
       lastUpdatedAfter: new Date(Math.min(previous, upper) - 10 * minute).toISOString(),
       lastUpdatedBefore: new Date(before).toISOString(),
     });

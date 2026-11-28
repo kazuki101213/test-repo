@@ -8,7 +8,17 @@ export type SaleOrderItem = {
   product_title: string;
   fulfillment: 'AMAZON' | 'MERCHANT';
   purchased_at: string;
+  amount: number | null;
 };
+
+/** 1個の注文の単価（円の整数）。分からなければ null。 */
+export function unitPriceYen(item: any): number | null {
+  const unit = item?.product?.price?.unitPrice;
+  if (unit?.currencyCode !== 'JPY' || typeof unit.amount !== 'string' || !/^\d{1,9}(\.0+)?$/.test(unit.amount)) return null;
+  if (item.quantityOrdered !== undefined && item.quantityOrdered !== 1) return null;
+  const yen = Number(unit.amount);
+  return yen > 0 ? yen : null;
+}
 
 export function confirmedOrderItems(order: any): SaleOrderItem[] {
   const fulfillment = order?.fulfillment?.fulfilledBy;
@@ -26,7 +36,7 @@ export function confirmedOrderItems(order: any): SaleOrderItem[] {
         typeof lineId !== 'string' || !lineId || lineId.length > 80 ||
         item.fulfillment?.fulfillmentStatus === 'CANCELLED') return [];
     return [{ order_id: order.orderId, line_id: lineId, sku, asin, fulfillment,
-      purchased_at: new Date(order.createdTime).toISOString(),
+      purchased_at: new Date(order.createdTime).toISOString(), amount: unitPriceYen(item),
       product_title: typeof item.product.title === 'string' ? item.product.title.slice(0, 100) : '' }];
   });
 }
