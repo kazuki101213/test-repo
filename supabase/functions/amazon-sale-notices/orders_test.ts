@@ -25,3 +25,12 @@ Deno.test('ignores pending, cancelled, and non-Japanese orders', () => {
     assert.deepEqual(confirmedOrderItems({ ...fixture, fulfillment: { ...fixture.fulfillment, fulfillmentStatus: state } }), []);
   assert.deepEqual(confirmedOrderItems({ ...fixture, salesChannel: { marketplaceId: 'other' } }), []);
 });
+
+Deno.test('records the unit price of a single-unit order', () => {
+  const priced = { ...fixture, orderItems: [{ ...fixture.orderItems[0], quantityOrdered: 1,
+    product: { ...fixture.orderItems[0].product, price: { unitPrice: { amount: '14980.0', currencyCode: 'JPY' } } } }] };
+  assert.equal(confirmedOrderItems(priced)[0].amount, 14980);
+  assert.equal(confirmedOrderItems(fixture)[0].amount, null);
+  const multi = { ...priced, orderItems: [{ ...priced.orderItems[0], quantityOrdered: 2 }] };
+  assert.equal(confirmedOrderItems(multi)[0].amount, null);
+});
