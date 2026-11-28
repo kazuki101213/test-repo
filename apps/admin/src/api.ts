@@ -1119,7 +1119,7 @@ export async function fetchProduct(id:string):Promise<Product|null>{
  if(error)throw error;return data as Product|null;
 }
 
-export type DailySalesSummary={days:{date:string;amount:number;count:number}[];conflicts:string[]};
+export type DailySalesSummary={days:{date:string;amount:number;count:number;profit?:number;estimated?:number;missing?:number}[];conflicts:string[]};
 export async function fetchDailySalesSummary(from:string,to:string):Promise<DailySalesSummary>{
  const {data,error}=await getSupabase().rpc('read_daily_sales_summary',{p_from:from,p_to:to});
  if(error)throw error;return data as DailySalesSummary;
@@ -1127,6 +1127,13 @@ export async function fetchDailySalesSummary(from:string,to:string):Promise<Dail
 
 export async function fetchDashboardDailySales(from: string, to: string): Promise<Record<DashboardScope, DailySalesSummary>> {
   const { data, error } = await getSupabase().rpc('read_dashboard_daily_sales', { p_from: from, p_to: to });
+  if (error) throw new Error(error.message);
+  return data as Record<DashboardScope, DailySalesSummary>;
+}
+
+/** 日別売上・利益（「売れました」通知の日で集計。取引中は通知のときの売値と見込みの利益）。 */
+export async function fetchDashboardDailySalesByNotice(from: string, to: string): Promise<Record<DashboardScope, DailySalesSummary>> {
+  const { data, error } = await getSupabase().rpc('read_dashboard_daily_sales_by_notice', { p_from: from, p_to: to });
   if (error) throw new Error(error.message);
   return data as Record<DashboardScope, DailySalesSummary>;
 }
